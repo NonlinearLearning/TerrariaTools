@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- 确保此目录下的项目不被根目录的 Directory.Build.props 影响 -->
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- 设置独立的输出路径，指向当前文件夹下的 Build 目录 -->
+    <BaseOutputPath>$(MSBuildThisFileDirectory)Build\bin\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Build\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <!-- 排除 Build 目录，防止编译器将其中的生成文件误认为源代码 -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Build\**</DefaultItemExcludes>
+  </PropertyGroup>
+</Project>

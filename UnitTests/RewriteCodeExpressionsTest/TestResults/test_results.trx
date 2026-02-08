@@ -1,0 +1,588 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="632a4847-fc2e-4fed-ab89-9629ba50a4b2" name="shan@16ACH-7900X 2026-02-07 14:50:01" runUser="16ACH-7900X\shan" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-02-07T14:50:01.0538623+08:00" queuing="2026-02-07T14:50:01.0538632+08:00" start="2026-02-07T14:49:57.5344669+08:00" finish="2026-02-07T14:50:03.6757975+08:00" />
+  <TestSettings name="default" id="0086b1c3-65d6-4f35-b286-832e13487beb">
+    <Deployment runDeploymentRoot="shan_16ACH-7900X_2026-02-07_14_50_01" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="12ad631f-18bb-4ba1-9222-fd94dccc6087" testId="6e202670-3852-9e6c-ff26-0dd6b0524074" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test51_LocalFunction_VariableReference" computerName="16ACH-7900X" duration="00:00:00.0222181" startTime="2026-02-07T14:50:02.5401813+08:00" endTime="2026-02-07T14:50:02.5622485+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="12ad631f-18bb-4ba1-9222-fd94dccc6087" />
+    <UnitTestResult executionId="0c29747a-e318-4199-a8a7-ba10326230ac" testId="a6f2fac0-3ee6-112f-f5c8-137c911fad1c" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test45_EnumMember_Reference" computerName="16ACH-7900X" duration="00:00:00.0341390" startTime="2026-02-07T14:50:02.7479891+08:00" endTime="2026-02-07T14:50:02.7818812+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0c29747a-e318-4199-a8a7-ba10326230ac" />
+    <UnitTestResult executionId="8e483129-f3d8-42ce-a9af-14de28ead67f" testId="6d23ad56-c5e9-dccd-1886-13f98493d408" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test28_LINQ_FromVariableReference" computerName="16ACH-7900X" duration="00:00:00.0989593" startTime="2026-02-07T14:50:02.3029242+08:00" endTime="2026-02-07T14:50:02.4020533+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8e483129-f3d8-42ce-a9af-14de28ead67f" />
+    <UnitTestResult executionId="886b2c8f-0a1e-40ce-8608-58f9f696916a" testId="e9d8e983-ac58-c937-b065-15b248078a6a" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test66_Delegate_Reference" computerName="16ACH-7900X" duration="00:00:00.0366177" startTime="2026-02-07T14:50:01.7064179+08:00" endTime="2026-02-07T14:50:01.7428973+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="886b2c8f-0a1e-40ce-8608-58f9f696916a" />
+    <UnitTestResult executionId="b2e65e69-f32c-468e-a3ae-d4ca82e48438" testId="993c9623-207c-d92c-36ec-3185f8833022" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test68_PartialClass_Reference" computerName="16ACH-7900X" duration="00:00:00.0064450" startTime="2026-02-07T14:50:00.4792299+08:00" endTime="2026-02-07T14:50:00.4855830+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b2e65e69-f32c-468e-a3ae-d4ca82e48438" />
+    <UnitTestResult executionId="5de96e29-fc83-4f85-8bda-a89f4dd53104" testId="54a8bdd4-3bb9-3e2a-de3c-cba26886b8ea" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test48_InterfaceMethod_Reference" computerName="16ACH-7900X" duration="00:00:00.0348631" startTime="2026-02-07T14:50:02.6115564+08:00" endTime="2026-02-07T14:50:02.6449341+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5de96e29-fc83-4f85-8bda-a89f4dd53104" />
+    <UnitTestResult executionId="6d3ecfa2-4f0c-4e74-bb45-452983c85716" testId="26eeac69-a451-33fa-f8b3-ad83e86c8633" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test65_Fixed_PointerReference" computerName="16ACH-7900X" duration="00:00:00.0454667" startTime="2026-02-07T14:50:02.7033434+08:00" endTime="2026-02-07T14:50:02.7475925+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6d3ecfa2-4f0c-4e74-bb45-452983c85716" />
+    <UnitTestResult executionId="ff87c2bb-4664-4f48-8c35-b39877af140d" testId="a523e1cf-b4e6-6c7b-431c-4581f798f216" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test10_AnonymousMethod_Parameter" computerName="16ACH-7900X" duration="00:00:00.0344574" startTime="2026-02-07T14:50:01.9432528+08:00" endTime="2026-02-07T14:50:01.9775853+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ff87c2bb-4664-4f48-8c35-b39877af140d" />
+    <UnitTestResult executionId="83ab7576-75ae-49b2-8d39-1f939bf95919" testId="7763ad30-b368-d791-224b-7b335b20b277" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test39_Event_Reference" computerName="16ACH-7900X" duration="00:00:00.0482119" startTime="2026-02-07T14:50:03.2197426+08:00" endTime="2026-02-07T14:50:03.2678499+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="83ab7576-75ae-49b2-8d39-1f939bf95919" />
+    <UnitTestResult executionId="c43e121d-9480-43cf-9edf-f1210a988256" testId="0c85c543-4e29-3b11-3bfb-23136f55b5c8" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test30_For_VariableReference" computerName="16ACH-7900X" duration="00:00:00.0420657" startTime="2026-02-07T14:50:03.1775283+08:00" endTime="2026-02-07T14:50:03.2194734+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c43e121d-9480-43cf-9edf-f1210a988256" />
+    <UnitTestResult executionId="4a13e756-722f-4dda-ac0d-1011fd73621a" testId="b228b904-d593-c76e-441a-c5c648adc4e6" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test05_MethodParameter_MultipleReferences" computerName="16ACH-7900X" duration="00:00:00.0412943" startTime="2026-02-07T14:50:02.9195027+08:00" endTime="2026-02-07T14:50:02.9606559+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4a13e756-722f-4dda-ac0d-1011fd73621a" />
+    <UnitTestResult executionId="5ab458d3-bb49-4194-a2ab-0a5a5f2d3ebf" testId="f9f103b0-a146-59ed-a145-f529b7da1f79" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test54_CollectionInitializer_Reference" computerName="16ACH-7900X" duration="00:00:00.0419693" startTime="2026-02-07T14:50:02.8775817+08:00" endTime="2026-02-07T14:50:02.9191922+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5ab458d3-bb49-4194-a2ab-0a5a5f2d3ebf" />
+    <UnitTestResult executionId="473496d8-8a4c-40b5-85e6-e4b75c5829ba" testId="5cfe1dac-d6a0-3c1c-e3ed-8cd0df929e0f" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test64_Lock_ExpressionReference" computerName="16ACH-7900X" duration="00:00:00.0380166" startTime="2026-02-07T14:50:02.4023817+08:00" endTime="2026-02-07T14:50:02.4402042+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="473496d8-8a4c-40b5-85e6-e4b75c5829ba" />
+    <UnitTestResult executionId="fa73c78d-9834-4860-85e0-10d52a727fdd" testId="02d5dd01-c9f1-1d41-3946-7ff61890a5b8" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test63_UsingAlias_Reference" computerName="16ACH-7900X" duration="00:00:00.0567033" startTime="2026-02-07T14:50:02.6451976+08:00" endTime="2026-02-07T14:50:02.7019880+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="fa73c78d-9834-4860-85e0-10d52a727fdd">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.DoesNotContain() Failure: Sub-string found&#xD;
+                   ↓ (pos 10)&#xD;
+String: "class C { MyInt x; }"&#xD;
+Found:  "MyInt x"</Message>
+          <StackTrace>   at TerrariaTools.UnitTests.ReferencePropagatorTests.Test63_UsingAlias_Reference() in D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs:line 790&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="50480f8c-2ba2-443e-91b0-521aa334139b" testId="11f1b6dd-b6a9-04c8-19fc-f64fc41cbfc8" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test22_ExtensionMethod_ThisParameterReference" computerName="16ACH-7900X" duration="00:00:00.0368521" startTime="2026-02-07T14:50:02.4714025+08:00" endTime="2026-02-07T14:50:02.5066585+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="50480f8c-2ba2-443e-91b0-521aa334139b" />
+    <UnitTestResult executionId="7487e5c0-0c67-46cb-a51d-d82a61894a50" testId="c6e8f0fb-7a35-16ac-62e7-fdb7cbe08866" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test55_Attribute_Reference" computerName="16ACH-7900X" duration="00:00:00.0214285" startTime="2026-02-07T14:50:03.4718215+08:00" endTime="2026-02-07T14:50:03.4932494+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7487e5c0-0c67-46cb-a51d-d82a61894a50">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.DoesNotContain() Failure: Sub-string found&#xD;
+                       ↓ (pos 14)&#xD;
+String: "using System; [My] class MyAttribute : At"···&#xD;
+Found:  "[My]"</Message>
+          <StackTrace>   at TerrariaTools.UnitTests.ReferencePropagatorTests.Test55_Attribute_Reference() in D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs:line 702&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="8b07de7e-0c0e-4293-bd34-6294dc709144" testId="bd93adc2-fba8-4d71-08d4-f8ec17c13bda" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test11_LocalFunction_Parameter" computerName="16ACH-7900X" duration="00:00:00.0291706" startTime="2026-02-07T14:50:03.5199405+08:00" endTime="2026-02-07T14:50:03.5489855+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8b07de7e-0c0e-4293-bd34-6294dc709144" />
+    <UnitTestResult executionId="a4cae291-6874-47bd-926c-c848944c321b" testId="105db741-be86-8f74-f1e9-df8c4de1dc54" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test44_ConversionOperator_Reference" computerName="16ACH-7900X" duration="00:00:00.1466602" startTime="2026-02-07T14:50:00.4858439+08:00" endTime="2026-02-07T14:50:00.6530129+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a4cae291-6874-47bd-926c-c848944c321b">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.DoesNotContain() Failure: Sub-string found&#xD;
+                                          ↓ (pos 32)&#xD;
+String: ···"ass C { void M(C c) { int i = (int)c; } }"&#xD;
+Found:  "(int)c"</Message>
+          <StackTrace>   at TerrariaTools.UnitTests.ReferencePropagatorTests.Test44_ConversionOperator_Reference() in D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs:line 579&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="914e3e26-fe5c-4228-8fa9-4cebc302abbb" testId="c48907ef-bb5e-bc85-9a83-1e4e4d42abae" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test50_AnonymousType_PropertyReference" computerName="16ACH-7900X" duration="00:00:00.0506860" startTime="2026-02-07T14:50:01.6553919+08:00" endTime="2026-02-07T14:50:01.7060932+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="914e3e26-fe5c-4228-8fa9-4cebc302abbb" />
+    <UnitTestResult executionId="0eb0b08e-aecd-4f3d-9a86-69785f270f83" testId="4d7a98b2-5553-10b0-b4df-55014e4d19f2" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test69_Recursive_Property_Dependency" computerName="16ACH-7900X" duration="00:00:00.0326783" startTime="2026-02-07T14:50:01.8789376+08:00" endTime="2026-02-07T14:50:01.9114446+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0eb0b08e-aecd-4f3d-9a86-69785f270f83" />
+    <UnitTestResult executionId="e9f5c991-af45-442e-8c55-7edb023d02f9" testId="66b3f462-1de1-30f5-23af-34fa72926db9" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test56_AttributeArgument_Reference" computerName="16ACH-7900X" duration="00:00:00.0667798" startTime="2026-02-07T14:50:02.0843201+08:00" endTime="2026-02-07T14:50:02.1512931+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e9f5c991-af45-442e-8c55-7edb023d02f9">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.DoesNotContain() Failure: Sub-string found&#xD;
+                                   ↓ (pos 78)&#xD;
+String: ···"Attribute(int i) {} } [My(X)] class C { }"&#xD;
+Found:  "My(X)"</Message>
+          <StackTrace>   at TerrariaTools.UnitTests.ReferencePropagatorTests.Test56_AttributeArgument_Reference() in D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs:line 713&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="fc960556-3949-40c9-9752-ea0d547c8c9e" testId="bd6149ff-e906-ffe8-d985-ca25e5572959" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test16_Constructor_Initializer" computerName="16ACH-7900X" duration="00:00:00.0342544" startTime="2026-02-07T14:50:02.1532549+08:00" endTime="2026-02-07T14:50:02.1855812+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="fc960556-3949-40c9-9752-ea0d547c8c9e" />
+    <UnitTestResult executionId="e9fb9139-e916-4d58-b92d-5f970f3174aa" testId="655ffd8b-49b8-82a4-41dd-98bc7de673bb" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test20_Negative_UnmarkedDeclaration" computerName="16ACH-7900X" duration="00:00:00.0233968" startTime="2026-02-07T14:50:03.3948749+08:00" endTime="2026-02-07T14:50:03.4170930+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e9fb9139-e916-4d58-b92d-5f970f3174aa" />
+    <UnitTestResult executionId="45b8756f-f39d-418e-b4b3-c5d845e47e94" testId="74c81a9d-9edb-6701-668a-bcc6debacfb2" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test46_Constant_Reference" computerName="16ACH-7900X" duration="00:00:00.0746542" startTime="2026-02-07T14:50:00.8502881+08:00" endTime="2026-02-07T14:50:00.9247784+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="45b8756f-f39d-418e-b4b3-c5d845e47e94" />
+    <UnitTestResult executionId="aa89f560-9491-4866-a13b-0738a70e3a36" testId="602ec465-e8d9-a02d-efe6-2abb0d1bc9bf" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test31_Catch_VariableReference" computerName="16ACH-7900X" duration="00:00:00.0534016" startTime="2026-02-07T14:50:01.7974613+08:00" endTime="2026-02-07T14:50:01.8505870+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="aa89f560-9491-4866-a13b-0738a70e3a36" />
+    <UnitTestResult executionId="70bc2241-11fc-4435-b6a5-f2f0c416f35a" testId="c73f0af0-ac37-cc6e-644b-68f03db65db1" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test47_StaticField_Reference" computerName="16ACH-7900X" duration="00:00:00.0312547" startTime="2026-02-07T14:50:01.9117149+08:00" endTime="2026-02-07T14:50:01.9429415+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="70bc2241-11fc-4435-b6a5-f2f0c416f35a" />
+    <UnitTestResult executionId="475f6ce6-738a-462a-ae40-895f58ad5b3c" testId="66a38b68-e138-19b7-be00-6345ece0a391" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test21_GenericMethod_TypeParameterReference" computerName="16ACH-7900X" duration="00:00:00.0261980" startTime="2026-02-07T14:50:03.4945825+08:00" endTime="2026-02-07T14:50:03.5196155+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="475f6ce6-738a-462a-ae40-895f58ad5b3c" />
+    <UnitTestResult executionId="fb72bdc0-9168-48d7-b6c2-c6013cb4b0ae" testId="c751748c-e16f-9696-b820-f0c40a5a1d88" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test01_LocalVariable_SimpleReference" computerName="16ACH-7900X" duration="00:00:00.0593559" startTime="2026-02-07T14:50:01.4307955+08:00" endTime="2026-02-07T14:50:01.4924354+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="fb72bdc0-9168-48d7-b6c2-c6013cb4b0ae" />
+    <UnitTestResult executionId="bea67e61-5d69-4084-838f-8f64a0e0f77e" testId="70c360ce-f421-96e3-98d8-d3b5e5549fc2" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test25_TupleDeconstruction_Reference" computerName="16ACH-7900X" duration="00:00:00.0554350" startTime="2026-02-07T14:50:03.2680748+08:00" endTime="2026-02-07T14:50:03.3234375+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="bea67e61-5d69-4084-838f-8f64a0e0f77e" />
+    <UnitTestResult executionId="74f143d9-3aef-47ef-9d07-1d0c816e31a2" testId="269dae71-5516-b603-3cf2-40acbec52103" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test14_PropertyAccessor_Set_Value" computerName="16ACH-7900X" duration="00:00:00.0304599" startTime="2026-02-07T14:50:03.4173412+08:00" endTime="2026-02-07T14:50:03.4477825+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="74f143d9-3aef-47ef-9d07-1d0c816e31a2" />
+    <UnitTestResult executionId="fc19eac3-2211-460e-af13-0fe3154deb18" testId="77f6add2-183c-f173-100e-b9d8a6070533" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test09_Lambda_LocalVariable" computerName="16ACH-7900X" duration="00:00:00.0330600" startTime="2026-02-07T14:50:02.5069686+08:00" endTime="2026-02-07T14:50:02.5399061+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="fc19eac3-2211-460e-af13-0fe3154deb18" />
+    <UnitTestResult executionId="a89e1869-5d8e-4dc0-8c74-d00622d4af60" testId="c1c7345f-56b1-94da-ac45-b4f28834d532" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test40_Indexer_Reference" computerName="16ACH-7900X" duration="00:00:00.0515202" startTime="2026-02-07T14:50:01.5695523+08:00" endTime="2026-02-07T14:50:01.6209248+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a89e1869-5d8e-4dc0-8c74-d00622d4af60" />
+    <UnitTestResult executionId="37af0e34-5fa3-4994-8b98-f1ba72666920" testId="442e7465-4085-9a08-6c50-609133acffe1" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test41_Constructor_Reference" computerName="16ACH-7900X" duration="00:00:00.0841843" startTime="2026-02-07T14:50:00.9252413+08:00" endTime="2026-02-07T14:50:01.0094973+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="37af0e34-5fa3-4994-8b98-f1ba72666920" />
+    <UnitTestResult executionId="0a663eea-8d76-4335-83bb-b4d3c529f22f" testId="da83d42d-7dd3-841a-2755-963e366ea21a" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test13_PropertyAccessor_Get" computerName="16ACH-7900X" duration="00:00:01.0500132" startTime="2026-02-07T14:49:59.1253360+08:00" endTime="2026-02-07T14:50:00.1855250+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0a663eea-8d76-4335-83bb-b4d3c529f22f" />
+    <UnitTestResult executionId="30e1ba0b-f156-47c8-8447-48ec1e90afe2" testId="d45f850f-b992-03a3-3359-c01a4fa77b7d" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test33_Indexer_ArgumentReference" computerName="16ACH-7900X" duration="00:00:00.0238899" startTime="2026-02-07T14:50:03.1314356+08:00" endTime="2026-02-07T14:50:03.1553144+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="30e1ba0b-f156-47c8-8447-48ec1e90afe2" />
+    <UnitTestResult executionId="5f1ea645-aa2f-4fd0-8cf5-1666bcb10332" testId="d5fab61b-df91-665b-1380-54e7dacaf837" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test03_LocalVariable_NestedScopes" computerName="16ACH-7900X" duration="00:00:00.0236534" startTime="2026-02-07T14:50:03.4480454+08:00" endTime="2026-02-07T14:50:03.4715468+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5f1ea645-aa2f-4fd0-8cf5-1666bcb10332" />
+    <UnitTestResult executionId="2595c546-d969-4d9a-b7c9-d0a1bd6272b3" testId="453ad6ff-283f-f06f-1b8a-678900c607a9" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test36_Field_Reference" computerName="16ACH-7900X" duration="00:00:00.0160055" startTime="2026-02-07T14:50:01.2626903+08:00" endTime="2026-02-07T14:50:01.2786735+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="2595c546-d969-4d9a-b7c9-d0a1bd6272b3" />
+    <UnitTestResult executionId="d62eb182-b131-4d2a-95c4-bae114b985a5" testId="7973257e-2641-9dad-d4fe-09084fc8b0e4" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test12_LocalFunction_OuterVariable" computerName="16ACH-7900X" duration="00:00:00.0417127" startTime="2026-02-07T14:50:01.5276504+08:00" endTime="2026-02-07T14:50:01.5692440+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d62eb182-b131-4d2a-95c4-bae114b985a5" />
+    <UnitTestResult executionId="29a9b23e-449d-4426-bb00-36248bd41ef6" testId="67f9ab20-ed04-9498-27ca-16d12ef9564c" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test24_RefParameter_Reference" computerName="16ACH-7900X" duration="00:00:00.0536464" startTime="2026-02-07T14:50:01.3749341+08:00" endTime="2026-02-07T14:50:01.4283880+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="29a9b23e-449d-4426-bb00-36248bd41ef6" />
+    <UnitTestResult executionId="77d3388d-5c35-47b3-997e-4dd565dcb97a" testId="2548d268-a62d-7be0-da31-8215f0c52227" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test57_DefaultParameterValue_Reference" computerName="16ACH-7900X" duration="00:00:00.0214427" startTime="2026-02-07T14:50:01.2414181+08:00" endTime="2026-02-07T14:50:01.2624458+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="77d3388d-5c35-47b3-997e-4dd565dcb97a" />
+    <UnitTestResult executionId="294c42c6-8b82-4682-b850-33aa02da5356" testId="f1c5c1ea-3cd0-e7fd-5df6-a59d893018fd" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test61_InterfaceImplementation_Reference" computerName="16ACH-7900X" duration="00:00:00.0217607" startTime="2026-02-07T14:50:03.1557090+08:00" endTime="2026-02-07T14:50:03.1772201+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="294c42c6-8b82-4682-b850-33aa02da5356" />
+    <UnitTestResult executionId="7e819133-2ccf-4916-a940-11b865143da1" testId="0e9d6ff2-57ce-7854-acaa-3c087015662f" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test67_Namespace_Reference" computerName="16ACH-7900X" duration="00:00:00.0392019" startTime="2026-02-07T14:50:01.4927635+08:00" endTime="2026-02-07T14:50:01.5273144+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="7e819133-2ccf-4916-a940-11b865143da1" />
+    <UnitTestResult executionId="0f8684d6-595f-41a0-988b-c8106b030dae" testId="16df81f7-0b83-39f2-4f28-857606a6aae2" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test04_MethodParameter_SimpleReference" computerName="16ACH-7900X" duration="00:00:00.0239952" startTime="2026-02-07T14:50:02.1866928+08:00" endTime="2026-02-07T14:50:02.2097347+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="0f8684d6-595f-41a0-988b-c8106b030dae" />
+    <UnitTestResult executionId="f57d5791-1dd5-42b4-b7d3-079262feb4f0" testId="b50a0381-966e-6a4d-170c-c34724e19a33" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test18_ArrowExpressionClause_Method" computerName="16ACH-7900X" duration="00:00:00.0278217" startTime="2026-02-07T14:50:01.8515623+08:00" endTime="2026-02-07T14:50:01.8786103+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f57d5791-1dd5-42b4-b7d3-079262feb4f0" />
+    <UnitTestResult executionId="9ff13c6d-7d84-4504-96e7-3b8b9b006a2e" testId="682de809-bf82-4fa9-e7f6-48238f6c14c1" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test08_Lambda_Simple_Parameter" computerName="16ACH-7900X" duration="00:00:00.0222780" startTime="2026-02-07T14:50:03.5493007+08:00" endTime="2026-02-07T14:50:03.5713408+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9ff13c6d-7d84-4504-96e7-3b8b9b006a2e" />
+    <UnitTestResult executionId="18238913-93d6-4f76-a0ee-63b4923b944a" testId="0e46d75f-dbeb-7cb0-351f-b082e436840f" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test53_ObjectInitializer_PropertyReference" computerName="16ACH-7900X" duration="00:00:00.0405594" startTime="2026-02-07T14:50:02.7820973+08:00" endTime="2026-02-07T14:50:02.8226005+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="18238913-93d6-4f76-a0ee-63b4923b944a" />
+    <UnitTestResult executionId="4ad0043b-ff05-455b-b792-32bb69f5b738" testId="8c60eceb-625f-31bb-c720-3c23828b2df7" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test07_Lambda_Parenthesized_Parameter" computerName="16ACH-7900X" duration="00:00:00.0539979" startTime="2026-02-07T14:50:01.7431984+08:00" endTime="2026-02-07T14:50:01.7970953+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="4ad0043b-ff05-455b-b792-32bb69f5b738" />
+    <UnitTestResult executionId="81436835-8e50-4d09-9097-7682f4f11557" testId="98c2b0e7-9582-23c1-abf5-2ed08f080b6b" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test43_Operator_Reference" computerName="16ACH-7900X" duration="00:00:00.0636343" startTime="2026-02-07T14:50:01.3171640+08:00" endTime="2026-02-07T14:50:01.3745582+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="81436835-8e50-4d09-9097-7682f4f11557" />
+    <UnitTestResult executionId="9d37db22-88ab-4a74-aff1-e675c081b7d5" testId="f17c927a-c5aa-4707-0f0c-9650549c3782" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test02_LocalVariable_MultipleReferences" computerName="16ACH-7900X" duration="00:00:00.0516754" startTime="2026-02-07T14:50:03.0791968+08:00" endTime="2026-02-07T14:50:03.1311825+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9d37db22-88ab-4a74-aff1-e675c081b7d5" />
+    <UnitTestResult executionId="5993cd48-983c-4e2a-8ebd-979f9028bffb" testId="430abe20-af74-d5cb-d3c8-565eb3fe339f" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test17_Destructor_LocalVariable" computerName="16ACH-7900X" duration="00:00:00.0422955" startTime="2026-02-07T14:50:03.0388786+08:00" endTime="2026-02-07T14:50:03.0787028+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5993cd48-983c-4e2a-8ebd-979f9028bffb" />
+    <UnitTestResult executionId="255178ac-93b5-455c-8c6e-387b1da1b83b" testId="47b37ced-44a8-4cec-6c89-86e12be5309a" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test38_Method_Reference" computerName="16ACH-7900X" duration="00:00:00.0289812" startTime="2026-02-07T14:50:02.4405582+08:00" endTime="2026-02-07T14:50:02.4696556+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="255178ac-93b5-455c-8c6e-387b1da1b83b">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.DoesNotContain() Failure: Sub-string found&#xD;
+                                  ↓ (pos 25)&#xD;
+String: "class C { void M1() void M2() {} }"&#xD;
+Found:  "M2()"</Message>
+          <StackTrace>   at TerrariaTools.UnitTests.ReferencePropagatorTests.Test38_Method_Reference() in D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs:line 513&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="418be1f9-1a29-4f8e-8184-af4219b4c007" testId="c0b56ea8-ec8f-716a-a209-57d660c452ee" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test35_Multiple_Interdependent_Variables" computerName="16ACH-7900X" duration="00:00:00.0490559" startTime="2026-02-07T14:50:02.0185739+08:00" endTime="2026-02-07T14:50:02.0674369+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="418be1f9-1a29-4f8e-8184-af4219b4c007" />
+    <UnitTestResult executionId="3c6c031d-6a73-448a-b287-8c022030f8c3" testId="e1544eb1-0743-7c1c-2386-93fb7b881a3a" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test15_Constructor_Parameter" computerName="16ACH-7900X" duration="00:00:00.0341263" startTime="2026-02-07T14:50:01.6212823+08:00" endTime="2026-02-07T14:50:01.6551754+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3c6c031d-6a73-448a-b287-8c022030f8c3" />
+    <UnitTestResult executionId="c68359e4-777f-4737-b8e1-a53bd3615a05" testId="3f157c7c-bc53-add0-9472-93221c975ac2" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test23_OutParameter_Reference" computerName="16ACH-7900X" duration="00:00:00.0628407" startTime="2026-02-07T14:50:00.4163874+08:00" endTime="2026-02-07T14:50:00.4790259+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c68359e4-777f-4737-b8e1-a53bd3615a05" />
+    <UnitTestResult executionId="36e1d6e8-b568-42f9-92f0-23f88c42cf1c" testId="b0ebe037-c767-dd04-a6f4-5ff449825ab3" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test34_LocalFunction_RecursiveReference" computerName="16ACH-7900X" duration="00:00:00.0403760" startTime="2026-02-07T14:50:01.9778249+08:00" endTime="2026-02-07T14:50:02.0181735+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="36e1d6e8-b568-42f9-92f0-23f88c42cf1c" />
+    <UnitTestResult executionId="a5937688-e3b6-4def-8e5c-81044a7e2f95" testId="e8088508-5294-58a3-4677-42b1b9930621" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test49_BaseMethod_Reference" computerName="16ACH-7900X" duration="00:00:00.0631623" startTime="2026-02-07T14:50:01.0254237+08:00" endTime="2026-02-07T14:50:01.0728781+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a5937688-e3b6-4def-8e5c-81044a7e2f95" />
+    <UnitTestResult executionId="e266c399-1bfa-46b7-88c1-332b9afefba0" testId="230ac4cd-41b4-91ae-db39-e1474355dead" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test06_MethodParameter_InLambda" computerName="16ACH-7900X" duration="00:00:00.0368120" startTime="2026-02-07T14:50:01.2041587+08:00" endTime="2026-02-07T14:50:01.2408401+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e266c399-1bfa-46b7-88c1-332b9afefba0" />
+    <UnitTestResult executionId="6da596c3-8eb1-44a6-8b2b-6d6ffeb7e78d" testId="3a540ec1-a171-4b0c-ce36-43982b092ae0" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test27_IsPattern_VariableReference" computerName="16ACH-7900X" duration="00:00:00.0925999" startTime="2026-02-07T14:50:02.2099534+08:00" endTime="2026-02-07T14:50:02.3025089+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6da596c3-8eb1-44a6-8b2b-6d6ffeb7e78d" />
+    <UnitTestResult executionId="3a7ade22-dc56-4537-a859-193a8590d0ab" testId="6973d918-03ba-1fa2-36df-ca7f50e938f7" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test62_Nameof_Reference" computerName="16ACH-7900X" duration="00:00:00.0318996" startTime="2026-02-07T14:50:01.2790257+08:00" endTime="2026-02-07T14:50:01.3107197+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="3a7ade22-dc56-4537-a859-193a8590d0ab" />
+    <UnitTestResult executionId="315e8529-ea5d-489e-9e6f-9941f991576a" testId="2d9bd6c9-7a96-4de9-8217-2d971a35ee94" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test32_UsingDeclaration_Reference" computerName="16ACH-7900X" duration="00:00:00.0474582" startTime="2026-02-07T14:50:03.3237055+08:00" endTime="2026-02-07T14:50:03.3710814+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="315e8529-ea5d-489e-9e6f-9941f991576a" />
+    <UnitTestResult executionId="35034fed-dd60-4954-a90e-eb4345280fab" testId="8d87027d-cda0-0bc6-ea08-cbdc2050dec3" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test42_Destructor_Reference" computerName="16ACH-7900X" duration="00:00:00.0161835" startTime="2026-02-07T14:50:02.0680354+08:00" endTime="2026-02-07T14:50:02.0838639+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="35034fed-dd60-4954-a90e-eb4345280fab" />
+    <UnitTestResult executionId="1e5263ea-da41-455d-a651-9c43ac8c1395" testId="04a55d50-2b45-91c5-c0c0-38f880b05478" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test70_Deep_Dependency_Chain" computerName="16ACH-7900X" duration="00:00:00.0503722" startTime="2026-02-07T14:50:01.1534513+08:00" endTime="2026-02-07T14:50:01.2037649+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="1e5263ea-da41-455d-a651-9c43ac8c1395" />
+    <UnitTestResult executionId="e38e8250-8e41-4945-9fa0-247a49091b1f" testId="4ac13fa0-ef32-7199-eeee-78dc84bbee86" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test19_ArrowExpressionClause_Property" computerName="16ACH-7900X" duration="00:00:00.1038416" startTime="2026-02-07T14:50:00.2013407+08:00" endTime="2026-02-07T14:50:00.2899137+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e38e8250-8e41-4945-9fa0-247a49091b1f" />
+    <UnitTestResult executionId="c8e1e87b-2473-4463-83bc-94de0c17c7c6" testId="a73d1646-74a6-98d5-8775-0970b2f4a155" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test60_BaseClass_Reference" computerName="16ACH-7900X" duration="00:00:00.0223186" startTime="2026-02-07T14:50:03.3713481+08:00" endTime="2026-02-07T14:50:03.3935478+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c8e1e87b-2473-4463-83bc-94de0c17c7c6" />
+    <UnitTestResult executionId="729a9f6c-1395-49ab-ac24-adfcd31b649b" testId="190fadf0-80b1-cb45-2ec7-fa15a9c2eddb" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test59_GenericConstraint_Reference" computerName="16ACH-7900X" duration="00:00:00.0751001" startTime="2026-02-07T14:50:02.9610876+08:00" endTime="2026-02-07T14:50:03.0362220+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Failed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="729a9f6c-1395-49ab-ac24-adfcd31b649b">
+      <Output>
+        <ErrorInfo>
+          <Message>Assert.DoesNotContain() Failure: Sub-string found&#xD;
+                                   ↓ (pos 26)&#xD;
+String: "interface I {} class G&lt;T&gt; where T : I {}"&#xD;
+Found:  "where T : I"</Message>
+          <StackTrace>   at TerrariaTools.UnitTests.ReferencePropagatorTests.Test59_GenericConstraint_Reference() in D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs:line 746&#xD;
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)</StackTrace>
+        </ErrorInfo>
+      </Output>
+    </UnitTestResult>
+    <UnitTestResult executionId="782b232c-3b8a-480c-82ac-41fdd40a4fe1" testId="e03269a0-0419-ea13-4d1f-6c94c8232cba" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test58_TypeArgument_Reference" computerName="16ACH-7900X" duration="00:00:00.1259984" startTime="2026-02-07T14:50:00.2913346+08:00" endTime="2026-02-07T14:50:00.4160457+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="782b232c-3b8a-480c-82ac-41fdd40a4fe1" />
+    <UnitTestResult executionId="5d08a0a9-3303-4542-9dc7-24fe0124b7b9" testId="e2964320-6eba-6ca0-bbca-1b6004a96f1b" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test52_Lambda_VariableReference" computerName="16ACH-7900X" duration="00:00:00.1973795" startTime="2026-02-07T14:50:00.6602632+08:00" endTime="2026-02-07T14:50:00.8498898+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="5d08a0a9-3303-4542-9dc7-24fe0124b7b9" />
+    <UnitTestResult executionId="eed0f433-5bd4-4c99-bbaf-8fd8baa3e5c9" testId="10aa3f05-0c37-6879-7ec9-841a650e2a18" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test26_SwitchExpression_ArmReference" computerName="16ACH-7900X" duration="00:00:00.0475335" startTime="2026-02-07T14:50:02.5624877+08:00" endTime="2026-02-07T14:50:02.6099479+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="eed0f433-5bd4-4c99-bbaf-8fd8baa3e5c9" />
+    <UnitTestResult executionId="cf423868-ccad-4ec7-8631-3bd781b72b63" testId="2d68e24b-64dc-8892-608b-13f90c643511" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test37_Property_Reference" computerName="16ACH-7900X" duration="00:00:00.0801582" startTime="2026-02-07T14:50:01.0732279+08:00" endTime="2026-02-07T14:50:01.1531484+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="cf423868-ccad-4ec7-8631-3bd781b72b63" />
+    <UnitTestResult executionId="63f41563-92cc-4694-8646-2b0c043a9eca" testId="11d4f759-9fc1-0752-139c-ac091a417cac" testName="TerrariaTools.UnitTests.ReferencePropagatorTests.Test29_Foreach_VariableReference" computerName="16ACH-7900X" duration="00:00:00.0541959" startTime="2026-02-07T14:50:02.8229116+08:00" endTime="2026-02-07T14:50:02.8772222+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="63f41563-92cc-4694-8646-2b0c043a9eca" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test24_RefParameter_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="67f9ab20-ed04-9498-27ca-16d12ef9564c">
+      <Execution id="29a9b23e-449d-4426-bb00-36248bd41ef6" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test24_RefParameter_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test20_Negative_UnmarkedDeclaration" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="655ffd8b-49b8-82a4-41dd-98bc7de673bb">
+      <Execution id="e9fb9139-e916-4d58-b92d-5f970f3174aa" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test20_Negative_UnmarkedDeclaration" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test09_Lambda_LocalVariable" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="77f6add2-183c-f173-100e-b9d8a6070533">
+      <Execution id="fc19eac3-2211-460e-af13-0fe3154deb18" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test09_Lambda_LocalVariable" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test26_SwitchExpression_ArmReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="10aa3f05-0c37-6879-7ec9-841a650e2a18">
+      <Execution id="eed0f433-5bd4-4c99-bbaf-8fd8baa3e5c9" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test26_SwitchExpression_ArmReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test66_Delegate_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="e9d8e983-ac58-c937-b065-15b248078a6a">
+      <Execution id="886b2c8f-0a1e-40ce-8608-58f9f696916a" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test66_Delegate_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test55_Attribute_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="c6e8f0fb-7a35-16ac-62e7-fdb7cbe08866">
+      <Execution id="7487e5c0-0c67-46cb-a51d-d82a61894a50" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test55_Attribute_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test69_Recursive_Property_Dependency" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="4d7a98b2-5553-10b0-b4df-55014e4d19f2">
+      <Execution id="0eb0b08e-aecd-4f3d-9a86-69785f270f83" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test69_Recursive_Property_Dependency" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test54_CollectionInitializer_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="f9f103b0-a146-59ed-a145-f529b7da1f79">
+      <Execution id="5ab458d3-bb49-4194-a2ab-0a5a5f2d3ebf" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test54_CollectionInitializer_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test42_Destructor_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="8d87027d-cda0-0bc6-ea08-cbdc2050dec3">
+      <Execution id="35034fed-dd60-4954-a90e-eb4345280fab" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test42_Destructor_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test37_Property_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="2d68e24b-64dc-8892-608b-13f90c643511">
+      <Execution id="cf423868-ccad-4ec7-8631-3bd781b72b63" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test37_Property_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test27_IsPattern_VariableReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="3a540ec1-a171-4b0c-ce36-43982b092ae0">
+      <Execution id="6da596c3-8eb1-44a6-8b2b-6d6ffeb7e78d" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test27_IsPattern_VariableReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test28_LINQ_FromVariableReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="6d23ad56-c5e9-dccd-1886-13f98493d408">
+      <Execution id="8e483129-f3d8-42ce-a9af-14de28ead67f" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test28_LINQ_FromVariableReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test17_Destructor_LocalVariable" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="430abe20-af74-d5cb-d3c8-565eb3fe339f">
+      <Execution id="5993cd48-983c-4e2a-8ebd-979f9028bffb" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test17_Destructor_LocalVariable" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test16_Constructor_Initializer" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="bd6149ff-e906-ffe8-d985-ca25e5572959">
+      <Execution id="fc960556-3949-40c9-9752-ea0d547c8c9e" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test16_Constructor_Initializer" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test40_Indexer_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="c1c7345f-56b1-94da-ac45-b4f28834d532">
+      <Execution id="a89e1869-5d8e-4dc0-8c74-d00622d4af60" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test40_Indexer_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test59_GenericConstraint_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="190fadf0-80b1-cb45-2ec7-fa15a9c2eddb">
+      <Execution id="729a9f6c-1395-49ab-ac24-adfcd31b649b" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test59_GenericConstraint_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test67_Namespace_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="0e9d6ff2-57ce-7854-acaa-3c087015662f">
+      <Execution id="7e819133-2ccf-4916-a940-11b865143da1" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test67_Namespace_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test68_PartialClass_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="993c9623-207c-d92c-36ec-3185f8833022">
+      <Execution id="b2e65e69-f32c-468e-a3ae-d4ca82e48438" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test68_PartialClass_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test05_MethodParameter_MultipleReferences" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="b228b904-d593-c76e-441a-c5c648adc4e6">
+      <Execution id="4a13e756-722f-4dda-ac0d-1011fd73621a" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test05_MethodParameter_MultipleReferences" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test39_Event_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="7763ad30-b368-d791-224b-7b335b20b277">
+      <Execution id="83ab7576-75ae-49b2-8d39-1f939bf95919" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test39_Event_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test08_Lambda_Simple_Parameter" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="682de809-bf82-4fa9-e7f6-48238f6c14c1">
+      <Execution id="9ff13c6d-7d84-4504-96e7-3b8b9b006a2e" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test08_Lambda_Simple_Parameter" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test03_LocalVariable_NestedScopes" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="d5fab61b-df91-665b-1380-54e7dacaf837">
+      <Execution id="5f1ea645-aa2f-4fd0-8cf5-1666bcb10332" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test03_LocalVariable_NestedScopes" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test18_ArrowExpressionClause_Method" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="b50a0381-966e-6a4d-170c-c34724e19a33">
+      <Execution id="f57d5791-1dd5-42b4-b7d3-079262feb4f0" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test18_ArrowExpressionClause_Method" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test11_LocalFunction_Parameter" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="bd93adc2-fba8-4d71-08d4-f8ec17c13bda">
+      <Execution id="8b07de7e-0c0e-4293-bd34-6294dc709144" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test11_LocalFunction_Parameter" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test36_Field_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="453ad6ff-283f-f06f-1b8a-678900c607a9">
+      <Execution id="2595c546-d969-4d9a-b7c9-d0a1bd6272b3" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test36_Field_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test52_Lambda_VariableReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="e2964320-6eba-6ca0-bbca-1b6004a96f1b">
+      <Execution id="5d08a0a9-3303-4542-9dc7-24fe0124b7b9" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test52_Lambda_VariableReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test34_LocalFunction_RecursiveReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="b0ebe037-c767-dd04-a6f4-5ff449825ab3">
+      <Execution id="36e1d6e8-b568-42f9-92f0-23f88c42cf1c" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test34_LocalFunction_RecursiveReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test70_Deep_Dependency_Chain" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="04a55d50-2b45-91c5-c0c0-38f880b05478">
+      <Execution id="1e5263ea-da41-455d-a651-9c43ac8c1395" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test70_Deep_Dependency_Chain" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test43_Operator_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="98c2b0e7-9582-23c1-abf5-2ed08f080b6b">
+      <Execution id="81436835-8e50-4d09-9097-7682f4f11557" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test43_Operator_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test15_Constructor_Parameter" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="e1544eb1-0743-7c1c-2386-93fb7b881a3a">
+      <Execution id="3c6c031d-6a73-448a-b287-8c022030f8c3" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test15_Constructor_Parameter" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test53_ObjectInitializer_PropertyReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="0e46d75f-dbeb-7cb0-351f-b082e436840f">
+      <Execution id="18238913-93d6-4f76-a0ee-63b4923b944a" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test53_ObjectInitializer_PropertyReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test47_StaticField_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="c73f0af0-ac37-cc6e-644b-68f03db65db1">
+      <Execution id="70bc2241-11fc-4435-b6a5-f2f0c416f35a" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test47_StaticField_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test62_Nameof_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="6973d918-03ba-1fa2-36df-ca7f50e938f7">
+      <Execution id="3a7ade22-dc56-4537-a859-193a8590d0ab" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test62_Nameof_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test04_MethodParameter_SimpleReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="16df81f7-0b83-39f2-4f28-857606a6aae2">
+      <Execution id="0f8684d6-595f-41a0-988b-c8106b030dae" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test04_MethodParameter_SimpleReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test30_For_VariableReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="0c85c543-4e29-3b11-3bfb-23136f55b5c8">
+      <Execution id="c43e121d-9480-43cf-9edf-f1210a988256" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test30_For_VariableReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test56_AttributeArgument_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="66b3f462-1de1-30f5-23af-34fa72926db9">
+      <Execution id="e9f5c991-af45-442e-8c55-7edb023d02f9" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test56_AttributeArgument_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test21_GenericMethod_TypeParameterReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="66a38b68-e138-19b7-be00-6345ece0a391">
+      <Execution id="475f6ce6-738a-462a-ae40-895f58ad5b3c" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test21_GenericMethod_TypeParameterReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test41_Constructor_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="442e7465-4085-9a08-6c50-609133acffe1">
+      <Execution id="37af0e34-5fa3-4994-8b98-f1ba72666920" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test41_Constructor_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test25_TupleDeconstruction_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="70c360ce-f421-96e3-98d8-d3b5e5549fc2">
+      <Execution id="bea67e61-5d69-4084-838f-8f64a0e0f77e" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test25_TupleDeconstruction_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test01_LocalVariable_SimpleReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="c751748c-e16f-9696-b820-f0c40a5a1d88">
+      <Execution id="fb72bdc0-9168-48d7-b6c2-c6013cb4b0ae" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test01_LocalVariable_SimpleReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test63_UsingAlias_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="02d5dd01-c9f1-1d41-3946-7ff61890a5b8">
+      <Execution id="fa73c78d-9834-4860-85e0-10d52a727fdd" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test63_UsingAlias_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test07_Lambda_Parenthesized_Parameter" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="8c60eceb-625f-31bb-c720-3c23828b2df7">
+      <Execution id="4ad0043b-ff05-455b-b792-32bb69f5b738" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test07_Lambda_Parenthesized_Parameter" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test33_Indexer_ArgumentReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="d45f850f-b992-03a3-3359-c01a4fa77b7d">
+      <Execution id="30e1ba0b-f156-47c8-8447-48ec1e90afe2" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test33_Indexer_ArgumentReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test31_Catch_VariableReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="602ec465-e8d9-a02d-efe6-2abb0d1bc9bf">
+      <Execution id="aa89f560-9491-4866-a13b-0738a70e3a36" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test31_Catch_VariableReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test10_AnonymousMethod_Parameter" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="a523e1cf-b4e6-6c7b-431c-4581f798f216">
+      <Execution id="ff87c2bb-4664-4f48-8c35-b39877af140d" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test10_AnonymousMethod_Parameter" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test02_LocalVariable_MultipleReferences" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="f17c927a-c5aa-4707-0f0c-9650549c3782">
+      <Execution id="9d37db22-88ab-4a74-aff1-e675c081b7d5" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test02_LocalVariable_MultipleReferences" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test51_LocalFunction_VariableReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="6e202670-3852-9e6c-ff26-0dd6b0524074">
+      <Execution id="12ad631f-18bb-4ba1-9222-fd94dccc6087" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test51_LocalFunction_VariableReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test48_InterfaceMethod_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="54a8bdd4-3bb9-3e2a-de3c-cba26886b8ea">
+      <Execution id="5de96e29-fc83-4f85-8bda-a89f4dd53104" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test48_InterfaceMethod_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test06_MethodParameter_InLambda" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="230ac4cd-41b4-91ae-db39-e1474355dead">
+      <Execution id="e266c399-1bfa-46b7-88c1-332b9afefba0" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test06_MethodParameter_InLambda" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test14_PropertyAccessor_Set_Value" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="269dae71-5516-b603-3cf2-40acbec52103">
+      <Execution id="74f143d9-3aef-47ef-9d07-1d0c816e31a2" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test14_PropertyAccessor_Set_Value" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test46_Constant_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="74c81a9d-9edb-6701-668a-bcc6debacfb2">
+      <Execution id="45b8756f-f39d-418e-b4b3-c5d845e47e94" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test46_Constant_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test23_OutParameter_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="3f157c7c-bc53-add0-9472-93221c975ac2">
+      <Execution id="c68359e4-777f-4737-b8e1-a53bd3615a05" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test23_OutParameter_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test58_TypeArgument_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="e03269a0-0419-ea13-4d1f-6c94c8232cba">
+      <Execution id="782b232c-3b8a-480c-82ac-41fdd40a4fe1" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test58_TypeArgument_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test65_Fixed_PointerReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="26eeac69-a451-33fa-f8b3-ad83e86c8633">
+      <Execution id="6d3ecfa2-4f0c-4e74-bb45-452983c85716" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test65_Fixed_PointerReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test64_Lock_ExpressionReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="5cfe1dac-d6a0-3c1c-e3ed-8cd0df929e0f">
+      <Execution id="473496d8-8a4c-40b5-85e6-e4b75c5829ba" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test64_Lock_ExpressionReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test60_BaseClass_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="a73d1646-74a6-98d5-8775-0970b2f4a155">
+      <Execution id="c8e1e87b-2473-4463-83bc-94de0c17c7c6" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test60_BaseClass_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test22_ExtensionMethod_ThisParameterReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="11f1b6dd-b6a9-04c8-19fc-f64fc41cbfc8">
+      <Execution id="50480f8c-2ba2-443e-91b0-521aa334139b" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test22_ExtensionMethod_ThisParameterReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test19_ArrowExpressionClause_Property" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="4ac13fa0-ef32-7199-eeee-78dc84bbee86">
+      <Execution id="e38e8250-8e41-4945-9fa0-247a49091b1f" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test19_ArrowExpressionClause_Property" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test57_DefaultParameterValue_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="2548d268-a62d-7be0-da31-8215f0c52227">
+      <Execution id="77d3388d-5c35-47b3-997e-4dd565dcb97a" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test57_DefaultParameterValue_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test13_PropertyAccessor_Get" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="da83d42d-7dd3-841a-2755-963e366ea21a">
+      <Execution id="0a663eea-8d76-4335-83bb-b4d3c529f22f" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test13_PropertyAccessor_Get" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test61_InterfaceImplementation_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="f1c5c1ea-3cd0-e7fd-5df6-a59d893018fd">
+      <Execution id="294c42c6-8b82-4682-b850-33aa02da5356" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test61_InterfaceImplementation_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test32_UsingDeclaration_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="2d9bd6c9-7a96-4de9-8217-2d971a35ee94">
+      <Execution id="315e8529-ea5d-489e-9e6f-9941f991576a" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test32_UsingDeclaration_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test44_ConversionOperator_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="105db741-be86-8f74-f1e9-df8c4de1dc54">
+      <Execution id="a4cae291-6874-47bd-926c-c848944c321b" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test44_ConversionOperator_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test35_Multiple_Interdependent_Variables" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="c0b56ea8-ec8f-716a-a209-57d660c452ee">
+      <Execution id="418be1f9-1a29-4f8e-8184-af4219b4c007" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test35_Multiple_Interdependent_Variables" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test50_AnonymousType_PropertyReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="c48907ef-bb5e-bc85-9a83-1e4e4d42abae">
+      <Execution id="914e3e26-fe5c-4228-8fa9-4cebc302abbb" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test50_AnonymousType_PropertyReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test45_EnumMember_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="a6f2fac0-3ee6-112f-f5c8-137c911fad1c">
+      <Execution id="0c29747a-e318-4199-a8a7-ba10326230ac" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test45_EnumMember_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test29_Foreach_VariableReference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="11d4f759-9fc1-0752-139c-ac091a417cac">
+      <Execution id="63f41563-92cc-4694-8646-2b0c043a9eca" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test29_Foreach_VariableReference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test49_BaseMethod_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="e8088508-5294-58a3-4677-42b1b9930621">
+      <Execution id="a5937688-e3b6-4def-8e5c-81044a7e2f95" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test49_BaseMethod_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test38_Method_Reference" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="47b37ced-44a8-4cec-6c89-86e12be5309a">
+      <Execution id="255178ac-93b5-455c-8c6e-387b1da1b83b" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test38_Method_Reference" />
+    </UnitTest>
+    <UnitTest name="TerrariaTools.UnitTests.ReferencePropagatorTests.Test12_LocalFunction_OuterVariable" storage="d:\projectitem\sourcecode\net\cleantools\terrariatools\build\bin\terrariatools.unittests\debug\net8.0\terrariatools.unittests.dll" id="7973257e-2641-9dad-d4fe-09084fc8b0e4">
+      <Execution id="d62eb182-b131-4d2a-95c4-bae114b985a5" />
+      <TestMethod codeBase="D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\Build\bin\TerrariaTools.UnitTests\Debug\net8.0\TerrariaTools.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="TerrariaTools.UnitTests.ReferencePropagatorTests" name="Test12_LocalFunction_OuterVariable" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="6e202670-3852-9e6c-ff26-0dd6b0524074" executionId="12ad631f-18bb-4ba1-9222-fd94dccc6087" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a6f2fac0-3ee6-112f-f5c8-137c911fad1c" executionId="0c29747a-e318-4199-a8a7-ba10326230ac" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6d23ad56-c5e9-dccd-1886-13f98493d408" executionId="8e483129-f3d8-42ce-a9af-14de28ead67f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e9d8e983-ac58-c937-b065-15b248078a6a" executionId="886b2c8f-0a1e-40ce-8608-58f9f696916a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="993c9623-207c-d92c-36ec-3185f8833022" executionId="b2e65e69-f32c-468e-a3ae-d4ca82e48438" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="54a8bdd4-3bb9-3e2a-de3c-cba26886b8ea" executionId="5de96e29-fc83-4f85-8bda-a89f4dd53104" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="26eeac69-a451-33fa-f8b3-ad83e86c8633" executionId="6d3ecfa2-4f0c-4e74-bb45-452983c85716" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a523e1cf-b4e6-6c7b-431c-4581f798f216" executionId="ff87c2bb-4664-4f48-8c35-b39877af140d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7763ad30-b368-d791-224b-7b335b20b277" executionId="83ab7576-75ae-49b2-8d39-1f939bf95919" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0c85c543-4e29-3b11-3bfb-23136f55b5c8" executionId="c43e121d-9480-43cf-9edf-f1210a988256" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b228b904-d593-c76e-441a-c5c648adc4e6" executionId="4a13e756-722f-4dda-ac0d-1011fd73621a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f9f103b0-a146-59ed-a145-f529b7da1f79" executionId="5ab458d3-bb49-4194-a2ab-0a5a5f2d3ebf" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5cfe1dac-d6a0-3c1c-e3ed-8cd0df929e0f" executionId="473496d8-8a4c-40b5-85e6-e4b75c5829ba" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="02d5dd01-c9f1-1d41-3946-7ff61890a5b8" executionId="fa73c78d-9834-4860-85e0-10d52a727fdd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="11f1b6dd-b6a9-04c8-19fc-f64fc41cbfc8" executionId="50480f8c-2ba2-443e-91b0-521aa334139b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c6e8f0fb-7a35-16ac-62e7-fdb7cbe08866" executionId="7487e5c0-0c67-46cb-a51d-d82a61894a50" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="bd93adc2-fba8-4d71-08d4-f8ec17c13bda" executionId="8b07de7e-0c0e-4293-bd34-6294dc709144" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="105db741-be86-8f74-f1e9-df8c4de1dc54" executionId="a4cae291-6874-47bd-926c-c848944c321b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c48907ef-bb5e-bc85-9a83-1e4e4d42abae" executionId="914e3e26-fe5c-4228-8fa9-4cebc302abbb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4d7a98b2-5553-10b0-b4df-55014e4d19f2" executionId="0eb0b08e-aecd-4f3d-9a86-69785f270f83" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="66b3f462-1de1-30f5-23af-34fa72926db9" executionId="e9f5c991-af45-442e-8c55-7edb023d02f9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="bd6149ff-e906-ffe8-d985-ca25e5572959" executionId="fc960556-3949-40c9-9752-ea0d547c8c9e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="655ffd8b-49b8-82a4-41dd-98bc7de673bb" executionId="e9fb9139-e916-4d58-b92d-5f970f3174aa" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="74c81a9d-9edb-6701-668a-bcc6debacfb2" executionId="45b8756f-f39d-418e-b4b3-c5d845e47e94" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="602ec465-e8d9-a02d-efe6-2abb0d1bc9bf" executionId="aa89f560-9491-4866-a13b-0738a70e3a36" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c73f0af0-ac37-cc6e-644b-68f03db65db1" executionId="70bc2241-11fc-4435-b6a5-f2f0c416f35a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="66a38b68-e138-19b7-be00-6345ece0a391" executionId="475f6ce6-738a-462a-ae40-895f58ad5b3c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c751748c-e16f-9696-b820-f0c40a5a1d88" executionId="fb72bdc0-9168-48d7-b6c2-c6013cb4b0ae" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="70c360ce-f421-96e3-98d8-d3b5e5549fc2" executionId="bea67e61-5d69-4084-838f-8f64a0e0f77e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="269dae71-5516-b603-3cf2-40acbec52103" executionId="74f143d9-3aef-47ef-9d07-1d0c816e31a2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="77f6add2-183c-f173-100e-b9d8a6070533" executionId="fc19eac3-2211-460e-af13-0fe3154deb18" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c1c7345f-56b1-94da-ac45-b4f28834d532" executionId="a89e1869-5d8e-4dc0-8c74-d00622d4af60" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="442e7465-4085-9a08-6c50-609133acffe1" executionId="37af0e34-5fa3-4994-8b98-f1ba72666920" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="da83d42d-7dd3-841a-2755-963e366ea21a" executionId="0a663eea-8d76-4335-83bb-b4d3c529f22f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d45f850f-b992-03a3-3359-c01a4fa77b7d" executionId="30e1ba0b-f156-47c8-8447-48ec1e90afe2" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="d5fab61b-df91-665b-1380-54e7dacaf837" executionId="5f1ea645-aa2f-4fd0-8cf5-1666bcb10332" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="453ad6ff-283f-f06f-1b8a-678900c607a9" executionId="2595c546-d969-4d9a-b7c9-d0a1bd6272b3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7973257e-2641-9dad-d4fe-09084fc8b0e4" executionId="d62eb182-b131-4d2a-95c4-bae114b985a5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="67f9ab20-ed04-9498-27ca-16d12ef9564c" executionId="29a9b23e-449d-4426-bb00-36248bd41ef6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2548d268-a62d-7be0-da31-8215f0c52227" executionId="77d3388d-5c35-47b3-997e-4dd565dcb97a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f1c5c1ea-3cd0-e7fd-5df6-a59d893018fd" executionId="294c42c6-8b82-4682-b850-33aa02da5356" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0e9d6ff2-57ce-7854-acaa-3c087015662f" executionId="7e819133-2ccf-4916-a940-11b865143da1" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="16df81f7-0b83-39f2-4f28-857606a6aae2" executionId="0f8684d6-595f-41a0-988b-c8106b030dae" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b50a0381-966e-6a4d-170c-c34724e19a33" executionId="f57d5791-1dd5-42b4-b7d3-079262feb4f0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="682de809-bf82-4fa9-e7f6-48238f6c14c1" executionId="9ff13c6d-7d84-4504-96e7-3b8b9b006a2e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0e46d75f-dbeb-7cb0-351f-b082e436840f" executionId="18238913-93d6-4f76-a0ee-63b4923b944a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8c60eceb-625f-31bb-c720-3c23828b2df7" executionId="4ad0043b-ff05-455b-b792-32bb69f5b738" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="98c2b0e7-9582-23c1-abf5-2ed08f080b6b" executionId="81436835-8e50-4d09-9097-7682f4f11557" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f17c927a-c5aa-4707-0f0c-9650549c3782" executionId="9d37db22-88ab-4a74-aff1-e675c081b7d5" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="430abe20-af74-d5cb-d3c8-565eb3fe339f" executionId="5993cd48-983c-4e2a-8ebd-979f9028bffb" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="47b37ced-44a8-4cec-6c89-86e12be5309a" executionId="255178ac-93b5-455c-8c6e-387b1da1b83b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c0b56ea8-ec8f-716a-a209-57d660c452ee" executionId="418be1f9-1a29-4f8e-8184-af4219b4c007" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e1544eb1-0743-7c1c-2386-93fb7b881a3a" executionId="3c6c031d-6a73-448a-b287-8c022030f8c3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3f157c7c-bc53-add0-9472-93221c975ac2" executionId="c68359e4-777f-4737-b8e1-a53bd3615a05" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b0ebe037-c767-dd04-a6f4-5ff449825ab3" executionId="36e1d6e8-b568-42f9-92f0-23f88c42cf1c" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e8088508-5294-58a3-4677-42b1b9930621" executionId="a5937688-e3b6-4def-8e5c-81044a7e2f95" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="230ac4cd-41b4-91ae-db39-e1474355dead" executionId="e266c399-1bfa-46b7-88c1-332b9afefba0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="3a540ec1-a171-4b0c-ce36-43982b092ae0" executionId="6da596c3-8eb1-44a6-8b2b-6d6ffeb7e78d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="6973d918-03ba-1fa2-36df-ca7f50e938f7" executionId="3a7ade22-dc56-4537-a859-193a8590d0ab" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2d9bd6c9-7a96-4de9-8217-2d971a35ee94" executionId="315e8529-ea5d-489e-9e6f-9941f991576a" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="8d87027d-cda0-0bc6-ea08-cbdc2050dec3" executionId="35034fed-dd60-4954-a90e-eb4345280fab" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="04a55d50-2b45-91c5-c0c0-38f880b05478" executionId="1e5263ea-da41-455d-a651-9c43ac8c1395" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4ac13fa0-ef32-7199-eeee-78dc84bbee86" executionId="e38e8250-8e41-4945-9fa0-247a49091b1f" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a73d1646-74a6-98d5-8775-0970b2f4a155" executionId="c8e1e87b-2473-4463-83bc-94de0c17c7c6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="190fadf0-80b1-cb45-2ec7-fa15a9c2eddb" executionId="729a9f6c-1395-49ab-ac24-adfcd31b649b" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e03269a0-0419-ea13-4d1f-6c94c8232cba" executionId="782b232c-3b8a-480c-82ac-41fdd40a4fe1" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e2964320-6eba-6ca0-bbca-1b6004a96f1b" executionId="5d08a0a9-3303-4542-9dc7-24fe0124b7b9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="10aa3f05-0c37-6879-7ec9-841a650e2a18" executionId="eed0f433-5bd4-4c99-bbaf-8fd8baa3e5c9" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2d68e24b-64dc-8892-608b-13f90c643511" executionId="cf423868-ccad-4ec7-8631-3bd781b72b63" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="11d4f759-9fc1-0752-139c-ac091a417cac" executionId="63f41563-92cc-4694-8646-2b0c043a9eca" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="列表中未列出的结果" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="所有已加载的结果" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Failed">
+    <Counters total="70" executed="70" passed="64" failed="6" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.4+50e68bbb8b (64-bit .NET 8.0.23)&#xD;
+[xUnit.net 00:00:00.16]   Discovering: TerrariaTools.UnitTests&#xD;
+[xUnit.net 00:00:00.24]   Discovered:  TerrariaTools.UnitTests&#xD;
+[xUnit.net 00:00:00.39]   Starting:    TerrariaTools.UnitTests&#xD;
+[xUnit.net 00:00:01.95]       Assert.DoesNotContain() Failure: Sub-string found&#xD;
+[xUnit.net 00:00:01.95]                                                 ↓ (pos 32)&#xD;
+[xUnit.net 00:00:01.95]       String: ···"ass C { void M(C c) { int i = (int)c; } }"&#xD;
+[xUnit.net 00:00:01.95]       Found:  "(int)c"&#xD;
+[xUnit.net 00:00:01.95]       Stack Trace:&#xD;
+[xUnit.net 00:00:01.95]         D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs(579,0): at TerrariaTools.UnitTests.ReferencePropagatorTests.Test44_ConversionOperator_Reference()&#xD;
+[xUnit.net 00:00:01.95]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:01.95]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:03.44]       Assert.DoesNotContain() Failure: Sub-string found&#xD;
+[xUnit.net 00:00:03.44]                                          ↓ (pos 78)&#xD;
+[xUnit.net 00:00:03.44]       String: ···"Attribute(int i) {} } [My(X)] class C { }"&#xD;
+[xUnit.net 00:00:03.44]       Found:  "My(X)"&#xD;
+[xUnit.net 00:00:03.44]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.45]         D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs(713,0): at TerrariaTools.UnitTests.ReferencePropagatorTests.Test56_AttributeArgument_Reference()&#xD;
+[xUnit.net 00:00:03.45]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:03.45]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:03.76]       Assert.DoesNotContain() Failure: Sub-string found&#xD;
+[xUnit.net 00:00:03.76]                                         ↓ (pos 25)&#xD;
+[xUnit.net 00:00:03.76]       String: "class C { void M1() void M2() {} }"&#xD;
+[xUnit.net 00:00:03.76]       Found:  "M2()"&#xD;
+[xUnit.net 00:00:03.76]       Stack Trace:&#xD;
+[xUnit.net 00:00:03.76]         D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs(513,0): at TerrariaTools.UnitTests.ReferencePropagatorTests.Test38_Method_Reference()&#xD;
+[xUnit.net 00:00:03.76]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:03.76]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:03.99]       Assert.DoesNotContain() Failure: Sub-string found&#xD;
+[xUnit.net 00:00:03.99]                          ↓ (pos 10)&#xD;
+[xUnit.net 00:00:03.99]       String: "class C { MyInt x; }"&#xD;
+[xUnit.net 00:00:03.99]       Found:  "MyInt x"&#xD;
+[xUnit.net 00:00:04.00]       Stack Trace:&#xD;
+[xUnit.net 00:00:04.00]         D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs(790,0): at TerrariaTools.UnitTests.ReferencePropagatorTests.Test63_UsingAlias_Reference()&#xD;
+[xUnit.net 00:00:04.00]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:04.00]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:04.33]       Assert.DoesNotContain() Failure: Sub-string found&#xD;
+[xUnit.net 00:00:04.33]                                          ↓ (pos 26)&#xD;
+[xUnit.net 00:00:04.33]       String: "interface I {} class G&lt;T&gt; where T : I {}"&#xD;
+[xUnit.net 00:00:04.33]       Found:  "where T : I"&#xD;
+[xUnit.net 00:00:04.33]       Stack Trace:&#xD;
+[xUnit.net 00:00:04.33]         D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs(746,0): at TerrariaTools.UnitTests.ReferencePropagatorTests.Test59_GenericConstraint_Reference()&#xD;
+[xUnit.net 00:00:04.33]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:04.33]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:04.79]       Assert.DoesNotContain() Failure: Sub-string found&#xD;
+[xUnit.net 00:00:04.79]                              ↓ (pos 14)&#xD;
+[xUnit.net 00:00:04.79]       String: "using System; [My] class MyAttribute : At"···&#xD;
+[xUnit.net 00:00:04.79]       Found:  "[My]"&#xD;
+[xUnit.net 00:00:04.79]       Stack Trace:&#xD;
+[xUnit.net 00:00:04.79]         D:\ProjectItem\SourceCode\Net\CleanTools\TerrariaTools\UnitTests\ReferencePropagatorTests.cs(702,0): at TerrariaTools.UnitTests.ReferencePropagatorTests.Test55_Attribute_Reference()&#xD;
+[xUnit.net 00:00:04.79]            at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)&#xD;
+[xUnit.net 00:00:04.79]            at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)&#xD;
+[xUnit.net 00:00:04.87]   Finished:    TerrariaTools.UnitTests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="16ACH-7900X" outcome="Error" timestamp="2026-02-07T14:50:00.6562150+08:00">
+        <Text>[xUnit.net 00:00:01.95]     TerrariaTools.UnitTests.ReferencePropagatorTests.Test44_ConversionOperator_Reference [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="16ACH-7900X" outcome="Error" timestamp="2026-02-07T14:50:02.1519831+08:00">
+        <Text>[xUnit.net 00:00:03.44]     TerrariaTools.UnitTests.ReferencePropagatorTests.Test56_AttributeArgument_Reference [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="16ACH-7900X" outcome="Error" timestamp="2026-02-07T14:50:02.4702898+08:00">
+        <Text>[xUnit.net 00:00:03.76]     TerrariaTools.UnitTests.ReferencePropagatorTests.Test38_Method_Reference [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="16ACH-7900X" outcome="Error" timestamp="2026-02-07T14:50:02.7025488+08:00">
+        <Text>[xUnit.net 00:00:03.99]     TerrariaTools.UnitTests.ReferencePropagatorTests.Test63_UsingAlias_Reference [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="16ACH-7900X" outcome="Error" timestamp="2026-02-07T14:50:03.0373574+08:00">
+        <Text>[xUnit.net 00:00:04.33]     TerrariaTools.UnitTests.ReferencePropagatorTests.Test59_GenericConstraint_Reference [FAIL]</Text>
+      </RunInfo>
+      <RunInfo computerName="16ACH-7900X" outcome="Error" timestamp="2026-02-07T14:50:03.4936420+08:00">
+        <Text>[xUnit.net 00:00:04.79]     TerrariaTools.UnitTests.ReferencePropagatorTests.Test55_Attribute_Reference [FAIL]</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

@@ -1,0 +1,23 @@
+# .gitignore for .NET
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+.idea/
+*.suo
+*.patch
+*.diff
+*.nupkg
+*.log
+*.tmp
+*.temp
+*.swp
+*.bak
+*.old
+*.orig
+*.rej
