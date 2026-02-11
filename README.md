@@ -1,6 +1,6 @@
 # TerrariaTools
 
-TerrariaTools 是一个基于 Roslyn (Microsoft.CodeAnalysis) 开发的强大 C# 代码重构与优化工具集。它专注于大规模代码库的自动化清理、重构以及逻辑等价性验证。
+TerrariaTools 是一个基于 Roslyn (Microsoft.CodeAnalysis) 开发的强大 C# 代码重构与优化工具集。它专注于大规模代码库的自动化清理、重构以及逻辑等价性验证,Vibe Code产物代码以及.md文件.
 
 ## **项目文档**
 
