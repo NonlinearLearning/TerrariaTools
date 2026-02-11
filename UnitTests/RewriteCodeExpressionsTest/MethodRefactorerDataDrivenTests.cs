@@ -119,7 +119,7 @@ namespace TerrariaTools.UnitTests
                                     // 内部引用
                                     string callPrefix = isStatic ? "C." : "";
                                     source = $"public class C {{ {mod} {staticStr}{virtualStr}{type} {methodName}() {{ return default; }} public void Usage() {{ {callPrefix}{methodName}(); }} }}";
-                                    if (mod != "private" && !isVirtual)
+                                    if (mod == "public" && !isVirtual)
                                     {
                                         expected = $"private {staticStr}{type} {methodName}";
                                     }

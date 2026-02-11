@@ -27,6 +27,106 @@ namespace TerrariaTools.RewriteCodeExpressions
             _solution = solution;
         }
 
+        /// <summary>
+        /// 执行解决方案级别的方法重构。
+        /// </summary>
+        /// <param name="solutionPath">解决方案路径</param>
+        /// <param name="loader">用于加载解决方案的加载器</param>
+        public static async Task ExecuteSolutionRefactoringAsync(string solutionPath, Load loader)
+        {
+            bool anyFileChangedInPass;
+            int passCount = 0;
+
+            do
+            {
+                passCount++;
+                anyFileChangedInPass = false;
+                Console.WriteLine($"\n[信息] 正在启动第 {passCount} 轮方法重构迭代...");
+
+                // 每轮迭代都重新加载解决方案，以确保获取最新的语义模型
+                using var workspace = await loader.LoadSolutionAsync(solutionPath);
+                if (workspace == null) break;
+
+                var solution = workspace.CurrentSolution;
+                var refactorer = new MethodRefactorer(solution);
+
+                var allDocuments = solution.Projects
+                    .SelectMany(p => p.Documents)
+                    .Where(d => d.FilePath != null && d.FilePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                Console.WriteLine($"[信息] 发现 {allDocuments.Count} 个待处理的 C# 文件。");
+
+                int totalDeleted = 0;
+                int totalPrivatized = 0;
+                int totalBodyCleared = 0;
+                int processedCount = 0;
+
+                var parallelOptions = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Environment.ProcessorCount
+                };
+
+                var startTime = DateTime.Now;
+                var results = new ConcurrentBag<RefactorResult>();
+
+                await Parallel.ForEachAsync(allDocuments, parallelOptions, async (doc, ct) =>
+                {
+                    try
+                    {
+                        var result = await refactorer.ProcessFileAsync(doc.FilePath!);
+                        results.Add(result);
+
+                        if (result.AnyChanged)
+                        {
+                            anyFileChangedInPass = true;
+                            Interlocked.Add(ref totalDeleted, result.DeletedCount);
+                            Interlocked.Add(ref totalPrivatized, result.PrivatizedCount);
+                            Interlocked.Add(ref totalBodyCleared, result.BodyClearedCount);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[错误] 处理文件 {doc.FilePath} 时出错: {ex.Message}");
+                    }
+
+                    var currentCount = Interlocked.Increment(ref processedCount);
+                    if (currentCount % 100 == 0 || currentCount == allDocuments.Count)
+                    {
+                        var elapsed = DateTime.Now - startTime;
+                        var speed = currentCount / elapsed.TotalSeconds;
+                        Console.WriteLine($"[{currentCount}/{allDocuments.Count}] 正在分析方法... 速度: {speed:F1} 文件/秒, 待处理变更: {totalDeleted + totalPrivatized + totalBodyCleared}");
+                    }
+                });
+
+                if (anyFileChangedInPass)
+                {
+                    Console.WriteLine($"[信息] 正在将本轮方法变更保存到磁盘...");
+                    var currentSolution = solution;
+                    int savedCount = 0;
+                    foreach (var res in results.Where(r => r.AnyChanged && r.DocumentId != null && r.NewRoot != null))
+                    {
+                        try
+                        {
+                            File.WriteAllText(res.FilePath!, res.NewRoot!.ToFullString(), System.Text.Encoding.UTF8);
+                            savedCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[错误] 写入文件 {res.FilePath} 失败: {ex.Message}");
+                        }
+                    }
+                    Console.WriteLine($"[成功] 本轮迭代结束。已保存 {savedCount} 个文件的变更，共删除 {totalDeleted}，私有化 {totalPrivatized}，清空体 {totalBodyCleared}。");
+                }
+                else
+                {
+                    Console.WriteLine("[信息] 本轮未发现可重构的内容，迭代停止。");
+                }
+            } while (anyFileChangedInPass && passCount < 10);
+
+            Console.WriteLine($"\n[完成] 方法重构全流程结束。总共执行了 {passCount} 轮迭代。");
+        }
+
         private async Task<SemanticModel?> GetSemanticModelAsync(Document doc)
         {
             if (_semanticModelCache.TryGetValue(doc.Id, out var model)) return model;
@@ -266,8 +366,8 @@ namespace TerrariaTools.RewriteCodeExpressions
             {
                 return new MethodAnalysisResult { Method = methodDecl, Action = MethodAction.KeepExternal };
             }
-            // 如果只有内部引用，且方法不是接口实现、虚方法、重写方法或抽象方法，则可以私有化
-            else if (methodSymbol.DeclaredAccessibility != Accessibility.Private &&
+            // 如果只有内部引用，且方法是 public，且不是接口实现、虚方法、重写方法或抽象方法，则可以私有化
+            else if (methodSymbol.DeclaredAccessibility == Accessibility.Public &&
                      !isInterfaceImpl &&
                      !methodSymbol.IsVirtual &&
                      !methodSymbol.IsOverride &&

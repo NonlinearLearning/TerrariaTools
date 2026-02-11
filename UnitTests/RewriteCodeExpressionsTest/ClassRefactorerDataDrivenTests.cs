@@ -98,6 +98,7 @@ namespace TerrariaTools.UnitTests
             cases.Add(new object[] { "BaseClass_ReferencedByDerived_ShouldKeep", "public class Base { } public class Derived : Base { public static void Main() {} }", "class Base", "" });
             cases.Add(new object[] { "UnusedBaseAndDerived_ShouldDeleteBoth", "class Base { } class Derived : Base { }", "", "class Base" });
             cases.Add(new object[] { "InterfaceImplementation_Unused_ShouldDelete", "interface I { } class C : I { }", "interface I", "class C" });
+            cases.Add(new object[] { "StaticClass_Unreferenced_ShouldKeep", "public static class Utility { }", "class Utility", "" });
 
             // 21-30: 静态成员引用
             cases.Add(new object[] { "StaticMemberUsed_ShouldKeepClass", "public class Utils { public static int X; } class Usage { public static void Main() { int y = Utils.X; } }", "class Utils", "" });
