@@ -53,10 +53,28 @@ namespace TerrariaTools.RewriteCodeExpressions
             // 2. 确定范围边界：不要标记限制根节点本身，也不要超出限制范围
             if (Node == LimitNode) return;
 
-            // 3. 排除一些具有结构意义的顶级节点，作为向上传播的边界。
+            // 3. 排除一些具有结构意义的节点，作为向上传播的边界。
+            // 这些节点通常由 ExpressionSimplifier 处理，或者它们可以包含占位符。
             if (Node is CompilationUnitSyntax ||
                 Node is NamespaceDeclarationSyntax ||
-                Node is ReturnStatementSyntax) // 避免标记 Return 语句本身，以便其表达式可以被替换为占位符
+                Node is BaseTypeDeclarationSyntax || // 类、结构、接口、枚举声明
+                Node is MemberDeclarationSyntax || // 方法、字段、属性等成员声明
+                Node is BlockSyntax || // 语句块
+                Node is YieldStatementSyntax || // yield return/break
+                Node is SwitchExpressionArmSyntax || // switch 分支
+                Node is ExpressionSyntax || // 各种表达式
+                Node is EqualsValueClauseSyntax || // 等号初始化部分
+                Node is VariableDeclaratorSyntax || // 变量声明器
+                Node is ParameterListSyntax || // 参数列表
+                Node is TypeParameterListSyntax || // 类型参数列表
+                Node is ArgumentListSyntax || // 参数列表（调用时）
+                Node is AttributeArgumentListSyntax || // 特性参数列表
+                Node is BracketedParameterListSyntax || // 方括号参数列表（索引器）
+                Node is ArrowExpressionClauseSyntax || // 箭头表达式主体
+                Node is AttributeListSyntax || // 特性列表
+                Node is BaseListSyntax || // 基类列表
+                Node is ConstructorInitializerSyntax || // 构造函数初始化器
+                Node is InterpolationSyntax) // 内插字符串插值部分
             {
                 return;
             }
@@ -87,6 +105,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitVariableDeclarator(VariableDeclaratorSyntax Node)
         {
             base.VisitVariableDeclarator(Node);
+            // 如果初始化器被标记为移除，则整个变量声明器也应被标记为移除（除非是字段且我们想保留它）
+            // 注意：ExpressionSimplifier 会根据 IsValueRequiredContext 决定是否保留占位符。
+            // 如果我们在这里标记了 Node，那么 Simplifier 会直接移除它。
             if (Node.Initializer != null && this.NodesToMark.Contains(Node.Initializer))
             {
                 this.NodesToMark.Add(Node);
@@ -97,33 +118,6 @@ namespace TerrariaTools.RewriteCodeExpressions
         {
             base.VisitEqualsValueClause(Node);
             if (this.NodesToMark.Contains(Node.Value))
-            {
-                this.NodesToMark.Add(Node);
-            }
-        }
-
-        public override void VisitAttributeArgumentList(AttributeArgumentListSyntax Node)
-        {
-            base.VisitAttributeArgumentList(Node);
-            if (Node.Arguments.Count > 0 && Node.Arguments.All(Argument => this.NodesToMark.Contains(Argument)))
-            {
-                this.NodesToMark.Add(Node);
-            }
-        }
-
-        public override void VisitBracketedParameterList(BracketedParameterListSyntax Node)
-        {
-            base.VisitBracketedParameterList(Node);
-            if (Node.Parameters.Count > 0 && Node.Parameters.All(Parameter => this.NodesToMark.Contains(Parameter)))
-            {
-                this.NodesToMark.Add(Node);
-            }
-        }
-
-        public override void VisitParameterList(ParameterListSyntax Node)
-        {
-            base.VisitParameterList(Node);
-            if (Node.Parameters.Count > 0 && Node.Parameters.All(Parameter => this.NodesToMark.Contains(Parameter)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -216,23 +210,6 @@ namespace TerrariaTools.RewriteCodeExpressions
             }
         }
 
-        public override void VisitPostfixUnaryExpression(PostfixUnaryExpressionSyntax Node)
-        {
-            base.VisitPostfixUnaryExpression(Node);
-            if (this.NodesToMark.Contains(Node.Operand))
-            {
-                this.NodesToMark.Add(Node);
-            }
-        }
-
-        public override void VisitPrefixUnaryExpression(PrefixUnaryExpressionSyntax Node)
-        {
-            base.VisitPrefixUnaryExpression(Node);
-            if (this.NodesToMark.Contains(Node.Operand))
-            {
-                this.NodesToMark.Add(Node);
-            }
-        }
         public override void VisitTryStatement(TryStatementSyntax Node)
         {
             base.VisitTryStatement(Node);
@@ -639,8 +616,10 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitSwitchExpression(SwitchExpressionSyntax Node)
         {
             base.VisitSwitchExpression(Node);
-            if (this.NodesToMark.Contains(Node.GoverningExpression) ||
-                (Node.Arms.Count > 0 && Node.Arms.All(a => this.NodesToMark.Contains(a))))
+            // 注意：我们不再因为 GoverningExpression 被标记就标记整个 SwitchExpression，
+            // 因为 ExpressionSimplifier 可以为 GoverningExpression 生成占位符。
+            // 只有当所有分支都被标记且无法恢复时，才考虑标记整个 SwitchExpression。
+            if (Node.Arms.Count > 0 && Node.Arms.All(a => this.NodesToMark.Contains(a)))
             {
                 this.NodesToMark.Add(Node);
             }

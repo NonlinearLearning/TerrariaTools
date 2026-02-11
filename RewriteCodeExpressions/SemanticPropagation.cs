@@ -38,20 +38,63 @@ namespace TerrariaTools.RewriteCodeExpressions
         protected bool IsSymbolMarked(ISymbol Symbol)
         {
             if (Symbol == null) return false;
+
+            // 检查符号本身是否被标记
+            if (CheckSymbolInternal(Symbol)) return true;
+
+            // 如果是方法、属性、字段或事件，检查其所属类型是否被标记
+            if (Symbol is IMethodSymbol or IPropertySymbol or IFieldSymbol or IEventSymbol)
+            {
+                if (Symbol.ContainingType != null && CheckSymbolInternal(Symbol.ContainingType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool CheckSymbolInternal(ISymbol Symbol)
+        {
             foreach (var Reference in Symbol.DeclaringSyntaxReferences)
             {
                 var Syntax = Reference.GetSyntax();
 
                 // 1. 引用一致性检查（同树场景）
-                if (Syntax.AncestorsAndSelf().Any(A => NodesToMark.Contains(A)))
+                // 检查标记集合是否直接包含该声明节点
+                if (NodesToMark.Contains(Syntax))
                 {
                     return true;
                 }
 
-                // 2. 跨树位置检查（不同树场景，如 annotatedRoot 与 originalTree）
-                // 只要 NodesToMark 中存在任何节点（或其祖先）的 FullSpan 包含声明节点，即视为已标记
-                var DeclaringSpan = Syntax.FullSpan;
-                if (NodesToMark.Any(MarkedNode => MarkedNode.FullSpan.Contains(DeclaringSpan)))
+                // 2. 检查标记集合中是否有节点包含该声明节点的标识符（Identifier）
+                // 如果标记的是整个声明或声明的关键部分，则认为符号被标记。
+                // 注意：不要使用 DeclaringSpan.Contains(MarkedNode.FullSpan)，
+                // 因为这会导致标记方法参数时，方法本身也被视为已标记。
+
+                // 获取声明的标识符节点（如果有）
+                SyntaxToken? Identifier = null;
+                if (Syntax is MethodDeclarationSyntax M) Identifier = M.Identifier;
+                else if (Syntax is PropertyDeclarationSyntax P) Identifier = P.Identifier;
+                else if (Syntax is FieldDeclarationSyntax F) Identifier = F.Declaration.Variables.FirstOrDefault()?.Identifier;
+                else if (Syntax is VariableDeclaratorSyntax V) Identifier = V.Identifier;
+                else if (Syntax is ParameterSyntax PS) Identifier = PS.Identifier;
+                else if (Syntax is TypeParameterSyntax TP) Identifier = TP.Identifier;
+                else if (Syntax is BaseTypeDeclarationSyntax BT) Identifier = BT.Identifier;
+                else if (Syntax is NamespaceDeclarationSyntax N) Identifier = N.Name.GetLastToken();
+                else if (Syntax is UsingDirectiveSyntax U && U.Alias != null) Identifier = U.Alias.Name.GetFirstToken();
+
+                if (Identifier.HasValue)
+                {
+                    var IdSpan = Identifier.Value.FullSpan;
+                    if (NodesToMark.Any(MarkedNode => MarkedNode.FullSpan.Contains(IdSpan)))
+                    {
+                        return true;
+                    }
+                }
+
+                // 3. 兜底逻辑：如果标记节点完全覆盖了声明节点，则认为被标记
+                if (NodesToMark.Any(MarkedNode => MarkedNode.FullSpan.Contains(Syntax.FullSpan)))
                 {
                     return true;
                 }
@@ -174,16 +217,85 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitMemberBindingExpression(MemberBindingExpressionSyntax Node) { CheckAndMark(Node); base.VisitMemberBindingExpression(Node); }
 
         /// <summary>
+        /// 访问参数节点。
+        /// </summary>
+        public override void VisitParameter(ParameterSyntax Node) { CheckAndMark(Node); base.VisitParameter(Node); }
+
+        /// <summary>
+        /// 访问变量声明器节点。
+        /// </summary>
+        public override void VisitVariableDeclarator(VariableDeclaratorSyntax Node) { CheckAndMark(Node); base.VisitVariableDeclarator(Node); }
+
+        /// <summary>
+        /// 访问方法声明节点。
+        /// </summary>
+        public override void VisitMethodDeclaration(MethodDeclarationSyntax Node) { CheckAndMark(Node); base.VisitMethodDeclaration(Node); }
+
+        /// <summary>
+        /// 访问属性声明节点。
+        /// </summary>
+        public override void VisitPropertyDeclaration(PropertyDeclarationSyntax Node) { CheckAndMark(Node); base.VisitPropertyDeclaration(Node); }
+
+        /// <summary>
+        /// 访问类型参数节点。
+        /// </summary>
+        public override void VisitTypeParameter(TypeParameterSyntax Node) { CheckAndMark(Node); base.VisitTypeParameter(Node); }
+
+        /// <summary>
+        /// 访问类声明节点。
+        /// </summary>
+        public override void VisitClassDeclaration(ClassDeclarationSyntax Node) { CheckAndMark(Node); base.VisitClassDeclaration(Node); }
+
+        /// <summary>
+        /// 访问结构体声明节点。
+        /// </summary>
+        public override void VisitStructDeclaration(StructDeclarationSyntax Node) { CheckAndMark(Node); base.VisitStructDeclaration(Node); }
+
+        /// <summary>
+        /// 访问接口声明节点。
+        /// </summary>
+        public override void VisitInterfaceDeclaration(InterfaceDeclarationSyntax Node) { CheckAndMark(Node); base.VisitInterfaceDeclaration(Node); }
+
+        /// <summary>
+        /// 访问记录声明节点。
+        /// </summary>
+        public override void VisitRecordDeclaration(RecordDeclarationSyntax Node) { CheckAndMark(Node); base.VisitRecordDeclaration(Node); }
+
+        /// <summary>
+        /// 访问预定义类型节点。
+        /// </summary>
+        public override void VisitPredefinedType(PredefinedTypeSyntax Node) { CheckAndMark(Node); base.VisitPredefinedType(Node); }
+
+        /// <summary>
+        /// 访问数组类型节点。
+        /// </summary>
+        public override void VisitArrayType(ArrayTypeSyntax Node) { CheckAndMark(Node); base.VisitArrayType(Node); }
+
+        /// <summary>
+        /// 访问可空类型节点。
+        /// </summary>
+        public override void VisitNullableType(NullableTypeSyntax Node) { CheckAndMark(Node); base.VisitNullableType(Node); }
+
+        /// <summary>
+        /// 访问元组类型节点。
+        /// </summary>
+        public override void VisitTupleType(TupleTypeSyntax Node) { CheckAndMark(Node); base.VisitTupleType(Node); }
+
+        /// <summary>
+        /// 访问类型参数列表。
+        /// </summary>
+        public override void VisitTypeParameterList(TypeParameterListSyntax Node) { CheckAndMark(Node); base.VisitTypeParameterList(Node); }
+
+        /// <summary>
+        /// 访问类型参数约束。
+        /// </summary>
+        public override void VisitTypeParameterConstraintClause(TypeParameterConstraintClauseSyntax Node) { CheckAndMark(Node); base.VisitTypeParameterConstraintClause(Node); }
+
+        /// <summary>
         /// 访问类型约束节点。
         /// </summary>
         /// <param name="Node">类型约束节点</param>
         public override void VisitTypeConstraint(TypeConstraintSyntax Node) { CheckAndMark(Node); base.VisitTypeConstraint(Node); }
-
-        /// <summary>
-        /// 访问类型参数约束子句节点。
-        /// </summary>
-        /// <param name="Node">类型参数约束子句节点</param>
-        public override void VisitTypeParameterConstraintClause(TypeParameterConstraintClauseSyntax Node) { CheckAndMark(Node); base.VisitTypeParameterConstraintClause(Node); }
 
         /// <summary>
         /// 访问特性参数节点。
@@ -343,6 +455,11 @@ namespace TerrariaTools.RewriteCodeExpressions
             var SymbolInfo = Model.GetSymbolInfo(NodeToQuery);
             var Symbol = SymbolInfo.Symbol ?? SymbolInfo.CandidateSymbols.FirstOrDefault();
 
+            if (Symbol == null)
+            {
+                Symbol = Model.GetDeclaredSymbol(NodeToQuery);
+            }
+
             if (Symbol != null)
             {
                 AddMapping(Symbol, Node);
@@ -382,8 +499,12 @@ namespace TerrariaTools.RewriteCodeExpressions
             do
             {
                 Changed = false;
-                // 找出当前所有声明已被标记的符号
-                var CurrentMarkedSymbols = UsageMap.Keys.Where(IsSymbolMarked).ToList();
+                // 找出当前所有声明或任意使用处已被标记的符号
+                var CurrentMarkedSymbols = UsageMap.Keys.Where(Symbol =>
+                    IsSymbolMarked(Symbol) ||
+                    UsageMap[Symbol].Any(Usage => NodesToMark.Contains(Usage))
+                ).ToList();
+
                 foreach (var Symbol in CurrentMarkedSymbols)
                 {
                     // 将该符号的所有使用处节点都标记为移除

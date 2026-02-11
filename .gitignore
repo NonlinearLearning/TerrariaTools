@@ -21,3 +21,6 @@
 *.old
 *.orig
 *.rej
+/.vscode
+/.trae
+.trae/*

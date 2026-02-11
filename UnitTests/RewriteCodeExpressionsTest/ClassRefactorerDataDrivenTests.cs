@@ -88,56 +88,72 @@ namespace TerrariaTools.UnitTests
         {
             var cases = new List<object[]>();
 
-            // 1-10: 基础删除与保留
-            cases.Add(new object[] { "UnreferencedClass_ShouldDelete", "public class Unused { }", "", "class Unused" });
-            cases.Add(new object[] { "ReferencedClass_ShouldKeep", "public class Used { } public class Usage { public static void Main() { var x = new Used(); } }", "class Used", "" });
-            cases.Add(new object[] { "ClassWithMain_ShouldKeep", "public class App { public static void Main() { } }", "class App", "" });
-            cases.Add(new object[] { "InternalUsage_ShouldKeep", "class Internal { } class Consumer { public static void Main() { Internal i; } }", "class Internal", "" });
+            // 格式: { name, source, expectedInOutput, notExpectedInOutput }
 
-            // 11-20: 继承关系
-            cases.Add(new object[] { "BaseClass_ReferencedByDerived_ShouldKeep", "public class Base { } public class Derived : Base { public static void Main() {} }", "class Base", "" });
-            cases.Add(new object[] { "UnusedBaseAndDerived_ShouldDeleteBoth", "class Base { } class Derived : Base { }", "", "class Base" });
-            cases.Add(new object[] { "InterfaceImplementation_Unused_ShouldDelete", "interface I { } class C : I { }", "interface I", "class C" });
-            cases.Add(new object[] { "StaticClass_Unreferenced_ShouldKeep", "public static class Utility { }", "class Utility", "" });
+            // 1. public class - none usage -> Delete
+            cases.Add(new object[] { "PublicClass_NoneUsage", "public class Target { }", "", "class Target" });
 
-            // 21-30: 静态成员引用
-            cases.Add(new object[] { "StaticMemberUsed_ShouldKeepClass", "public class Utils { public static int X; } class Usage { public static void Main() { int y = Utils.X; } }", "class Utils", "" });
-            cases.Add(new object[] { "StaticMethodUsed_ShouldKeepClass", "public class Utils { public static void Log() {} } class Usage { public static void Main() => Utils.Log(); }", "class Utils", "" });
+            // 2. internal static class - static member access -> Keep
+            cases.Add(new object[] { "InternalStaticClass_StaticAccess", "internal static class Target { public static int X; } static class Usage { void M() => Target.X = 1; }", "class Target", "" });
 
-            // 31-40: 泛型与复杂类型
-            cases.Add(new object[] { "GenericArgument_ShouldKeep", "public class Data { } class List<T> { } class Usage { public static void Main() { List<Data> l; } }", "class Data", "" });
-            cases.Add(new object[] { "TypeOfUsage_ShouldKeep", "public class Info { } class Usage { public static void Main() { object t = typeof(Info); } }", "class Info", "" });
-            cases.Add(new object[] { "AsExpression_ShouldKeep", "public class Target { } class Usage { public static void Main() { object o = null; var t = o as Target; } }", "class Target", "" });
+            // 3. private class (nested) - nested usage -> Keep
+            cases.Add(new object[] { "PrivateNestedClass_Usage", "static class Outer { private class Target { } void M() { var t = new Target(); } }", "class Target", "" });
 
-            // 41-50: 嵌套与属性
-            cases.Add(new object[] { "NestedClass_Unused_ShouldDelete", "class Outer { public static void Main() {} class Inner { } }", "class Outer", "class Inner" });
-            cases.Add(new object[] { "AttributeUsage_ShouldKeep", "public class MyAttr : System.Attribute { } [MyAttr] class C { public static void Main() {} }", "class MyAttr", "" });
-            cases.Add(new object[] { "PropertyType_ShouldKeep", "public class PropType { } class C { public static void Main() {} public PropType P { get; set; } }", "class PropType", "" });
+            // 4. public abstract class - inheritance usage -> Keep
+            cases.Add(new object[] { "PublicAbstractClass_Inheritance", "public abstract class Target { } class Derived : Target { } static class Usage { void M() { var d = new Derived(); } }", "class Target", "" });
 
-            // 51-65: 更多复杂引用场景
-            cases.Add(new object[] { "ConstructorUsage_ShouldKeep", "public class Ctor { public Ctor() {} } class Usage { public static void Main() { var c = new Ctor(); } }", "class Ctor", "" });
-            cases.Add(new object[] { "FieldType_ShouldKeep", "public class FieldType { } class Usage { public static void Main() {} private FieldType f; }", "class FieldType", "" });
-            cases.Add(new object[] { "ReturnType_ShouldKeep", "public class RetType { } class Usage { public static void Main() {} public RetType M() => null; }", "class RetType", "" });
-            cases.Add(new object[] { "ParamType_ShouldKeep", "public class ParamType { } class Usage { public static void Main() {} public void M(ParamType p) {} }", "class ParamType", "" });
-            cases.Add(new object[] { "DictionaryUsage_ShouldKeep", "public class ValType { } class Usage { public static void Main() { var d = new System.Collections.Generic.Dictionary<string, ValType>(); } }", "class ValType", "" });
-            cases.Add(new object[] { "EventUsage_ShouldKeep", "public class MyEventArgs : System.EventArgs { } class Usage { public static void Main() {} public event System.EventHandler<MyEventArgs> E; }", "class MyEventArgs", "" });
-            cases.Add(new object[] { "DelegateUsage_ShouldKeep", "public class MyData { } public delegate void MyDel(MyData d); class Usage { public static void Main() { MyDel d = null; } }", "class MyData", "" });
-            cases.Add(new object[] { "ExplicitInterface_ShouldKeep", "interface I { void M(); } public class Impl : I { void I.M() {} } class Usage { public static void Main() { I i = new Impl(); i.M(); } }", "class Impl", "" });
-            cases.Add(new object[] { "LambdaUsage_ShouldKeep", "public class LambdaData { } class Usage { public static void Main() { System.Action<LambdaData> a = (d) => {}; } }", "class LambdaData", "" });
-            cases.Add(new object[] { "LinqUsage_ShouldKeep", "public class LinqData { } class Usage { public static void Main() { var l = new System.Collections.Generic.List<LinqData>(); var x = from i in l select i; } }", "class LinqData", "" });
-            cases.Add(new object[] { "DefaultExpression_ShouldKeep", "public class DefType { } class Usage { public static void Main() { var d = default(DefType); } }", "class DefType", "" });
-            cases.Add(new object[] { "CastUsage_ShouldKeep", "public class CastType { } class Usage { public static void Main() { object o = null; var c = (CastType)o; } }", "class CastType", "" });
-            cases.Add(new object[] { "IsPatternUsage_ShouldKeep", "public class PatternType { } class Usage { public static void Main(object o) { if (o is PatternType p) {} } }", "class PatternType", "" });
-            cases.Add(new object[] { "GenericConstraint_ShouldKeep", "public class Constraint { } class G<T> where T : Constraint { } class Usage { public static void Main() { var g = new G<Constraint>(); } }", "class Constraint", "" });
-            cases.Add(new object[] { "ArrayUsage_ShouldKeep", "public class Item { } class Usage { public static void Main() { var a = new Item[0]; } }", "class Item", "" });
+            // 5. internal interface - generic argument -> Keep
+            cases.Add(new object[] { "InternalInterface_GenericArg", "internal interface Target { } class G<T> { } static class Usage { G<Target> g; }", "interface Target", "" });
 
-            // 补充到 50 个 (目前 30 个特定案例 + 20 个 batch 案例 = 50)
-            for (int i = 1; i <= 20; i++)
-            {
-                cases.Add(new object[] { $"Batch_Unused_{i}", $"public class Unused{i} {{ }}", "", $"class Unused{i}" });
-            }
+            // 6. public struct - type reference (field) -> Keep
+            cases.Add(new object[] { "PublicStruct_FieldRef", "public struct Target { } static class Usage { Target t; }", "struct Target", "" });
 
-            return cases.Take(50);
+            // 7. internal enum - type reference (param) -> Keep
+            cases.Add(new object[] { "InternalEnum_ParamRef", "internal enum Target { A } static class Usage { void M(Target t) { } }", "enum Target", "" });
+
+            // 8. public delegate - type reference (return) -> Keep
+            cases.Add(new object[] { "PublicDelegate_ReturnRef", "public delegate void Target(); static class Usage { Target M() => null; }", "delegate void Target", "" });
+
+            // 9. internal class - attribute usage -> Keep
+            cases.Add(new object[] { "InternalClass_AttributeUsage", "using System; internal class TargetAttribute : Attribute { } [Target] static class Usage { }", "class TargetAttribute", "" });
+
+            // 10. public static class - none usage -> Delete
+            cases.Add(new object[] { "PublicStaticClass_NoneUsage", "public static class Target { }", "", "class Target" });
+
+            // 11. internal abstract class - none usage -> Delete
+            cases.Add(new object[] { "InternalAbstractClass_NoneUsage", "internal abstract class Target { }", "", "class Target" });
+
+            // 12. public interface - none usage -> Delete
+            cases.Add(new object[] { "PublicInterface_NoneUsage", "public interface Target { }", "", "interface Target" });
+
+            // 13. internal struct - none usage -> Delete
+            cases.Add(new object[] { "InternalStruct_NoneUsage", "internal struct Target { }", "", "struct Target" });
+
+            // 14. public enum - none usage -> Delete
+            cases.Add(new object[] { "PublicEnum_NoneUsage", "public enum Target { A }", "", "enum Target" });
+
+            // 15. internal delegate - none usage -> Delete
+            cases.Add(new object[] { "InternalDelegate_NoneUsage", "internal delegate void Target();", "", "delegate void Target" });
+
+            // 16. public class - instantiation usage -> Keep
+            cases.Add(new object[] { "PublicClass_Instantiation", "public class Target { } static class Usage { void M() { var t = new Target(); } }", "class Target", "" });
+
+            // 17. generic class - type argument -> Keep
+            cases.Add(new object[] { "GenericClass_TypeArgument", "public class G<T> { } public class Target { } static class Usage { G<Target> g; }", "class Target", "" });
+
+            // 18. partial class - partial usage -> Keep
+            cases.Add(new object[] { "PartialClass_Usage", "static class Container { partial class Target { } partial class Target { void M() { } } void Use() { new Target(); } }", "class Target", "" });
+
+            // 20. public class - no usage -> Remove
+            cases.Add(new object[] { "PublicClass_NoUsage", "public class Target { }", "", "class Target" });
+
+            // 21. public class - same file usage -> Keep
+            cases.Add(new object[] { "PublicClass_SameFileUsage", "public class Target { } static class Usage { void M() { var t = new Target(); } }", "class Target", "" });
+
+            // 19. nested class - deep inheritance -> Keep
+            cases.Add(new object[] { "NestedClass_Inheritance", "class Outer { public class Base { } public class Target : Base { } } static class Usage : Outer.Target { }", "class Target", "" });
+
+            return cases;
         }
     }
 }

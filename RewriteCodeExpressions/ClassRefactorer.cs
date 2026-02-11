@@ -153,30 +153,32 @@ namespace TerrariaTools.RewriteCodeExpressions
             var semanticModel = await document.GetSemanticModelAsync();
             if (root == null || semanticModel == null) return result;
 
-            var classDecls = root.DescendantNodes().OfType<ClassDeclarationSyntax>().ToList();
-            var toDelete = new List<ClassDeclarationSyntax>();
+            var typeDecls = root.DescendantNodes()
+                .Where(n => n is BaseTypeDeclarationSyntax || n is DelegateDeclarationSyntax)
+                .ToList();
+            var toDelete = new List<SyntaxNode>();
 
-            foreach (var classDecl in classDecls)
+            foreach (var typeDecl in typeDecls)
             {
-                var classSymbol = semanticModel.GetDeclaredSymbol(classDecl);
-                if (classSymbol == null) continue;
+                var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl);
+                if (typeSymbol == null) continue;
 
                 // 1. 检查是否是程序的入口点所在的类 (包含 Main 方法)
-                if (HasMainMethod(classSymbol, semanticModel.Compilation)) continue;
+                if (typeSymbol is INamedTypeSymbol namedType && HasMainMethod(namedType, semanticModel.Compilation)) continue;
 
                 // 2. 检查是否是静态类 (静态类不能删除)
-                if (classSymbol.IsStatic) continue;
+                if (typeSymbol is INamedTypeSymbol classType && classType.IsStatic) continue;
 
                 // 3. 检查全方案引用
-                var references = await SymbolFinder.FindReferencesAsync(classSymbol, _solution);
+                var references = await SymbolFinder.FindReferencesAsync(typeSymbol, _solution);
                 bool hasExternalReferences = false;
 
                 foreach (var reference in references)
                 {
                     foreach (var location in reference.Locations)
                     {
-                        // 检查引用是否在类定义之外
-                        if (!IsLocationInsideClass(location, classSymbol))
+                        // 检查引用是否在类型定义之外
+                        if (!IsLocationInsideType(location, typeSymbol))
                         {
                             hasExternalReferences = true;
                             break;
@@ -187,7 +189,7 @@ namespace TerrariaTools.RewriteCodeExpressions
 
                 if (!hasExternalReferences)
                 {
-                    toDelete.Add(classDecl);
+                    toDelete.Add(typeDecl);
                     Interlocked.Increment(ref result.DeletedCount);
                 }
             }
@@ -219,13 +221,14 @@ namespace TerrariaTools.RewriteCodeExpressions
             return false;
         }
 
-        private bool IsLocationInsideClass(ReferenceLocation location, INamedTypeSymbol classSymbol)
+        private bool IsLocationInsideType(ReferenceLocation location, ISymbol typeSymbol)
         {
-            // 检查引用位置是否在类的任何声明部分内部 (支持 partial 类)
-            foreach (var declaringSyntax in classSymbol.DeclaringSyntaxReferences)
+            if (location.Document.Project.Solution != _solution) return false;
+
+            foreach (var reference in typeSymbol.DeclaringSyntaxReferences)
             {
-                if (declaringSyntax.SyntaxTree == location.Location.SourceTree &&
-                    declaringSyntax.Span.Contains(location.Location.SourceSpan))
+                if (reference.SyntaxTree == location.Location.SourceTree &&
+                    reference.Span.Contains(location.Location.SourceSpan))
                 {
                     return true;
                 }

@@ -98,19 +98,14 @@ namespace TerrariaTools.RewriteCodeExpressions
         {
             if (Root == null || ShouldRemove == null) return Root;
 
-            // 定义用于标识待移除节点的内部标注
-            var ToRemoveAnnotation = new SyntaxAnnotation("CleanTools_ToRemove");
-
             // 第一阶段：收集所有需要标记移除的节点集合
             var NodesToMark = CollectNodesToMark(Root, ShouldRemove, Model);
             if (NodesToMark.Count == 0) return Root;
 
-            // 为收集到的节点统一打上"待移除"标注
-            Root = Root.ReplaceNodes(NodesToMark, (OldNode, NewNode) => NewNode.WithAdditionalAnnotations(ToRemoveAnnotation));
-
             // 第二阶段：执行语法树重写
-            // 传入的谓词 Node => Node.HasAnnotation(ToRemoveAnnotation) 用于告知重写器哪些节点已被标记为移除
-            var Rewriter = new ExpressionSimplifier(Node => Node.HasAnnotation(ToRemoveAnnotation), Model, NodesToMark, TraceContext);
+            // 直接在原始树上运行重写器，使用 NodesToMark 集合作为判断依据。
+            // 这样可以确保语义模型（Model）与正在访问的节点处于同一棵语法树中。
+            var Rewriter = new ExpressionSimplifier(Node => NodesToMark.Contains(Node), Model, NodesToMark, TraceContext);
             return Rewriter.Visit(Root);
         }
 

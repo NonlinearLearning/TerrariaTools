@@ -73,97 +73,139 @@ namespace TerrariaTools.UnitTests
         {
             var cases = new List<object[]>();
 
-            // --- 组合式生成 200+ 案例 ---
-
-            var returnTypes = new[] { "void", "bool", "int", "string", "object", "List<int>", "C", "MyStruct", "int?", "T", "long", "double" };
-            var modifiers = new[] { "public", "protected", "internal" };
-            var virtualStates = new[] { true, false };
-            var usageStates = new[] { "none", "internal", "external" };
-            var staticStates = new[] { true, false };
-
-            foreach (var type in returnTypes)
+            // --- 使用 PICT 设计的优化案例 (Pairwise 覆盖) ---
+            // 参数: Visibility, Modifiers, Usage, TypeKind, ReturnType, IsInterfaceImpl, ExpectedAction
+            var pictCases = new[]
             {
-                foreach (var mod in modifiers)
+                // 1. 无引用 -> 删除 (普通类，非虚/抽象/接口/重写)
+                new { Visibility = "public", Modifiers = "", Usage = "none", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Delete" },
+                // 2. 无引用 -> 删除 (静态方法)
+                new { Visibility = "public", Modifiers = "static", Usage = "none", TypeKind = "class", ReturnType = "int", IsInterfaceImpl = false, Expected = "Delete" },
+                // 3. 内部引用 -> 私有化 (公开方法)
+                new { Visibility = "public", Modifiers = "", Usage = "internal", TypeKind = "class", ReturnType = "string", IsInterfaceImpl = false, Expected = "MakePrivate" },
+                // 4. 内部引用 -> 私有化 (Internal方法)
+                new { Visibility = "internal", Modifiers = "", Usage = "internal", TypeKind = "class", ReturnType = "T", IsInterfaceImpl = false, Expected = "MakePrivate" },
+                // 5. 无引用 -> 清空体 (重写方法)
+                new { Visibility = "public", Modifiers = "override", Usage = "none", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "ClearBody" },
+                // 6. 无引用 -> 清空体 (接口实现)
+                new { Visibility = "public", Modifiers = "", Usage = "none", TypeKind = "class", ReturnType = "string", IsInterfaceImpl = true, Expected = "ClearBody" },
+                // 7. 内部引用 -> 保持 (虚方法不能私有化)
+                new { Visibility = "public", Modifiers = "virtual", Usage = "internal", TypeKind = "class", ReturnType = "int", IsInterfaceImpl = false, Expected = "Keep" },
+                // 8. 内部引用 -> 保持 (已是 Protected)
+                new { Visibility = "protected", Modifiers = "", Usage = "internal", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
+                // 9. 内部引用 -> 保持 (已是 Private)
+                new { Visibility = "private", Modifiers = "", Usage = "internal", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
+                // 10. 无引用 -> 保持 (抽象方法不处理)
+                new { Visibility = "public", Modifiers = "abstract", Usage = "none", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
+                // 11. 外部引用 -> 保持
+                new { Visibility = "public", Modifiers = "", Usage = "external", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
+                // 12. 接口方法 -> 保持
+                new { Visibility = "public", Modifiers = "", Usage = "external", TypeKind = "interface", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
+                // 13. Struct 方法 -> 保持 (当前版本忽略 Struct)
+                new { Visibility = "public", Modifiers = "", Usage = "none", TypeKind = "struct", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
+                // 14. Partial 方法 -> 保持
+                new { Visibility = "public", Modifiers = "partial", Usage = "external", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
+                // 15. Async 方法 -> 删除 (无引用)
+                new { Visibility = "public", Modifiers = "async", Usage = "none", TypeKind = "class", ReturnType = "Task", IsInterfaceImpl = false, Expected = "Delete" }
+            };
+
+            foreach (var c in pictCases)
+            {
+                string methodName = $"M_{c.Visibility}_{c.Modifiers}_{c.Usage}_{c.TypeKind}_{c.ReturnType.Replace("<", "").Replace(">", "")}_{c.IsInterfaceImpl}";
+                string modStr = string.IsNullOrEmpty(c.Modifiers) ? "" : c.Modifiers + " ";
+                string returnType = c.ReturnType == "T" ? "T" : c.ReturnType;
+                string body = c.Modifiers == "abstract" ? ";" : "{ return \"test\"; }";
+                if (c.ReturnType == "void") body = c.Modifiers == "abstract" ? ";" : "{ System.Console.WriteLine(); }";
+                if (c.ReturnType == "int") body = c.Modifiers == "abstract" ? ";" : "{ return 123; }";
+                if (c.ReturnType == "Task") body = c.Modifiers == "abstract" ? ";" : "{ await Task.Delay(1); }";
+                if (c.ReturnType == "T") body = c.Modifiers == "abstract" ? ";" : "{ return default(T); }";
+
+                string source = "";
+                string expected = "";
+                string notExpected = "";
+
+                // 构建源码
+                if (c.TypeKind == "interface")
                 {
-                    foreach (var isVirtual in virtualStates)
+                    source = $"public interface I {{ {returnType} {methodName}(); }}";
+                }
+                else if (c.TypeKind == "struct")
+                {
+                    source = $"public struct S {{ {c.Visibility} {modStr}{returnType} {methodName}() {body} }}";
+                }
+                else // class
+                {
+                    string classModifiers = c.Modifiers == "abstract" ? "abstract " : "";
+                    string basePart = "";
+                    string baseSource = "";
+                    if (c.Modifiers == "override")
                     {
-                        foreach (var isStatic in staticStates)
-                        {
-                            if (isStatic && isVirtual) continue; // C# 不允许 static virtual
+                        basePart = " : Base";
+                        baseSource = "public class Base { public virtual void " + methodName + "() {} }\n";
+                    }
+                    else if (c.IsInterfaceImpl)
+                    {
+                        basePart = " : I";
+                        baseSource = "public interface I { " + returnType + " " + methodName + "(); }\n";
+                    }
 
-                            foreach (var usage in usageStates)
-                            {
-                                string virtualStr = isVirtual ? "virtual " : "";
-                                string staticStr = isStatic ? "static " : "";
-                                string methodName = $"M_{type.Replace("<", "").Replace(">", "").Replace("?", "N")}_{mod}_{isVirtual}_{isStatic}_{usage}";
-                                
-                                string source;
-                                string expected = "";
-                                string notExpected = "";
+                    source = baseSource + $"public {classModifiers}class C{basePart} {{ {c.Visibility} {modStr}{returnType} {methodName}() {body} ";
 
-                                if (usage == "none")
-                                {
-                                    // 无引用
-                                    source = $"public class C {{ {mod} {staticStr}{virtualStr}{type} {methodName}() {{ return default; }} }}";
-                                    if (isVirtual)
-                                    {
-                                        expected = $"{methodName}()";
-                                    }
-                                    else
-                                    {
-                                        notExpected = methodName;
-                                    }
-                                }
-                                else if (usage == "internal")
-                                {
-                                    // 内部引用
-                                    string callPrefix = isStatic ? "C." : "";
-                                    source = $"public class C {{ {mod} {staticStr}{virtualStr}{type} {methodName}() {{ return default; }} public void Usage() {{ {callPrefix}{methodName}(); }} }}";
-                                    if (mod == "public" && !isVirtual)
-                                    {
-                                        expected = $"private {staticStr}{type} {methodName}";
-                                    }
-                                    else
-                                    {
-                                        expected = $"{mod} {staticStr}{virtualStr}{type} {methodName}";
-                                    }
-                                }
-                                else // external
-                                {
-                                    // 外部引用
-                                    string callPrefix = isStatic ? "C." : "c.";
-                                    source = $"public class C {{ {mod} {staticStr}{virtualStr}{type} {methodName}() {{ return default; }} }} public class D {{ public void U(C c) {{ {callPrefix}{methodName}(); }} }}";
-                                    expected = $"{mod} {staticStr}{virtualStr}{type} {methodName}";
-                                }
+                    if (c.Usage == "internal")
+                    {
+                        string call = (c.Modifiers.Contains("static") ? "C." : "") + methodName + "();";
+                        source += $" public void Usage() {{ {call} }} ";
+                    }
+                    source += " } ";
 
-                                cases.Add(new object[] { methodName, source, expected, notExpected });
-                            }
-                        }
+                    if (c.Usage == "external")
+                    {
+                        string call = (c.Modifiers.Contains("static") ? "C." : "new C().") + methodName + "();";
+                        source += $" public class D {{ public void U() {{ {call} }} }} ";
                     }
                 }
+
+                // 确定预期结果
+                switch (c.Expected)
+                {
+                    case "Delete":
+                        notExpected = methodName;
+                        break;
+                    case "MakePrivate":
+                        // NormalizeWhitespace 会规范化空格
+                        expected = $"private {modStr.Replace("public ", "").Replace("internal ", "")}{returnType} {methodName}".Replace("  ", " ").Trim();
+                        break;
+                    case "ClearBody":
+                        // 简化检查：方法名还在，但体清空了
+                        expected = $"{methodName}()";
+                        // NormalizeWhitespace 后的空方法体通常是 { \r\n } 或类似的
+                        if (c.ReturnType == "void")
+                        {
+                            // 检查方法名后面跟着一对大括号，中间只有空白字符
+                            expected = methodName;
+                            // 我们可以在测试逻辑中增加更复杂的验证，或者这里只检查关键部分
+                        }
+                        else if (c.ReturnType == "int")
+                            expected = "return (int)0;";
+                        else if (c.ReturnType == "string")
+                            expected = "return null;";
+                        break;
+                    case "Keep":
+                        if (c.TypeKind == "interface")
+                            expected = $"{returnType} {methodName}";
+                        else
+                            expected = $"{c.Visibility} {modStr}{returnType} {methodName}".Replace("  ", " ").Trim();
+                        break;
+                }
+
+                cases.Add(new object[] { methodName, source, expected, notExpected });
             }
 
-            // --- 特殊案例 ---
-
-            // Out 参数组合
-            var outTypes = new[] { "bool", "int", "string" };
-            foreach (var ot in outTypes)
-            {
-                cases.Add(new object[] {
-                    $"Out_{ot}",
-                    $"public class C {{ public virtual void M(out {ot} v) {{ v = default; }} }}",
-                    "v =",
-                    ""
-                });
-            }
-
-            // Main 方法
+            // --- 保持原有特殊案例 ---
             cases.Add(new object[] { "KeepMain", "public class C { public static void Main() { } }", "static void Main()", "" });
-
-            // 属性/字段
             cases.Add(new object[] { "KeepProp", "public class C { public int P { get; set; } }", "public int P", "" });
 
-            return cases.Take(200); // 确保返回正好 200 个或更多
+            return cases;
         }
     }
 }

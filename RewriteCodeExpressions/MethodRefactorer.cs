@@ -170,12 +170,6 @@ namespace TerrariaTools.RewriteCodeExpressions
             var semanticModel = await document.GetSemanticModelAsync();
             if (root == null || semanticModel == null) return result;
 
-            // 1. 跳过接口声明
-            if (root.DescendantNodes().OfType<InterfaceDeclarationSyntax>().Any())
-            {
-                return result;
-            }
-
             var classDecls = root.DescendantNodes().OfType<ClassDeclarationSyntax>().ToList();
             var allMethodActions = new List<(MethodDeclarationSyntax Method, MethodAction Action, ClassDeclarationSyntax Class)>();
 

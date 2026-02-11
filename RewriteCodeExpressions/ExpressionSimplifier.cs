@@ -85,6 +85,15 @@ namespace TerrariaTools.RewriteCodeExpressions
             }
 
             return Node is CompilationUnitSyntax
+                || Node is NamespaceDeclarationSyntax
+                || Node is BaseTypeDeclarationSyntax
+                || Node is MethodDeclarationSyntax
+                || Node is PropertyDeclarationSyntax
+                || Node is FieldDeclarationSyntax
+                || Node is EventDeclarationSyntax
+                || Node is ConstructorDeclarationSyntax
+                || Node is DestructorDeclarationSyntax
+                || Node is IndexerDeclarationSyntax
                 || Node is ParameterListSyntax
                 || Node is TypeParameterListSyntax
                 || Node is ArgumentListSyntax
@@ -100,7 +109,8 @@ namespace TerrariaTools.RewriteCodeExpressions
                 || Node is EqualsValueClauseSyntax
                 || Node is AssignmentExpressionSyntax
                 || Node is PatternSyntax
-                || Node is SwitchExpressionArmSyntax;
+                || Node is SwitchExpressionArmSyntax
+                || Node is YieldStatementSyntax;
         }
 
         private bool IsFunctionBody(BlockSyntax Node)
@@ -132,7 +142,9 @@ namespace TerrariaTools.RewriteCodeExpressions
                 var Syntax = Reference.GetSyntax();
                 var DeclaringSpan = Syntax.FullSpan;
 
-                if (this.NodesToMark.Any(M => M.FullSpan.Contains(DeclaringSpan)))
+                if (this.NodesToMark.Any(M =>
+                    M.FullSpan.Contains(DeclaringSpan) ||
+                    DeclaringSpan.Contains(M.FullSpan)))
                 {
                     Marked = true;
                     break;
@@ -156,6 +168,8 @@ namespace TerrariaTools.RewriteCodeExpressions
                     var Symbol = SymbolInfo.Symbol ?? SymbolInfo.CandidateSymbols.FirstOrDefault();
                     if (Symbol != null && IsSymbolMarked(Symbol))
                     {
+                        var Placeholder = TryCreatePlaceholder(Node);
+                        if (Placeholder != null) return Placeholder;
                         return null;
                     }
                 }
@@ -177,6 +191,8 @@ namespace TerrariaTools.RewriteCodeExpressions
                     var Symbol = SymbolInfo.Symbol ?? SymbolInfo.CandidateSymbols.FirstOrDefault();
                     if (Symbol != null && IsSymbolMarked(Symbol))
                     {
+                        var Placeholder = TryCreatePlaceholder(Node);
+                        if (Placeholder != null) return Placeholder;
                         return null;
                     }
                 }
@@ -208,37 +224,202 @@ namespace TerrariaTools.RewriteCodeExpressions
                     if (Placeholder != null) return Placeholder;
                 }
 
-                // 2. 针对 Return 语句的特殊处理：获取方法或属性的返回类型
-                if (Node.Parent is ReturnStatementSyntax)
+                // 2. 针对 Return 语句、Yield 语句、箭头表达式或 Switch 分支的特殊处理
+                if (Node.Parent is ReturnStatementSyntax ||
+                    Node.Parent is YieldStatementSyntax ||
+                    Node.Parent is ArrowExpressionClauseSyntax ||
+                    Node.Parent is SwitchExpressionArmSyntax ||
+                    Node is SwitchExpressionArmSyntax ||
+                    Node is YieldStatementSyntax ||
+                    Node is ArrowExpressionClauseSyntax)
                 {
                     var OriginalNode = GetOriginalNode(Node);
                     if (OriginalNode != null)
                     {
                         var Symbol = this.Model.GetEnclosingSymbol(OriginalNode.SpanStart);
                         ITypeSymbol? ReturnType = null;
-                        if (Symbol is IMethodSymbol Method) ReturnType = Method.ReturnType;
+
+                        if (Node.Parent is SwitchExpressionArmSyntax || Node is SwitchExpressionArmSyntax)
+                        {
+                            // 对于 Switch 分支，返回类型是整个 Switch 表达式的类型
+                            var SwitchExpr = (Node.Parent as SwitchExpressionSyntax) ?? (Node.Parent.Parent as SwitchExpressionSyntax);
+                            if (SwitchExpr == null && Node.Parent.Parent?.Parent is SwitchExpressionSyntax SE)
+                            {
+                                SwitchExpr = SE;
+                            }
+                            if (SwitchExpr == null && Node is SwitchExpressionArmSyntax Arm && Arm.Parent is SwitchExpressionSyntax SE2)
+                            {
+                                SwitchExpr = SE2;
+                            }
+
+                            if (SwitchExpr != null)
+                            {
+                                ReturnType = GetNodeType(SwitchExpr);
+                            }
+
+                            // 如果还是拿不到类型，尝试从包含该 Switch 表达式的上下文（如 Return 或 Arrow）拿类型
+                            if (ReturnType == null && SwitchExpr != null)
+                            {
+                                var ContextPlaceholder = TryCreatePlaceholder(SwitchExpr);
+                                if (ContextPlaceholder is ExpressionSyntax CE)
+                                {
+                                    return Node is SwitchExpressionArmSyntax Arm2
+                                        ? Arm2.Update(Arm2.Pattern, Arm2.WhenClause, Arm2.EqualsGreaterThanToken, CE)
+                                        : CE;
+                                }
+                            }
+                        }
+                        else if (Symbol is IMethodSymbol Method)
+                        {
+                            ReturnType = Method.ReturnType;
+                            // 对于 yield return，需要获取 IEnumerable<T> 中的 T
+                            if ((Node.Parent is YieldStatementSyntax || Node is YieldStatementSyntax) && ReturnType is INamedTypeSymbol Named && Named.IsGenericType)
+                            {
+                                ReturnType = Named.TypeArguments.FirstOrDefault();
+                            }
+                        }
                         else if (Symbol is IPropertySymbol Property) ReturnType = Property.Type;
+
+                        // 备选方案：如果从 Symbol 拿不到，尝试从父节点拿（针对 MethodDeclaration/PropertyDeclaration）
+                        if (ReturnType == null)
+                        {
+                            var Current = Node;
+                            while (Current != null)
+                            {
+                                if (Current is MethodDeclarationSyntax MDS)
+                                {
+                                    var OriginalMDS = GetOriginalNode(MDS) as MethodDeclarationSyntax;
+                                    if (OriginalMDS != null)
+                                    {
+                                        var MethodSymbol = this.Model.GetDeclaredSymbol(OriginalMDS) as IMethodSymbol;
+                                        if (MethodSymbol != null)
+                                        {
+                                            ReturnType = MethodSymbol.ReturnType;
+                                            if ((Node.Parent is YieldStatementSyntax || Node is YieldStatementSyntax) && ReturnType is INamedTypeSymbol Named && Named.IsGenericType)
+                                            {
+                                                ReturnType = Named.TypeArguments.FirstOrDefault();
+                                            }
+                                        }
+                                    }
+                                    break;
+                                }
+                                if (Current is PropertyDeclarationSyntax PDS)
+                                {
+                                    var OriginalPDS = GetOriginalNode(PDS) as PropertyDeclarationSyntax;
+                                    if (OriginalPDS != null)
+                                    {
+                                        var PropertySymbol = this.Model.GetDeclaredSymbol(OriginalPDS) as IPropertySymbol;
+                                        if (PropertySymbol != null) ReturnType = PropertySymbol.Type;
+                                    }
+                                    break;
+                                }
+                                Current = Current.Parent;
+                            }
+                        }
 
                         // 如果是非 void 类型，则生成对应的占位符
                         if (ReturnType != null && ReturnType.SpecialType != SpecialType.System_Void)
                         {
-                            return CreatePlaceholder(ReturnType);
+                            var ExprPlaceholder = CreatePlaceholder(ReturnType);
+                            if (Node is SwitchExpressionArmSyntax Arm)
+                            {
+                                return Arm.Update(Arm.Pattern, Arm.WhenClause, Arm.EqualsGreaterThanToken, ExprPlaceholder);
+                            }
+                            if (Node is YieldStatementSyntax Yield)
+                            {
+                                return Yield.Update(Yield.AttributeLists, Yield.YieldKeyword, Yield.ReturnOrBreakKeyword, ExprPlaceholder, Yield.SemicolonToken);
+                            }
+                            if (Node is ArrowExpressionClauseSyntax Arrow)
+                            {
+                                return Arrow.Update(Arrow.ArrowToken, ExprPlaceholder);
+                            }
+                            return ExprPlaceholder;
                         }
                     }
                 }
                 // 3. 针对方法调用参数的特殊处理：根据形参类型生成占位符
-                else if (Node.Parent is ArgumentSyntax Arg && Arg.Parent is ArgumentListSyntax ArgList && ArgList.Parent is InvocationExpressionSyntax Invocation)
+                else if ((Node is ArgumentSyntax || Node.Parent is ArgumentSyntax) && (Node.Parent is ArgumentListSyntax || Node.Parent is BracketedArgumentListSyntax || (Node.Parent is ArgumentSyntax AS_Parent && (AS_Parent.Parent is ArgumentListSyntax || AS_Parent.Parent is BracketedArgumentListSyntax))))
                 {
-                    var OriginalInvocation = GetOriginalNode(Invocation) as InvocationExpressionSyntax;
-                    if (OriginalInvocation != null)
+                    var Arg = Node as ArgumentSyntax ?? (Node.Parent as ArgumentSyntax);
+                    if (Arg != null && (Arg.Parent is ArgumentListSyntax || Arg.Parent is BracketedArgumentListSyntax))
                     {
-                        var MethodSymbol = this.Model.GetSymbolInfo(OriginalInvocation).Symbol as IMethodSymbol;
-                        int Index = ArgList.Arguments.IndexOf(Arg);
-                        if (MethodSymbol != null && Index >= 0 && Index < MethodSymbol.Parameters.Length)
+                        var ArgList = Arg.Parent;
+                        var Parent = ArgList.Parent;
+                        if (Parent is InvocationExpressionSyntax || Parent is ObjectCreationExpressionSyntax || Parent is ElementAccessExpressionSyntax)
                         {
-                            return CreatePlaceholder(MethodSymbol.Parameters[Index].Type);
+                            var OriginalArg = GetOriginalNode(Arg) as ArgumentSyntax;
+                            if (OriginalArg != null)
+                            {
+                                var OriginalParent = GetOriginalNode(Parent);
+                                if (OriginalParent != null)
+                                {
+                                    var SymbolInfo = this.Model.GetSymbolInfo(OriginalParent);
+                                    var MethodSymbol = SymbolInfo.Symbol as IMethodSymbol;
+                                    if (MethodSymbol == null && OriginalParent is ElementAccessExpressionSyntax)
+                                    {
+                                        var PropertySymbol = SymbolInfo.Symbol as IPropertySymbol;
+                                        if (PropertySymbol != null)
+                                        {
+                                            MethodSymbol = PropertySymbol.Parameters.Length > 0 ? PropertySymbol.GetMethod : null;
+                                        }
+                                        else
+                                        {
+                                            // 处理数组访问或缺失符号的情况
+                                            var TypeInfo = this.Model.GetTypeInfo(OriginalParent);
+                                            var ExprType = GetNodeType((OriginalParent as ElementAccessExpressionSyntax)?.Expression);
+                                            if (ExprType is IArrayTypeSymbol ArrayType)
+                                            {
+                                                // 数组索引总是 int
+                                                var ExprPlaceholder = SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(0));
+                                                if (Node is ArgumentSyntax AS)
+                                                {
+                                                    return AS.Update(AS.NameColon, AS.RefKindKeyword, ExprPlaceholder);
+                                                }
+                                                return ExprPlaceholder;
+                                            }
+                                        }
+                                    }
+
+                                    int Index = -1;
+                                    if (ArgList is ArgumentListSyntax AL) Index = AL.Arguments.IndexOf(Arg);
+                                    else if (ArgList is BracketedArgumentListSyntax BAL) Index = BAL.Arguments.IndexOf(Arg);
+
+                                    if (MethodSymbol != null && Index >= 0 && Index < MethodSymbol.Parameters.Length)
+                                    {
+                                        var ExprPlaceholder = CreatePlaceholder(MethodSymbol.Parameters[Index].Type);
+                                        if (Node is ArgumentSyntax AS)
+                                        {
+                                            return AS.Update(AS.NameColon, AS.RefKindKeyword, ExprPlaceholder);
+                                        }
+                                        return ExprPlaceholder;
+                                    }
+                                }
+                            }
                         }
                     }
+                }
+                // 4. 针对插值字符串的特殊处理：生成 {0} 占位符
+                else if (Node.Parent is InterpolationSyntax)
+                {
+                    var OriginalNode = GetOriginalNode(Node);
+                    if (OriginalNode != null)
+                    {
+                        var Type = GetNodeType(OriginalNode);
+                        if (Type != null)
+                        {
+                            if (Type.SpecialType == SpecialType.System_String)
+                                return SyntaxFactory.LiteralExpression(SyntaxKind.StringLiteralExpression, SyntaxFactory.Literal(""));
+                            if (Type.IsReferenceType)
+                                return SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression);
+                        }
+                    }
+                    return SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(0));
+                }
+                // 5. 针对强制转换表达式的特殊处理
+                else if (Node.Parent is CastExpressionSyntax Cast && Cast.Expression == Node)
+                {
+                    var Type = GetNodeType(Cast.Type);
+                    if (Type != null) return CreatePlaceholder(Type);
                 }
             }
             catch { /* 忽略异常 */ }
@@ -280,8 +461,10 @@ namespace TerrariaTools.RewriteCodeExpressions
 
             return Parent switch
             {
+                // 在语句块中，通常不需要占位符，除非是 yield return 这种影响方法性质的语句
+                BlockSyntax => Node is YieldStatementSyntax Yield && Yield.ReturnOrBreakKeyword.IsKind(SyntaxKind.ReturnKeyword),
+
                 // 显式要求值的上下文
-                ArgumentSyntax => true,
                 ReturnStatementSyntax => true,
                 ArrowExpressionClauseSyntax => true,
                 EqualsValueClauseSyntax => true,
@@ -290,16 +473,50 @@ namespace TerrariaTools.RewriteCodeExpressions
                 DoStatementSyntax DoStmt => DoStmt.Condition == Node,
                 ForStatementSyntax ForStmt => ForStmt.Condition == Node,
                 SwitchStatementSyntax SwitchStmt => SwitchStmt.Expression == Node,
+                SwitchExpressionSyntax SwitchExpr => SwitchExpr.GoverningExpression == Node || SwitchExpr.Arms.Contains((SwitchExpressionArmSyntax)Node),
                 ConditionalExpressionSyntax => true,
+                BracketedArgumentListSyntax => true,
 
                 // 在赋值表达式中，右侧必须有值
                 AssignmentExpressionSyntax Assign => Assign.Right == Node,
 
-                // 在二元表达式中，两侧通常都需要有值
+                // 元组表达式中的元素或普通参数
+                ArgumentSyntax Arg => Arg.Parent is TupleExpressionSyntax || Arg.Parent is ArgumentListSyntax || Arg.Parent is BracketedArgumentListSyntax,
+
+                // Switch 表达式分支的右侧
+                SwitchExpressionArmSyntax Arm => Arm.Expression == Node,
+
+                // 在一元或二元表达式中，操作数必须有值
+                PrefixUnaryExpressionSyntax => true,
+                PostfixUnaryExpressionSyntax => true,
+
+                // 在二元表达式中，逻辑运算通常可以简化，但算术/位运算通常保留占位符以保持语义结构
                 BinaryExpressionSyntax => true,
+
+                // Yield return 要求有值，且通常为了保持迭代器语义，保留 yield 语句
+                YieldStatementSyntax YieldStmt => YieldStmt.Expression == Node || (YieldStmt.ReturnOrBreakKeyword.IsKind(SyntaxKind.ReturnKeyword) && Node == YieldStmt),
+
+                // 插值字符串中的插值部分要求有值
+                InterpolationSyntax => true,
+
+                // 类型声明上下文通常不需要占位符
+                VariableDeclarationSyntax => false,
+                ParameterSyntax => false,
+                TypeSyntax => false,
+
+                // 基类列表、特性、命名空间等不需要占位符，可以直接移除
+                BaseTypeSyntax => false,
+                AttributeSyntax => false,
+                UsingDirectiveSyntax => false,
+                NamespaceDeclarationSyntax => false,
+                TypeParameterSyntax => false,
+                EnumMemberDeclarationSyntax => false,
+                MemberDeclarationSyntax => false,
 
                 // 默认情况：如果是表达式语句，则不需要值（可以整行删除）
                 ExpressionStatementSyntax => false,
+                ElementAccessExpressionSyntax => true,
+                InvocationExpressionSyntax => true,
 
                 _ => !(Parent is StatementSyntax) // 如果父节点不是语句，通常意味着它是更大表达式的一部分
             };
@@ -329,10 +546,10 @@ namespace TerrariaTools.RewriteCodeExpressions
         {
             if (Node == null) return null; // 如果节点为空，直接返回 null
 
-            // 如果当前节点符合删除条件（通过 ShouldRemove 谓词判断）
-            if (this.ShouldRemove(Node))
+            // 如果当前节点符合删除条件（通过 ShouldRemove 谓词判断，或在标记移除集合中）
+            if (this.ShouldRemove(Node) || (NodesToMark != null && NodesToMark.Contains(Node)))
             {
-                if (!IsProtectedDeclaration(Node))
+                if (!IsProtectedDeclaration(Node) || (NodesToMark != null && NodesToMark.Contains(Node)))
                 {
                     var Placeholder = TryCreatePlaceholder(Node);
                     if (Placeholder != null)
@@ -341,12 +558,6 @@ namespace TerrariaTools.RewriteCodeExpressions
                         return Placeholder;
                     }
                     TraceContext?.AddDiagnostic(Node, "节点被标记为移除且无需占位符");
-                    return null;
-                }
-                else if (NodesToMark != null && NodesToMark.Contains(Node))
-                {
-                    // 如果是受保护节点，但明确在 NodesToMark 中，则允许移除
-                    TraceContext?.AddDiagnostic(Node, "受保护节点被明确标记为移除");
                     return null;
                 }
             }
@@ -542,9 +753,82 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitUsingDirective(UsingDirectiveSyntax Node)
         {
+            if (this.ShouldRemove(Node)) return null;
+
+            if (this.Model != null)
+            {
+                var Original = GetOriginalNode(Node);
+                if (Original != null)
+                {
+                    var SymbolInfo = this.Model.GetSymbolInfo(Original);
+                    var Symbol = SymbolInfo.Symbol ?? SymbolInfo.CandidateSymbols.FirstOrDefault();
+                    if (Symbol != null && IsSymbolMarked(Symbol))
+                    {
+                        return null;
+                    }
+
+                    if (Node.Alias != null)
+                    {
+                        var AliasOriginal = GetOriginalNode(Node.Alias);
+                        if (AliasOriginal != null)
+                        {
+                            var AliasSymbol = this.Model.GetDeclaredSymbol(AliasOriginal);
+                            if (AliasSymbol != null && IsSymbolMarked(AliasSymbol))
+                            {
+                                return null;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (Node.Alias != null && this.ShouldRemove(Node.Alias)) return null;
             var Name = (NameSyntax?)Visit(Node.Name);
             if (Name == null) return null;
             return Node.Update(Node.GlobalKeyword, Node.UsingKeyword, Node.StaticKeyword, Node.Alias, Name, Node.SemicolonToken);
+        }
+
+        public override SyntaxNode? VisitAttribute(AttributeSyntax Node)
+        {
+            if (this.ShouldRemove(Node)) return null;
+
+            if (this.Model != null)
+            {
+                var Original = GetOriginalNode(Node);
+                if (Original != null)
+                {
+                    var SymbolInfo = this.Model.GetSymbolInfo(Original);
+                    var Symbol = SymbolInfo.Symbol ?? SymbolInfo.CandidateSymbols.FirstOrDefault();
+                    if (Symbol != null && IsSymbolMarked(Symbol))
+                    {
+                        return null;
+                    }
+                }
+            }
+
+            var Name = (NameSyntax?)Visit(Node.Name);
+            if (Name == null) return null;
+            var ArgumentList = (AttributeArgumentListSyntax?)Visit(Node.ArgumentList);
+            return Node.Update(Name, ArgumentList);
+        }
+
+        public override SyntaxNode? VisitYieldStatement(YieldStatementSyntax Node)
+        {
+            if (this.ShouldRemove(Node)) return null;
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+
+            if (Node.Expression != null && Expression == null && this.Model != null)
+            {
+                var Placeholder = TryCreatePlaceholder(Node.Expression);
+                if (Placeholder is ExpressionSyntax ExprPlaceholder)
+                {
+                    Expression = ExprPlaceholder;
+                }
+            }
+
+            if (Node.Expression != null && Expression == null) return null;
+
+            return Node.Update(Node.YieldKeyword, Node.ReturnOrBreakKeyword, Expression, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -574,8 +858,9 @@ namespace TerrariaTools.RewriteCodeExpressions
             var ConstraintClauses = VisitList(Node.ConstraintClauses);
             var AttributeLists = VisitList(Node.AttributeLists);
             var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            var TypeParameterList = (TypeParameterListSyntax?)Visit(Node.TypeParameterList);
 
-            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -631,6 +916,7 @@ namespace TerrariaTools.RewriteCodeExpressions
 
             var ConstraintClauses = VisitList(Node.ConstraintClauses);
             var AttributeLists = VisitList(Node.AttributeLists);
+            var TypeParameterList = (TypeParameterListSyntax?)Visit(Node.TypeParameterList);
 
             return Node.Update(
                 AttributeLists,
@@ -638,7 +924,7 @@ namespace TerrariaTools.RewriteCodeExpressions
                 ReturnType,
                 Node.ExplicitInterfaceSpecifier,
                 Node.Identifier,
-                Node.TypeParameterList,
+                TypeParameterList,
                 ParameterList,
                 ConstraintClauses,
                 (BlockSyntax?)Visit(Node.Body),
@@ -659,8 +945,9 @@ namespace TerrariaTools.RewriteCodeExpressions
             var ConstraintClauses = VisitList(Node.ConstraintClauses);
             var AttributeLists = VisitList(Node.AttributeLists);
             var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            var TypeParameterList = (TypeParameterListSyntax?)Visit(Node.TypeParameterList);
 
-            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -675,7 +962,8 @@ namespace TerrariaTools.RewriteCodeExpressions
             var BaseList = (BaseListSyntax?)Visit(Node.BaseList);
             var ConstraintClauses = VisitList(Node.ConstraintClauses);
             var AttributeLists = VisitList(Node.AttributeLists);
-            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
+            var TypeParameterList = (TypeParameterListSyntax?)Visit(Node.TypeParameterList);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, TypeParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -691,8 +979,9 @@ namespace TerrariaTools.RewriteCodeExpressions
             var ConstraintClauses = VisitList(Node.ConstraintClauses);
             var AttributeLists = VisitList(Node.AttributeLists);
             var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            var TypeParameterList = (TypeParameterListSyntax?)Visit(Node.TypeParameterList);
 
-            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.ClassOrStructKeyword, Node.Identifier, Node.TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.ClassOrStructKeyword, Node.Identifier, TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -832,6 +1121,13 @@ namespace TerrariaTools.RewriteCodeExpressions
             return Node.Update(Node.OpenParenToken, Parameters, Node.CloseParenToken);
         }
 
+        public override SyntaxNode? VisitTypeParameterList(TypeParameterListSyntax Node)
+        {
+            var TypeParameters = VisitList(Node.Parameters);
+            if (TypeParameters.Count == 0) return null;
+            return Node.Update(Node.LessThanToken, TypeParameters, Node.GreaterThanToken);
+        }
+
         /// <summary>
         /// 访问方括号括起来的参数列表（用于索引器定义）。
         /// </summary>
@@ -852,6 +1148,14 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override SyntaxNode? VisitArrowExpressionClause(ArrowExpressionClauseSyntax Node)
         {
             var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+            if (Expression == null)
+            {
+                // 如果表达式被移除，尝试获取占位符，以保留箭头子句结构（除非整个方法被移除）
+                var Placeholder = TryCreatePlaceholder(Node.Expression);
+                if (Placeholder is ExpressionSyntax EP) Expression = EP;
+                else Expression = TryGetPlaceholderExpression(Node.Expression);
+            }
+
             if (Expression == null) return null;
             return Node.Update(Node.ArrowToken, Expression);
         }
@@ -1194,8 +1498,27 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的表达式节点</returns>
         private SyntaxNode? HandleBinary(BinaryExpressionSyntax Node)
         {
+            // 特殊处理 as 表达式：如果左侧被标记为移除，直接生成 null as T
+            if (Node.IsKind(SyntaxKind.AsExpression) && this.ShouldRemove(Node.Left))
+            {
+                var AsRight = Visit(Node.Right);
+                if (AsRight is ExpressionSyntax AsRightExpr)
+                {
+                    var NullLiteral = SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)
+                        .WithLeadingTrivia(Node.Left.GetLeadingTrivia())
+                        .WithTrailingTrivia(SyntaxFactory.Space);
+                    return Node.Update(NullLiteral, Node.OperatorToken, AsRightExpr);
+                }
+            }
+
             var Left = Visit(Node.Left); // 访问左侧表达式
             var Right = Visit(Node.Right); // 访问右侧表达式
+
+            // 确保左侧表达式和运算符之间有空格
+            if (Left is ExpressionSyntax LeftExpr && Right != null)
+            {
+                Left = LeftExpr.WithTrailingTrivia(SyntaxFactory.Space);
+            }
 
             if (Left == null && Right == null)
             {
@@ -1226,45 +1549,26 @@ namespace TerrariaTools.RewriteCodeExpressions
                 if (Right == null && Left is ExpressionSyntax) return Left.WithTrailingTrivia(Node.GetTrailingTrivia());
             }
 
-            // 对于比较/关系运算符，如果一边被移除，整个表达式失效
-            if (Node.Kind() is SyntaxKind.EqualsExpression or SyntaxKind.NotEqualsExpression or
-                SyntaxKind.GreaterThanExpression or SyntaxKind.LessThanExpression or
-                SyntaxKind.GreaterThanOrEqualExpression or SyntaxKind.LessThanOrEqualExpression or
-                SyntaxKind.IsExpression or SyntaxKind.AsExpression)
+            // 如果其中一侧被移除但不能简单合并（如赋值或比较），则尝试为该侧生成占位符
+            if (Left == null && Node.Left != null)
             {
-                if (Left == null || Right == null)
+                var Placeholder = TryCreatePlaceholder(Node.Left);
+                if (Placeholder != null)
                 {
-                    // 上下文感知模式：如果必须要求值（如在 return 中），则返回占位符；否则移除（如在 if 中触发 if 的移除）
-                    if (IsValueRequiredContext(Node))
-                    {
-                        return TryGetPlaceholderExpression(Node);
-                    }
-                    return null;
+                    // 为左侧占位符添加必要的空格，以防出现 0* y 这种情况
+                    Left = Placeholder.WithLeadingTrivia(Node.Left.GetLeadingTrivia())
+                                     .WithTrailingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.Space));
                 }
             }
-
-            // 如果存在语义模型，尝试使用占位符以保留表达式结构
-            if (Left == null && this.Model != null)
+            if (Right == null && Node.Right != null)
             {
-                var Type = GetNodeType(Node.Left);
-                if (Type != null) Left = CreatePlaceholder(Type).WithLeadingTrivia(Node.GetLeadingTrivia());
+                var Placeholder = TryCreatePlaceholder(Node.Right);
+                if (Placeholder != null) Right = Placeholder.WithLeadingTrivia(Node.Right.GetLeadingTrivia());
             }
 
-            if (Right == null && this.Model != null)
-            {
-                var Type = GetNodeType(Node.Right);
-                if (Type != null) Right = CreatePlaceholder(Type).WithTrailingTrivia(Node.GetTrailingTrivia());
-            }
+            if (Left == null || Right == null) return null;
 
-            if (Left == null) return Right?.WithLeadingTrivia(Node.GetLeadingTrivia()); // 如果左侧为空，返回右侧并保留前置琐碎内容
-            if (Right == null) return Left.WithTrailingTrivia(Node.GetTrailingTrivia()); // 如果右侧为空，返回左侧并保留后置琐碎内容
-
-            if (Left is ExpressionSyntax LeftExpr && Right is ExpressionSyntax RightExpr) // 检查是否都是有效的表达式语法
-            {
-                return Node.Update(LeftExpr, Node.OperatorToken, RightExpr); // 更新二元表达式
-            }
-
-            return null; // 无法处理时返回 null
+            return Node.Update((ExpressionSyntax)Left, Node.OperatorToken, (ExpressionSyntax)Right);
         }
 
         /// <summary>
@@ -1316,10 +1620,14 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         private SyntaxNode? HandlePrefixUnary(PrefixUnaryExpressionSyntax Node)
         {
-            if (this.ShouldRemove(Node.Operand)) return null;
-            var Operand = Visit(Node.Operand);
-            if (Operand == null) return null;
-            return Node.WithOperand((ExpressionSyntax)Operand);
+            var Operand = (ExpressionSyntax?)Visit(Node.Operand);
+            if (Operand == null)
+            {
+                var Placeholder = TryGetPlaceholderExpression(Node.Operand);
+                if (Placeholder != null) return Node.WithOperand(Placeholder);
+                return null;
+            }
+            return Node.WithOperand(Operand);
         }
 
         /// <summary>
@@ -1330,10 +1638,14 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         private SyntaxNode? HandlePostfixUnary(PostfixUnaryExpressionSyntax Node)
         {
-            if (this.ShouldRemove(Node.Operand)) return null;
-            var Operand = Visit(Node.Operand);
-            if (Operand == null) return null;
-            return Node.WithOperand((ExpressionSyntax)Operand);
+            var Operand = (ExpressionSyntax?)Visit(Node.Operand);
+            if (Operand == null)
+            {
+                var Placeholder = TryGetPlaceholderExpression(Node.Operand);
+                if (Placeholder != null) return Node.WithOperand(Placeholder);
+                return null;
+            }
+            return Node.WithOperand(Operand);
         }
 
         /// <summary>
@@ -1389,8 +1701,6 @@ namespace TerrariaTools.RewriteCodeExpressions
 
             if (Arguments.Count < Node.ArgumentList.Arguments.Count && this.Model != null)
             {
-                var OriginalElementAccess = GetOriginalNode(Node) as ElementAccessExpressionSyntax;
-                var Symbol = OriginalElementAccess != null ? this.Model.GetSymbolInfo(OriginalElementAccess).Symbol as IPropertySymbol : null;
                 var NewArgs = new System.Collections.Generic.List<ArgumentSyntax>();
                 for (int Index = 0; Index < Node.ArgumentList.Arguments.Count; Index++)
                 {
@@ -1402,25 +1712,25 @@ namespace TerrariaTools.RewriteCodeExpressions
                     }
                     else
                     {
-                        ITypeSymbol? ParamType = null;
-                        if (Symbol != null && Symbol.IsIndexer && Index < Symbol.Parameters.Length)
+                        var Placeholder = TryCreatePlaceholder(OriginalArg);
+                        if (Placeholder is ArgumentSyntax PlaceholderArg)
                         {
-                            ParamType = Symbol.Parameters[Index].Type;
+                            NewArgs.Add(PlaceholderArg);
                         }
+                    }
+                }
+                Arguments = NewArgs;
+            }
 
-                        if (ParamType == null)
-                        {
-                            ParamType = GetNodeType(OriginalArg.Expression);
-                        }
-
-                        if (ParamType != null)
-                        {
-                            NewArgs.Add(OriginalArg.Update(OriginalArg.NameColon, OriginalArg.RefKindKeyword, CreatePlaceholder(ParamType)));
-                        }
-                        else
-                        {
-                            NewArgs.Add(OriginalArg.WithExpression(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)));
-                        }
+            if (Arguments.Count == 0 && Node.ArgumentList.Arguments.Count > 0)
+            {
+                var NewArgs = new System.Collections.Generic.List<ArgumentSyntax>();
+                foreach (var OriginalArg in Node.ArgumentList.Arguments)
+                {
+                    var Placeholder = TryCreatePlaceholder(OriginalArg);
+                    if (Placeholder is ArgumentSyntax PlaceholderArg)
+                    {
+                        NewArgs.Add(PlaceholderArg);
                     }
                 }
                 Arguments = NewArgs;
@@ -1452,8 +1762,6 @@ namespace TerrariaTools.RewriteCodeExpressions
 
             if (Arguments.Count < Node.ArgumentList.Arguments.Count && this.Model != null)
             {
-                var OriginalInvocation = GetOriginalNode(Node) as InvocationExpressionSyntax;
-                var Symbol = OriginalInvocation != null ? this.Model.GetSymbolInfo(OriginalInvocation).Symbol as IMethodSymbol : null;
                 var NewArgs = new System.Collections.Generic.List<ArgumentSyntax>();
                 for (int Index = 0; Index < Node.ArgumentList.Arguments.Count; Index++)
                 {
@@ -1465,24 +1773,10 @@ namespace TerrariaTools.RewriteCodeExpressions
                     }
                     else
                     {
-                        ITypeSymbol? ParamType = null;
-                        if (Symbol != null && Index < Symbol.Parameters.Length)
+                        var Placeholder = TryCreatePlaceholder(OriginalArg);
+                        if (Placeholder is ArgumentSyntax PlaceholderArg)
                         {
-                            ParamType = Symbol.Parameters[Index].Type;
-                        }
-
-                        if (ParamType == null)
-                        {
-                            ParamType = GetNodeType(OriginalArg.Expression);
-                        }
-
-                        if (ParamType != null)
-                        {
-                            NewArgs.Add(OriginalArg.Update(OriginalArg.NameColon, OriginalArg.RefKindKeyword, CreatePlaceholder(ParamType)));
-                        }
-                        else
-                        {
-                            NewArgs.Add(OriginalArg.WithExpression(SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression)));
+                            NewArgs.Add(PlaceholderArg);
                         }
                     }
                 }
@@ -1713,27 +2007,55 @@ namespace TerrariaTools.RewriteCodeExpressions
         }
 
         /// <summary>
-        /// 访问 Switch 语句。
-        /// 若控制表达式被移除，则整个 Switch 语句移除；同时简化并更新各 Case 分节。
+        /// 访问 Switch 表达式分支。
+        /// 若表达式部分被移除，则生成占位符。
         /// </summary>
-        /// <param name="Node">Switch 语句节点</param>
-        /// <returns>简化后的节点或 null</returns>
-        public override SyntaxNode? VisitSwitchStatement(SwitchStatementSyntax Node)
+        /// <param name="Node">Switch 表达式分支节点</param>
+        /// <returns>简化后的节点</returns>
+        public override SyntaxNode? VisitSwitchExpressionArm(SwitchExpressionArmSyntax Node)
         {
+            var Pattern = (PatternSyntax?)Visit(Node.Pattern);
+            var WhenClause = (WhenClauseSyntax?)Visit(Node.WhenClause);
             var Expression = (ExpressionSyntax?)Visit(Node.Expression);
-            if (Expression == null)
+
+            if (Pattern == null) return null;
+
+            if (Expression == null && this.Model != null)
             {
-                return null;
+                var Placeholder = TryCreatePlaceholder(Node.Expression);
+                if (Placeholder is ExpressionSyntax ExprPlaceholder)
+                {
+                    Expression = ExprPlaceholder;
+                }
             }
 
-            var Sections = Node.Sections
-                .Select(s => (SwitchSectionSyntax?)Visit(s))
-                .Where(s => s != null)
-                .Cast<SwitchSectionSyntax>()
-                .ToList();
+            if (Expression == null) return null;
 
-            return Node.Update(Node.SwitchKeyword, Node.OpenParenToken, Expression, Node.CloseParenToken, Node.OpenBraceToken, SyntaxFactory.List(Sections), Node.CloseBraceToken);
+            return Node.Update(Pattern, WhenClause, Node.EqualsGreaterThanToken, Expression);
         }
+
+        /// <summary>
+        /// 访问 Switch 语句。
+         /// 若控制表达式被移除，则整个 Switch 语句移除；同时简化并更新各 Case 分节。
+         /// </summary>
+         /// <param name="Node">Switch 语句节点</param>
+         /// <returns>简化后的节点或 null</returns>
+         public override SyntaxNode? VisitSwitchStatement(SwitchStatementSyntax Node)
+         {
+             var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+             if (Expression == null)
+             {
+                 return null;
+             }
+
+             var Sections = Node.Sections
+                 .Select(s => (SwitchSectionSyntax?)Visit(s))
+                 .Where(s => s != null)
+                 .Cast<SwitchSectionSyntax>()
+                 .ToList();
+
+             return Node.Update(Node.SwitchKeyword, Node.OpenParenToken, Expression, Node.CloseParenToken, Node.OpenBraceToken, SyntaxFactory.List(Sections), Node.CloseBraceToken);
+         }
 
         /// <summary>
         /// 访问 Return 语句。
@@ -1748,24 +2070,10 @@ namespace TerrariaTools.RewriteCodeExpressions
             // 如果原先有表达式但简化后被移除了，需要根据函数返回类型补上占位符
             if (Node.Expression != null && Expression == null && this.Model != null)
             {
-                var OriginalNode = GetOriginalNode(Node);
-                if (OriginalNode != null)
+                var Placeholder = TryCreatePlaceholder(Node.Expression);
+                if (Placeholder is ExpressionSyntax ExprPlaceholder)
                 {
-                    var Symbol = this.Model.GetEnclosingSymbol(OriginalNode.SpanStart);
-                    ITypeSymbol? ReturnType = null;
-                    if (Symbol is IMethodSymbol Method)
-                    {
-                        ReturnType = Method.ReturnType;
-                    }
-                    else if (Symbol is IPropertySymbol Property)
-                    {
-                        ReturnType = Property.Type;
-                    }
-
-                    if (ReturnType != null && ReturnType.SpecialType != SpecialType.System_Void)
-                    {
-                        Expression = CreatePlaceholder(ReturnType);
-                    }
+                    Expression = ExprPlaceholder;
                 }
             }
 
@@ -1793,6 +2101,8 @@ namespace TerrariaTools.RewriteCodeExpressions
                 case SpecialType.System_Double:
                 case SpecialType.System_Single:
                     return SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(0));
+                case SpecialType.System_Object:
+                    return SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression);
             }
 
             // 2. 处理 Task 和 Task<T>
@@ -1849,7 +2159,11 @@ namespace TerrariaTools.RewriteCodeExpressions
                 }
             }
 
-            // 4. 默认退回到 default(T)
+            // 4. 默认退回到 null (如果可以) 或 default(T)
+            if (Type.IsReferenceType || Type.TypeKind == TypeKind.TypeParameter)
+            {
+                return SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression);
+            }
             return SyntaxFactory.DefaultExpression(SyntaxFactory.ParseTypeName(FullName));
         }
 
@@ -1953,6 +2267,26 @@ namespace TerrariaTools.RewriteCodeExpressions
         }
 
         /// <summary>
+        /// 访问带有解构变量的 ForEach 语句。
+        /// 简化集合表达式、循环体和解构变量。若核心部分被移除，则移除整个 ForEach 语句。
+        /// </summary>
+        /// <param name="Node">ForEach 变量语句节点</param>
+        /// <returns>简化后的节点或 null</returns>
+        public override SyntaxNode? VisitForEachVariableStatement(ForEachVariableStatementSyntax Node)
+        {
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+            var Statement = (StatementSyntax?)Visit(Node.Statement);
+            var Variable = (ExpressionSyntax?)Visit(Node.Variable);
+
+            if (Expression == null || Statement == null || Variable == null)
+            {
+                return null;
+            }
+
+            return Node.Update(Node.AttributeLists, Node.AwaitKeyword, Node.ForEachKeyword, Node.OpenParenToken, Variable, Node.InKeyword, Expression, Node.CloseParenToken, Statement);
+        }
+
+        /// <summary>
         /// 访问 For 语句。
         /// 简化初始化、条件、增量和循环体。若原先存在的头部组件简化后消失，则移除整个 For 语句。
         /// </summary>
@@ -2019,19 +2353,6 @@ namespace TerrariaTools.RewriteCodeExpressions
                 return Placeholder != null ? Node.WithExpression(Placeholder) : null;
             }
             return Node.Update(Node.NameColon, Node.RefKindKeyword, Expression);
-        }
-
-        /// <summary>
-        /// 访问特性节点。
-        /// 更新特性的参数列表。
-        /// </summary>
-        /// <param name="Node">特性节点</param>
-        /// <returns>简化后的节点</returns>
-        public override SyntaxNode? VisitAttribute(AttributeSyntax Node)
-        {
-            var ArgumentList = (AttributeArgumentListSyntax?)Visit(Node.ArgumentList);
-            // 这里不要显式返回 node.WithArgumentList(null)，让 VisitAttributeArgumentList 处理
-            return Node.Update(Node.Name, ArgumentList);
         }
 
         /// <summary>
@@ -2328,12 +2649,25 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         private SyntaxNode? HandleCast(CastExpressionSyntax Node)
         {
-            if (this.ShouldRemove(Node.Expression)) return null;
-            if (this.ShouldRemove(Node.Type)) return Visit(Node.Expression);
-            var Type = Visit(Node.Type);
-            var Expression = Visit(Node.Expression);
-            if (Type == null || Expression == null) return null;
-            return Node.Update(Node.OpenParenToken, (TypeSyntax)Type, Node.CloseParenToken, (ExpressionSyntax)Expression);
+            var Type = (TypeSyntax?)Visit(Node.Type);
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+
+            // 如果类型被移除，尝试直接返回表达式（相当于去掉转换）
+            if (Type == null) return Expression;
+
+            // 如果表达式被移除，但类型还在，尝试为表达式生成占位符
+            if (Expression == null)
+            {
+                var Placeholder = TryCreatePlaceholder(Node.Expression);
+                if (Placeholder is ExpressionSyntax PlaceholderExpr)
+                {
+                    Expression = PlaceholderExpr;
+                }
+            }
+
+            if (Expression == null) return null;
+
+            return Node.Update(Node.OpenParenToken, Type, Node.CloseParenToken, Expression);
         }
 
         /// <summary>
@@ -2563,45 +2897,71 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         private SyntaxNode? HandleSwitch(SwitchExpressionSyntax Node)
         {
-            if (this.ShouldRemove(Node.GoverningExpression)) return null;
-            var Governing = Visit(Node.GoverningExpression);
-            if (Governing == null) return null;
-
-            var Arms = Node.Arms
-                .Select(Arm => (SwitchExpressionArmSyntax?)Visit(Arm))
-                .Where(Arm => Arm != null)
-                .Cast<SwitchExpressionArmSyntax>()
-                .ToList();
-
-            return Node.Update((ExpressionSyntax)Governing, Node.SwitchKeyword, Node.OpenBraceToken, SyntaxFactory.SeparatedList(Arms), Node.CloseBraceToken);
-        }
-
-        /// <summary>
-    /// 访问 Switch 表达式分支（Arm）。
-    /// 简化模式和表达式。若表达式被移除，则尝试根据返回类型生成占位符；若无法生成或模式被移除，则移除整个分支。
-    /// </summary>
-        /// <param name="Node">Switch 表达式分支节点</param>
-        /// <returns>简化后的节点或 null</returns>
-        public override SyntaxNode? VisitSwitchExpressionArm(SwitchExpressionArmSyntax Node)
-        {
-            var Pattern = Visit(Node.Pattern);
-            var WhenClause = Node.WhenClause != null ? (WhenClauseSyntax?)Visit(Node.WhenClause) : null;
-            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
-
-            if (Pattern == null) return null;
-
-            if (Expression == null && this.Model != null)
+            var Governing = (ExpressionSyntax?)Visit(Node.GoverningExpression);
+            if (Governing == null)
             {
-                var Type = GetNodeType(Node.Expression);
-                if (Type != null)
+                // 如果控制表达式被移除，尝试为控制表达式生成占位符
+                Governing = TryGetPlaceholderExpression(Node.GoverningExpression);
+                if (Governing != null)
                 {
-                    Expression = CreatePlaceholder(Type);
+                    // 确保占位符保留原有的空格，避免出现 0switch 这样的情况
+                    Governing = Governing.WithTrailingTrivia(Node.GoverningExpression.GetTrailingTrivia());
+                    if (!Governing.HasTrailingTrivia || !Governing.GetTrailingTrivia().Any(t => t.IsKind(SyntaxKind.WhitespaceTrivia)))
+                    {
+                        Governing = Governing.WithTrailingTrivia(SyntaxFactory.Space);
+                    }
                 }
             }
 
-            if (Expression == null) return null;
+            if (Governing == null)
+            {
+                // 如果无法生成控制表达式的占位符，尝试为整个 switch 表达式生成占位符
+                return TryCreatePlaceholder(Node);
+            }
 
-            return Node.Update((PatternSyntax)Pattern, WhenClause, Node.EqualsGreaterThanToken, Expression);
+            var NewArms = new System.Collections.Generic.List<SwitchExpressionArmSyntax>();
+            bool Changed = Governing != Node.GoverningExpression;
+
+            foreach (var Arm in Node.Arms)
+            {
+                var VisitedArm = (SwitchExpressionArmSyntax?)Visit(Arm);
+                if (VisitedArm != null)
+                {
+                    NewArms.Add(VisitedArm);
+                    if (VisitedArm != Arm) Changed = true;
+                }
+                else
+                {
+                    // 如果分支被移除（例如模式中的变量被移除），尝试生成占位符分支
+                    var Placeholder = TryCreatePlaceholder(Arm);
+                    if (Placeholder is SwitchExpressionArmSyntax PlaceholderArm)
+                    {
+                        NewArms.Add(PlaceholderArm);
+                        Changed = true;
+                    }
+                    else
+                    {
+                        Changed = true;
+                    }
+                }
+            }
+
+            if (NewArms.Count == 0 && Node.Arms.Count > 0)
+            {
+                // 如果没有分支了，且原先有分支，尝试生成占位符
+                var Placeholder = TryCreatePlaceholder(Node);
+                if (Placeholder != null) return Placeholder;
+            }
+
+            if (NewArms.Count == 0)
+            {
+                // 如果确实没有分支，返回控制表达式
+                return Governing;
+            }
+
+            if (!Changed && NewArms.Count == Node.Arms.Count) return Node;
+
+            return Node.Update(Governing, Node.SwitchKeyword, Node.OpenBraceToken, SyntaxFactory.SeparatedList(NewArms), Node.CloseBraceToken);
         }
 
         /// <summary>
@@ -2790,9 +3150,18 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         public override SyntaxNode? VisitInterpolation(InterpolationSyntax Node)
         {
-            var Expression = Visit(Node.Expression);
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+            if (Expression == null && this.Model != null)
+            {
+                var Placeholder = TryCreatePlaceholder(Node.Expression);
+                if (Placeholder is ExpressionSyntax PlaceholderExpr)
+                {
+                    Expression = PlaceholderExpr;
+                }
+            }
+
             if (Expression == null) return null;
-            return Node.WithExpression((ExpressionSyntax)Expression);
+            return Node.WithExpression(Expression);
         }
 
         /// <summary>
