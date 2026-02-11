@@ -65,7 +65,7 @@ namespace TerrariaTools.RewriteCodeExpressions
             if (Node is LiteralExpressionSyntax) return;
 
             var ChildNodes = Node.ChildNodes().ToList();
-            if (ChildNodes.Count > 0 && ChildNodes.All(c => this.NodesToMark.Contains(c)))
+            if (ChildNodes.Count > 0 && ChildNodes.All(Child => this.NodesToMark.Contains(Child)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -78,7 +78,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitVariableDeclaration(VariableDeclarationSyntax Node)
         {
             base.VisitVariableDeclaration(Node);
-            if (this.NodesToMark.Contains(Node.Type) || (Node.Variables.Count > 0 && Node.Variables.All(v => this.NodesToMark.Contains(v))))
+            if (this.NodesToMark.Contains(Node.Type) || (Node.Variables.Count > 0 && Node.Variables.All(Variable => this.NodesToMark.Contains(Variable))))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -105,7 +105,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitAttributeArgumentList(AttributeArgumentListSyntax Node)
         {
             base.VisitAttributeArgumentList(Node);
-            if (Node.Arguments.Count > 0 && Node.Arguments.All(a => this.NodesToMark.Contains(a)))
+            if (Node.Arguments.Count > 0 && Node.Arguments.All(Argument => this.NodesToMark.Contains(Argument)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -114,7 +114,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitBracketedParameterList(BracketedParameterListSyntax Node)
         {
             base.VisitBracketedParameterList(Node);
-            if (Node.Parameters.Count > 0 && Node.Parameters.All(p => this.NodesToMark.Contains(p)))
+            if (Node.Parameters.Count > 0 && Node.Parameters.All(Parameter => this.NodesToMark.Contains(Parameter)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -123,7 +123,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitParameterList(ParameterListSyntax Node)
         {
             base.VisitParameterList(Node);
-            if (Node.Parameters.Count > 0 && Node.Parameters.All(p => this.NodesToMark.Contains(p)))
+            if (Node.Parameters.Count > 0 && Node.Parameters.All(Parameter => this.NodesToMark.Contains(Parameter)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -153,7 +153,7 @@ namespace TerrariaTools.RewriteCodeExpressions
             // 这样可以触发 VisitLocalFunctionStatement 将整个局部函数标记为移除。
             if (Node.Parent is not (BaseMethodDeclarationSyntax or AccessorDeclarationSyntax or AnonymousFunctionExpressionSyntax))
             {
-                if (Node.Statements.Count > 0 && Node.Statements.All(s => this.NodesToMark.Contains(s)))
+                if (Node.Statements.Count > 0 && Node.Statements.All(Statement => this.NodesToMark.Contains(Statement)))
                 {
                     this.NodesToMark.Add(Node);
                 }
@@ -168,10 +168,10 @@ namespace TerrariaTools.RewriteCodeExpressions
         {
             base.VisitLocalFunctionStatement(Node);
 
-            bool bodyMarked = Node.Body != null && this.NodesToMark.Contains(Node.Body);
-            bool expressionBodyMarked = Node.ExpressionBody != null && this.NodesToMark.Contains(Node.ExpressionBody);
+            bool BodyMarked = Node.Body != null && this.NodesToMark.Contains(Node.Body);
+            bool ExpressionBodyMarked = Node.ExpressionBody != null && this.NodesToMark.Contains(Node.ExpressionBody);
 
-            if (bodyMarked || expressionBodyMarked)
+            if (BodyMarked || ExpressionBodyMarked)
             {
                 this.NodesToMark.Add(Node);
             }
@@ -293,7 +293,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitTypeParameterConstraintClause(TypeParameterConstraintClauseSyntax Node)
         {
             base.VisitTypeParameterConstraintClause(Node);
-            if (Node.Constraints.Count > 0 && Node.Constraints.All(c => this.NodesToMark.Contains(c)))
+            if (Node.Constraints.Count > 0 && Node.Constraints.All(Constraint => this.NodesToMark.Contains(Constraint)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -390,7 +390,7 @@ namespace TerrariaTools.RewriteCodeExpressions
             base.VisitSwitchStatement(Node);
             // 如果 switch 表达式被标记为移除，或者所有 section 都被标记为移除
             if (this.NodesToMark.Contains(Node.Expression) ||
-                (Node.Sections.Count > 0 && Node.Sections.All(s => this.NodesToMark.Contains(s))))
+                (Node.Sections.Count > 0 && Node.Sections.All(Section => this.NodesToMark.Contains(Section))))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -400,7 +400,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         {
             base.VisitSwitchSection(Node);
             // 如果 section 里的所有语句都被标记为移除
-            if (Node.Statements.Count > 0 && Node.Statements.All(s => this.NodesToMark.Contains(s)))
+            if (Node.Statements.Count > 0 && Node.Statements.All(Statement => this.NodesToMark.Contains(Statement)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -437,7 +437,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitAttributeList(AttributeListSyntax Node)
         {
             base.VisitAttributeList(Node);
-            if (Node.Attributes.Count > 0 && Node.Attributes.All(a => this.NodesToMark.Contains(a)))
+            if (Node.Attributes.Count > 0 && Node.Attributes.All(Attribute => this.NodesToMark.Contains(Attribute)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -462,7 +462,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         {
             base.VisitAccessorList(Node);
             // 只要访问器列表不为空，且所有访问器都被标记，则标记列表本身
-            if (Node.Accessors.Count > 0 && Node.Accessors.All(a => this.NodesToMark.Contains(a)))
+            if (Node.Accessors.Count > 0 && Node.Accessors.All(Accessor => this.NodesToMark.Contains(Accessor)))
             {
                 this.NodesToMark.Add(Node);
             }
@@ -511,7 +511,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override void VisitEventFieldDeclaration(EventFieldDeclarationSyntax Node)
         {
             base.VisitEventFieldDeclaration(Node);
-            if (Node.Declaration.Variables.Count > 0 && Node.Declaration.Variables.All(v => this.NodesToMark.Contains(v)))
+            if (Node.Declaration.Variables.Count > 0 && Node.Declaration.Variables.All(Variable => this.NodesToMark.Contains(Variable)))
             {
                 this.NodesToMark.Add(Node);
             }

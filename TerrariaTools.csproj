@@ -16,6 +16,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="Generators\TerrariaTools.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Remove="Example\**\*.cs" />
   </ItemGroup>
 </Project>

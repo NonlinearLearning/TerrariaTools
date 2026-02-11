@@ -4,6 +4,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using TerrariaTools.Diagnostics;
 using System.Linq;
 
 namespace TerrariaTools.RewriteCodeExpressions
@@ -13,90 +14,71 @@ namespace TerrariaTools.RewriteCodeExpressions
     /// </summary>
     internal class ExpressionSimplifier : CSharpSyntaxRewriter
     {
-        /// <summary>
-        /// 决定节点是否应该被标记为移除的"谓词"函数。
-        /// </summary>
         private readonly System.Func<SyntaxNode, bool> ShouldRemove;
-
-        /// <summary>
-        /// 初始被标记为移除的节点集合（在原始树中的节点）。
-        /// 用于在重写阶段执行符号引用失效校验。
-        /// </summary>
         private readonly System.Collections.Generic.HashSet<SyntaxNode>? NodesToMark;
-
-        /// <summary>
-        /// 关联的语义模型，用于在简化过程中进行复杂的类型分析和占位符生成。
-        /// </summary>
         private readonly SemanticModel? Model;
+        private readonly RewritingTraceContext? TraceContext;
+        private readonly System.Collections.Generic.Dictionary<ISymbol, bool> SymbolMarkedCache = new System.Collections.Generic.Dictionary<ISymbol, bool>(SymbolEqualityComparer.Default);
 
         /// <summary>
         /// 初始化 ExpressionSimplifier 的新实例。
         /// </summary>
-        /// <param name="ShouldRemove">判断节点是否需要移除的谓词委托</param>
-        /// <param name="Model">可选的语义模型，用于增强分析能力</param>
+        /// <param name="Predicate">判断节点是否需要移除的谓词委托</param>
+        /// <param name="SemanticModel">可选的语义模型，用于增强分析能力</param>
         /// <param name="NodesToMark">可选的原始树中被标记的节点集合</param>
-        public ExpressionSimplifier(System.Func<SyntaxNode, bool> ShouldRemove, SemanticModel? Model = null, System.Collections.Generic.HashSet<SyntaxNode>? NodesToMark = null)
+        /// <param name="TraceContext">可选的追踪上下文，用于收集诊断信息</param>
+        public ExpressionSimplifier(
+            System.Func<SyntaxNode, bool> Predicate,
+            SemanticModel? SemanticModel = null,
+            System.Collections.Generic.HashSet<SyntaxNode>? NodesToMark = null,
+            RewritingTraceContext? TraceContext = null)
         {
-            this.ShouldRemove = ShouldRemove;
-            this.Model = Model;
+            this.ShouldRemove = Predicate;
+            this.Model = SemanticModel;
             this.NodesToMark = NodesToMark;
+            this.TraceContext = TraceContext;
         }
 
         /// <summary>
         /// 在当前语义模型的语法树中查找与给定节点对应的原始节点。
-        /// 处理语法树在重写过程中可能发生的结构变化。
         /// </summary>
-        /// <param name="Node">待查找的节点</param>
-        /// <returns>在原始语法树中的对应节点，若未找到或模型缺失则返回 null</returns>
         private SyntaxNode? GetOriginalNode(SyntaxNode? Node)
         {
             if (Node == null || this.Model == null) return null;
-            // 如果节点本身就属于当前模型所在的树，直接返回
             if (Node.SyntaxTree == this.Model.SyntaxTree) return Node;
 
             try
             {
-                // 通过 FullSpan 查找原始树中的对应节点
-                var originalRoot = this.Model.SyntaxTree.GetRoot();
-                if (Node.FullSpan.End <= originalRoot.FullSpan.End)
+                var OriginalRoot = this.Model.SyntaxTree.GetRoot();
+                if (Node.FullSpan.End <= OriginalRoot.FullSpan.End)
                 {
-                    var found = originalRoot.FindNode(Node.FullSpan, getInnermostNodeForTie: true);
-                    // 额外校验：确保找到的节点确实属于模型的语法树
-                    if (found != null && found.SyntaxTree == this.Model.SyntaxTree)
+                    var Found = OriginalRoot.FindNode(Node.FullSpan, getInnermostNodeForTie: true);
+                    if (Found != null && Found.SyntaxTree == this.Model.SyntaxTree)
                     {
-                        return found;
+                        return Found;
                     }
                 }
             }
-            catch { }
+            catch { /* 忽略异常 */ }
             return null;
         }
 
         /// <summary>
         /// 获取语法节点的类型符号。
         /// </summary>
-        /// <param name="Node">语法节点</param>
-        /// <returns>类型符号 ITypeSymbol，若无法获取则返回 null</returns>
         private ITypeSymbol? GetNodeType(SyntaxNode? Node)
         {
             var Original = GetOriginalNode(Node);
             if (Original == null || this.Model == null) return null;
             var TypeInfo = this.Model.GetTypeInfo(Original);
-            // 优先返回转换后的类型（ConvertedType），以处理隐式转换场景
             return TypeInfo.ConvertedType ?? TypeInfo.Type;
         }
 
         /// <summary>
         /// 检查节点是否属于"受保护"的声明类型。
-        /// 诸如方法、类型、命名空间等结构性声明，通常不应被该重写器直接移除，
-        /// 以避免破坏源文件的基本结构。
-        /// 只有当 UpwardMarkCollector 明确标记了这些节点时，才允许移除。
         /// </summary>
-        /// <param name="Node">语法节点</param>
-        /// <returns>如果是受保护的声明则返回 true</returns>
         private bool IsProtectedDeclaration(SyntaxNode Node)
         {
-            // 特殊情况：用户明确指定不应删除的函数
             if (Node is MethodDeclarationSyntax Method && Method.Identifier.ValueText == "HackForGamepadInputHell")
             {
                 return true;
@@ -112,9 +94,7 @@ namespace TerrariaTools.RewriteCodeExpressions
                 || Node is SingleVariableDesignationSyntax
                 || Node is ParenthesizedVariableDesignationSyntax
                 || Node is DiscardDesignationSyntax
-            //    || Node is ReturnStatementSyntax
-            //     || Node is BlockSyntax
-                || (Node is BlockSyntax && IsFunctionBody(Node))
+                || (Node is BlockSyntax Block && IsFunctionBody(Block))
                 || Node is ArgumentSyntax
                 || Node is AttributeArgumentSyntax
                 || Node is EqualsValueClauseSyntax
@@ -123,15 +103,15 @@ namespace TerrariaTools.RewriteCodeExpressions
                 || Node is SwitchExpressionArmSyntax;
         }
 
-        private bool IsFunctionBody(SyntaxNode node)
+        private bool IsFunctionBody(BlockSyntax Node)
         {
-            var parent = node.Parent;
-            return parent is MethodDeclarationSyntax
-                || parent is ConstructorDeclarationSyntax
-                || parent is DestructorDeclarationSyntax
-                || parent is AccessorDeclarationSyntax
-                || parent is LocalFunctionStatementSyntax
-                || parent is AnonymousFunctionExpressionSyntax;
+            var Parent = Node.Parent;
+            return Parent is MethodDeclarationSyntax
+                || Parent is ConstructorDeclarationSyntax
+                || Parent is DestructorDeclarationSyntax
+                || Parent is AccessorDeclarationSyntax
+                || Parent is LocalFunctionStatementSyntax
+                || Parent is AnonymousFunctionExpressionSyntax;
         }
 
         /// <summary>
@@ -139,26 +119,34 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// </summary>
         private bool IsSymbolMarked(ISymbol Symbol)
         {
-            if (Symbol == null || NodesToMark == null) return false;
+            if (Symbol == null || this.NodesToMark == null) return false;
+
+            if (SymbolMarkedCache.TryGetValue(Symbol, out bool Marked))
+            {
+                return Marked;
+            }
+
+            Marked = false;
             foreach (var Reference in Symbol.DeclaringSyntaxReferences)
             {
                 var Syntax = Reference.GetSyntax();
                 var DeclaringSpan = Syntax.FullSpan;
 
-                // 检查声明节点或其任何祖先是否在标记集合中
-                if (NodesToMark.Any(M => M.FullSpan.Contains(DeclaringSpan)))
+                if (this.NodesToMark.Any(M => M.FullSpan.Contains(DeclaringSpan)))
                 {
-                    return true;
+                    Marked = true;
+                    break;
                 }
             }
-            return false;
+
+            SymbolMarkedCache[Symbol] = Marked;
+            return Marked;
         }
 
         public override SyntaxNode? VisitIdentifierName(IdentifierNameSyntax Node)
         {
             if (this.ShouldRemove(Node)) return null;
 
-            // 符号表引用失效验证：如果标识符引用的符号声明已被标记移除，则移除该引用
             if (this.Model != null)
             {
                 var Original = GetOriginalNode(Node);
@@ -180,7 +168,6 @@ namespace TerrariaTools.RewriteCodeExpressions
         {
             if (this.ShouldRemove(Node)) return null;
 
-            // 同上：符号表引用失效验证
             if (this.Model != null)
             {
                 var Original = GetOriginalNode(Node);
@@ -298,15 +285,15 @@ namespace TerrariaTools.RewriteCodeExpressions
                 ReturnStatementSyntax => true,
                 ArrowExpressionClauseSyntax => true,
                 EqualsValueClauseSyntax => true,
-                IfStatementSyntax ifStmt => ifStmt.Condition == Node,
-                WhileStatementSyntax whileStmt => whileStmt.Condition == Node,
-                DoStatementSyntax doStmt => doStmt.Condition == Node,
-                ForStatementSyntax forStmt => forStmt.Condition == Node,
-                SwitchStatementSyntax switchStmt => switchStmt.Expression == Node,
+                IfStatementSyntax IfStmt => IfStmt.Condition == Node,
+                WhileStatementSyntax WhileStmt => WhileStmt.Condition == Node,
+                DoStatementSyntax DoStmt => DoStmt.Condition == Node,
+                ForStatementSyntax ForStmt => ForStmt.Condition == Node,
+                SwitchStatementSyntax SwitchStmt => SwitchStmt.Expression == Node,
                 ConditionalExpressionSyntax => true,
 
                 // 在赋值表达式中，右侧必须有值
-                AssignmentExpressionSyntax assign => assign.Right == Node,
+                AssignmentExpressionSyntax Assign => Assign.Right == Node,
 
                 // 在二元表达式中，两侧通常都需要有值
                 BinaryExpressionSyntax => true,
@@ -326,8 +313,8 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的块节点</returns>
         public override SyntaxNode? VisitBlock(BlockSyntax Node)
         {
-            var statements = VisitList(Node.Statements);
-            return Node.WithStatements(statements);
+            var Statements = VisitList(Node.Statements);
+            return Node.WithStatements(Statements);
         }
 
         /// <summary>
@@ -347,30 +334,34 @@ namespace TerrariaTools.RewriteCodeExpressions
             {
                 if (!IsProtectedDeclaration(Node))
                 {
-                    var placeholder = TryCreatePlaceholder(Node);
-                    if (placeholder != null) return placeholder;
+                    var Placeholder = TryCreatePlaceholder(Node);
+                    if (Placeholder != null)
+                    {
+                        TraceContext?.AddDiagnostic(Node, "节点被标记为移除，但上下文要求占位符", Placeholder);
+                        return Placeholder;
+                    }
+                    TraceContext?.AddDiagnostic(Node, "节点被标记为移除且无需占位符");
                     return null;
                 }
                 else if (NodesToMark != null && NodesToMark.Contains(Node))
                 {
                     // 如果是受保护节点，但明确在 NodesToMark 中，则允许移除
+                    TraceContext?.AddDiagnostic(Node, "受保护节点被明确标记为移除");
                     return null;
                 }
             }
 
             // 特殊处理：如果是受保护的 BlockSyntax 且被标记为移除，但不在 NodesToMark 中
-            // 这种情况下，我们不应该分发到 VisitBlock，因为 VisitBlock 会基于 Node.Statements 重新创建 Block，
-            // 而是应该根据分发逻辑继续访问其内容。
             if (Node is BlockSyntax && ShouldRemove(Node) && IsProtectedDeclaration(Node))
             {
                 if (NodesToMark == null || !NodesToMark.Contains(Node))
                 {
-                    // 继续向下访问，而不是分发到可能导致节点保留的 VisitBlock
+                    // 继续向下访问
                     return base.Visit(Node);
                 }
             }
 
-            return Node switch // 根据节点类型进行分发处理，以实现更精细的简化逻辑
+            var Result = Node switch // 根据节点类型进行分发处理，以实现更精细的简化逻辑
             {
                 BlockSyntax Block => VisitBlock(Block), // 显式分发 BlockSyntax
                 // 1. 基础表达式与结构
@@ -453,6 +444,14 @@ namespace TerrariaTools.RewriteCodeExpressions
 
                 _ => base.Visit(Node) // 其他情况调用基类访问方法
             };
+
+            // 如果重写后的结果与原始节点不同，且不是被删除了（Result != null），则记录变更
+            if (Result != null && Result != Node)
+            {
+                TraceContext?.AddDiagnostic(Node, "节点内容已通过结构化简化更新", Result);
+            }
+
+            return Result;
         }
 
         /// <summary>
@@ -462,29 +461,29 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <typeparam name="T">节点类型</typeparam>
         /// <param name="list">原始语法节点列表</param>
         /// <returns>处理后的语法节点列表</returns>
-        public override SyntaxList<T> VisitList<T>(SyntaxList<T> list)
+        public override SyntaxList<T> VisitList<T>(SyntaxList<T> List)
         {
-            var newList = new System.Collections.Generic.List<T>();
-            bool changed = false;
-            foreach (var item in list)
+            var NewList = new System.Collections.Generic.List<T>();
+            bool Changed = false;
+            foreach (var Item in List)
             {
-                var visited = (T?)Visit(item);
-                if (visited != null)
+                var Visited = (T?)Visit(Item);
+                if (Visited != null)
                 {
-                    newList.Add(visited);
+                    NewList.Add(Visited);
                 }
-                if (visited != item)
+                if (Visited != (object?)Item)
                 {
-                    changed = true;
+                    Changed = true;
                 }
             }
 
-            if (newList.Count != list.Count)
+            if (NewList.Count != List.Count)
             {
-                changed = true;
+                Changed = true;
             }
 
-            return changed ? SyntaxFactory.List(newList) : list;
+            return Changed ? SyntaxFactory.List(NewList) : List;
         }
 
         /// <summary>
@@ -492,31 +491,31 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// 遍历列表中的每个元素，移除标记为删除的节点，并根据节点变化情况返回更新后的分隔列表。
         /// </summary>
         /// <typeparam name="T">节点类型</typeparam>
-        /// <param name="list">原始带分隔符的语法节点列表</param>
+        /// <param name="List">原始带分隔符的语法节点列表</param>
         /// <returns>处理后的带分隔符的语法节点列表</returns>
-        public override SeparatedSyntaxList<T> VisitList<T>(SeparatedSyntaxList<T> list)
+        public override SeparatedSyntaxList<T> VisitList<T>(SeparatedSyntaxList<T> List)
         {
-            var newList = new System.Collections.Generic.List<T>();
-            bool changed = false;
-            foreach (var item in list)
+            var NewList = new System.Collections.Generic.List<T>();
+            bool Changed = false;
+            foreach (var Item in List)
             {
-                var visited = (T?)Visit(item);
-                if (visited != null)
+                var Visited = (T?)Visit(Item);
+                if (Visited != null)
                 {
-                    newList.Add(visited);
+                    NewList.Add(Visited);
                 }
-                if (visited != item)
+                if (Visited != (object?)Item)
                 {
-                    changed = true;
+                    Changed = true;
                 }
             }
 
-            if (newList.Count != list.Count)
+            if (NewList.Count != List.Count)
             {
-                changed = true;
+                Changed = true;
             }
 
-            return changed ? SyntaxFactory.SeparatedList(newList) : list;
+            return Changed ? SyntaxFactory.SeparatedList(NewList) : List;
         }
 
         /// <summary>
@@ -527,12 +526,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitNamespaceDeclaration(NamespaceDeclarationSyntax Node)
         {
-            var name = (NameSyntax?)Visit(Node.Name);
-            if (name == null) return null;
-            var members = VisitList(Node.Members);
-            var externs = VisitList(Node.Externs);
-            var usings = VisitList(Node.Usings);
-            return Node.Update(Node.NamespaceKeyword, name, Node.OpenBraceToken, externs, usings, members, Node.CloseBraceToken, Node.SemicolonToken);
+            var Name = (NameSyntax?)Visit(Node.Name);
+            if (Name == null) return null;
+            var Members = VisitList(Node.Members);
+            var Externs = VisitList(Node.Externs);
+            var Usings = VisitList(Node.Usings);
+            return Node.Update(Node.NamespaceKeyword, Name, Node.OpenBraceToken, Externs, Usings, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -543,9 +542,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitUsingDirective(UsingDirectiveSyntax Node)
         {
-            var name = (NameSyntax?)Visit(Node.Name);
-            if (name == null) return null;
-            return Node.Update(Node.GlobalKeyword, Node.UsingKeyword, Node.StaticKeyword, Node.Alias, name, Node.SemicolonToken);
+            var Name = (NameSyntax?)Visit(Node.Name);
+            if (Name == null) return null;
+            return Node.Update(Node.GlobalKeyword, Node.UsingKeyword, Node.StaticKeyword, Node.Alias, Name, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -556,10 +555,10 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitFieldDeclaration(FieldDeclarationSyntax Node)
         {
-            var declaration = (VariableDeclarationSyntax?)Visit(Node.Declaration);
-            if (declaration == null) return null;
-            var attributeLists = VisitList(Node.AttributeLists);
-            return Node.Update(attributeLists, Node.Modifiers, declaration, Node.SemicolonToken);
+            var Declaration = (VariableDeclarationSyntax?)Visit(Node.Declaration);
+            if (Declaration == null) return null;
+            var AttributeLists = VisitList(Node.AttributeLists);
+            return Node.Update(AttributeLists, Node.Modifiers, Declaration, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -570,13 +569,13 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitClassDeclaration(ClassDeclarationSyntax Node)
         {
-            var members = VisitList(Node.Members);
-            var baseList = (BaseListSyntax?)Visit(Node.BaseList);
-            var constraintClauses = VisitList(Node.ConstraintClauses);
-            var attributeLists = VisitList(Node.AttributeLists);
-            var parameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            var Members = VisitList(Node.Members);
+            var BaseList = (BaseListSyntax?)Visit(Node.BaseList);
+            var ConstraintClauses = VisitList(Node.ConstraintClauses);
+            var AttributeLists = VisitList(Node.AttributeLists);
+            var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
 
-            return Node.Update(attributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, parameterList, baseList, constraintClauses, Node.OpenBraceToken, members, Node.CloseBraceToken, Node.SemicolonToken);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -584,12 +583,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// 若所有基类或接口都被移除，则整个基类列表移除。
         /// </summary>
         /// <param name="Node">基类列表节点</param>
-        /// <returns>简化后的节点或 null</returns>
+        /// <returns>简化后的节点 or null</returns>
         public override SyntaxNode? VisitBaseList(BaseListSyntax Node)
         {
-            var types = VisitList(Node.Types);
-            if (types.Count == 0) return null;
-            return Node.Update(Node.ColonToken, types);
+            var Types = VisitList(Node.Types);
+            if (Types.Count == 0) return null;
+            return Node.Update(Node.ColonToken, Types);
         }
 
         /// <summary>
@@ -597,12 +596,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// 若类型部分被移除，则整个节点移除。
         /// </summary>
         /// <param name="Node">简单基类型节点</param>
-        /// <returns>简化后的节点或 null</returns>
+        /// <returns>简化后的节点 or null</returns>
         public override SyntaxNode? VisitSimpleBaseType(SimpleBaseTypeSyntax Node)
         {
-            var type = (TypeSyntax?)Visit(Node.Type);
-            if (type == null) return null;
-            return Node.Update(type);
+            var Type = (TypeSyntax?)Visit(Node.Type);
+            if (Type == null) return null;
+            return Node.Update(Type);
         }
 
         /// <summary>
@@ -610,12 +609,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// 若列表中所有特性都被移除，则整个特性列表移除。
         /// </summary>
         /// <param name="Node">特性列表节点</param>
-        /// <returns>简化后的节点或 null</returns>
+        /// <returns>简化后的节点 or null</returns>
         public override SyntaxNode? VisitAttributeList(AttributeListSyntax Node)
         {
-            var attributes = VisitList(Node.Attributes);
-            if (attributes.Count == 0) return null;
-            return Node.Update(Node.OpenBracketToken, Node.Target, attributes, Node.CloseBracketToken);
+            var Attributes = VisitList(Node.Attributes);
+            if (Attributes.Count == 0) return null;
+            return Node.Update(Node.OpenBracketToken, Node.Target, Attributes, Node.CloseBracketToken);
         }
 
         /// <summary>
@@ -626,22 +625,22 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitMethodDeclaration(MethodDeclarationSyntax Node)
         {
-            var returnType = (TypeSyntax?)Visit(Node.ReturnType);
-            var parameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
-            if (returnType == null || parameterList == null) return null;
+            var ReturnType = (TypeSyntax?)Visit(Node.ReturnType);
+            var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            if (ReturnType == null || ParameterList == null) return null;
 
-            var constraintClauses = VisitList(Node.ConstraintClauses);
-            var attributeLists = VisitList(Node.AttributeLists);
+            var ConstraintClauses = VisitList(Node.ConstraintClauses);
+            var AttributeLists = VisitList(Node.AttributeLists);
 
             return Node.Update(
-                attributeLists,
+                AttributeLists,
                 Node.Modifiers,
-                returnType,
+                ReturnType,
                 Node.ExplicitInterfaceSpecifier,
                 Node.Identifier,
                 Node.TypeParameterList,
-                parameterList,
-                constraintClauses,
+                ParameterList,
+                ConstraintClauses,
                 (BlockSyntax?)Visit(Node.Body),
                 (ArrowExpressionClauseSyntax?)Visit(Node.ExpressionBody),
                 Node.SemicolonToken);
@@ -655,13 +654,13 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitStructDeclaration(StructDeclarationSyntax Node)
         {
-            var members = VisitList(Node.Members);
-            var baseList = (BaseListSyntax?)Visit(Node.BaseList);
-            var constraintClauses = VisitList(Node.ConstraintClauses);
-            var attributeLists = VisitList(Node.AttributeLists);
-            var parameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            var Members = VisitList(Node.Members);
+            var BaseList = (BaseListSyntax?)Visit(Node.BaseList);
+            var ConstraintClauses = VisitList(Node.ConstraintClauses);
+            var AttributeLists = VisitList(Node.AttributeLists);
+            var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
 
-            return Node.Update(attributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, parameterList, baseList, constraintClauses, Node.OpenBraceToken, members, Node.CloseBraceToken, Node.SemicolonToken);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -672,11 +671,11 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitInterfaceDeclaration(InterfaceDeclarationSyntax Node)
         {
-            var members = VisitList(Node.Members);
-            var baseList = (BaseListSyntax?)Visit(Node.BaseList);
-            var constraintClauses = VisitList(Node.ConstraintClauses);
-            var attributeLists = VisitList(Node.AttributeLists);
-            return Node.Update(attributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, baseList, constraintClauses, Node.OpenBraceToken, members, Node.CloseBraceToken, Node.SemicolonToken);
+            var Members = VisitList(Node.Members);
+            var BaseList = (BaseListSyntax?)Visit(Node.BaseList);
+            var ConstraintClauses = VisitList(Node.ConstraintClauses);
+            var AttributeLists = VisitList(Node.AttributeLists);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.Identifier, Node.TypeParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -687,13 +686,13 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitRecordDeclaration(RecordDeclarationSyntax Node)
         {
-            var members = VisitList(Node.Members);
-            var baseList = (BaseListSyntax?)Visit(Node.BaseList);
-            var constraintClauses = VisitList(Node.ConstraintClauses);
-            var attributeLists = VisitList(Node.AttributeLists);
-            var parameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            var Members = VisitList(Node.Members);
+            var BaseList = (BaseListSyntax?)Visit(Node.BaseList);
+            var ConstraintClauses = VisitList(Node.ConstraintClauses);
+            var AttributeLists = VisitList(Node.AttributeLists);
+            var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
 
-            return Node.Update(attributeLists, Node.Modifiers, Node.Keyword, Node.ClassOrStructKeyword, Node.Identifier, Node.TypeParameterList, parameterList, baseList, constraintClauses, Node.OpenBraceToken, members, Node.CloseBraceToken, Node.SemicolonToken);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.Keyword, Node.ClassOrStructKeyword, Node.Identifier, Node.TypeParameterList, ParameterList, BaseList, ConstraintClauses, Node.OpenBraceToken, Members, Node.CloseBraceToken, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -704,12 +703,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitDelegateDeclaration(DelegateDeclarationSyntax Node)
         {
-            var returnType = (TypeSyntax?)Visit(Node.ReturnType);
-            var parameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
-            if (returnType == null || parameterList == null) return null;
-            var constraintClauses = VisitList(Node.ConstraintClauses);
-            var attributeLists = VisitList(Node.AttributeLists);
-            return Node.Update(attributeLists, Node.Modifiers, Node.DelegateKeyword, returnType, Node.Identifier, Node.TypeParameterList, parameterList, constraintClauses, Node.SemicolonToken);
+            var ReturnType = (TypeSyntax?)Visit(Node.ReturnType);
+            var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            if (ReturnType == null || ParameterList == null) return null;
+            var ConstraintClauses = VisitList(Node.ConstraintClauses);
+            var AttributeLists = VisitList(Node.AttributeLists);
+            return Node.Update(AttributeLists, Node.Modifiers, Node.DelegateKeyword, ReturnType, Node.Identifier, Node.TypeParameterList, ParameterList, ConstraintClauses, Node.SemicolonToken);
         }
 
         /// <summary>
@@ -720,14 +719,14 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitPropertyDeclaration(PropertyDeclarationSyntax Node)
         {
-            var type = (TypeSyntax?)Visit(Node.Type);
-            if (type == null) return null;
+            var Type = (TypeSyntax?)Visit(Node.Type);
+            if (Type == null) return null;
 
-            var accessorList = (AccessorListSyntax?)Visit(Node.AccessorList);
-            var expressionBody = (ArrowExpressionClauseSyntax?)Visit(Node.ExpressionBody);
+            var AccessorList = (AccessorListSyntax?)Visit(Node.AccessorList);
+            var ExpressionBody = (ArrowExpressionClauseSyntax?)Visit(Node.ExpressionBody);
 
             // 如果原先有主体/表达式主体，但简化后都没了，则移除属性
-            if ((Node.AccessorList != null && accessorList == null) || (Node.ExpressionBody != null && expressionBody == null))
+            if ((Node.AccessorList != null && AccessorList == null) || (Node.ExpressionBody != null && ExpressionBody == null))
             {
                 return null;
             }
@@ -735,11 +734,11 @@ namespace TerrariaTools.RewriteCodeExpressions
             return Node.Update(
                 Node.AttributeLists,
                 Node.Modifiers,
-                type,
+                Type,
                 Node.ExplicitInterfaceSpecifier,
                 Node.Identifier,
-                accessorList,
-                expressionBody,
+                AccessorList,
+                ExpressionBody,
                 Node.Initializer,
                 Node.SemicolonToken);
         }
@@ -752,17 +751,17 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitIndexerDeclaration(IndexerDeclarationSyntax Node)
         {
-            var type = (TypeSyntax?)Visit(Node.Type);
-            var parameterList = (BracketedParameterListSyntax?)Visit(Node.ParameterList);
-            if (type == null || parameterList == null) return null;
+            var Type = (TypeSyntax?)Visit(Node.Type);
+            var ParameterList = (BracketedParameterListSyntax?)Visit(Node.ParameterList);
+            if (Type == null || ParameterList == null) return null;
 
             return Node.Update(
                 Node.AttributeLists,
                 Node.Modifiers,
-                type,
+                Type,
                 Node.ExplicitInterfaceSpecifier,
                 Node.ThisKeyword,
-                parameterList,
+                ParameterList,
                 (AccessorListSyntax?)Visit(Node.AccessorList),
                 (ArrowExpressionClauseSyntax?)Visit(Node.ExpressionBody),
                 Node.SemicolonToken);
@@ -776,17 +775,17 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitConstructorDeclaration(ConstructorDeclarationSyntax Node)
         {
-            var parameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
-            if (parameterList == null) return null;
+            var ParameterList = (ParameterListSyntax?)Visit(Node.ParameterList);
+            if (ParameterList == null) return null;
 
-            var initializer = (ConstructorInitializerSyntax?)Visit(Node.Initializer);
+            var Initializer = (ConstructorInitializerSyntax?)Visit(Node.Initializer);
 
             return Node.Update(
                 Node.AttributeLists,
                 Node.Modifiers,
                 Node.Identifier,
-                parameterList,
-                initializer,
+                ParameterList,
+                Initializer,
                 (BlockSyntax?)Visit(Node.Body),
                 (ArrowExpressionClauseSyntax?)Visit(Node.ExpressionBody),
                 Node.SemicolonToken);
@@ -800,10 +799,10 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitConstructorInitializer(ConstructorInitializerSyntax Node)
         {
-            var argumentList = (ArgumentListSyntax?)Visit(Node.ArgumentList);
-            if (argumentList == null) return null;
-            if (argumentList.Arguments.Count == 0) return null;
-            return Node.WithArgumentList(argumentList);
+            var ArgumentList = (ArgumentListSyntax?)Visit(Node.ArgumentList);
+            if (ArgumentList == null) return null;
+            if (ArgumentList.Arguments.Count == 0) return null;
+            return Node.WithArgumentList(ArgumentList);
         }
 
         /// <summary>
@@ -813,8 +812,8 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         public override SyntaxNode? VisitBracketedArgumentList(BracketedArgumentListSyntax Node)
         {
-            var arguments = VisitList(Node.Arguments);
-            return Node.Update(Node.OpenBracketToken, arguments, Node.CloseBracketToken);
+            var Arguments = VisitList(Node.Arguments);
+            return Node.Update(Node.OpenBracketToken, Arguments, Node.CloseBracketToken);
         }
 
         /// <summary>
@@ -825,12 +824,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitParameterList(ParameterListSyntax Node)
         {
-            var parameters = VisitList(Node.Parameters);
-            if (parameters.Count == 0 && (Node.Parent is ClassDeclarationSyntax || Node.Parent is RecordDeclarationSyntax || Node.Parent is StructDeclarationSyntax))
+            var Parameters = VisitList(Node.Parameters);
+            if (Parameters.Count == 0 && (Node.Parent is ClassDeclarationSyntax || Node.Parent is RecordDeclarationSyntax || Node.Parent is StructDeclarationSyntax))
             {
                 return null;
             }
-            return Node.Update(Node.OpenParenToken, parameters, Node.CloseParenToken);
+            return Node.Update(Node.OpenParenToken, Parameters, Node.CloseParenToken);
         }
 
         /// <summary>
@@ -840,8 +839,8 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         public override SyntaxNode? VisitBracketedParameterList(BracketedParameterListSyntax Node)
         {
-            var parameters = VisitList(Node.Parameters);
-            return Node.Update(Node.OpenBracketToken, parameters, Node.CloseBracketToken);
+            var Parameters = VisitList(Node.Parameters);
+            return Node.Update(Node.OpenBracketToken, Parameters, Node.CloseBracketToken);
         }
 
         /// <summary>
@@ -852,9 +851,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitArrowExpressionClause(ArrowExpressionClauseSyntax Node)
         {
-            var expression = (ExpressionSyntax?)Visit(Node.Expression);
-            if (expression == null) return null;
-            return Node.Update(Node.ArrowToken, expression);
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+            if (Expression == null) return null;
+            return Node.Update(Node.ArrowToken, Expression);
         }
 
         /// <summary>
@@ -865,20 +864,20 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitTryStatement(TryStatementSyntax Node)
         {
-            var block = (BlockSyntax?)Visit(Node.Block);
-            if (block == null) return null;
+            var Block = (BlockSyntax?)Visit(Node.Block);
+            if (Block == null) return null;
 
-            var catches = VisitList(Node.Catches);
-            var @finally = (FinallyClauseSyntax?)Visit(Node.Finally);
+            var Catches = VisitList(Node.Catches);
+            var Finally = (FinallyClauseSyntax?)Visit(Node.Finally);
 
-            if (catches.Count == 0 && @finally == null)
+            if (Catches.Count == 0 && Finally == null)
             {
                 // 如果没有 catch 和 finally，只保留 try 块的内容（可能需要转换为语句列表，或者干脆移除整个 try）
                 // 这里选择移除，因为通常 try 块是为了异常处理
                 return null;
             }
 
-            return Node.Update(Node.TryKeyword, block, catches, @finally!);
+            return Node.Update(Node.TryKeyword, Block, Catches, Finally!);
         }
 
         /// <summary>
@@ -886,13 +885,13 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// 若 finally 块被移除，则整个子句移除。
         /// </summary>
         /// <param name="Node">finally 子句节点</param>
-        /// <returns>简化后的节点或 null</returns>
+        /// <returns>简化后的节点 or null</returns>
         public override SyntaxNode? VisitFinallyClause(FinallyClauseSyntax Node)
         {
-            var block = (BlockSyntax?)Visit(Node.Block);
-            if (block == null) return null;
+            var Block = (BlockSyntax?)Visit(Node.Block);
+            if (Block == null) return null;
 
-            return Node.Update(Node.FinallyKeyword, block);
+            return Node.Update(Node.FinallyKeyword, Block);
         }
 
         /// <summary>
@@ -903,17 +902,17 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitUsingStatement(UsingStatementSyntax Node)
         {
-            var declaration = (VariableDeclarationSyntax?)Visit(Node.Declaration);
-            var expression = (ExpressionSyntax?)Visit(Node.Expression);
-            var statement = (StatementSyntax?)Visit(Node.Statement);
+            var Declaration = (VariableDeclarationSyntax?)Visit(Node.Declaration);
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+            var Statement = (StatementSyntax?)Visit(Node.Statement);
 
             // 如果主体被移除，或者（有声明且声明被移除），或者（有表达式且表达式被移除），则移除整个 using
-            if (statement == null || (Node.Declaration != null && declaration == null) || (Node.Expression != null && expression == null))
+            if (Statement == null || (Node.Declaration != null && Declaration == null) || (Node.Expression != null && Expression == null))
             {
                 return null;
             }
 
-            return Node.Update(Node.AttributeLists, Node.AwaitKeyword, Node.UsingKeyword, Node.OpenParenToken, declaration, expression, Node.CloseParenToken, statement);
+            return Node.Update(Node.AttributeLists, Node.AwaitKeyword, Node.UsingKeyword, Node.OpenParenToken, Declaration, Expression, Node.CloseParenToken, Statement);
         }
 
         /// <summary>
@@ -924,12 +923,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitLockStatement(LockStatementSyntax Node)
         {
-            var expression = (ExpressionSyntax?)Visit(Node.Expression);
-            var statement = (StatementSyntax?)Visit(Node.Statement);
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+            var Statement = (StatementSyntax?)Visit(Node.Statement);
 
-            if (expression == null || statement == null) return null;
+            if (Expression == null || Statement == null) return null;
 
-            return Node.Update(Node.LockKeyword, Node.OpenParenToken, expression, Node.CloseParenToken, statement);
+            return Node.Update(Node.LockKeyword, Node.OpenParenToken, Expression, Node.CloseParenToken, Statement);
         }
 
         /// <summary>
@@ -940,12 +939,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitFixedStatement(FixedStatementSyntax Node)
         {
-            var declaration = (VariableDeclarationSyntax?)Visit(Node.Declaration);
-            var statement = (StatementSyntax?)Visit(Node.Statement);
+            var Declaration = (VariableDeclarationSyntax?)Visit(Node.Declaration);
+            var Statement = (StatementSyntax?)Visit(Node.Statement);
 
-            if (declaration == null || statement == null) return null;
+            if (Declaration == null || Statement == null) return null;
 
-            return Node.Update(Node.FixedKeyword, Node.OpenParenToken, declaration, Node.CloseParenToken, statement);
+            return Node.Update(Node.FixedKeyword, Node.OpenParenToken, Declaration, Node.CloseParenToken, Statement);
         }
 
         /// <summary>
@@ -956,9 +955,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitUnsafeStatement(UnsafeStatementSyntax Node)
         {
-            var block = (BlockSyntax?)Visit(Node.Block);
-            if (block == null) return null;
-            return Node.Update(Node.UnsafeKeyword, block);
+            var Block = (BlockSyntax?)Visit(Node.Block);
+            if (Block == null) return null;
+            return Node.Update(Node.UnsafeKeyword, Block);
         }
 
         /// <summary>
@@ -969,9 +968,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitCheckedStatement(CheckedStatementSyntax Node)
         {
-            var block = (BlockSyntax?)Visit(Node.Block);
-            if (block == null) return null;
-            return Node.Update(Node.Keyword, block);
+            var Block = (BlockSyntax?)Visit(Node.Block);
+            if (Block == null) return null;
+            return Node.Update(Node.Keyword, Block);
         }
 
         /// <summary>
@@ -982,9 +981,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitLocalFunctionStatement(LocalFunctionStatementSyntax Node)
         {
-            var body = (BlockSyntax?)Visit(Node.Body);
-            var expressionBody = (ArrowExpressionClauseSyntax?)Visit(Node.ExpressionBody);
-            if (body == null && expressionBody == null) return null;
+            var Body = (BlockSyntax?)Visit(Node.Body);
+            var ExpressionBody = (ArrowExpressionClauseSyntax?)Visit(Node.ExpressionBody);
+            if (Body == null && ExpressionBody == null) return null;
 
             return Node.Update(
                 Node.AttributeLists,
@@ -994,8 +993,8 @@ namespace TerrariaTools.RewriteCodeExpressions
                 Node.TypeParameterList,
                 Node.ParameterList,
                 Node.ConstraintClauses,
-                body,
-                expressionBody,
+                Body,
+                ExpressionBody,
                 Node.SemicolonToken);
         }
 
@@ -1007,10 +1006,10 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitTypeParameterConstraintClause(TypeParameterConstraintClauseSyntax Node)
         {
-            var constraints = VisitList(Node.Constraints);
-            if (constraints.Count == 0) return null;
+            var Constraints = VisitList(Node.Constraints);
+            if (Constraints.Count == 0) return null;
 
-            return Node.Update(Node.WhereKeyword, Node.Name, Node.ColonToken, constraints);
+            return Node.Update(Node.WhereKeyword, Node.Name, Node.ColonToken, Constraints);
         }
 
         /// <summary>
@@ -1021,16 +1020,16 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitDeclarationPattern(DeclarationPatternSyntax Node)
         {
-            var type = (TypeSyntax?)Visit(Node.Type);
-            var designation = (VariableDesignationSyntax?)Visit(Node.Designation);
+            var Type = (TypeSyntax?)Visit(Node.Type);
+            var Designation = (VariableDesignationSyntax?)Visit(Node.Designation);
 
-            if (type == null) return null;
-            if (designation == null)
+            if (Type == null) return null;
+            if (Designation == null)
             {
-                designation = SyntaxFactory.DiscardDesignation();
+                Designation = SyntaxFactory.DiscardDesignation();
             }
 
-            return Node.Update(type, designation);
+            return Node.Update(Type, Designation);
         }
 
         /// <summary>
@@ -1041,15 +1040,15 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitRecursivePattern(RecursivePatternSyntax Node)
         {
-            var type = (TypeSyntax?)Visit(Node.Type);
-            var positionalPatternClause = (PositionalPatternClauseSyntax?)Visit(Node.PositionalPatternClause);
-            var propertyPatternClause = (PropertyPatternClauseSyntax?)Visit(Node.PropertyPatternClause);
-            var designation = (VariableDesignationSyntax?)Visit(Node.Designation);
+            var Type = (TypeSyntax?)Visit(Node.Type);
+            var PositionalPatternClause = (PositionalPatternClauseSyntax?)Visit(Node.PositionalPatternClause);
+            var PropertyPatternClause = (PropertyPatternClauseSyntax?)Visit(Node.PropertyPatternClause);
+            var Designation = (VariableDesignationSyntax?)Visit(Node.Designation);
 
             // 如果没有类型且没有子模式，则移除
-            if (type == null && positionalPatternClause == null && propertyPatternClause == null) return null;
+            if (Type == null && PositionalPatternClause == null && PropertyPatternClause == null) return null;
 
-            return Node.Update(type, positionalPatternClause, propertyPatternClause, designation);
+            return Node.Update(Type, PositionalPatternClause, PropertyPatternClause, Designation);
         }
 
         /// <summary>
@@ -1060,12 +1059,12 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         public override SyntaxNode? VisitVarPattern(VarPatternSyntax Node)
         {
-            var designation = (VariableDesignationSyntax?)Visit(Node.Designation);
-            if (designation == null)
+            var Designation = (VariableDesignationSyntax?)Visit(Node.Designation);
+            if (Designation == null)
             {
-                designation = SyntaxFactory.DiscardDesignation();
+                Designation = SyntaxFactory.DiscardDesignation();
             }
-            return Node.Update(Node.VarKeyword, designation);
+            return Node.Update(Node.VarKeyword, Designation);
         }
 
         /// <summary>
@@ -1076,9 +1075,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitConstantPattern(ConstantPatternSyntax Node)
         {
-            var expression = (ExpressionSyntax?)Visit(Node.Expression);
-            if (expression == null) return null;
-            return Node.Update(expression);
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+            if (Expression == null) return null;
+            return Node.Update(Expression);
         }
 
         /// <summary>
@@ -1089,13 +1088,13 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitBinaryPattern(BinaryPatternSyntax Node)
         {
-            var left = (PatternSyntax?)Visit(Node.Left);
-            var right = (PatternSyntax?)Visit(Node.Right);
+            var Left = (PatternSyntax?)Visit(Node.Left);
+            var Right = (PatternSyntax?)Visit(Node.Right);
 
-            if (left == null) return right;
-            if (right == null) return left;
+            if (Left == null) return Right;
+            if (Right == null) return Left;
 
-            return Node.Update(left, Node.OperatorToken, right);
+            return Node.Update(Left, Node.OperatorToken, Right);
         }
 
         /// <summary>
@@ -1106,9 +1105,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitUnaryPattern(UnaryPatternSyntax Node)
         {
-            var pattern = (PatternSyntax?)Visit(Node.Pattern);
-            if (pattern == null) return null;
-            return Node.Update(Node.OperatorToken, pattern);
+            var Pattern = (PatternSyntax?)Visit(Node.Pattern);
+            if (Pattern == null) return null;
+            return Node.Update(Node.OperatorToken, Pattern);
         }
 
         /// <summary>
@@ -1119,9 +1118,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitRelationalPattern(RelationalPatternSyntax Node)
         {
-            var expression = (ExpressionSyntax?)Visit(Node.Expression);
-            if (expression == null) return null;
-            return Node.Update(Node.OperatorToken, expression);
+            var Expression = (ExpressionSyntax?)Visit(Node.Expression);
+            if (Expression == null) return null;
+            return Node.Update(Node.OperatorToken, Expression);
         }
 
         /// <summary>
@@ -1132,9 +1131,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitTypePattern(TypePatternSyntax Node)
         {
-            var type = (TypeSyntax?)Visit(Node.Type);
-            if (type == null) return null;
-            return Node.Update(type);
+            var Type = (TypeSyntax?)Visit(Node.Type);
+            if (Type == null) return null;
+            return Node.Update(Type);
         }
 
         /// <summary>
@@ -1145,9 +1144,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitParenthesizedPattern(ParenthesizedPatternSyntax Node)
         {
-            var pattern = (PatternSyntax?)Visit(Node.Pattern);
-            if (pattern == null) return null;
-            return Node.Update(Node.OpenParenToken, pattern, Node.CloseParenToken);
+            var Pattern = (PatternSyntax?)Visit(Node.Pattern);
+            if (Pattern == null) return null;
+            return Node.Update(Node.OpenParenToken, Pattern, Node.CloseParenToken);
         }
 
         /// <summary>
@@ -1158,9 +1157,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点或 null</returns>
         public override SyntaxNode? VisitParenthesizedVariableDesignation(ParenthesizedVariableDesignationSyntax Node)
         {
-            var variables = VisitList(Node.Variables);
-            if (variables.Count == 0) return null;
-            return Node.Update(Node.OpenParenToken, variables, Node.CloseParenToken);
+            var Variables = VisitList(Node.Variables);
+            if (Variables.Count == 0) return null;
+            return Node.Update(Node.OpenParenToken, Variables, Node.CloseParenToken);
         }
 
         /// <summary>
@@ -1286,9 +1285,9 @@ namespace TerrariaTools.RewriteCodeExpressions
             var NewTrue = TruePart is ExpressionSyntax T ? T : SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression);
             var NewFalse = FalsePart is ExpressionSyntax F ? F : SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression);
 
-            if (Condition is ExpressionSyntax CondExpr)
+            if (Condition is ExpressionSyntax ConditionExpression)
             {
-                return Node.Update(CondExpr, Node.QuestionToken, NewTrue, Node.ColonToken, NewFalse);
+                return Node.Update(ConditionExpression, Node.QuestionToken, NewTrue, Node.ColonToken, NewFalse);
             }
 
             return null;
@@ -1364,9 +1363,9 @@ namespace TerrariaTools.RewriteCodeExpressions
             var Expression = Visit(Node.Expression);
             if (Expression == null) return null;
 
-            if (Expression is ExpressionSyntax Expr)
+            if (Expression is ExpressionSyntax ExpressionSyntaxNode)
             {
-                return Node.Update(Expr, Node.OperatorToken, Node.Name);
+                return Node.Update(ExpressionSyntaxNode, Node.OperatorToken, Node.Name);
             }
             return null;
         }
@@ -1382,20 +1381,20 @@ namespace TerrariaTools.RewriteCodeExpressions
             var Expression = Visit(Node.Expression);
             if (Expression == null) return null;
 
-            var Args = Node.ArgumentList.Arguments
-                .Select(a => (ArgumentSyntax?)Visit(a))
-                .Where(a => a != null)
+            var Arguments = Node.ArgumentList.Arguments
+                .Select(Arg => (ArgumentSyntax?)Visit(Arg))
+                .Where(Arg => Arg != null)
                 .Cast<ArgumentSyntax>()
                 .ToList();
 
-            if (Args.Count < Node.ArgumentList.Arguments.Count && this.Model != null)
+            if (Arguments.Count < Node.ArgumentList.Arguments.Count && this.Model != null)
             {
                 var OriginalElementAccess = GetOriginalNode(Node) as ElementAccessExpressionSyntax;
                 var Symbol = OriginalElementAccess != null ? this.Model.GetSymbolInfo(OriginalElementAccess).Symbol as IPropertySymbol : null;
                 var NewArgs = new System.Collections.Generic.List<ArgumentSyntax>();
-                for (int i = 0; i < Node.ArgumentList.Arguments.Count; i++)
+                for (int Index = 0; Index < Node.ArgumentList.Arguments.Count; Index++)
                 {
-                    var OriginalArg = Node.ArgumentList.Arguments[i];
+                    var OriginalArg = Node.ArgumentList.Arguments[Index];
                     var ProcessedArg = (ArgumentSyntax?)Visit(OriginalArg);
                     if (ProcessedArg != null)
                     {
@@ -1404,9 +1403,9 @@ namespace TerrariaTools.RewriteCodeExpressions
                     else
                     {
                         ITypeSymbol? ParamType = null;
-                        if (Symbol != null && Symbol.IsIndexer && i < Symbol.Parameters.Length)
+                        if (Symbol != null && Symbol.IsIndexer && Index < Symbol.Parameters.Length)
                         {
-                            ParamType = Symbol.Parameters[i].Type;
+                            ParamType = Symbol.Parameters[Index].Type;
                         }
 
                         if (ParamType == null)
@@ -1424,12 +1423,12 @@ namespace TerrariaTools.RewriteCodeExpressions
                         }
                     }
                 }
-                Args = NewArgs;
+                Arguments = NewArgs;
             }
 
-            if (Args.Count == 0 && Node.ArgumentList.Arguments.Count > 0) return null;
+            if (Arguments.Count == 0 && Node.ArgumentList.Arguments.Count > 0) return null;
 
-            return Node.Update((ExpressionSyntax)Expression, Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Args)));
+            return Node.Update((ExpressionSyntax)Expression, Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Arguments)));
         }
 
         /// <summary>
@@ -1445,20 +1444,20 @@ namespace TerrariaTools.RewriteCodeExpressions
             var Expression = Visit(Node.Expression);
             if (Expression == null) return null;
 
-            var Args = Node.ArgumentList.Arguments
-                .Select(a => (ArgumentSyntax?)Visit(a))
-                .Where(a => a != null)
+            var Arguments = Node.ArgumentList.Arguments
+                .Select(Arg => (ArgumentSyntax?)Visit(Arg))
+                .Where(Arg => Arg != null)
                 .Cast<ArgumentSyntax>()
                 .ToList();
 
-            if (Args.Count < Node.ArgumentList.Arguments.Count && this.Model != null)
+            if (Arguments.Count < Node.ArgumentList.Arguments.Count && this.Model != null)
             {
                 var OriginalInvocation = GetOriginalNode(Node) as InvocationExpressionSyntax;
                 var Symbol = OriginalInvocation != null ? this.Model.GetSymbolInfo(OriginalInvocation).Symbol as IMethodSymbol : null;
                 var NewArgs = new System.Collections.Generic.List<ArgumentSyntax>();
-                for (int i = 0; i < Node.ArgumentList.Arguments.Count; i++)
+                for (int Index = 0; Index < Node.ArgumentList.Arguments.Count; Index++)
                 {
-                    var OriginalArg = Node.ArgumentList.Arguments[i];
+                    var OriginalArg = Node.ArgumentList.Arguments[Index];
                     var ProcessedArg = (ArgumentSyntax?)Visit(OriginalArg);
                     if (ProcessedArg != null)
                     {
@@ -1467,9 +1466,9 @@ namespace TerrariaTools.RewriteCodeExpressions
                     else
                     {
                         ITypeSymbol? ParamType = null;
-                        if (Symbol != null && i < Symbol.Parameters.Length)
+                        if (Symbol != null && Index < Symbol.Parameters.Length)
                         {
-                            ParamType = Symbol.Parameters[i].Type;
+                            ParamType = Symbol.Parameters[Index].Type;
                         }
 
                         if (ParamType == null)
@@ -1487,10 +1486,10 @@ namespace TerrariaTools.RewriteCodeExpressions
                         }
                     }
                 }
-                Args = NewArgs;
+                Arguments = NewArgs;
             }
 
-            return Node.Update((ExpressionSyntax)Expression, Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Args)));
+            return Node.Update((ExpressionSyntax)Expression, Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Arguments)));
         }
 
         /// <summary>
@@ -1516,39 +1515,39 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         private SyntaxNode? HandleInitializer(InitializerExpressionSyntax Node)
         {
-            var Exprs = new System.Collections.Generic.List<ExpressionSyntax>();
-            foreach (var E in Node.Expressions)
+            var Expressions = new System.Collections.Generic.List<ExpressionSyntax>();
+            foreach (var ExpressionItem in Node.Expressions)
             {
-                var Processed = (ExpressionSyntax?)Visit(E);
+                var Processed = (ExpressionSyntax?)Visit(ExpressionItem);
                 if (Processed != null)
                 {
-                    Exprs.Add(Processed);
+                    Expressions.Add(Processed);
                 }
                 else
                 {
                     // 如果在对象初始化器中，且是赋值表达式
-                    if (Node.IsKind(SyntaxKind.ObjectInitializerExpression) && E is AssignmentExpressionSyntax Assign)
+                    if (Node.IsKind(SyntaxKind.ObjectInitializerExpression) && ExpressionItem is AssignmentExpressionSyntax Assign)
                     {
                         var Type = GetNodeType(Assign.Right);
                         if (Type != null)
                         {
-                            Exprs.Add(Assign.WithRight(CreatePlaceholder(Type)));
+                            Expressions.Add(Assign.WithRight(CreatePlaceholder(Type)));
                         }
                     }
                     else
                     {
-                        var Type = GetNodeType(E);
+                        var Type = GetNodeType(ExpressionItem);
                         if (Type != null)
                         {
-                            Exprs.Add(CreatePlaceholder(Type));
+                            Expressions.Add(CreatePlaceholder(Type));
                         }
                     }
                 }
             }
 
             // 对于某些父节点，如果初始化器为空，则整个初始化器可以移除
-            if (Exprs.Count == 0 && Node.Parent is not (ObjectCreationExpressionSyntax or ArrayCreationExpressionSyntax or ImplicitArrayCreationExpressionSyntax or ImplicitStackAllocArrayCreationExpressionSyntax)) return null;
-            return Node.WithExpressions(SyntaxFactory.SeparatedList(Exprs)); // 更新并返回初始化器节点
+            if (Expressions.Count == 0 && Node.Parent is not (ObjectCreationExpressionSyntax or ArrayCreationExpressionSyntax or ImplicitArrayCreationExpressionSyntax or ImplicitStackAllocArrayCreationExpressionSyntax)) return null;
+            return Node.WithExpressions(SyntaxFactory.SeparatedList(Expressions)); // 更新并返回初始化器节点
         }
 
         /// <summary>
@@ -1591,8 +1590,8 @@ namespace TerrariaTools.RewriteCodeExpressions
         private SyntaxNode? HandleCollection(CollectionExpressionSyntax Node)
         {
             var Elements = Node.Elements // 获取集合元素列表
-                .Select(e => (CollectionElementSyntax?)Visit(e)) // 访问并重写每个元素
-                .Where(e => e != null) // 过滤掉被移除的元素
+                .Select(Element => (CollectionElementSyntax?)Visit(Element)) // 访问并重写每个元素
+                .Where(Element => Element != null) // 过滤掉被移除的元素
                 .Cast<CollectionElementSyntax>() // 转换为 CollectionElementSyntax
                 .ToList(); // 转换为列表
             return Node.WithElements(SyntaxFactory.SeparatedList(Elements)); // 更新并返回带新元素列表的集合节点
@@ -1651,12 +1650,12 @@ namespace TerrariaTools.RewriteCodeExpressions
                 // 如果 If 分支被移除，但有 Else 分支，则尝试将 Else 分支提升
                 if (ElseClause != null)
                 {
-                    var ElseStmt = ElseClause.Statement;
-                    if (ElseStmt is BlockSyntax ElseBlock && ElseBlock.Statements.Count == 1)
+                    var ElseStatement = ElseClause.Statement;
+                    if (ElseStatement is BlockSyntax ElseBlock && ElseBlock.Statements.Count == 1)
                     {
                         return ElseBlock.Statements[0].WithLeadingTrivia(Node.GetLeadingTrivia());
                     }
-                    return ElseStmt.WithLeadingTrivia(Node.GetLeadingTrivia());
+                    return ElseStatement.WithLeadingTrivia(Node.GetLeadingTrivia());
                 }
                 // 如果都没有，则整个 If 也没有了
                 return null;
@@ -1778,8 +1777,80 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// </summary>
         private ExpressionSyntax CreatePlaceholder(ITypeSymbol Type)
         {
-            var TypeName = Type.ToDisplayString();
-            return SyntaxFactory.DefaultExpression(SyntaxFactory.ParseTypeName(TypeName));
+            // 1. 处理特殊系统类型
+            switch (Type.SpecialType)
+            {
+                case SpecialType.System_Boolean:
+                    return SyntaxFactory.LiteralExpression(SyntaxKind.FalseLiteralExpression);
+                case SpecialType.System_String:
+                    return SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.StringKeyword)),
+                        SyntaxFactory.IdentifierName("Empty"));
+                case SpecialType.System_Int32:
+                case SpecialType.System_Int64:
+                case SpecialType.System_Decimal:
+                case SpecialType.System_Double:
+                case SpecialType.System_Single:
+                    return SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(0));
+            }
+
+            // 2. 处理 Task 和 Task<T>
+            var FullName = Type.ToDisplayString();
+            if (FullName == "System.Threading.Tasks.Task")
+            {
+                return SyntaxFactory.MemberAccessExpression(
+                    SyntaxKind.SimpleMemberAccessExpression,
+                    SyntaxFactory.ParseTypeName("System.Threading.Tasks.Task"),
+                    SyntaxFactory.IdentifierName("CompletedTask"));
+            }
+            if (Type is INamedTypeSymbol NamedType && NamedType.IsGenericType && FullName.StartsWith("System.Threading.Tasks.Task<"))
+            {
+                var T = NamedType.TypeArguments[0];
+                return SyntaxFactory.InvocationExpression(
+                    SyntaxFactory.MemberAccessExpression(
+                        SyntaxKind.SimpleMemberAccessExpression,
+                        SyntaxFactory.ParseTypeName("System.Threading.Tasks.Task"),
+                        SyntaxFactory.GenericName("FromResult")
+                            .WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.ParseTypeName(T.ToDisplayString()))))),
+                    SyntaxFactory.ArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.Argument(CreatePlaceholder(T)))));
+            }
+
+            // 3. 处理集合类型 (IEnumerable, List, Array 等)
+            if (Type.TypeKind == TypeKind.Array)
+            {
+                var ArrayType = (IArrayTypeSymbol)Type;
+                return SyntaxFactory.ArrayCreationExpression(
+                    SyntaxFactory.ArrayType(SyntaxFactory.ParseTypeName(ArrayType.ElementType.ToDisplayString()))
+                        .WithRankSpecifiers(SyntaxFactory.SingletonList(SyntaxFactory.ArrayRankSpecifier(SyntaxFactory.SingletonSeparatedList<ExpressionSyntax>(
+                            SyntaxFactory.LiteralExpression(SyntaxKind.NumericLiteralExpression, SyntaxFactory.Literal(0)))))));
+            }
+
+            if (Type is INamedTypeSymbol CollectionType && CollectionType.IsGenericType)
+            {
+                var BaseName = CollectionType.ConstructedFrom.ToDisplayString();
+                if (BaseName == "System.Collections.Generic.IEnumerable<T>" ||
+                    BaseName == "System.Collections.Generic.IList<T>" ||
+                    BaseName == "System.Collections.Generic.IReadOnlyList<T>")
+                {
+                    return SyntaxFactory.InvocationExpression(
+                        SyntaxFactory.MemberAccessExpression(
+                            SyntaxKind.SimpleMemberAccessExpression,
+                            SyntaxFactory.ParseTypeName("System.Linq.Enumerable"),
+                            SyntaxFactory.GenericName("Empty")
+                                .WithTypeArgumentList(SyntaxFactory.TypeArgumentList(SyntaxFactory.SingletonSeparatedList(SyntaxFactory.ParseTypeName(CollectionType.TypeArguments[0].ToDisplayString()))))));
+                }
+                if (BaseName == "System.Collections.Generic.List<T>")
+                {
+                    return SyntaxFactory.ObjectCreationExpression(
+                        SyntaxFactory.ParseTypeName(FullName),
+                        SyntaxFactory.ArgumentList(),
+                        null);
+                }
+            }
+
+            // 4. 默认退回到 default(T)
+            return SyntaxFactory.DefaultExpression(SyntaxFactory.ParseTypeName(FullName));
         }
 
         /// <summary>
@@ -2043,9 +2114,9 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override SyntaxNode? VisitArgumentList(ArgumentListSyntax Node)
         {
             var NewArgs = new System.Collections.Generic.List<ArgumentSyntax>();
-            for (int i = 0; i < Node.Arguments.Count; i++)
+            for (int Index = 0; Index < Node.Arguments.Count; Index++)
             {
-                var Arg = Node.Arguments[i];
+                var Arg = Node.Arguments[Index];
                 var Processed = (ArgumentSyntax?)Visit(Arg);
                 if (Processed != null)
                 {
@@ -2111,20 +2182,20 @@ namespace TerrariaTools.RewriteCodeExpressions
                 if (Type == null) return null;
             }
 
-            var Args = Node.ArgumentList?.Arguments
-                .Select(a => (ArgumentSyntax?)Visit(a))
-                .Where(a => a != null)
+            var Arguments = Node.ArgumentList?.Arguments
+                .Select(Arg => (ArgumentSyntax?)Visit(Arg))
+                .Where(Arg => Arg != null)
                 .Cast<ArgumentSyntax>()
                 .ToList();
 
             var OriginalNode = GetOriginalNode(Node) as BaseObjectCreationExpressionSyntax;
-            if (Node.ArgumentList != null && Args != null && Args.Count < Node.ArgumentList.Arguments.Count && this.Model != null && OriginalNode != null)
+            if (Node.ArgumentList != null && Arguments != null && Arguments.Count < Node.ArgumentList.Arguments.Count && this.Model != null && OriginalNode != null)
             {
                 var Symbol = this.Model.GetSymbolInfo(OriginalNode).Symbol as IMethodSymbol;
                 var NewArgs = new System.Collections.Generic.List<ArgumentSyntax>();
-                for (int i = 0; i < Node.ArgumentList.Arguments.Count; i++)
+                for (int Index = 0; Index < Node.ArgumentList.Arguments.Count; Index++)
                 {
-                    var OriginalArg = Node.ArgumentList.Arguments[i];
+                    var OriginalArg = Node.ArgumentList.Arguments[Index];
                     var ProcessedArg = (ArgumentSyntax?)Visit(OriginalArg);
                     if (ProcessedArg != null)
                     {
@@ -2133,9 +2204,9 @@ namespace TerrariaTools.RewriteCodeExpressions
                     else
                     {
                         ITypeSymbol? ParamType = null;
-                        if (Symbol != null && i < Symbol.Parameters.Length)
+                        if (Symbol != null && Index < Symbol.Parameters.Length)
                         {
-                            ParamType = Symbol.Parameters[i].Type;
+                            ParamType = Symbol.Parameters[Index].Type;
                         }
 
                         var OriginalArgInTree = GetOriginalNode(OriginalArg) as ArgumentSyntax;
@@ -2155,18 +2226,18 @@ namespace TerrariaTools.RewriteCodeExpressions
                         }
                     }
                 }
-                Args = NewArgs;
+                Arguments = NewArgs;
             }
 
             var Initializer = (InitializerExpressionSyntax?)Visit(Node.Initializer);
-            var NewArgList = Node.ArgumentList != null ? Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Args)) : null;
+            var NewArgList = Node.ArgumentList != null ? Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Arguments)) : null;
 
-            if (Node is ObjectCreationExpressionSyntax OC)
+            if (Node is ObjectCreationExpressionSyntax ObjectCreation)
             {
-                return OC.Update(OC.NewKeyword, Type!, NewArgList, Initializer);
+                return ObjectCreation.Update(ObjectCreation.NewKeyword, Type!, NewArgList, Initializer);
             }
-            if (Node is ImplicitObjectCreationExpressionSyntax IOC)
-                return IOC.WithArgumentList(NewArgList!).WithInitializer(Initializer);
+            if (Node is ImplicitObjectCreationExpressionSyntax ImplicitObjectCreation)
+                return ImplicitObjectCreation.WithArgumentList(NewArgList!).WithInitializer(Initializer);
 
             return base.Visit(Node);
         }
@@ -2182,8 +2253,8 @@ namespace TerrariaTools.RewriteCodeExpressions
             var ElementType = Visit(Node.ElementType);
             if (ElementType == null) return null;
             var RankSpecifiers = Node.RankSpecifiers
-                .Select(r => (ArrayRankSpecifierSyntax?)Visit(r))
-                .Where(r => r != null)
+                .Select(Rank => (ArrayRankSpecifierSyntax?)Visit(Rank))
+                .Where(Rank => Rank != null)
                 .Cast<ArrayRankSpecifierSyntax>()
                 .ToList();
             if (RankSpecifiers.Count == 0 && Node.RankSpecifiers.Count > 0) return null;
@@ -2345,7 +2416,7 @@ namespace TerrariaTools.RewriteCodeExpressions
             if (Node.Kind() != SyntaxKind.SimpleAssignmentExpression)
             {
                 if (Left == null) return null;
-                if (Right == null) return Left is SyntaxNode leftNode ? leftNode.WithTrailingTrivia(Node.GetTrailingTrivia()) : null;
+                if (Right == null) return Left is SyntaxNode LeftNode ? LeftNode.WithTrailingTrivia(Node.GetTrailingTrivia()) : null;
             }
             else
             {
@@ -2385,12 +2456,12 @@ namespace TerrariaTools.RewriteCodeExpressions
                         var ArgType = TypeInfo.ConvertedType ?? TypeInfo.Type;
                         if (ArgType != null)
                         {
-                            var placeholder = CreatePlaceholder(ArgType);
-                            if (placeholder != null)
+                            var Placeholder = CreatePlaceholder(ArgType);
+                            if (Placeholder != null)
                             {
-                                if (Left is ExpressionSyntax leftExpr)
+                                if (Left is ExpressionSyntax TargetLeftExpr)
                                 {
-                                    return Node.Update(leftExpr, Node.OperatorToken, placeholder);
+                                    return Node.Update(TargetLeftExpr, Node.OperatorToken, Placeholder);
                                 }
                             }
                         }
@@ -2400,9 +2471,9 @@ namespace TerrariaTools.RewriteCodeExpressions
                 }
             }
 
-            if (Left is ExpressionSyntax LeftExpr && Right is ExpressionSyntax RightExpr)
+            if (Left is ExpressionSyntax FinalLeftExpr && Right is ExpressionSyntax FinalRightExpr)
             {
-                return Node.Update(LeftExpr, Node.OperatorToken, RightExpr);
+                return Node.Update(FinalLeftExpr, Node.OperatorToken, FinalRightExpr);
             }
             return Left ?? Right;
         }
@@ -2472,12 +2543,12 @@ namespace TerrariaTools.RewriteCodeExpressions
                 }
             }
 
-            if (Node is ParenthesizedLambdaExpressionSyntax PL)
-                return PL.WithBody((CSharpSyntaxNode)Body);
-            if (Node is SimpleLambdaExpressionSyntax SL)
-                return SL.WithBody((CSharpSyntaxNode)Body);
-            if (Node is AnonymousMethodExpressionSyntax AM)
-                return AM.WithBody((BlockSyntax)Body);
+            if (Node is ParenthesizedLambdaExpressionSyntax ParenthesizedLambda)
+                return ParenthesizedLambda.WithBody((CSharpSyntaxNode)Body);
+            if (Node is SimpleLambdaExpressionSyntax SimpleLambda)
+                return SimpleLambda.WithBody((CSharpSyntaxNode)Body);
+            if (Node is AnonymousMethodExpressionSyntax AnonymousMethod)
+                return AnonymousMethod.WithBody((BlockSyntax)Body);
 
             return base.Visit(Node);
         }
@@ -2497,8 +2568,8 @@ namespace TerrariaTools.RewriteCodeExpressions
             if (Governing == null) return null;
 
             var Arms = Node.Arms
-                .Select(a => (SwitchExpressionArmSyntax?)Visit(a))
-                .Where(a => a != null)
+                .Select(Arm => (SwitchExpressionArmSyntax?)Visit(Arm))
+                .Where(Arm => Arm != null)
                 .Cast<SwitchExpressionArmSyntax>()
                 .ToList();
 
@@ -2585,8 +2656,8 @@ namespace TerrariaTools.RewriteCodeExpressions
             if (SelectOrGroup == null) return null;
 
             var Clauses = Node.Clauses
-                .Select(c => (QueryClauseSyntax?)Visit(c))
-                .Where(c => c != null)
+                .Select(Clause => (QueryClauseSyntax?)Visit(Clause))
+                .Where(Clause => Clause != null)
                 .Cast<QueryClauseSyntax>()
                 .ToList();
             var Continuation = Node.Continuation != null ? (QueryContinuationSyntax?)Visit(Node.Continuation) : null;
@@ -2655,8 +2726,8 @@ namespace TerrariaTools.RewriteCodeExpressions
         public override SyntaxNode? VisitOrderByClause(OrderByClauseSyntax Node)
         {
             var Orderings = Node.Orderings
-                .Select(o => (OrderingSyntax?)Visit(o))
-                .Where(o => o != null)
+                .Select(Ordering => (OrderingSyntax?)Visit(Ordering))
+                .Where(Ordering => Ordering != null)
                 .Cast<OrderingSyntax>()
                 .ToList();
             if (Orderings.Count == 0) return null;
@@ -2734,8 +2805,8 @@ namespace TerrariaTools.RewriteCodeExpressions
         private SyntaxNode? HandleInterpolatedString(InterpolatedStringExpressionSyntax Node)
         {
             var Contents = Node.Contents
-                .Select(c => Visit(c))
-                .Where(c => c != null)
+                .Select(Content => Visit(Content))
+                .Where(Content => Content != null)
                 .Cast<InterpolatedStringContentSyntax>()
                 .ToList();
             return Node.WithContents(SyntaxFactory.List(Contents));
@@ -2750,8 +2821,8 @@ namespace TerrariaTools.RewriteCodeExpressions
         private SyntaxNode? HandleAnonymousObjectCreation(AnonymousObjectCreationExpressionSyntax Node)
         {
             var Initializers = Node.Initializers
-                .Select(i => (AnonymousObjectMemberDeclaratorSyntax?)Visit(i))
-                .Where(i => i != null)
+                .Select(Initializer => (AnonymousObjectMemberDeclaratorSyntax?)Visit(Initializer))
+                .Where(Initializer => Initializer != null)
                 .Cast<AnonymousObjectMemberDeclaratorSyntax>()
                 .ToList();
 
@@ -2761,9 +2832,9 @@ namespace TerrariaTools.RewriteCodeExpressions
                 var TypeInfo = this.Model.GetTypeInfo(OriginalNode);
                 var AnonType = TypeInfo.ConvertedType as INamedTypeSymbol;
                 var NewInitializers = new System.Collections.Generic.List<AnonymousObjectMemberDeclaratorSyntax>();
-                for (int i = 0; i < Node.Initializers.Count; i++)
+                for (int Index = 0; Index < Node.Initializers.Count; Index++)
                 {
-                    var OriginalInit = Node.Initializers[i];
+                    var OriginalInit = Node.Initializers[Index];
                     var ProcessedInit = (AnonymousObjectMemberDeclaratorSyntax?)Visit(OriginalInit);
                     if (ProcessedInit != null)
                     {
@@ -2772,9 +2843,9 @@ namespace TerrariaTools.RewriteCodeExpressions
                     else
                     {
                         ITypeSymbol? MemberType = null;
-                        if (AnonType != null && i < AnonType.GetMembers().Length)
+                        if (AnonType != null && Index < AnonType.GetMembers().Length)
                         {
-                            var Member = AnonType.GetMembers()[i];
+                            var Member = AnonType.GetMembers()[Index];
                             if (Member is IPropertySymbol Prop) MemberType = Prop.Type;
                         }
 
@@ -2926,15 +2997,15 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         private SyntaxNode? HandleElementBinding(ElementBindingExpressionSyntax Node)
         {
-            var Args = Node.ArgumentList.Arguments
-                .Select(a => (ArgumentSyntax?)Visit(a))
-                .Where(a => a != null)
+            var Arguments = Node.ArgumentList.Arguments
+                .Select(Arg => (ArgumentSyntax?)Visit(Arg))
+                .Where(Arg => Arg != null)
                 .Cast<ArgumentSyntax>()
                 .ToList();
 
-            if (Args.Count == 0 && Node.ArgumentList.Arguments.Count > 0) return null;
+            if (Arguments.Count == 0 && Node.ArgumentList.Arguments.Count > 0) return null;
 
-            return Node.Update(Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Args)));
+            return Node.Update(Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Arguments)));
         }
 
         /// <summary>
@@ -2961,15 +3032,15 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <returns>简化后的节点</returns>
         private SyntaxNode? HandleImplicitElementAccess(ImplicitElementAccessSyntax Node)
         {
-            var Args = Node.ArgumentList.Arguments
-                .Select(a => (ArgumentSyntax?)Visit(a))
-                .Where(a => a != null)
+            var Arguments = Node.ArgumentList.Arguments
+                .Select(Arg => (ArgumentSyntax?)Visit(Arg))
+                .Where(Arg => Arg != null)
                 .Cast<ArgumentSyntax>()
                 .ToList();
 
-            if (Args.Count == 0 && Node.ArgumentList.Arguments.Count > 0) return null;
+            if (Arguments.Count == 0 && Node.ArgumentList.Arguments.Count > 0) return null;
 
-            return Node.Update(Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Args)));
+            return Node.Update(Node.ArgumentList.WithArguments(SyntaxFactory.SeparatedList(Arguments)));
         }
 
         /// <summary>

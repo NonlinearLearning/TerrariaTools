@@ -51,7 +51,7 @@ namespace TerrariaTools.RewriteCodeExpressions
                 // 2. 跨树位置检查（不同树场景，如 annotatedRoot 与 originalTree）
                 // 只要 NodesToMark 中存在任何节点（或其祖先）的 FullSpan 包含声明节点，即视为已标记
                 var DeclaringSpan = Syntax.FullSpan;
-                if (NodesToMark.Any(M => M.FullSpan.Contains(DeclaringSpan)))
+                if (NodesToMark.Any(MarkedNode => MarkedNode.FullSpan.Contains(DeclaringSpan)))
                 {
                     return true;
                 }

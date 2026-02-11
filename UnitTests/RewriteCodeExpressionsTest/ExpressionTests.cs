@@ -50,7 +50,7 @@ class Test {
 
             var result = ExpressionProcessor.RemoveExpressionPart(root, argument.Expression, model);
 
-            string expected = "Foo(default(string))";
+            string expected = "Foo(string.Empty)";
             Assert.Contains(expected, result!.ToFullString());
         }
 
@@ -68,8 +68,8 @@ class Test {
 
             var result = ExpressionProcessor.RemoveExpressionPart(root, argument.Expression, model);
 
-            // 预期结果应该是 Foo(default(int))
-            string expected = "Foo(default(int))";
+            // 预期结果应该是 Foo(0)
+            string expected = "Foo(0)";
             Assert.Contains(expected, result!.ToFullString());
         }
 
@@ -99,12 +99,12 @@ public class Vector2 { public float X, Y; }
 
             var result = ExpressionProcessor.RemoveExpressionPart(root, targetArg.Expression, model);
 
-            // 验证输出中参数数量仍然是 7 个，且被删除的参数被替换为了 (int)0
+            // 验证输出中参数数量仍然是 7 个，且被删除的参数被替换为了 0
             var newInvocation = result!.DescendantNodes().OfType<InvocationExpressionSyntax>()
                 .First(i => i.ToString().Contains("SpawnMinionOnCursor"));
 
             Assert.Equal(7, newInvocation.ArgumentList.Arguments.Count);
-            Assert.Equal("default(int)", newInvocation.ArgumentList.Arguments[2].Expression.ToString());
+            Assert.Equal("0", newInvocation.ArgumentList.Arguments[2].Expression.ToString());
         }
 
         [Fact]
@@ -136,8 +136,8 @@ public class Player {
 
             var finalInvocation = result2!.DescendantNodes().OfType<InvocationExpressionSyntax>().First();
             Assert.Equal(5, finalInvocation.ArgumentList.Arguments.Count);
-            Assert.Equal("default(int)", finalInvocation.ArgumentList.Arguments[2].Expression.ToString());
-            Assert.Equal("default(int)", finalInvocation.ArgumentList.Arguments[3].Expression.ToString());
+            Assert.Equal("0", finalInvocation.ArgumentList.Arguments[2].Expression.ToString());
+            Assert.Equal("0", finalInvocation.ArgumentList.Arguments[3].Expression.ToString());
         }
 
         [Fact]
@@ -158,7 +158,7 @@ public class Test {
             var result = ExpressionProcessor.RemoveExpressionPart(root, kExpr, model);
             var newReturn = result!.DescendantNodes().OfType<ReturnStatementSyntax>().First();
 
-            Assert.Equal("return default(int);", newReturn.ToString().Trim());
+            Assert.Equal("return 0;", newReturn.ToString().Trim());
         }
 
         [Fact]
@@ -179,7 +179,7 @@ public class Test {
             var result = ExpressionProcessor.RemoveExpressionPart(root, sExpr, model);
             var newReturn = result!.DescendantNodes().OfType<ReturnStatementSyntax>().First();
 
-            Assert.Equal("return default(string);", newReturn.ToString().Trim());
+            Assert.Equal("return string.Empty;", newReturn.ToString().Trim());
         }
 
         [Fact]
@@ -200,7 +200,7 @@ public class Test {}";
             var result = ExpressionProcessor.RemoveExpressionPart(root, tenExpr, model);
             var newAttrArg = result!.DescendantNodes().OfType<AttributeArgumentSyntax>().First();
 
-            Assert.Equal("default(int)", newAttrArg.Expression.ToString());
+            Assert.Equal("0", newAttrArg.Expression.ToString());
             Assert.Contains("\"keep\"", result.ToFullString());
         }
 
@@ -221,7 +221,7 @@ public class Test {
             var result = ExpressionProcessor.RemoveExpressionPart(root, tenExpr, model);
             var newDeclarator = result!.DescendantNodes().OfType<AnonymousObjectMemberDeclaratorSyntax>().First();
 
-            Assert.Equal("A = default(int)", newDeclarator.ToString().Trim());
+            Assert.Equal("A = 0", newDeclarator.ToString().Trim());
         }
 
         [Fact]
@@ -241,7 +241,7 @@ public class Test {
             var result = ExpressionProcessor.RemoveExpressionPart(root, sExpr, model);
             var newTuple = result!.DescendantNodes().OfType<TupleExpressionSyntax>().First();
 
-            Assert.Equal("(1, default(string))", newTuple.NormalizeWhitespace().ToString().Trim());
+            Assert.Equal("(1, string.Empty)", newTuple.NormalizeWhitespace().ToString().Trim());
         }
 
         [Fact]
@@ -262,7 +262,7 @@ public class Test {
             var result = ExpressionProcessor.RemoveExpressionPart(root, nameExpr, model);
             var newAssignment = result!.DescendantNodes().OfType<AssignmentExpressionSyntax>().First(a => a.Left.ToString() == "Name");
 
-            Assert.Equal("default(string)", newAssignment.Right.ToString());
+            Assert.Equal("string.Empty", newAssignment.Right.ToString());
         }
 
         [Fact]
@@ -324,9 +324,9 @@ public class Test {
             var result = ExpressionProcessor.RemoveExpressionPart(root, memberAccess, model);
             var resultText = result!.NormalizeWhitespace().ToFullString();
 
-            // 预期结果应该是 return default(bool);
+            // 预期结果应该是 return false;
             string normalizedResult = resultText.Replace(" ", "").Replace("\r", "").Replace("\n", "");
-            Assert.Contains("returndefault(bool);", normalizedResult);
+            Assert.Contains("returnfalse;", normalizedResult);
         }
 
         [Fact]
@@ -433,7 +433,7 @@ public class Test {
     }
 }";
             var model = GetSemanticModel(source);
-            
+
             var root = model.SyntaxTree.GetRoot();
 
             // 模拟删除所有包含 PlayerInput 的节点

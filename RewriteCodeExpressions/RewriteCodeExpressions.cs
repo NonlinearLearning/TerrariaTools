@@ -4,6 +4,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using TerrariaTools.Diagnostics;
 using System.Linq;
 
 namespace TerrariaTools.RewriteCodeExpressions
@@ -87,8 +88,13 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <param name="Root">语法树根节点</param>
         /// <param name="ShouldRemove">判断是否需要移除节点的"谓词"委托。通常用于检查节点是否带有特定标记。</param>
         /// <param name="Model">语义模型，用于分析变量引用和数据流传播</param>
+        /// <param name="TraceContext">可选的追踪上下文，用于收集诊断信息</param>
         /// <returns>处理后的语法节点</returns>
-        public static SyntaxNode? RemoveParts(SyntaxNode Root, System.Func<SyntaxNode, bool> ShouldRemove, SemanticModel? Model = null)
+        public static SyntaxNode? RemoveParts(
+            SyntaxNode Root,
+            System.Func<SyntaxNode, bool> ShouldRemove,
+            SemanticModel? Model = null,
+            RewritingTraceContext? TraceContext = null)
         {
             if (Root == null || ShouldRemove == null) return Root;
 
@@ -104,7 +110,7 @@ namespace TerrariaTools.RewriteCodeExpressions
 
             // 第二阶段：执行语法树重写
             // 传入的谓词 Node => Node.HasAnnotation(ToRemoveAnnotation) 用于告知重写器哪些节点已被标记为移除
-            var Rewriter = new ExpressionSimplifier(Node => Node.HasAnnotation(ToRemoveAnnotation), Model, NodesToMark);
+            var Rewriter = new ExpressionSimplifier(Node => Node.HasAnnotation(ToRemoveAnnotation), Model, NodesToMark, TraceContext);
             return Rewriter.Visit(Root);
         }
 
@@ -136,10 +142,10 @@ namespace TerrariaTools.RewriteCodeExpressions
 
             // 初始化语义传播器（如果提供了语义模型）
             // 方案三：符号-引用映射预处理。预先构建映射表以提高传播效率。
-            PreprocessedSymbolPropagator? semanticPropagator = null;
+            PreprocessedSymbolPropagator? SemanticPropagator = null;
             if (Model != null)
             {
-                semanticPropagator = new PreprocessedSymbolPropagator(Model, NodesToMark, Root);
+                SemanticPropagator = new PreprocessedSymbolPropagator(Model, NodesToMark, Root);
             }
 
             do
@@ -147,23 +153,23 @@ namespace TerrariaTools.RewriteCodeExpressions
                 LastCount = NodesToMark.Count;
                 // 结构性传播：根据语法结构向上标记父级节点。
                 // 优化：仅在包含已标记节点的"功能作用域"内执行向上传播，避免全树扫描并确定传播边界。
-                var relevantScopes = NodesToMark
-                    .Select(n => n.AncestorsAndSelf().FirstOrDefault(a =>
-                        a is BaseMethodDeclarationSyntax ||
-                        a is AnonymousFunctionExpressionSyntax ||
-                        a is LocalFunctionStatementSyntax ||
-                        a is BaseFieldDeclarationSyntax ||
-                        a is BasePropertyDeclarationSyntax))
-                    .Where(s => s != null)
+                var RelevantScopes = NodesToMark
+                    .Select(NodeToSelect => NodeToSelect.AncestorsAndSelf().FirstOrDefault(Ancestor =>
+                        Ancestor is BaseMethodDeclarationSyntax ||
+                        Ancestor is AnonymousFunctionExpressionSyntax ||
+                        Ancestor is LocalFunctionStatementSyntax ||
+                        Ancestor is BaseFieldDeclarationSyntax ||
+                        Ancestor is BasePropertyDeclarationSyntax))
+                    .Where(Scope => Scope != null)
                     .Distinct()
                     .ToList();
 
                 var UpwardCollector = new UpwardMarkCollector(NodesToMark);
-                if (relevantScopes.Count > 0)
+                if (RelevantScopes.Count > 0)
                 {
-                    foreach (var scope in relevantScopes)
+                    foreach (var Scope in RelevantScopes)
                     {
-                        UpwardCollector.Visit(scope);
+                        UpwardCollector.Visit(Scope);
                     }
                 }
                 else
@@ -173,7 +179,7 @@ namespace TerrariaTools.RewriteCodeExpressions
                 }
 
                 // 语义传播：分析变量引用，将已标记变量的所有使用处也标记为移除
-                semanticPropagator?.Propagate();
+                SemanticPropagator?.Propagate();
 
             } while (NodesToMark.Count > LastCount);
 

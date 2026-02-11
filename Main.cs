@@ -8,8 +8,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
+using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.Diagnostics;
 
 namespace TerrariaTools
 {
@@ -18,65 +21,247 @@ namespace TerrariaTools
     /// </summary>
     class Program
     {
-        /// <summary>
-        /// 程序主入口方法
-        /// </summary>
-        /// <param name="args">命令行参数</param>
-        /// <returns>异步任务</returns>
+        private readonly Load _loader = new Load();
+
         static async Task Main(string[] args)
         {
             var program = new Program();
-            await program.CodeProcess();
+
+            // 执行类重构逻辑
+            await program.ExecuteClassRefactoring();
+
+            // 执行方法重构逻辑
+            await program.ExecuteMethodRefactoring();
+        }
+
+        /// <summary>
+        /// 执行类重构功能：循环遍历解决方案中的所有文件，删除未引用的类。
+        /// </summary>
+        async Task ExecuteClassRefactoring()
+        {
+            string solutionPath = @"D:\lodes\TR\Backup\New1.27\TR\TerrariaServer.sln";
+            bool anyFileChangedInPass;
+            int passCount = 0;
+
+            do
+            {
+                passCount++;
+                anyFileChangedInPass = false;
+                Console.WriteLine($"\n[信息] 正在启动第 {passCount} 轮类重构迭代...");
+
+                using var workspace = await _loader.LoadSolutionAsync(solutionPath);
+                if (workspace == null) break;
+
+                var solution = workspace.CurrentSolution;
+                var refactorer = new ClassRefactorer(solution);
+
+                var allDocuments = solution.Projects
+                    .SelectMany(p => p.Documents)
+                    .Where(d => d.FilePath != null && d.FilePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                Console.WriteLine($"[信息] 发现 {allDocuments.Count} 个待处理的 C# 文件。");
+
+                int totalDeleted = 0;
+                int processedCount = 0;
+
+                var parallelOptions = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Environment.ProcessorCount
+                };
+
+                var startTime = DateTime.Now;
+                var results = new ConcurrentBag<ClassRefactorer.RefactorResult>();
+
+                await Parallel.ForEachAsync(allDocuments, parallelOptions, async (doc, ct) =>
+                {
+                    try
+                    {
+                        var result = await refactorer.ProcessFileAsync(doc.FilePath!);
+                        results.Add(result);
+
+                        if (result.AnyChanged)
+                        {
+                            anyFileChangedInPass = true;
+                            Interlocked.Add(ref totalDeleted, result.DeletedCount);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[错误] 处理文件 {doc.FilePath} 时出错: {ex.Message}");
+                    }
+
+                    var currentCount = Interlocked.Increment(ref processedCount);
+                    if (currentCount % 100 == 0 || currentCount == allDocuments.Count)
+                    {
+                        var elapsed = DateTime.Now - startTime;
+                        var speed = currentCount / elapsed.TotalSeconds;
+                        Console.WriteLine($"[{currentCount}/{allDocuments.Count}] 正在分析类... 速度: {speed:F1} 文件/秒, 待删除类: {totalDeleted}");
+                    }
+                });
+
+                if (anyFileChangedInPass)
+                {
+                    Console.WriteLine($"[信息] 正在将本轮类变更保存到磁盘...");
+                    var currentSolution = solution;
+                    int savedCount = 0;
+                    foreach (var res in results.Where(r => r.AnyChanged && r.DocumentId != null && r.NewRoot != null))
+                    {
+                        currentSolution = currentSolution.WithDocumentSyntaxRoot(res.DocumentId!, res.NewRoot!);
+                        savedCount++;
+                    }
+
+                    if (workspace.TryApplyChanges(currentSolution))
+                    {
+                        Console.WriteLine($"[成功] 已保存 {savedCount} 个文件的类变更。");
+                    }
+                    else
+                    {
+                        foreach (var res in results.Where(r => r.AnyChanged && r.FilePath != null && r.NewRoot != null))
+                        {
+                            File.WriteAllText(res.FilePath!, res.NewRoot!.ToFullString());
+                        }
+                    }
+                }
+
+                Console.WriteLine($"\n[第 {passCount} 轮结束] 本轮耗时: {DateTime.Now - startTime:mm\\:ss}, 总计删除类: {totalDeleted}");
+            } while (anyFileChangedInPass);
+
+            Console.WriteLine($"\n[完成] 类重构全流程结束。总共执行了 {passCount} 轮迭代。");
+        }
+
+        /// <summary>
+        /// 执行方法重构功能：循环遍历解决方案中的所有文件，直到没有查找到未引用的函数为止。
+        /// </summary>
+        async Task ExecuteMethodRefactoring()
+        {
+            string solutionPath = @"D:\lodes\TR\Backup\New1.27\TR\TerrariaServer.sln";
+            bool anyFileChangedInPass;
+            int passCount = 0;
+
+            do
+            {
+                passCount++;
+                anyFileChangedInPass = false;
+                Console.WriteLine($"\n[信息] 正在启动第 {passCount} 轮重构迭代...");
+
+                // 每轮迭代都重新加载解决方案，以确保获取最新的语义模型
+                using var workspace = await _loader.LoadSolutionAsync(solutionPath);
+                if (workspace == null) break;
+
+                var solution = workspace.CurrentSolution;
+                var refactorer = new MethodRefactorer(solution);
+
+                var allDocuments = solution.Projects
+                    .SelectMany(p => p.Documents)
+                    .Where(d => d.FilePath != null && d.FilePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                Console.WriteLine($"[信息] 发现 {allDocuments.Count} 个待处理的 C# 文件。");
+
+                int totalDeleted = 0;
+                int totalPrivatized = 0;
+                int totalBodyCleared = 0;
+                int processedCount = 0;
+
+                var parallelOptions = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Environment.ProcessorCount
+                };
+
+                var startTime = DateTime.Now;
+                var results = new ConcurrentBag<MethodRefactorer.RefactorResult>();
+
+                await Parallel.ForEachAsync(allDocuments, parallelOptions, async (doc, ct) =>
+                {
+                    try
+                    {
+                        var result = await refactorer.ProcessFileAsync(doc.FilePath!);
+                        results.Add(result);
+
+                        if (result.AnyChanged)
+                        {
+                            anyFileChangedInPass = true;
+                            Interlocked.Add(ref totalDeleted, result.DeletedCount);
+                            Interlocked.Add(ref totalPrivatized, result.PrivatizedCount);
+                            Interlocked.Add(ref totalBodyCleared, result.BodyClearedCount);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[错误] 处理文件 {doc.FilePath} 时出错: {ex.Message}");
+                    }
+
+                    var currentCount = Interlocked.Increment(ref processedCount);
+                    if (currentCount % 100 == 0 || currentCount == allDocuments.Count)
+                    {
+                        var elapsed = DateTime.Now - startTime;
+                        var speed = currentCount / elapsed.TotalSeconds;
+                        Console.WriteLine($"[{currentCount}/{allDocuments.Count}] 正在分析... 速度: {speed:F1} 文件/秒, 待处理变更: {totalDeleted + totalPrivatized + totalBodyCleared}");
+                    }
+                });
+
+                if (anyFileChangedInPass)
+                {
+                    Console.WriteLine($"[信息] 正在将本轮变更保存到磁盘...");
+                    var currentSolution = solution;
+                    int savedCount = 0;
+                    foreach (var res in results.Where(r => r.AnyChanged && r.DocumentId != null && r.NewRoot != null))
+                    {
+                        currentSolution = currentSolution.WithDocumentSyntaxRoot(res.DocumentId!, res.NewRoot!);
+                        savedCount++;
+                    }
+
+                    if (workspace.TryApplyChanges(currentSolution))
+                    {
+                        Console.WriteLine($"[成功] 已保存 {savedCount} 个文件的变更。");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[警告] 无法通过 Workspace 保存变更，尝试回退到手动写入。");
+                        // 备选方案：如果 TryApplyChanges 失败，手动写入（虽然通常不会失败）
+                        foreach (var res in results.Where(r => r.AnyChanged && r.FilePath != null && r.NewRoot != null))
+                        {
+                            File.WriteAllText(res.FilePath!, res.NewRoot!.ToFullString());
+                        }
+                    }
+                }
+
+                Console.WriteLine($"\n[第 {passCount} 轮结束] 本轮耗时: {DateTime.Now - startTime:mm\\:ss}, 总计: 删除 {totalDeleted}, 私有化 {totalPrivatized}, 清空体 {totalBodyCleared}");
+            } while (anyFileChangedInPass);
+
+            Console.WriteLine($"\n[完成] 方法重构全流程结束。总共执行了 {passCount} 轮迭代。");
         }
 
         /// <summary>
         /// 高性能代码处理过程。
-        /// 组合方案：并行文档处理 + 基于符号的批量查找 + 内存缓存批量写回。
+        /// 融合方案：Dataflow Pipeline (方案3) + 服务解耦 (方案2)
         /// </summary>
-        /// <returns>异步任务</returns>
         async Task CodeProcess()
         {
-            // 1. 初始化与加载解决方案
+            // 保留硬编码路径用于测试
             string solutionPath = @"D:\lodes\TR\Backup\New1.27\TR\TerrariaServer.sln";
-            var loader = new Load();
-
-            Console.WriteLine($"[信息] 正在加载解决方案: {solutionPath}");
-            using var workspace = await loader.LoadSolutionAsync(solutionPath);
-            if (workspace == null)
-            {
-                Console.WriteLine("[错误] 加载解决方案失败。");
-                return;
-            }
-
-            var solution = workspace.CurrentSolution;
             string targetFilePath = @"D:\lodes\TR\Backup\New1.27\TR\Terraria.GameInput\PlayerInput.cs";
 
-            // 2. 获取目标文件的语义模型和符号
-            Console.WriteLine($"[信息] 正在分析目标文件: {targetFilePath}");
-            var targetModel = await loader.GetFileSemanticModelAsync(workspace, targetFilePath);
-            if (targetModel == null)
-            {
-                Console.WriteLine("[错误] 未能加载目标文件的语义模型。");
-                return;
-            }
+            Console.WriteLine($"[信息] 正在加载解决方案: {solutionPath}");
+            using var workspace = await _loader.LoadSolutionAsync(solutionPath);
+            if (workspace == null) return;
 
-            // 提取所有需要查找引用的符号
-            var symbolsToFind = new List<(ISymbol symbol, SyntaxAnnotation annotation)>();
-            var propAnnotation = new SyntaxAnnotation("ReferenceType", "PropertyReference");
-            var fieldAnnotation = new SyntaxAnnotation("ReferenceType", "FieldReference");
-            var methodAnnotation = new SyntaxAnnotation("ReferenceType", "MethodReference");
+            var solution = workspace.CurrentSolution;
 
-            foreach (var prop in loader.GetPropertiesFromSemanticModel(targetModel)) symbolsToFind.Add((prop, propAnnotation));
-            foreach (var field in loader.GetFieldsFromSemanticModel(targetModel)) symbolsToFind.Add((field, fieldAnnotation));
-            foreach (var method in loader.GetMethodsFromSemanticModel(targetModel)) symbolsToFind.Add((method, methodAnnotation));
+            // 1. 分析目标符号
+            var targetModel = await _loader.GetFileSemanticModelAsync(workspace, targetFilePath);
+            if (targetModel == null) return;
 
+            var symbolsToFind = ExtractSymbols(targetModel);
             Console.WriteLine($"[信息] 准备查找 {symbolsToFind.Count} 个符号的引用...");
 
-            // 3. 批量查找引用并按文档分组 (方案二核心)
-            // 使用 ConcurrentDictionary 存储每个文档需要处理的符号标记
-            var documentsToProcess = new ConcurrentDictionary<DocumentId, List<(ISymbol symbol, SyntaxAnnotation annotation)>>();
+            // 2. 构建 Pipeline (方案3核心：Dataflow)
 
-            await Task.WhenAll(symbolsToFind.Select(async item =>
+            // 阶段 A: 查找引用并按文档分组
+            var docReferences = new ConcurrentDictionary<DocumentId, List<(ISymbol, SyntaxAnnotation)>>();
+
+            var findRefsBlock = new ActionBlock<(ISymbol symbol, SyntaxAnnotation annotation)>(async item =>
             {
                 var references = await SymbolFinder.FindReferencesAsync(item.symbol, solution);
                 foreach (var refSymbol in references)
@@ -85,7 +270,7 @@ namespace TerrariaTools
                     {
                         if (location.Document != null && !string.Equals(location.Document.FilePath, targetFilePath, StringComparison.OrdinalIgnoreCase))
                         {
-                            documentsToProcess.AddOrUpdate(
+                            docReferences.AddOrUpdate(
                                 location.Document.Id,
                                 new List<(ISymbol, SyntaxAnnotation)> { item },
                                 (id, list) => { lock (list) { list.Add(item); } return list; }
@@ -93,54 +278,88 @@ namespace TerrariaTools
                         }
                     }
                 }
-            }));
+            }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
 
-            Console.WriteLine($"[信息] 查找到 {documentsToProcess.Count} 个文件包含引用。");
+            foreach (var sym in symbolsToFind) findRefsBlock.Post(sym);
+            findRefsBlock.Complete();
+            await findRefsBlock.Completion;
 
-            // 4. 并行处理文档并缓存结果 (方案一核心)
+            // 阶段 B: 并行处理文档转换
             var modifiedDocs = new ConcurrentDictionary<string, string>();
-            int processedCount = 0;
+            var globalTrace = new RewritingTraceContext();
 
-            await Task.WhenAll(documentsToProcess.Select(async entry =>
+            var transformBlock = new ActionBlock<KeyValuePair<DocumentId, List<(ISymbol, SyntaxAnnotation)>>>(async entry =>
             {
-                var docId = entry.Key;
-                var annotations = entry.Value;
-                var document = solution.GetDocument(docId);
+                var document = solution.GetDocument(entry.Key);
                 if (document == null) return;
 
                 var model = await document.GetSemanticModelAsync();
                 if (model == null) return;
 
-                // 标记引用节点
-                var annotatedRoot = await loader.FindSymbolsReferencesAsync(model, annotations);
+                var annotatedRoot = await _loader.FindSymbolsReferencesAsync(model, entry.Value);
                 if (annotatedRoot != null)
                 {
-                    // 简化处理
-                    // 使用 "ReferenceType" Kind 一次性处理所有类型的引用（属性、字段、方法）
-                    // 这样可以在单次遍历中完成所有移除逻辑，且语义模型在处理过程中始终有效
-                    var processedRoot = TerrariaTools.RewriteCodeExpressions.ExpressionProcessor.ProcessAnnotatedNodes(annotatedRoot, "ReferenceType", model);
+                    // 使用支持诊断追踪的 RemoveParts 方法
+                    var processedRoot = ExpressionProcessor.RemoveParts(
+                        annotatedRoot,
+                        node => node.GetAnnotations("ReferenceType").Any(),
+                        model,
+                        globalTrace);
 
-                    // 存入内存缓存 (方案三核心)
-                    modifiedDocs[document.FilePath!] = processedRoot.ToFullString();
-                    System.Threading.Interlocked.Increment(ref processedCount);
+                    if (processedRoot != null)
+                    {
+                        modifiedDocs[document.FilePath!] = processedRoot.ToFullString();
+                    }
                 }
-            }));
+            }, new ExecutionDataflowBlockOptions { MaxDegreeOfParallelism = Environment.ProcessorCount });
 
-            // 5. 批量写回磁盘 (方案三核心)
-            Console.WriteLine($"[信息] 正在将 {modifiedDocs.Count} 个修改后的文件写回磁盘...");
-            foreach (var kvp in modifiedDocs)
+            foreach (var entry in docReferences) transformBlock.Post(entry);
+            transformBlock.Complete();
+            await transformBlock.Completion;
+
+            // 3. 批量写回磁盘
+            await WriteFilesAsync(modifiedDocs);
+
+            // 输出诊断报告
+            var diagnostics = globalTrace.GetDiagnostics();
+            if (diagnostics.Count > 0)
             {
-                try
+                Console.WriteLine($"\n生成了 {diagnostics.Count} 条重写诊断信息:");
+                foreach (var diag in diagnostics)
                 {
-                    await Task.Run(() => System.IO.File.WriteAllText(kvp.Key, kvp.Value, System.Text.Encoding.UTF8));
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[错误] 写入文件失败 {kvp.Key}: {ex.Message}");
+                    Console.WriteLine(diag.ToString());
                 }
             }
+        }
 
-            Console.WriteLine($"\n[完成] 高性能处理结束。总计修改了 {processedCount} 个文件。");
+        private List<(ISymbol symbol, SyntaxAnnotation annotation)> ExtractSymbols(SemanticModel model)
+        {
+            var symbols = new List<(ISymbol, SyntaxAnnotation)>();
+            var annotations = new Dictionary<string, SyntaxAnnotation> {
+                { "Property", new SyntaxAnnotation("ReferenceType", "PropertyReference") },
+                { "Field", new SyntaxAnnotation("ReferenceType", "FieldReference") },
+                { "Method", new SyntaxAnnotation("ReferenceType", "MethodReference") }
+            };
+
+            symbols.AddRange(_loader.GetPropertiesFromSemanticModel(model).Select(s => (s as ISymbol, annotations["Property"])));
+            symbols.AddRange(_loader.GetFieldsFromSemanticModel(model).Select(s => (s as ISymbol, annotations["Field"])));
+            symbols.AddRange(_loader.GetMethodsFromSemanticModel(model).Select(s => (s as ISymbol, annotations["Method"])));
+
+            return symbols;
+        }
+
+        private async Task WriteFilesAsync(ConcurrentDictionary<string, string> files)
+        {
+            Console.WriteLine($"[信息] 正在写回 {files.Count} 个文件...");
+            var tasks = files.Select(kvp => Task.Run(() => {
+                try {
+                    System.IO.File.WriteAllText(kvp.Key, kvp.Value, System.Text.Encoding.UTF8);
+                } catch (Exception ex) {
+                    Console.WriteLine($"[错误] {kvp.Key}: {ex.Message}");
+                }
+            }));
+            await Task.WhenAll(tasks);
+            Console.WriteLine("[完成] 处理结束。");
         }
 
         async Task CodeProcess_Old()
