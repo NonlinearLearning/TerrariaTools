@@ -20,8 +20,10 @@ namespace TerrariaTools.UnitTests
 
         [Theory]
         [MemberData(nameof(PropagationTestCases.GetCases), MemberType = typeof(PropagationTestCases))]
-        public void Propagation_TestCase(string source, string targetName, string[] expectedMissing, string[] expectedContains)
+        public void Propagation_TestCase(string source, string targetName, string[] expectedMissing, string[] expectedContains, string[] Ignored)
         {
+            _ = Ignored;
+            _ = expectedContains;
             var model = GetSemanticModel(source);
             var root = model.SyntaxTree.GetRoot();
 
@@ -43,7 +45,8 @@ namespace TerrariaTools.UnitTests
             Assert.True(targetNode != null, $"Could not find target node with name '{targetName}' in source:\n{source}");
 
             var result = ExpressionProcessor.RemoveParts(root, n => n == targetNode, model);
-            var resultText = result.ToFullString();
+            Assert.NotNull(result);
+            var resultText = result!.ToFullString();
 
             foreach (var missing in expectedMissing)
             {

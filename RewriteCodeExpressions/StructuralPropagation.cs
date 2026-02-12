@@ -61,6 +61,7 @@ namespace TerrariaTools.RewriteCodeExpressions
                 Node is MemberDeclarationSyntax || // 方法、字段、属性等成员声明
                 Node is BlockSyntax || // 语句块
                 Node is YieldStatementSyntax || // yield return/break
+                Node is ReturnStatementSyntax || // return
                 Node is SwitchExpressionArmSyntax || // switch 分支
                 Node is ExpressionSyntax || // 各种表达式
                 Node is EqualsValueClauseSyntax || // 等号初始化部分
@@ -74,6 +75,7 @@ namespace TerrariaTools.RewriteCodeExpressions
                 Node is AttributeListSyntax || // 特性列表
                 Node is BaseListSyntax || // 基类列表
                 Node is ConstructorInitializerSyntax || // 构造函数初始化器
+                Node is AnonymousObjectMemberDeclaratorSyntax || // 匿名对象成员声明
                 Node is InterpolationSyntax) // 内插字符串插值部分
             {
                 return;

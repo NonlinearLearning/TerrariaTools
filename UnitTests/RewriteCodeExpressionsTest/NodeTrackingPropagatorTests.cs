@@ -28,10 +28,12 @@ namespace TerrariaTools.UnitTests
         /// <param name="Source">C# 源码字符串</param>
         /// <param name="TargetName">初始标记的目标名称</param>
         /// <param name="ExpectedUsageSubstrings">预期被标记的引用节点所包含的字符串</param>
+        /// <param name="Ignored">被忽略的参数</param>
         [Theory]
         [MemberData(nameof(PropagationTestCases.GetCases), MemberType = typeof(PropagationTestCases))]
-        public void Test_Propagation(string Source, string TargetName, string[] ExpectedUsageSubstrings)
+        public void Test_Propagation(string Source, string TargetName, string[] ExpectedUsageSubstrings, string[] Ignored)
         {
+            _ = Ignored;
             VerifyPropagation(Source, TargetName, ExpectedUsageSubstrings);
         }
     }

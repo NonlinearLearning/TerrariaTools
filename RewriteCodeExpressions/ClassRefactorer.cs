@@ -158,39 +158,52 @@ namespace TerrariaTools.RewriteCodeExpressions
                 .ToList();
             var toDelete = new List<SyntaxNode>();
 
-            foreach (var typeDecl in typeDecls)
+            // 并行分析文件中的所有类型
+            if (typeDecls.Any())
             {
-                var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl);
-                if (typeSymbol == null) continue;
-
-                // 1. 检查是否是程序的入口点所在的类 (包含 Main 方法)
-                if (typeSymbol is INamedTypeSymbol namedType && HasMainMethod(namedType, semanticModel.Compilation)) continue;
-
-                // 2. 检查是否是静态类 (静态类不能删除)
-                if (typeSymbol is INamedTypeSymbol classType && classType.IsStatic) continue;
-
-                // 3. 检查全方案引用
-                var references = await SymbolFinder.FindReferencesAsync(typeSymbol, _solution);
-                bool hasExternalReferences = false;
-
-                foreach (var reference in references)
+                var analysisTasks = typeDecls.Select(async typeDecl =>
                 {
-                    foreach (var location in reference.Locations)
+                    var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl);
+                    if (typeSymbol == null) return (Decl: (SyntaxNode?)null, ShouldDelete: false);
+
+                    // 1. 检查是否是程序的入口点所在的类 (包含 Main 方法)
+                    if (typeSymbol is INamedTypeSymbol namedType && HasMainMethod(namedType, semanticModel.Compilation))
+                        return (Decl: (SyntaxNode?)typeDecl, ShouldDelete: false);
+
+                    // 2. 检查是否是静态类 (静态类不能删除)
+                    if (typeSymbol is INamedTypeSymbol classType && classType.IsStatic)
+                        return (Decl: (SyntaxNode?)typeDecl, ShouldDelete: false);
+
+                    // 3. 检查全方案引用
+                    var references = await SymbolFinder.FindReferencesAsync(typeSymbol, _solution);
+                    bool hasExternalReferences = false;
+
+                    foreach (var reference in references)
                     {
-                        // 检查引用是否在类型定义之外
-                        if (!IsLocationInsideType(location, typeSymbol))
+                        foreach (var location in reference.Locations)
                         {
-                            hasExternalReferences = true;
-                            break;
+                            // 检查引用是否在类型定义之外
+                            if (!IsLocationInsideType(location, typeSymbol))
+                            {
+                                hasExternalReferences = true;
+                                break;
+                            }
                         }
+                        if (hasExternalReferences) break;
                     }
-                    if (hasExternalReferences) break;
-                }
 
-                if (!hasExternalReferences)
+                    return (Decl: (SyntaxNode?)typeDecl, ShouldDelete: !hasExternalReferences);
+                });
+
+                var analysisResults = await Task.WhenAll(analysisTasks);
+
+                foreach (var res in analysisResults)
                 {
-                    toDelete.Add(typeDecl);
-                    Interlocked.Increment(ref result.DeletedCount);
+                    if (res.Decl != null && res.ShouldDelete)
+                    {
+                        toDelete.Add(res.Decl);
+                        Interlocked.Increment(ref result.DeletedCount);
+                    }
                 }
             }
 

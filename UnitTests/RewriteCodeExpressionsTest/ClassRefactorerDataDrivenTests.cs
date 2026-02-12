@@ -75,6 +75,7 @@ namespace TerrariaTools.UnitTests
         [MemberData(nameof(GetClassRefactoringTestCases))]
         public async Task ClassRefactoring_TestCase(string name, string source, string expectedInOutput, string notExpectedInOutput)
         {
+            _ = name;
             var results = await RunRefactorerAsync(source);
             var output = results["TestFile.cs"];
 

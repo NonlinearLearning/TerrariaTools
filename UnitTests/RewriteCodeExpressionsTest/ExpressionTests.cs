@@ -218,7 +218,21 @@ public class Test {
             var declarator = root.DescendantNodes().OfType<AnonymousObjectMemberDeclaratorSyntax>().First();
             var tenExpr = declarator.Expression;
 
-            var result = ExpressionProcessor.RemoveExpressionPart(root, tenExpr, model);
+            // 手动执行以便调试
+            var NodesToMark = ExpressionProcessor.CollectNodesToMark(root, Node => Node == tenExpr, model);
+            System.Console.WriteLine("DEBUG_MARKED_NODES:");
+            foreach (var node in NodesToMark)
+            {
+                var typeName = node.GetType().Name;
+                var text = node.ToString().Replace("\r", "").Replace("\n", " ");
+                System.Console.WriteLine($" - {typeName}: {text}");
+            }
+
+            var rewriter = new ExpressionSimplifier(Node => NodesToMark.Contains(Node), model, NodesToMark);
+            var result = rewriter.Visit(root);
+
+            if (result != null) System.Console.WriteLine("DEBUG_RESULT:\n" + result.ToFullString());
+
             var newDeclarator = result!.DescendantNodes().OfType<AnonymousObjectMemberDeclaratorSyntax>().First();
 
             Assert.Equal("A = 0", newDeclarator.ToString().Trim());
@@ -290,7 +304,8 @@ public class Test {
             // 这应该导致 v 被标记，然后通过 Visit 类传播到 Method1 中对 v 的所有引用
             // 最后 Method1 中的 v 和 x 的声明都应该被删除（因为 x 依赖于 v）
             var result = ExpressionProcessor.RemoveParts(root, node => node == v1Decl.Initializer!.Value, model);
-            var resultText = result.ToFullString();
+            Assert.NotNull(result);
+            var resultText = result!.ToFullString();
 
             // 验证 Method1 中的 v 和 x 声明被删除
             Assert.DoesNotContain("int v = 1;", resultText);

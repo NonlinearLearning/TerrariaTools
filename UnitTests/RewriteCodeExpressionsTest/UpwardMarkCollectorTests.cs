@@ -23,6 +23,7 @@ namespace TerrariaTools.UnitTests
         [MemberData(nameof(UpwardPropagationTestCases.GetCases), MemberType = typeof(UpwardPropagationTestCases))]
         public void UpwardPropagation_TestCase(string name, string source, string targetPredicateName, string[] expectedMissing, string[] expectedContains)
         {
+            _ = name;
             var model = GetSemanticModel(source);
             var root = model.SyntaxTree.GetRoot();
 
@@ -38,7 +39,8 @@ namespace TerrariaTools.UnitTests
             };
 
             var result = ExpressionProcessor.RemoveParts(root, predicate, model);
-            var resultText = result.ToFullString();
+            Assert.NotNull(result);
+            var resultText = result!.ToFullString();
 
             foreach (var missing in expectedMissing)
             {

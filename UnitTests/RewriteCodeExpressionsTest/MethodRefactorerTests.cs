@@ -123,11 +123,6 @@ namespace TerrariaTools.UnitTests
         [Fact]
         public async Task OverrideMethod_Unused_ClearsBodyButKeepsSignature()
         {
-            string source = @"
-public class Base { public virtual void M() {} }
-public class Derived : Base {
-    public override void M() { Console.WriteLine(1); }
-}";
             var results = await RunMultiFileRefactorerAsync(
                 ("Base.cs", "public class Base { public virtual void M() {} }"),
                 ("Derived.cs", "public class Derived : Base { public override void M() { System.Console.WriteLine(1); } }")

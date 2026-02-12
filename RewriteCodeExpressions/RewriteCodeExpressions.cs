@@ -119,7 +119,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <param name="ShouldRemove">初始判定谓词</param>
         /// <param name="Model">语义模型</param>
         /// <returns>最终确定的待移除节点集合</returns>
-        private static System.Collections.Generic.HashSet<SyntaxNode> CollectNodesToMark(SyntaxNode Root, System.Func<SyntaxNode, bool> ShouldRemove, SemanticModel? Model)
+        public static System.Collections.Generic.HashSet<SyntaxNode> CollectNodesToMark(SyntaxNode Root, System.Func<SyntaxNode, bool> ShouldRemove, SemanticModel? Model)
         {
             var NodesToMark = new System.Collections.Generic.HashSet<SyntaxNode>();
 
