@@ -41,6 +41,18 @@ TerrariaTools 是一个基于 Roslyn (Microsoft.CodeAnalysis) 开发的强大 C#
     - 提供详细的差异化诊断报告，精确定位逻辑偏差。
 - **逻辑奇偶性校验 (`LogicParityVerifier`)**: 通过静态分析确保重构后的逻辑路径覆盖与原始代码完全对称。
 
+### **3. 深度分析与精细提取 (Advanced Analysis)**
+- **递归依赖图 (`DependencyGraph`)**:
+    - 基于 Roslyn 语义模型构建全量符号依赖图。
+    - 集成 **Tarjan 算法** 识别强连通组件 (SCC)，精准处理复杂的循环依赖。
+    - 支持拓扑排序，确定代码提取与生成的逻辑顺序。
+- **成员级切片 (`MemberSlicingRewriter`)**:
+    - **精细化死代码消除**: 不再局限于类或方法级，可针对单个字段、属性进行提取。
+    - **影子类生成 (`ShadowClassGenerator`)**: 自动为原始类生成仅包含必要成员的“影子版本”，实现代码库的极限压缩。
+- **动态运行时追踪 (`FieldAccessTracer`)**:
+    - 利用 **Harmony AOP** 技术在运行时拦截 IL 指令。
+    - 精确记录方法执行过程中实际访问的字段，为静态分析提供真实世界的“热点数据”支撑。
+
 ## **工作原理**
 
 TerrariaTools 的重构流程遵循 **分析 -> 标记 -> 传播 -> 验证** 的流水线：

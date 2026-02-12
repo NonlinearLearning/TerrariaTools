@@ -88,12 +88,26 @@ var newRoot = ExpressionProcessor.RemoveParts(root, predicate, semanticModel);
 
 #### **Q: 如何处理异步方法中的 `await` 移除？**
 **A:** `ExpressionSimplifier` 会自动识别 `await` 表达式。如果 `await` 的目标被移除，它会根据返回类型（如 `Task` 或 `Task<T>`）决定是移除整个语句还是保留占位符。 (完整代码见 **[FAQ.cs](file:///d:/ProjectItem/SourceCode/Net/TerrariaTools/Example/FAQ.cs)**)
-
 #### **Q: 在多次转换过程中，如何找回被修改后的节点？**
 **A:** 使用 `SyntaxAnnotation`。它可以附加在任何语法节点上，并在树的转换过程中被 Roslyn 尽量保留。 (完整代码见 **[FAQ.cs](file:///d:/ProjectItem/SourceCode/Net/TerrariaTools/Example/FAQ.cs)**)
 
+#### **Q: 什么是“影子类 (Shadow Class)”生成？**
+**A:** 影子类是原始类的精简版本。通过 `ShadowClassGenerator`，我们可以根据依赖分析结果，仅保留那些被外部引用的成员（字段、方法、属性），并自动删除所有死代码。这对于提取最小功能库（如精简版协议解析器）非常有用。
+
+#### **Q: 如何处理循环依赖？**
+**A:** 引擎集成了 **Tarjan 强连通组件 (SCC)** 算法。在构建依赖图时，如果发现 A 依赖 B 且 B 依赖 A，算法会将它们识别为一个 SCC 块。在进行代码提取或拓扑排序时，这些块将被视为一个不可分割的整体。
+
+#### **Q: 动态分析 (Harmony AOP) 与静态分析有何不同？**
+**A:**
+- **静态分析 (Roslyn)**: 扫描源代码以查找显式的引用。优点是速度快、覆盖面广，但无法处理反射或复杂的间接字段访问。
+- **动态分析 (Harmony)**: 在运行时拦截方法调用（如 `MessageBuffer.GetData`）。它可以精确记录在特定执行路径下实际访问了哪些字段（如 `Player.whoAmI`），从而为静态分析提供更精准的“切片”依据。
+
 #### **Q: 为什么删除一行代码后，空的 `try-catch` 或 `if` 块也被删除了？**
 **A:** 这是通过“结构传播 (Structural Propagation)”实现的。引擎会自动检测块是否变为空，并根据上下文决定是否向上清理父节点。 (完整代码见 **[FAQ.cs](file:///d:/ProjectItem/SourceCode/Net/TerrariaTools/Example/FAQ.cs)**)
+
+---
+
+### **4. 性能与资源**
 
 ---
 
