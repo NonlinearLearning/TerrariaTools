@@ -6,6 +6,7 @@
 using System;
 using System.Threading.Tasks;
 using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.DynamicAnalysis;
 
 namespace TerrariaTools
 {
@@ -24,22 +25,16 @@ namespace TerrariaTools
                 var loader = new Load();
 
                 Console.WriteLine("==================================================");
-                Console.WriteLine($"[信息] 启动重构流程: {totalStartTime:yyyy-MM-dd HH:mm:ss}");
+                Console.WriteLine($"[信息] 启动调用链注入流程: {totalStartTime:yyyy-MM-dd HH:mm:ss}");
                 Console.WriteLine("==================================================");
 
-                // // 1. 执行类重构逻辑（例如：删除未引用的类）
-                // await ClassRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
-
-                // 2. 执行基于名称的方法重构逻辑（例如：处理包含 "Draw" 的方法，不区分大小写）
-                Console.WriteLine("\n[信息] 正在启动基于名称的方法重构 (匹配包含 'Draw' 的方法)...");
-                await NameBasedMethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader, "Draw");
-
-                // 3. 执行常规方法重构逻辑（例如：删除未引用方法、私有化仅内部引用的方法）
-                // await MethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
+                // 执行全量调用链注入 (Roslyn)
+                var injector = new CallChainInjector(solutionPath, loader);
+                await injector.ExecuteInjectionAsync();
 
                 var totalElapsed = DateTime.Now - totalStartTime;
                 Console.WriteLine("\n==================================================");
-                Console.WriteLine($"[完成] 所有重构任务已结束。");
+                Console.WriteLine($"[完成] 调用链注入任务已结束。");
                 Console.WriteLine($"[统计] 总运行耗时: {totalElapsed.TotalMinutes:F1} 分钟");
                 Console.WriteLine("==================================================");
             }
