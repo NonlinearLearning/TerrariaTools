@@ -80,6 +80,35 @@ namespace TerrariaTools.RewriteCodeExpressions
         }
 
         /// <summary>
+        /// 针对 Terraria 代码的特殊重写：移除指定的条件表达式（如 netMode == 1）。
+        /// 会根据逻辑运算符（&&, ||）自动调整 if 结构：
+        /// - if (netMode == 1) -> 移除 if，若有 else 则提升 else。
+        /// - if (A && netMode == 1) -> 同上。
+        /// - if (A || netMode == 1) -> 变为 if (A)。
+        /// </summary>
+        /// <param name="root">语法树根节点</param>
+        /// <param name="model">必须提供语义模型以精确定位符号</param>
+        /// <param name="targetSymbolName">目标符号名称，如 "netMode"</param>
+        /// <param name="targetValue">目标比较值，如 1</param>
+        /// <returns>重写后的语法节点</returns>
+        public static SyntaxNode? RemoveTerrariaConditions(SyntaxNode root, SemanticModel model, string targetSymbolName = "netMode", int targetValue = 1)
+        {
+            if (root == null || model == null) return root;
+            var rewriter = new TerrariaConditionRewriter(model, targetSymbolName, targetValue);
+            return rewriter.Visit(root);
+        }
+
+        /// <summary>
+        /// 针对 Terraria 代码的特殊重写：移除指定的条件表达式列表。
+        /// </summary>
+        public static SyntaxNode? RemoveTerrariaConditions(SyntaxNode root, SemanticModel model, System.Collections.Generic.IEnumerable<RewriteCondition> conditions)
+        {
+            if (root == null || model == null) return root;
+            var rewriter = new TerrariaConditionRewriter(model, conditions);
+            return rewriter.Visit(root);
+        }
+
+        /// <summary>
         /// 根据自定义谓词移除符合条件的语法节点。
         /// 该方法采用"两阶段"处理模式：
         /// 1. 标记阶段：通过 CollectNodesToMark 收集所有直接匹配谓词及其语义关联的节点。

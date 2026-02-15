@@ -31,11 +31,14 @@ namespace TerrariaTools
                 // await ClassRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
 
                 // 2. 执行基于名称的方法重构逻辑（例如：处理包含 "Draw" 的方法，不区分大小写）
-                Console.WriteLine("\n[信息] 正在启动基于名称的方法重构 (匹配包含 'Draw' 的方法)...");
-                await NameBasedMethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader, "Draw");
+                // Console.WriteLine("\n[信息] 正在启动基于名称的方法重构 (匹配包含 'Draw' 的方法)...");
+                // await NameBasedMethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader, "Draw");
 
                 // 3. 执行常规方法重构逻辑（例如：删除未引用方法、私有化仅内部引用的方法）
                 // await MethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
+
+                // 4. 执行条件表达式重构（移除 netMode == 1）
+                await ConditionRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
 
                 var totalElapsed = DateTime.Now - totalStartTime;
                 Console.WriteLine("\n==================================================");
