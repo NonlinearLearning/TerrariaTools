@@ -15,8 +15,11 @@ namespace TerrariaTools
     /// </summary>
     class Program
     {
-        static async Task Main(string[] args)
+       public static async Task Main(string[] args)
         {
+            // 设置控制台编码为 UTF-8 以支持中文显示
+            try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch { }
+
             var totalStartTime = DateTime.Now;
             try
             {
@@ -28,9 +31,15 @@ namespace TerrariaTools
                 Console.WriteLine($"[信息] 启动调用链注入流程: {totalStartTime:yyyy-MM-dd HH:mm:ss}");
                 Console.WriteLine("==================================================");
 
-                // 执行全量调用链注入 (Roslyn)
-                var injector = new CallChainInjector(solutionPath, loader);
-                await injector.ExecuteInjectionAsync();
+                // 1. 执行全量调用链注入 (Roslyn) - 如果已经注入过可以注释掉
+                // var injector = new CallChainInjector(solutionPath, loader);
+                // await injector.ExecuteInjectionAsync();
+
+                // 2. 执行代码裁剪 (直接使用日志中的函数列表)
+                string logPath = @"D:\ProjectItem\SourceCode\Net\TerrariaTools\call_chain.log";
+                var pruner = new CodePruner(solutionPath, loader);
+                var validFunctions = CodePruner.LoadFunctionsFromLog(logPath);
+                await pruner.ExecutePruningAsync(validFunctions);
 
                 var totalElapsed = DateTime.Now - totalStartTime;
                 Console.WriteLine("\n==================================================");
