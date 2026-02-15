@@ -13,16 +13,16 @@ namespace Example
     /// </summary>
     public class DependencyAnalysisExample
     {
-        public async Task RunAsync(string solutionPath, string targetMethodName)
+        public async Task RunAsync(string solutionPath, string targetTypeName, string targetMethodName)
         {
             // 1. 加载解决方案
             using var workspace = MSBuildWorkspace.Create();
             var solution = await workspace.OpenSolutionAsync(solutionPath);
 
-            // 2. 查找种子符号 (例如 MessageBuffer.GetData)
+            // 2. 查找种子符号
             var project = solution.Projects.First();
             var compilation = await project.GetCompilationAsync();
-            var targetType = compilation?.GetTypeByMetadataName("Terraria.MessageBuffer");
+            var targetType = compilation?.GetTypeByMetadataName(targetTypeName);
             var seedSymbol = targetType?.GetMembers(targetMethodName).FirstOrDefault();
 
             if (seedSymbol == null)

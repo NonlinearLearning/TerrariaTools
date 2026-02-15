@@ -480,5 +480,83 @@ public class C {
 
             Assert.Contains("publicvoidDrawMe(){}", normalized);
         }
+
+        [Fact]
+        public async Task Skip_Static_Main_EvenIfPatternMatches()
+        {
+            string source = @"
+public sealed class Program {
+    public static void Main(string[] args) { System.Console.WriteLine(1); }
+    public void DrawMe() { System.Console.WriteLine(2); }
+}";
+            var result = await RunRefactorerAsync(source, "Main");
+            var normalized = Normalize(result);
+            // Main should be preserved (skipped)
+            Assert.Contains("publicstaticvoidMain(string[]args){System.Console.WriteLine(1);}", normalized);
+            // DrawMe matches pattern "Main" (no, it doesn't, Name == "DrawMe", Pattern == "Main").
+            // Regex is used. new Regex(namePattern, RegexOptions.IgnoreCase).
+            // "DrawMe" does not contain "Main".
+            // Let's use pattern "Program" or something that matches both?
+            // No, the test is to ensure Main is skipped even if it MATCHES.
+            // So pattern "Main" matches "Main".
+            // "DrawMe" is not matched.
+            Assert.Contains("publicvoidDrawMe(){System.Console.WriteLine(2);}", normalized);
+        }
+
+        [Fact]
+        public async Task ClearBody_WhenReferenced_Externally()
+        {
+            var workspace = new AdhocWorkspace();
+            var projectId = ProjectId.CreateNewId();
+            var projectInfo = ProjectInfo.Create(projectId, VersionStamp.Create(), "TestProject", "TestAssembly", LanguageNames.CSharp);
+            var project = workspace.AddProject(projectInfo);
+            project = project.AddMetadataReferences(new[]
+            {
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(Path.Combine(Path.GetDirectoryName(typeof(object).Assembly.Location)!, "System.Runtime.dll"))
+            });
+
+            var callerSource = @"
+public class Caller {
+    public void Call() { new Target().DrawMe(); }
+}";
+            var targetSource = @"
+public sealed class Target {
+    public void DrawMe() { System.Console.WriteLine(1); }
+}";
+
+            project = project.AddDocument("Caller.cs", callerSource).Project;
+            project = project.AddDocument("Target.cs", targetSource).Project;
+
+            var refactorer = new NameBasedMethodRefactorer(project.Solution, "Draw");
+            var result = await refactorer.ProcessFileAsync("Target.cs", useFileLock: false);
+
+            var normalized = Normalize(result.NewRoot!.ToFullString());
+            // Referenced externally -> ClearBody
+            Assert.Contains("publicvoidDrawMe(){}", normalized);
+        }
+
+        [Fact]
+        public async Task ClearBody_Virtual()
+        {
+            string source = @"
+public class C {
+    public virtual void DrawMe() { System.Console.WriteLine(1); }
+}";
+            var result = await RunRefactorerAsync(source);
+            Assert.Contains("publicvirtualvoidDrawMe(){}", Normalize(result));
+        }
+
+        [Fact]
+        public async Task ClearBody_Override()
+        {
+            string source = @"
+public class Base { public virtual void DrawMe() {} }
+public sealed class Derived : Base {
+    public override void DrawMe() { System.Console.WriteLine(1); }
+}";
+            var result = await RunRefactorerAsync(source);
+            Assert.Contains("publicoverridevoidDrawMe(){}", Normalize(result));
+        }
     }
 }
