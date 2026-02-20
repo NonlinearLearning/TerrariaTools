@@ -6,17 +6,19 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FindSymbols;
 
+using TerrariaTools;
+
 namespace Example {
-    class Program
+    class RewriteCodeExpressionsExample
     {
         /// <summary>
         /// 程序主入口方法
         /// </summary>
         /// <param name="args">命令行参数</param>
         /// <returns>异步任务</returns>
-        static async Task Main(string[] args)
+        public static async Task Run(string[] args)
         {
-            var program = new Program();
+            var program = new RewriteCodeExpressionsExample();
             await program.CodeProcess();
         }
 
@@ -29,7 +31,7 @@ namespace Example {
         {
             // 1. 初始化与加载解决方案
             string solutionPath = @"D:\lodes\TR\Backup\New1.27\TR\TerrariaServer.sln";
-            var loader = new Load();
+            var loader = new TerrariaTools.Load();
 
             Console.WriteLine($"[信息] 正在加载解决方案: {solutionPath}");
             using var workspace = await loader.LoadSolutionAsync(solutionPath);
@@ -57,9 +59,9 @@ namespace Example {
             var fieldAnnotation = new SyntaxAnnotation("ReferenceType", "FieldReference");
             var methodAnnotation = new SyntaxAnnotation("ReferenceType", "MethodReference");
 
-            foreach (var prop in loader.GetPropertiesFromSemanticModel(targetModel)) symbolsToFind.Add((prop, propAnnotation));
-            foreach (var field in loader.GetFieldsFromSemanticModel(targetModel)) symbolsToFind.Add((field, fieldAnnotation));
-            foreach (var method in loader.GetMethodsFromSemanticModel(targetModel)) symbolsToFind.Add((method, methodAnnotation));
+            foreach (ISymbol prop in loader.GetPropertiesFromSemanticModel(targetModel)) symbolsToFind.Add((prop, propAnnotation));
+            foreach (ISymbol field in loader.GetFieldsFromSemanticModel(targetModel)) symbolsToFind.Add((field, fieldAnnotation));
+            foreach (ISymbol method in loader.GetMethodsFromSemanticModel(targetModel)) symbolsToFind.Add((method, methodAnnotation));
 
             Console.WriteLine($"[信息] 准备查找 {symbolsToFind.Count} 个符号的引用...");
 

@@ -14,6 +14,15 @@ namespace Example
     /// </summary>
     public class SemanticRefactoringWorkflow
     {
+        public async Task RunAsync(string solutionPath)
+        {
+            var loader = new TerrariaTools.Load();
+            using var workspace = await loader.LoadSolutionAsync(solutionPath);
+            if (workspace == null) return;
+            
+            await ExecuteAsync(workspace.CurrentSolution);
+        }
+
         public async Task ExecuteAsync(Solution solution)
         {
             // 1. 定位目标方法符号 (例如定位所有标记为 [Obsolete] 的方法)

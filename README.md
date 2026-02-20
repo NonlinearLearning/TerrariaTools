@@ -6,9 +6,10 @@ TerrariaTools 是一个基于 Roslyn (Microsoft.CodeAnalysis) 开发的强大 C#
 
 为了帮助您全面了解和参与本项目，我们提供了以下详细文档：
 
-- **[项目架构设计 (ARCHITECTURE)](file:///d:/ProjectItem/SourceCode/Net/TerrariaTools/ARCHITECTURE.md)**: 深入了解项目的内部设计、核心组件及协作流程。
-- **[常见问题解答 (FAQ)](file:///d:/ProjectItem/SourceCode/Net/TerrariaTools/FAQ.md)**: 解决在安装、运行及重构过程中的各类疑难杂症。
-- **[贡献指南 (CONTRIBUTING)](file:///d:/ProjectItem/SourceCode/Net/TerrariaTools/CONTRIBUTING.md)**: 了解开发规范、测试要求及 PR 提交流程。
+- **[项目架构设计 (ARCHITECTURE)](ARCHITECTURE.md)**: 深入了解项目的内部设计、核心组件及协作流程。
+- **[设计理念与重写思路 (DESIGN CONCEPTS)](DESIGN_CONCEPTS.md)**: 详细阐述了最小化重写的核心思路、算法选择及执行阶段。
+- **[常见问题解答 (FAQ)](FAQ.md)**: 解决在安装、运行及重构过程中的各类疑难杂症。
+- **[贡献指南 (CONTRIBUTING)](CONTRIBUTING.md)**: 了解开发规范、测试要求及 PR 提交流程。
 
 ## **核心功能**
 
@@ -81,9 +82,14 @@ TerrariaTools 的重构流程遵循 **分析 -> 标记 -> 传播 -> 验证** 的
 TerrariaTools/
 ├── RewriteCodeExpressions/   # 重构核心逻辑 (类/方法重构, 表达式简化, 传播逻辑)
 ├── ConsistentBehaviorGuarantee/ # 行为一致性验证工具 (差分测试, 影子执行)
+├── Analysis/                 # 深度分析模块 (依赖图, 代码切片, 影子类生成)
+├── DynamicAnalysis/          # 动态分析模块 (运行时追踪)
 ├── Load/                     # 解决方案与项目加载逻辑
 ├── Diagnostics/              # 重构过程中的诊断与日志记录
-├── UnitTests/                # 详尽的单元测试集
+├── UnitTests/                # 单元测试集
+│   ├── RewriteCodeExpressionsTest/ # 重构逻辑测试
+│   ├── AnalysisTests/              # 静态分析测试
+│   └── DynamicAnalysisTests/       # 动态分析测试
 └── Main.cs                   # 命令行程序入口
 ```
 

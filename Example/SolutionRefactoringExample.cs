@@ -9,15 +9,18 @@ namespace Example
     /// </summary>
     public class SolutionRefactoringExample
     {
-        public async Task RunAsync()
+        public async Task RunAsync(string solutionPath)
         {
-            // 1. 指定解决方案路径
-            string solutionPath = @"C:\Path\To\Your\Solution.sln";
-            
             // 2. 创建加载器
             var loader = new TerrariaTools.Load();
 
-            Console.WriteLine("开始解决方案重构流...");
+            if (string.IsNullOrEmpty(solutionPath))
+            {
+                Console.WriteLine("错误: 未提供有效的解决方案路径。");
+                return;
+            }
+
+            Console.WriteLine($"开始解决方案重构流 (目标: {solutionPath})...");
 
             try 
             {
@@ -32,6 +35,14 @@ namespace Example
                 // b) 将仅在类内部引用的公共方法自动私有化 (Privatization)
                 Console.WriteLine("[步骤 2] 正在执行方法重构 (移除死代码 & 私有化)...");
                 await MethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
+
+                // 5. 执行基于名称的方法清理 (示例)
+                Console.WriteLine("[步骤 3] 正在执行基于名称的方法清理 (移除包含 'Debug' 的方法)...");
+                await NameBasedMethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader, "Debug");
+
+                // 6. 执行特定条件重构 (示例：移除 netMode 检查)
+                Console.WriteLine("[步骤 4] 正在执行条件重构 (移除 netMode == 1)...");
+                await ConditionRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
 
                 Console.WriteLine("重构任务全部完成。");
             }

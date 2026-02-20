@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TerrariaTools.RewriteCodeExpressions;
 using TerrariaTools.ConsistentBehaviorGuarantee;
+using TerrariaTools.Diagnostics;
 
 namespace Example
 {
@@ -43,10 +44,10 @@ namespace Example
             public MyCustomSimplifier(Func<SyntaxNode, bool> shouldRemove, SemanticModel? model = null)
                 : base(shouldRemove, model) { }
 
-            protected override ExpressionSyntax? TryCreatePlaceholder(SyntaxNode node)
+            protected override SyntaxNode? TryCreatePlaceholder(SyntaxNode node)
             {
                 // 1. 获取该节点在当前语义模型中的预期类型
-                var type = GetExpectedType(node);
+                var type = GetNodeType(node);
 
                 // 2. 针对特定类型生成自定义占位符（例如自定义的默认对象）
                 if (type?.Name == "MyCustomType")
@@ -87,7 +88,7 @@ namespace Example
 
             // 示例：移除所有对外部 API 的异步调用
             Func<SyntaxNode, bool> predicate = node =>
-                node is AwakeExpressionSyntax awaitExpr &&
+                node is AwaitExpressionSyntax awaitExpr &&
                 awaitExpr.Expression.ToString().Contains("ExternalApi");
 
             // RemoveParts 会自动处理：

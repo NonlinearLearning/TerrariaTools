@@ -17,8 +17,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="Example\**\*.cs" />
-    <Compile Include="Example\DependencyAnalysisExample.cs" />
+    <!-- <Compile Remove="Example\**\*.cs" /> -->
+    <!-- <Compile Include="Example\DependencyAnalysisExample.cs" /> -->
   </ItemGroup>
 
 </Project>

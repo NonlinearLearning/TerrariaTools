@@ -16,7 +16,7 @@ namespace TerrariaTools.RewriteCodeExpressions
     {
         private readonly System.Func<SyntaxNode, bool> ShouldRemove;
         private readonly System.Collections.Generic.HashSet<SyntaxNode>? NodesToMark;
-        private readonly SemanticModel? Model;
+        protected readonly SemanticModel? Model;
         private readonly RewritingTraceContext? TraceContext;
         private readonly System.Collections.Generic.Dictionary<ISymbol, bool> SymbolMarkedCache = new System.Collections.Generic.Dictionary<ISymbol, bool>(SymbolEqualityComparer.Default);
 
@@ -66,7 +66,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// <summary>
         /// 获取语法节点的类型符号。
         /// </summary>
-        private ITypeSymbol? GetNodeType(SyntaxNode? Node)
+        protected ITypeSymbol? GetNodeType(SyntaxNode? Node)
         {
             var Original = GetOriginalNode(Node);
             if (Original == null || this.Model == null) return null;
@@ -208,7 +208,7 @@ namespace TerrariaTools.RewriteCodeExpressions
         /// </summary>
         /// <param name="Node">被标记为移除的节点</param>
         /// <returns>生成的占位符节点，若无需占位或无法生成则返回 null</returns>
-        private SyntaxNode? TryCreatePlaceholder(SyntaxNode Node)
+        protected virtual SyntaxNode? TryCreatePlaceholder(SyntaxNode Node)
         {
             if (this.Model == null) return null;
 

@@ -1,5 +1,7 @@
 using System;
+using System.Linq;
 using TerrariaTools.ConsistentBehaviorGuarantee;
+using TerrariaTools.Diagnostics;
 
 namespace Example
 {
@@ -8,7 +10,7 @@ namespace Example
     /// </summary>
     public class DifferentialTestingWorkflow
     {
-        public void RunDemo()
+        public void Run()
         {
             // 1. 初始化追踪上下文
             var traceContext = new RewritingTraceContext();
@@ -42,7 +44,7 @@ namespace Example
             }
 
             // 5. 查看诊断报告 (在实际 UI 或日志中)
-            if (traceContext.HasErrors)
+            if (traceContext.GetDiagnostics().Any(d => d.Severity == "Error"))
             {
                 Console.WriteLine("\n测试发现异常，请检查追踪记录。");
             }

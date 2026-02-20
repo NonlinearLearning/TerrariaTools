@@ -50,14 +50,37 @@ class Calculator {
 
             Console.WriteLine("\n=== 重写后的代码 (已移除 Console.WriteLine) ===");
             Console.WriteLine(result?.ToFullString());
+            
+            // ---------------------------------------------------------
+            // 场景 2: 复杂表达式中的占位符替换
+            // ---------------------------------------------------------
+            Console.WriteLine("\n=== 场景 2: 复杂表达式中的占位符替换 ===");
+            string complexSource = @"
+class Logic {
+    bool Check() {
+        // Console.WriteLine 返回 void，但如果这里是某个返回 bool 的 LogAndReturn() 方法被移除
+        // 工具应该将其替换为 false 或 true
+        return (IsValid() && ShouldLog());
+    }
+    
+    bool IsValid() => true;
+    bool ShouldLog() => false; // 假设我们要移除这个方法调用
+}";
+            Console.WriteLine("原始代码:");
+            Console.WriteLine(complexSource);
 
-            /*
-             * 预期输出：
-             * Calculator 类中的 Console.WriteLine 调用将被移除。
-             * 注意：由于 Console.WriteLine(...) 是一个表达式语句，它会被直接移除而不需要占位符。
-             * 如果是在 if (condition && Console.WriteLine(...)) 这种需要值的上下文中，
-             * 它会被替换为类型匹配的占位符（如 false）。
-             */
+            SyntaxTree complexTree = CSharpSyntaxTree.ParseText(complexSource);
+            var complexRoot = complexTree.GetCompilationUnitRoot();
+
+            // 标记移除 ShouldLog() 方法调用
+            Func<SyntaxNode, bool> removeShouldLog = node =>
+                node is InvocationExpressionSyntax inv &&
+                inv.Expression.ToString() == "ShouldLog";
+
+            var complexResult = ExpressionProcessor.RemoveParts(complexRoot, removeShouldLog);
+            Console.WriteLine("\n重写后 (ShouldLog 被移除，自动填充默认值):");
+            Console.WriteLine(complexResult?.ToFullString());
+            Console.WriteLine("// 注意: && 右侧被移除时，通常会保留左侧或替换为默认值，具体取决于实现策略。");
         }
     }
 }

@@ -21,10 +21,10 @@ namespace Example
         /// <summary>
         /// 重写此方法以针对特定类型或上下文生成自定义的占位符。
         /// </summary>
-        protected override ExpressionSyntax? TryCreatePlaceholder(SyntaxNode node)
+        protected override SyntaxNode? TryCreatePlaceholder(SyntaxNode node)
         {
             // 示例：获取当前节点在语义模型中的预期类型
-            var type = GetExpectedType(node);
+            var type = GetNodeType(node);
 
             // 如果预期类型是特定的自定义类型，返回自定义的默认值表达式
             if (type != null && type.Name == "MyCustomType")

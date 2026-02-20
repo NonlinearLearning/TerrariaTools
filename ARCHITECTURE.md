@@ -71,3 +71,28 @@ graph TD
 
 - **并行处理**: 利用 `Task.WhenAll` 和 `ConcurrentDictionary` 在多核环境下并行分析不同文档。
 - **按需加载**: 语义模型和语法树在处理完成后会及时释放，以控制大型项目中的内存消耗。
+
+## **项目结构**
+
+```
+TerrariaTools/
+├── RewriteCodeExpressions/   # 重构核心逻辑 (类/方法重构, 表达式简化, 传播逻辑)
+├── ConsistentBehaviorGuarantee/ # 行为一致性验证工具 (差分测试, 影子执行)
+├── Analysis/                 # 深度分析模块 (依赖图, 代码切片, 影子类生成)
+├── DynamicAnalysis/          # 动态分析模块 (运行时追踪)
+├── Load/                     # 解决方案与项目加载逻辑
+├── Diagnostics/              # 重构过程中的诊断与日志记录
+├── UnitTests/                # 单元测试集
+│   ├── RewriteCodeExpressionsTest/ # 重构逻辑测试
+│   ├── AnalysisTests/              # 静态分析测试
+│   └── DynamicAnalysisTests/       # 动态分析测试
+└── Main.cs                   # 命令行程序入口
+```
+
+## **设计理念补充**
+
+关于最小化重写与依赖提取的详细设计思路，请参考 [设计理念与重写思路 (DESIGN_CONCEPTS.md)](DESIGN_CONCEPTS.md)。
+
+## **快速开始**
+
+```
