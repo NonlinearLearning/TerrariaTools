@@ -14,9 +14,15 @@ TerrariaTools 是一个基于 Roslyn (Microsoft.CodeAnalysis) 开发的强大 C#
 ## **核心功能**
 
 ### **1. 智能重构 (Refactoring)**
+- **配置驱动**:
+    - 支持通过 `appsettings.json` 进行灵活配置。
+    - **忽略文件 (IgnoredFiles)**: 可配置跳过特定的文件（如 `AssemblyInfo.cs`）。
+    - **并行度 (Parallelism)**: 可调整并行处理的线程数。
+    - **空跑模式 (DryRun)**: 支持模拟运行，仅报告变更而不写入磁盘。
 - **类重构 (`ClassRefactorer`)**:
     - 自动识别并移除整个解决方案中未被引用的类。
     - 能够识别跨程序集的引用关系，确保只移除真正孤立的代码。
+    - **支持配置**: 遵循 `IgnoredFiles`、`Parallelism` 和 `EnableDryRun` 设置。
 - **方法重构 (`MethodRefactorer`)**:
     - **自动死代码移除**: 移除没有任何调用方的非入口方法。
     - **封装性优化 (Privatization)**: 扫描所有方法调用。如果一个 `public` 或 `internal` 方法仅在所属类的内部被调用，则将其访问修饰符自动降级为 `private`。
@@ -87,9 +93,10 @@ TerrariaTools/
 ├── Load/                     # 解决方案与项目加载逻辑
 ├── Diagnostics/              # 重构过程中的诊断与日志记录
 ├── UnitTests/                # 单元测试集
-│   ├── RewriteCodeExpressionsTest/ # 重构逻辑测试
+│   ├── RewriteCodeExpressionsTest/ # 旧版重构逻辑测试
 │   ├── AnalysisTests/              # 静态分析测试
-│   └── DynamicAnalysisTests/       # 动态分析测试
+│   ├── DynamicAnalysisTests/       # 动态分析测试
+│   └── RefactoringTests/           # 新版重构逻辑测试 (基于 Mock IWorkspaceLoader)
 └── Main.cs                   # 命令行程序入口
 ```
 

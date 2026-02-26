@@ -1,18 +1,40 @@
 using System;
 using System.Threading.Tasks;
 using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.Services;
 
 namespace Example
 {
     /// <summary>
     /// 演示如何使用 ClassRefactorer 和 MethodRefactorer 对整个解决方案进行大规模重构。
     /// </summary>
-    public class SolutionRefactoringExample
+    public class SolutionRefactoringExample : ITool
     {
-        public async Task RunAsync(string solutionPath)
+        private readonly SolutionRefactoringManager _manager;
+        private readonly Microsoft.Extensions.Options.IOptions<TerrariaTools.Configuration.RefactoringSettings> _settings;
+
+        public SolutionRefactoringExample(SolutionRefactoringManager manager, Microsoft.Extensions.Options.IOptions<TerrariaTools.Configuration.RefactoringSettings> settings)
         {
-            // 2. 创建加载器
-            var loader = new TerrariaTools.Load();
+            _manager = manager;
+            _settings = settings;
+        }
+
+        public string Name => "解决方案重构";
+        public string Description => "执行全解决方案级别的重构（类/方法移除、私有化等）。";
+
+        public async Task RunAsync(string? solutionPath = null)
+        {
+            if (string.IsNullOrEmpty(solutionPath))
+            {
+                // Try to get from settings first
+                solutionPath = _settings.Value.DefaultSolutionPath;
+
+                if (string.IsNullOrEmpty(solutionPath))
+                {
+                    Console.WriteLine("请输入解决方案路径 (直接回车使用默认):");
+                    solutionPath = Console.ReadLine();
+                }
+            }
 
             if (string.IsNullOrEmpty(solutionPath))
             {
@@ -22,33 +44,23 @@ namespace Example
 
             Console.WriteLine($"开始解决方案重构流 (目标: {solutionPath})...");
 
-            try 
+            try
             {
-                // 3. 执行类级别重构
-                // 功能：自动删除解决方案中所有未被引用的类
-                Console.WriteLine("[步骤 1] 正在执行类重构 (移除未引用的类)...");
-                await ClassRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
+                var progress = new Progress<string>(msg => Console.WriteLine(msg));
+                var result = await _manager.ExecuteFullRefactoringAsync(solutionPath, progress);
 
-                // 4. 执行方法级别重构
-                // 功能：
-                // a) 移除未被引用的方法
-                // b) 将仅在类内部引用的公共方法自动私有化 (Privatization)
-                Console.WriteLine("[步骤 2] 正在执行方法重构 (移除死代码 & 私有化)...");
-                await MethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
-
-                // 5. 执行基于名称的方法清理 (示例)
-                Console.WriteLine("[步骤 3] 正在执行基于名称的方法清理 (移除包含 'Debug' 的方法)...");
-                await NameBasedMethodRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader, "Debug");
-
-                // 6. 执行特定条件重构 (示例：移除 netMode 检查)
-                Console.WriteLine("[步骤 4] 正在执行条件重构 (移除 netMode == 1)...");
-                await ConditionRefactorer.ExecuteSolutionRefactoringAsync(solutionPath, loader);
-
-                Console.WriteLine("重构任务全部完成。");
+                if (result.Success)
+                {
+                    Console.WriteLine("\n重构任务全部完成。");
+                }
+                else
+                {
+                    Console.WriteLine($"\n重构过程中发生错误: {result.Error}");
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"重构过程中发生错误: {ex.Message}");
+                Console.WriteLine($"\n未捕获的异常: {ex.Message}");
             }
         }
     }

@@ -7,6 +7,13 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.Build.Locator;
 using TerrariaTools.RewriteCodeExpressions;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
+using TerrariaTools.Services;
+using TerrariaTools.Configuration;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 
 namespace TerrariaTools
 {
@@ -17,34 +24,73 @@ namespace TerrariaTools
     {
         static async Task Main(string[] args)
         {
+            // 1. 注册 MSBuild 实例 (必须在任何 MSBuildWorkspace 创建之前)
             MSBuildLocator.RegisterDefaults();
+
             var totalStartTime = DateTime.Now;
+
             try
             {
-                // 硬编码路径仅用于当前开发阶段
-                // string solutionPath = @"D:\lodes\TR\Backup\New1.27\TR\TerrariaServer.sln";
-                // string solutionPath = @"d:\ProjectItem\SourceCode\Net\TerrariaTools\TerrariaToolsTemp.slnx";
-                var loader = new Load();
+                // 2. 加载配置
+                var builder = new ConfigurationBuilder()
+                    .SetBasePath(Directory.GetCurrentDirectory())
+                    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+
+                IConfiguration configuration = builder.Build();
+
+                // 3. 配置依赖注入容器
+                var services = new ServiceCollection();
+
+                // 注册配置
+                services.Configure<RefactoringSettings>(configuration.GetSection("Refactoring"));
+
+                // 注册核心服务
+                services.AddSingleton<IWorkspaceLoader, WorkspaceLoader>();
+                services.AddTransient<ToolDiscoveryService>();
+                services.AddTransient<ExampleEntryPoint>();
+
+                // 注册业务逻辑管理器
+                services.AddTransient<SolutionRefactoringManager>();
+
+                // 自动注册所有实现了 ITool 接口的工具
+                var interfaceType = typeof(ITool);
+                var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+                
+                // 确保包含当前程序集
+                var currentAssembly = Assembly.GetExecutingAssembly();
+                if (!assemblies.Contains(currentAssembly))
+                {
+                    assemblies = assemblies.Append(currentAssembly).ToArray();
+                }
+
+                foreach (var assembly in assemblies)
+                {
+                    try
+                    {
+                        var toolTypes = assembly.GetTypes()
+                            .Where(t => interfaceType.IsAssignableFrom(t) && !t.IsInterface && !t.IsAbstract);
+
+                        foreach (var type in toolTypes)
+                        {
+                            services.AddTransient(typeof(ITool), type);
+                        }
+                    }
+                    catch (ReflectionTypeLoadException)
+                    {
+                        // 忽略加载失败的程序集
+                        continue;
+                    }
+                }
+
+                var serviceProvider = services.BuildServiceProvider();
 
                 Console.WriteLine("==================================================");
                 Console.WriteLine($"[信息] 启动重构流程: {totalStartTime:yyyy-MM-dd HH:mm:ss}");
                 Console.WriteLine("==================================================");
 
-                // 直接运行数据流分析示例
-                string targetPath = @"D:\lodes\TR\Backup\New1.27\1.45\TR\TerrariaServer.sln";
-
-                // 如果文件不存在，回退到交互模式
-                if (System.IO.File.Exists(targetPath))
-                {
-                    Console.WriteLine($"[自动] 检测到目标项目，直接启动分析: {targetPath}");
-                    // await new Example.DataFlowAnalysisExample().RunAsync(targetPath);
-                    await new Example.SwitchFlowAnalysisExample().RunAsync(targetPath);
-                }
-                else
-                {
-                    Console.WriteLine("[提示] 未找到硬编码路径，进入交互模式。");
-                    await ExampleEntryPoint.Run(args);
-                }
+                // 4. 运行应用程序
+                var app = serviceProvider.GetRequiredService<ExampleEntryPoint>();
+                await app.RunAsync(args);
 
                 var totalElapsed = DateTime.Now - totalStartTime;
                 Console.WriteLine("\n==================================================");

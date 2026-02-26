@@ -1,15 +1,26 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using TerrariaTools.ConsistentBehaviorGuarantee;
 using TerrariaTools.Diagnostics;
+using TerrariaTools.Services;
 
 namespace Example
 {
     /// <summary>
     /// 演示如何使用 DifferentialTester 执行差分测试，以确保重构后的逻辑与原逻辑行为一致。
     /// </summary>
-    public class DifferentialTestingWorkflow
+    public class DifferentialTestingWorkflow : ITool
     {
+        public string Name => "差分测试工作流";
+        public string Description => "验证重构前后代码行为一致性。";
+
+        public Task RunAsync(string? path = null)
+        {
+            Run();
+            return Task.CompletedTask;
+        }
+
         public void Run()
         {
             // 1. 初始化追踪上下文

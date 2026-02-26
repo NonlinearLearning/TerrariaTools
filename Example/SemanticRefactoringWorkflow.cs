@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.Services;
 
 namespace Example
 {
@@ -12,15 +13,43 @@ namespace Example
     /// 演示如何结合语义分析执行跨项目的方法重构流。
     /// 场景：找到一个方法的所有引用，并将其替换为默认值或直接移除。
     /// </summary>
-    public class SemanticRefactoringWorkflow
+    public class SemanticRefactoringWorkflow : ITool
     {
-        public async Task RunAsync(string solutionPath)
+        private readonly IWorkspaceLoader _loader;
+        private readonly Microsoft.Extensions.Options.IOptions<TerrariaTools.Configuration.RefactoringSettings> _settings;
+
+        public SemanticRefactoringWorkflow(IWorkspaceLoader loader, Microsoft.Extensions.Options.IOptions<TerrariaTools.Configuration.RefactoringSettings> settings)
         {
-            var loader = new TerrariaTools.Load();
-            using var workspace = await loader.LoadSolutionAsync(solutionPath);
-            if (workspace == null) return;
+            _loader = loader;
+            _settings = settings;
+        }
+
+        public string Name => "语义重构工作流";
+        public string Description => "基于语义分析的跨项目重构（如移除特定符号引用）。";
+
+        public async Task RunAsync(string? solutionPath = null)
+        {
+            if (string.IsNullOrEmpty(solutionPath))
+            {
+                solutionPath = _settings.Value.DefaultSolutionPath;
+
+                if (string.IsNullOrEmpty(solutionPath))
+                {
+                    Console.WriteLine("请输入解决方案路径 (直接回车使用默认):");
+                    solutionPath = Console.ReadLine();
+                }
+            }
+
+            if (string.IsNullOrEmpty(solutionPath))
+            {
+                 Console.WriteLine("错误: 未提供有效的解决方案路径。");
+                 return;
+            }
+
+            var solution = await _loader.LoadSolutionAsync(solutionPath);
+            if (solution == null) return;
             
-            await ExecuteAsync(workspace.CurrentSolution);
+            await ExecuteAsync(solution);
         }
 
         public async Task ExecuteAsync(Solution solution)

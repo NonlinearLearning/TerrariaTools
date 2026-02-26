@@ -3,14 +3,25 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.Services;
+using System.Threading.Tasks;
 
 namespace Example
 {
     /// <summary>
     /// 演示如何使用 ExpressionProcessor 和 ExpressionSimplifier 进行细粒度的代码重写。
     /// </summary>
-    public class ExpressionRewriteExample
+    public class ExpressionRewriteExample : ITool
     {
+        public string Name => "表达式重写";
+        public string Description => "演示细粒度的表达式重写（如移除特定方法调用）。";
+
+        public Task RunAsync(string? path = null)
+        {
+            Run();
+            return Task.CompletedTask;
+        }
+
         public void Run()
         {
             // 示例源代码：包含一些我们想要移除的部分
@@ -50,7 +61,7 @@ class Calculator {
 
             Console.WriteLine("\n=== 重写后的代码 (已移除 Console.WriteLine) ===");
             Console.WriteLine(result?.ToFullString());
-            
+
             // ---------------------------------------------------------
             // 场景 2: 复杂表达式中的占位符替换
             // ---------------------------------------------------------
@@ -62,7 +73,7 @@ class Logic {
         // 工具应该将其替换为 false 或 true
         return (IsValid() && ShouldLog());
     }
-    
+
     bool IsValid() => true;
     bool ShouldLog() => false; // 假设我们要移除这个方法调用
 }";

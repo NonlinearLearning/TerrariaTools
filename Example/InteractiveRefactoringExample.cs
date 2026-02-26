@@ -4,14 +4,25 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.Services;
+using System.Threading.Tasks;
 
 namespace Example
 {
     /// <summary>
     /// 演示交互式重构流程：让用户在运行时决定是否应用某个重构。
     /// </summary>
-    public class InteractiveRefactoringExample
+    public class InteractiveRefactoringExample : ITool
     {
+        public string Name => "交互式重构";
+        public string Description => "运行时让用户选择是否应用重构。";
+
+        public Task RunAsync(string? path = null)
+        {
+            Run();
+            return Task.CompletedTask;
+        }
+
         public void Run()
         {
             string source = @"

@@ -55,7 +55,20 @@ if (!tester.Compare(originalResult, newResult, "CalculationParity")) {
 
 ---
 
-### **3. 进阶重构场景**
+### **4. 配置与测试**
+
+#### **Q: 如何自定义重构参数（如忽略特定文件）？**
+**A:** 项目使用 `appsettings.json` 进行配置。您可以修改其中的 `Refactoring` 节点：
+- `IgnoredFiles`: 添加不需要重构的文件名（如 `["AssemblyInfo.cs", "GlobalSuppressions.cs"]`）。
+- `Parallelism`: 设置并行线程数。
+- `EnableDryRun`: 设置为 `true` 可进行空跑测试，不实际修改文件。
+
+#### **Q: 如何在不依赖真实文件系统的情况下测试重构逻辑？**
+**A:** 我们引入了 `IWorkspaceLoader` 接口。在编写单元测试时，可以使用 `Moq` 等框架 Mock 该接口，拦截 `SaveDocumentAsync` 方法的调用，从而验证文件是否按预期被修改，而无需产生磁盘 IO。参考 `UnitTests/RefactoringTests/ClassRefactorerTests.cs`。
+
+---
+
+### **4. 进阶重构场景**
 
 #### **Q: 如何自定义占位符生成逻辑？**
 **A:** 您可以通过重写 `ExpressionSimplifier` 中的 `TryCreatePlaceholder` 方法来实现自定义。

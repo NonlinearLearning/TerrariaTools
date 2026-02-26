@@ -2,6 +2,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.Services;
+using Moq;
 using Xunit;
 using System.Collections.Generic;
 using System.Linq;
@@ -42,16 +44,30 @@ namespace TerrariaTools.UnitTests
         private async Task<Dictionary<string, string>> RunRefactorerAsync(string source, string fileName = "TestFile.cs")
         {
             var (workspace, project, document) = await CreateProjectAsync(source, fileName);
+
+            // Set absolute path for the document
+            var absolutePath = Path.GetFullPath(fileName);
+            var newSolution = workspace.CurrentSolution.WithDocumentFilePath(document.Id, absolutePath);
+            workspace.TryApplyChanges(newSolution);
+
             var results = new Dictionary<string, string>();
             results[fileName] = source;
 
-            var refactorer = new MethodRefactorer(workspace.CurrentSolution);
-            var result = await refactorer.ProcessFileAsync(fileName);
+            var mockLoader = new Mock<IWorkspaceLoader>();
+            mockLoader.Setup(l => l.LoadSolutionAsync(It.IsAny<string>()))
+                      .ReturnsAsync(workspace.CurrentSolution);
 
-            if (result.AnyChanged && result.NewRoot != null)
-            {
-                results[fileName] = result.NewRoot.ToFullString();
-            }
+            mockLoader.Setup(l => l.SaveDocumentAsync(It.IsAny<string>(), It.IsAny<string>()))
+                      .Callback<string, string>((path, content) =>
+                      {
+                          if (path == absolutePath)
+                          {
+                              results[fileName] = content;
+                          }
+                      })
+                      .Returns(Task.CompletedTask);
+
+            await MethodRefactorer.ExecuteSolutionRefactoringAsync("dummy.sln", mockLoader.Object);
 
             return results;
         }
@@ -78,10 +94,10 @@ namespace TerrariaTools.UnitTests
             // 参数: Visibility, Modifiers, Usage, TypeKind, ReturnType, IsInterfaceImpl, ExpectedAction
             var pictCases = new[]
             {
-                // 1. 无引用 -> 删除 (普通类，非虚/抽象/接口/重写)
-                new { Visibility = "public", Modifiers = "", Usage = "none", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Delete" },
-                // 2. 无引用 -> 删除 (静态方法)
-                new { Visibility = "public", Modifiers = "static", Usage = "none", TypeKind = "class", ReturnType = "int", IsInterfaceImpl = false, Expected = "Delete" },
+                // 1. 无引用 -> 保持 (普通类，非虚/抽象/接口/重写，但 Public 视为 API)
+                new { Visibility = "public", Modifiers = "", Usage = "none", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
+                // 2. 无引用 -> 保持 (静态方法，Public)
+                new { Visibility = "public", Modifiers = "static", Usage = "none", TypeKind = "class", ReturnType = "int", IsInterfaceImpl = false, Expected = "Keep" },
                 // 3. 内部引用 -> 私有化 (公开方法)
                 new { Visibility = "public", Modifiers = "", Usage = "internal", TypeKind = "class", ReturnType = "string", IsInterfaceImpl = false, Expected = "MakePrivate" },
                 // 4. 内部引用 -> 私有化 (Internal方法)
@@ -106,8 +122,8 @@ namespace TerrariaTools.UnitTests
                 new { Visibility = "public", Modifiers = "", Usage = "none", TypeKind = "struct", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
                 // 14. Partial 方法 -> 保持
                 new { Visibility = "public", Modifiers = "partial", Usage = "external", TypeKind = "class", ReturnType = "void", IsInterfaceImpl = false, Expected = "Keep" },
-                // 15. Async 方法 -> 删除 (无引用)
-                new { Visibility = "public", Modifiers = "async", Usage = "none", TypeKind = "class", ReturnType = "Task", IsInterfaceImpl = false, Expected = "Delete" }
+                // 15. Async 方法 -> 保持 (Public API)
+                new { Visibility = "public", Modifiers = "async", Usage = "none", TypeKind = "class", ReturnType = "Task", IsInterfaceImpl = false, Expected = "Keep" }
             };
 
             foreach (var c in pictCases)
@@ -187,9 +203,9 @@ namespace TerrariaTools.UnitTests
                             // 我们可以在测试逻辑中增加更复杂的验证，或者这里只检查关键部分
                         }
                         else if (c.ReturnType == "int")
-                            expected = "return (int)0;";
+                            expected = "return default;";
                         else if (c.ReturnType == "string")
-                            expected = "return null;";
+                            expected = "return default;";
                         break;
                     case "Keep":
                         if (c.TypeKind == "interface")

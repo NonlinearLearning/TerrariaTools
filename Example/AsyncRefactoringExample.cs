@@ -3,6 +3,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.Services;
+using System.Threading.Tasks;
 
 namespace Example
 {
@@ -10,8 +12,17 @@ namespace Example
     /// 演示如何安全地处理异步代码的重构。
     /// 场景：将同步方法调用转换为异步，或者移除不需要的异步等待。
     /// </summary>
-    public class AsyncRefactoringExample
+    public class AsyncRefactoringExample : ITool
     {
+        public string Name => "异步代码重构";
+        public string Description => "演示同步/异步代码转换与清理。";
+
+        public Task RunAsync(string? path = null)
+        {
+            Run();
+            return Task.CompletedTask;
+        }
+
         public void Run()
         {
             string sourceCode = @"

@@ -2,6 +2,8 @@ using System;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using TerrariaTools.Services;
+using System.Threading.Tasks;
 
 namespace Example
 {
@@ -9,8 +11,17 @@ namespace Example
     /// 演示如何创建自定义的 CSharpSyntaxRewriter 来执行特定的代码转换。
     /// 这个例子展示了一个简单的 "敏感信息脱敏" 重写器。
     /// </summary>
-    public class CustomRewriterExample
+    public class CustomRewriterExample : ITool
     {
+        public string Name => "自定义重写器";
+        public string Description => "演示自定义 CSharpSyntaxRewriter（如敏感信息脱敏）。";
+
+        public Task RunAsync(string? path = null)
+        {
+            Run();
+            return Task.CompletedTask;
+        }
+
         public void Run()
         {
             string sourceCode = @"

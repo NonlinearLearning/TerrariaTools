@@ -31,22 +31,21 @@ namespace Example {
         {
             // 1. 初始化与加载解决方案
             string solutionPath = @"D:\lodes\TR\Backup\New1.27\TR\TerrariaServer.sln";
-            var loader = new TerrariaTools.Load();
+            using var loader = new TerrariaTools.Services.WorkspaceLoader();
 
             Console.WriteLine($"[信息] 正在加载解决方案: {solutionPath}");
-            using var workspace = await loader.LoadSolutionAsync(solutionPath);
-            if (workspace == null)
+            var solution = await loader.LoadSolutionAsync(solutionPath);
+            if (solution == null)
             {
                 Console.WriteLine("[错误] 加载解决方案失败。");
                 return;
             }
 
-            var solution = workspace.CurrentSolution;
             string targetFilePath = @"D:\lodes\TR\Backup\New1.27\TR\Terraria.GameInput\PlayerInput.cs";
 
             // 2. 获取目标文件的语义模型和符号
             Console.WriteLine($"[信息] 正在分析目标文件: {targetFilePath}");
-            var targetModel = await loader.GetFileSemanticModelAsync(workspace, targetFilePath);
+            var targetModel = await loader.GetFileSemanticModelAsync(targetFilePath);
             if (targetModel == null)
             {
                 Console.WriteLine("[错误] 未能加载目标文件的语义模型。");

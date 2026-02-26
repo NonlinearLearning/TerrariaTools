@@ -10,6 +10,8 @@ using System.IO;
 using System.Threading;
 using System.Collections.Concurrent;
 
+using TerrariaTools.Services;
+
 namespace TerrariaTools.RewriteCodeExpressions
 {
     /// <summary>
@@ -27,10 +29,15 @@ namespace TerrariaTools.RewriteCodeExpressions
         }
 
         /// <summary>
-        /// 执行解决方案级别的名称匹配方法重构。
+        /// 执行解决方案级别的方法重构。
         /// </summary>
-        public static async Task ExecuteSolutionRefactoringAsync(string solutionPath, Load loader, string namePattern = "Draw")
+        /// <param name="solutionPath">解决方案路径</param>
+        /// <param name="loader">用于加载解决方案的加载器</param>
+        /// <param name="namePattern">方法名称包含的模式字符串</param>
+        /// <param name="progress">进度报告回调</param>
+        public static async Task<MethodRefactorer.MethodRefactoringStats> ExecuteSolutionRefactoringAsync(string solutionPath, IWorkspaceLoader loader, string namePattern, IProgress<string>? progress = null)
         {
+            var stats = new MethodRefactorer.MethodRefactoringStats();
             bool anyFileChangedInPass;
             int passCount = 0;
 
@@ -38,12 +45,11 @@ namespace TerrariaTools.RewriteCodeExpressions
             {
                 passCount++;
                 anyFileChangedInPass = false;
-                Console.WriteLine($"\n[信息] 正在启动第 {passCount} 轮名称匹配方法重构迭代 (模式: {namePattern})...");
+                progress?.Report($"\n[信息] 正在启动第 {passCount} 轮基于名称的清理 ({namePattern})...");
 
-                using var workspace = await loader.LoadSolutionAsync(solutionPath);
-                if (workspace == null) break;
+                var solution = await loader.LoadSolutionAsync(solutionPath);
+                if (solution == null) break;
 
-                var solution = workspace.CurrentSolution;
                 var refactorer = new NameBasedMethodRefactorer(solution, namePattern);
 
                 var allDocuments = solution.Projects
@@ -51,13 +57,17 @@ namespace TerrariaTools.RewriteCodeExpressions
                     .Where(d => d.FilePath != null && d.FilePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
-                Console.WriteLine($"[信息] 发现 {allDocuments.Count} 个待处理的 C# 文件。");
+                progress?.Report($"[信息] 发现 {allDocuments.Count} 个待处理的 C# 文件。");
 
-                int totalDeleted = 0;
-                int totalBodyCleared = 0;
+                int totalDeletedInPass = 0;
+                int totalBodyClearedInPass = 0;
                 int processedCount = 0;
 
-                var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+                var parallelOptions = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Environment.ProcessorCount
+                };
+
                 var results = new ConcurrentBag<RefactorResult>();
                 var startTime = DateTime.Now;
 
@@ -71,13 +81,13 @@ namespace TerrariaTools.RewriteCodeExpressions
                         if (result.AnyChanged)
                         {
                             anyFileChangedInPass = true;
-                            Interlocked.Add(ref totalDeleted, result.DeletedCount);
-                            Interlocked.Add(ref totalBodyCleared, result.BodyClearedCount);
+                            Interlocked.Add(ref totalDeletedInPass, result.DeletedCount);
+                            Interlocked.Add(ref totalBodyClearedInPass, result.BodyClearedCount);
                         }
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[错误] 处理文件 {doc.FilePath} 时出错: {ex.Message}");
+                        progress?.Report($"[错误] 处理文件 {doc.FilePath} 时出错: {ex.Message}");
                     }
 
                     var currentCount = Interlocked.Increment(ref processedCount);
@@ -85,35 +95,42 @@ namespace TerrariaTools.RewriteCodeExpressions
                     {
                         var elapsed = DateTime.Now - startTime;
                         var speed = currentCount / elapsed.TotalSeconds;
-                        Console.WriteLine($"[{currentCount}/{allDocuments.Count}] 正在重构方法... 速度: {speed:F1} 文件/秒, 变更数: {totalDeleted + totalBodyCleared}");
+                        progress?.Report($"[{currentCount}/{allDocuments.Count}] 正在重构方法... 速度: {speed:F1} 文件/秒, 变更数: {totalDeletedInPass + totalBodyClearedInPass}");
                     }
                 });
 
                 if (anyFileChangedInPass)
                 {
-                    Console.WriteLine($"[信息] 正在将本轮变更保存到磁盘...");
+                    progress?.Report($"[信息] 正在将本轮变更保存到磁盘...");
                     int savedCount = 0;
                     foreach (var res in results.Where(r => r.AnyChanged && r.NewRoot != null))
                     {
                         try
                         {
-                            File.WriteAllText(res.FilePath!, res.NewRoot!.ToFullString(), System.Text.Encoding.UTF8);
+                            await loader.SaveDocumentAsync(res.FilePath!, res.NewRoot!.ToFullString());
                             savedCount++;
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"[错误] 写入文件 {res.FilePath} 失败: {ex.Message}");
+                            progress?.Report($"[错误] 写入文件 {res.FilePath} 失败: {ex.Message}");
                         }
                     }
-                    Console.WriteLine($"[成功] 本轮迭代结束。已保存 {savedCount} 个文件的变更，删除 {totalDeleted}，清空体 {totalBodyCleared}。");
+
+                    stats.TotalDeletedMethods += totalDeletedInPass;
+                    stats.TotalBodyClearedMethods += totalBodyClearedInPass;
+
+                    progress?.Report($"[成功] 本轮迭代结束。已保存 {savedCount} 个文件的变更。");
+                    progress?.Report($"  - 删除: {totalDeletedInPass}");
+                    progress?.Report($"  - 清空方法体: {totalBodyClearedInPass}");
                 }
                 else
                 {
-                    Console.WriteLine("[信息] 本轮未发现可重构的内容，迭代停止。");
+                    progress?.Report("[信息] 本轮未发现可重构的内容，迭代停止。");
                 }
             } while (anyFileChangedInPass && passCount < 10);
 
-            Console.WriteLine($"\n[完成] 名称匹配方法重构结束。共执行了 {passCount} 轮迭代。");
+            progress?.Report($"\n[完成] 名称清理全流程结束。总共执行了 {passCount} 轮迭代。");
+            return stats;
         }
 
         public class RefactorResult

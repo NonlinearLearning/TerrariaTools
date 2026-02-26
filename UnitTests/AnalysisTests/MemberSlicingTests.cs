@@ -83,5 +83,42 @@ namespace TerrariaTools.UnitTests.Analysis
             Assert.Contains("public int Used;", newCode);
             Assert.DoesNotContain("Unused", newCode);
         }
+
+        [Fact]
+        public async Task MemberSlicingRewriter_ShouldAddNamespaceAliasesForAmbiguousTypes()
+        {
+            // Arrange
+            string sourceCode = @"
+using Microsoft.Xna.Framework;
+using System.Windows.Forms;
+using System.Drawing;
+
+namespace Test {
+    public class Demo {
+        public void DoSomething() {
+            // Placeholder for usage
+        }
+    }
+}";
+
+            using var workspace = new AdhocWorkspace();
+            var project = workspace.AddProject("TestProject", LanguageNames.CSharp);
+            var document = workspace.AddDocument(project.Id, "Demo.cs", SourceText.From(sourceCode));
+            var semanticModel = await document.GetSemanticModelAsync();
+            var root = await document.GetSyntaxRootAsync();
+
+            var classSymbol = semanticModel!.GetDeclaredSymbol(root!.DescendantNodes().OfType<ClassDeclarationSyntax>().First())!;
+            var methodSymbol = classSymbol.GetMembers("DoSomething").First();
+
+            // Act
+            var rewriter = new MemberSlicingRewriter(semanticModel!, new List<ISymbol> { methodSymbol });
+            var newRoot = rewriter.Visit(root);
+            var newCode = newRoot!.ToFullString();
+
+            // Assert
+            // 应该包含 Color 和 Keys 的 alias
+            Assert.Contains("Color = Microsoft.Xna.Framework.Color", newCode);
+            Assert.Contains("Keys = Microsoft.Xna.Framework.Input.Keys", newCode);
+        }
     }
 }

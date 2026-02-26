@@ -1,0 +1,35 @@
+# Parameter definitions
+Accessibility: Public, Internal, Private, Protected, PrivateProtected, ProtectedInternal
+Modifier: None, Static, Virtual, Override, Abstract, Async
+Kind: Regular, Constructor, Main
+Caller: None, SameType, OtherTypeSameAssembly, OtherTypeDiffAssembly
+TypeKind: Class, Struct, Interface
+
+# Constraints
+
+# 1. Main must be Static and Regular
+IF [Kind] = "Main" THEN [Modifier] = "Static";
+IF [Kind] = "Main" THEN [Accessibility] = "Public";
+
+# 2. Constructor constraints
+IF [Kind] = "Constructor" THEN [Modifier] NOT IN {"Virtual", "Abstract", "Override"};
+
+# 3. Struct constraints
+IF [TypeKind] = "Struct" THEN [Modifier] NOT IN {"Virtual", "Abstract", "Override"};
+IF [TypeKind] = "Struct" THEN [Accessibility] <> "Protected";
+IF [TypeKind] = "Struct" THEN [Accessibility] <> "PrivateProtected";
+IF [TypeKind] = "Struct" THEN [Accessibility] <> "ProtectedInternal";
+
+# 4. Interface constraints
+IF [TypeKind] = "Interface" THEN [Accessibility] = "Public";
+IF [TypeKind] = "Interface" THEN [Modifier] NOT IN {"Static", "Async", "Override"};
+
+# 5. Abstract constraints
+IF [Modifier] = "Abstract" THEN [TypeKind] = "Class";
+
+# 6. Accessibility vs Caller
+IF [Accessibility] = "Private" THEN [Caller] IN {"None", "SameType"};
+IF [Accessibility] = "Internal" THEN [Caller] <> "OtherTypeDiffAssembly";
+IF [Accessibility] = "PrivateProtected" THEN [Caller] <> "OtherTypeDiffAssembly";
+IF [Accessibility] = "Protected" AND [TypeKind] = "Struct" THEN [Caller] <> "OtherTypeDiffAssembly";
+IF [Accessibility] = "Protected" AND [TypeKind] = "Interface" THEN [Caller] <> "OtherTypeDiffAssembly";

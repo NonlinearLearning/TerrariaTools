@@ -13,11 +13,13 @@ namespace TerrariaTools.Analysis
         public ISymbol Symbol { get; }
         public string FullName => Symbol.ToDisplayString();
         public HashSet<SymbolNode> Dependencies { get; }
+        public HashSet<SymbolNode> Dependents { get; }
 
         public SymbolNode(ISymbol symbol, IEqualityComparer<SymbolNode> nodeComparer)
         {
             Symbol = symbol ?? throw new ArgumentNullException(nameof(symbol));
             Dependencies = new HashSet<SymbolNode>(nodeComparer);
+            Dependents = new HashSet<SymbolNode>(nodeComparer);
         }
 
         public override int GetHashCode() => SymbolEqualityComparer.Default.GetHashCode(Symbol);
@@ -66,6 +68,7 @@ namespace TerrariaTools.Analysis
             var fromNode = GetOrAddNode(from);
             var toNode = GetOrAddNode(to);
             fromNode.Dependencies.Add(toNode);
+            toNode.Dependents.Add(fromNode);
         }
 
         public IEnumerable<SymbolNode> AllNodes => _nodes.Values;
@@ -73,7 +76,7 @@ namespace TerrariaTools.Analysis
         /// <summary>
         /// 深度优先搜索 (DFS) 遍历。
         /// </summary>
-        public IEnumerable<SymbolNode> DFS(SymbolNode startNode)
+        public IEnumerable<SymbolNode> DFS(SymbolNode startNode, bool reverse = false)
         {
             var visited = new HashSet<SymbolNode>(_nodeComparer);
             var stack = new Stack<SymbolNode>();
@@ -85,10 +88,11 @@ namespace TerrariaTools.Analysis
                 if (visited.Add(current))
                 {
                     yield return current;
-                    foreach (var dep in current.Dependencies)
+                    var neighbors = reverse ? current.Dependents : current.Dependencies;
+                    foreach (var next in neighbors)
                     {
-                        if (!visited.Contains(dep))
-                            stack.Push(dep);
+                        if (!visited.Contains(next))
+                            stack.Push(next);
                     }
                 }
             }

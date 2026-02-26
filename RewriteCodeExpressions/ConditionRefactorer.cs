@@ -7,6 +7,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using TerrariaTools.Services;
+
 namespace TerrariaTools.RewriteCodeExpressions
 {
     /// <summary>
@@ -21,17 +23,25 @@ namespace TerrariaTools.RewriteCodeExpressions
             _solution = solution;
         }
 
+        public class ConditionRefactoringStats
+        {
+            public int TotalChangedFiles { get; set; }
+        }
+
         /// <summary>
         /// 执行解决方案级别的条件重构。
         /// </summary>
-        public static async Task ExecuteSolutionRefactoringAsync(string solutionPath, Load loader)
+        /// <param name="solutionPath">解决方案路径</param>
+        /// <param name="loader">用于加载解决方案的加载器</param>
+        /// <param name="progress">进度报告回调</param>
+        public static async Task<ConditionRefactoringStats> ExecuteSolutionRefactoringAsync(string solutionPath, IWorkspaceLoader loader, IProgress<string>? progress = null)
         {
-            Console.WriteLine($"\n[信息] 正在启动条件表达式重构 (移除 netMode == 1, netMode != 2, myPlayer == whoAmI)...");
+            var stats = new ConditionRefactoringStats();
+            progress?.Report("\n[信息] 正在启动条件重构 (Terraria 特有条件)...");
 
-            using var workspace = await loader.LoadSolutionAsync(solutionPath);
-            if (workspace == null) return;
+            var solution = await loader.LoadSolutionAsync(solutionPath);
+            if (solution == null) return stats;
 
-            var solution = workspace.CurrentSolution;
             var refactorer = new ConditionRefactorer(solution);
 
             var allDocuments = solution.Projects
@@ -39,57 +49,52 @@ namespace TerrariaTools.RewriteCodeExpressions
                 .Where(d => d.FilePath != null && d.FilePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            Console.WriteLine($"[信息] 发现 {allDocuments.Count} 个待处理的 C# 文件。");
+            progress?.Report($"[信息] 发现 {allDocuments.Count} 个待处理的 C# 文件。");
 
-            int processedCount = 0;
-            int changedCount = 0;
-            int totalProcessed = allDocuments.Count;
-
-            var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
             var results = new ConcurrentBag<RefactorResult>();
-            var startTime = DateTime.Now;
+            var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
 
             await Parallel.ForEachAsync(allDocuments, parallelOptions, async (doc, ct) =>
             {
-                var result = await refactorer.ProcessFileAsync(doc.FilePath!);
-                results.Add(result);
-
-                if (result.AnyChanged)
+                try
                 {
-                    Interlocked.Increment(ref changedCount);
+                    var result = await refactorer.ProcessFileAsync(doc.FilePath!);
+                    results.Add(result);
                 }
-
-                var currentCount = Interlocked.Increment(ref processedCount);
-                if (currentCount % 100 == 0 || currentCount == totalProcessed)
+                catch (Exception ex)
                 {
-                    var elapsed = DateTime.Now - startTime;
-                    var speed = currentCount / elapsed.TotalSeconds;
-                    Console.WriteLine($"[{currentCount}/{totalProcessed}] 正在处理... 速度: {speed:F1} 文件/秒, 已变更: {changedCount}");
+                    progress?.Report($"[错误] 处理文件 {doc.FilePath} 时出错: {ex.Message}");
                 }
             });
 
-            if (changedCount > 0)
+            var changedResults = results.Where(r => r.AnyChanged && r.NewRoot != null).ToList();
+
+            if (changedResults.Any())
             {
-                Console.WriteLine($"[信息] 正在将变更保存到磁盘...");
+                progress?.Report($"[信息] 发现 {changedResults.Count} 个文件需要修改，正在保存...");
                 int savedCount = 0;
-                foreach (var res in results.Where(r => r.AnyChanged && r.NewRoot != null))
+
+                foreach (var res in changedResults)
                 {
                     try
                     {
-                        File.WriteAllText(res.FilePath!, res.NewRoot!.ToFullString(), System.Text.Encoding.UTF8);
+                        await loader.SaveDocumentAsync(res.FilePath!, res.NewRoot!.ToFullString());
                         savedCount++;
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[错误] 写入文件 {res.FilePath} 失败: {ex.Message}");
+                        progress?.Report($"[错误] 写入文件 {res.FilePath} 失败: {ex.Message}");
                     }
                 }
-                Console.WriteLine($"[成功] 条件重构结束。已更新 {savedCount} 个文件。");
+                stats.TotalChangedFiles = savedCount;
+                progress?.Report($"[成功] 条件重构完成。已修改 {savedCount} 个文件。");
             }
             else
             {
-                Console.WriteLine("[信息] 未发现需要重构的代码。");
+                progress?.Report("[信息] 未发现需要修改的条件表达式。");
             }
+
+            return stats;
         }
 
         public class RefactorResult
