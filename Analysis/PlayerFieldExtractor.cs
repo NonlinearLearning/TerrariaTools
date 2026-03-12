@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -10,145 +10,109 @@ namespace TerrariaTools.Analysis
 {
     /// <summary>
     /// 分析 MessageBuffer.cs 以提取 GetData 方法中引用的 Player 字段。
+    /// 升级版：接入 Roslyn 语义模型，实现精准的跨文件符号分析。
     /// </summary>
-    public class PlayerFieldExtractor
+    public class PlayerFieldExtractor : IPlayerFieldExtractor
     {
+        private readonly Solution _solution;
+
         public class AnalysisResult
         {
-            public HashSet<string> AllPlayerFields { get; set; } = new HashSet<string>();
-            public HashSet<string> ReferencedFields { get; set; } = new HashSet<string>();
-            public List<string> MissingFields { get; set; } = new List<string>();
+            public HashSet<ISymbol> ReferencedSymbols { get; set; } = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+            public HashSet<string> ReferencedFieldNames { get; set; } = new HashSet<string>();
+            public List<string> UnresolvedReferences { get; set; } = new List<string>();
+        }
+
+        public PlayerFieldExtractor(Solution solution)
+        {
+            _solution = solution ?? throw new ArgumentNullException(nameof(solution));
         }
 
         /// <summary>
-        /// 执行分析。
+        /// 执行深度语义分析，提取指定方法中对特定类型成员的所有引用。
         /// </summary>
-        /// <param name="sourcePaths">包含 Player 及其基类定义的文件路径列表。</param>
-        /// <param name="messageBufferPath">MessageBuffer.cs 的路径。</param>
-        /// <returns>分析结果。</returns>
-        public AnalysisResult Analyze(IEnumerable<string> sourcePaths, string messageBufferPath)
+        /// <param name="targetTypeName">目标类型全名（如 "Terraria.Player"）</param>
+        /// <param name="containerTypeName">包含目标方法的类名（如 "Terraria.MessageBuffer"）</param>
+        /// <param name="methodName">目标方法名（如 "GetData"）</param>
+        public async Task<AnalysisResult> AnalyzeAsync(string targetTypeName = "Terraria.Player", string containerTypeName = "Terraria.MessageBuffer", string methodName = "GetData")
         {
             var result = new AnalysisResult();
 
-            // 1. 加载并提取所有给定类中的公共字段和属性
-            foreach (var path in sourcePaths)
+            foreach (var project in _solution.Projects)
             {
-                var fields = ExtractAllFields(path);
-                foreach (var f in fields) result.AllPlayerFields.Add(f);
-            }
+                var compilation = await project.GetCompilationAsync();
+                if (compilation == null) continue;
 
-            // 2. 加载 MessageBuffer 并提取 GetData 中的引用
-            var references = ExtractReferencedFieldsFromMessageBuffer(messageBufferPath);
+                // 寻找目标类型
+                var targetTypeSymbol = compilation.GetTypeByMetadataName(targetTypeName);
 
-            // 3. 确定哪些引用确实属于 Player (或其基类)
-            foreach (var field in references)
-            {
-                if (result.AllPlayerFields.Contains(field))
+                // 寻找包含方法的类
+                var containerTypeSymbol = compilation.GetTypeByMetadataName(containerTypeName);
+                if (containerTypeSymbol == null) continue;
+
+                // 在当前项目中寻找对应的语法树
+                foreach (var tree in compilation.SyntaxTrees)
                 {
-                    result.ReferencedFields.Add(field);
-                }
-                else
-                {
-                    result.MissingFields.Add(field);
+                    var root = await tree.GetRootAsync();
+                    var model = compilation.GetSemanticModel(tree);
+
+                    // 寻找目标方法声明
+                    var methodDecls = root.DescendantNodes()
+                        .OfType<MethodDeclarationSyntax>()
+                        .Where(m => m.Identifier.Text == methodName);
+
+                    foreach (var methodDecl in methodDecls)
+                    {
+                        var methodSymbol = model.GetDeclaredSymbol(methodDecl);
+                        if (methodSymbol == null || !SymbolEqualityComparer.Default.Equals(methodSymbol.ContainingType, containerTypeSymbol))
+                            continue;
+
+                        // 分析方法体中的所有成员访问
+                        var memberAccesses = methodDecl.DescendantNodes().OfType<MemberAccessExpressionSyntax>();
+                        foreach (var access in memberAccesses)
+                        {
+                            var symbolInfo = model.GetSymbolInfo(access.Name);
+                            var symbol = symbolInfo.Symbol;
+
+                            if (symbol != null)
+                            {
+                                // 检查该成员是否属于目标类型（或其基类）
+                                if (IsMemberOfTargetType(symbol, targetTypeSymbol))
+                                {
+                                    result.ReferencedSymbols.Add(symbol);
+                                    result.ReferencedFieldNames.Add(symbol.Name);
+                                }
+                            }
+                            else
+                            {
+                                // 记录无法解析的引用（可能是由于符号丢失或编译错误）
+                                result.UnresolvedReferences.Add(access.ToString());
+                            }
+                        }
+                    }
                 }
             }
 
             return result;
         }
 
-        private HashSet<string> ExtractAllFields(string path)
+        private bool IsMemberOfTargetType(ISymbol memberSymbol, INamedTypeSymbol? targetType)
         {
-            if (!File.Exists(path)) throw new FileNotFoundException(path);
+            if (targetType == null) return false;
 
-            string source = File.ReadAllText(path);
-            SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
-            var root = tree.GetCompilationUnitRoot();
+            var containingType = memberSymbol.ContainingType;
+            if (containingType == null) return false;
 
-            var classDecls = root.DescendantNodes().OfType<ClassDeclarationSyntax>();
-
-            HashSet<string> members = new HashSet<string>();
-
-            foreach (var cls in classDecls)
+            // 检查是否是目标类型本身或其基类
+            var current = targetType;
+            while (current != null)
             {
-                var fields = cls.DescendantNodes().OfType<FieldDeclarationSyntax>()
-                    .SelectMany(f => f.Declaration.Variables)
-                    .Select(v => v.Identifier.Text);
-
-                var properties = cls.DescendantNodes().OfType<PropertyDeclarationSyntax>()
-                    .Select(p => p.Identifier.Text);
-
-                foreach (var f in fields) members.Add(f);
-                foreach (var p in properties) members.Add(p);
+                if (SymbolEqualityComparer.Default.Equals(containingType, current))
+                    return true;
+                current = current.BaseType;
             }
-
-            return members;
-        }
-
-        private HashSet<string> ExtractReferencedFieldsFromMessageBuffer(string messageBufferPath)
-        {
-            if (!File.Exists(messageBufferPath)) throw new FileNotFoundException(messageBufferPath);
-
-            string source = File.ReadAllText(messageBufferPath);
-            SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
-            var root = tree.GetCompilationUnitRoot();
-
-            var getDataMethod = root.DescendantNodes()
-                .OfType<MethodDeclarationSyntax>()
-                .FirstOrDefault(m => m.Identifier.Text == "GetData");
-
-            if (getDataMethod == null) return new HashSet<string>();
-
-            var switchStatement = getDataMethod.DescendantNodes()
-                .OfType<SwitchStatementSyntax>()
-                .FirstOrDefault();
-
-            if (switchStatement == null) return new HashSet<string>();
-
-            HashSet<string> references = new HashSet<string>();
-
-            foreach (var section in switchStatement.Sections)
-            {
-                // 识别 Player 变量
-                var playerVars = section.DescendantNodes()
-                    .OfType<VariableDeclaratorSyntax>()
-                    .Where(v => IsPlayerType(v))
-                    .Select(v => v.Identifier.Text)
-                    .ToList();
-
-                var memberAccesses = section.DescendantNodes()
-                    .OfType<MemberAccessExpressionSyntax>();
-
-                foreach (var access in memberAccesses)
-                {
-                    string expr = access.Expression.ToString();
-                    if (playerVars.Contains(expr) || IsDirectPlayerAccess(access))
-                    {
-                        references.Add(access.Name.Identifier.Text);
-                    }
-                }
-            }
-
-            return references;
-        }
-
-        private bool IsPlayerType(VariableDeclaratorSyntax declarator)
-        {
-            var declaration = declarator.Parent as VariableDeclarationSyntax;
-            if (declaration == null) return false;
-
-            string typeName = declaration.Type.ToString();
-            if (typeName == "Player") return true;
-
-            if (typeName == "var" && declarator.Initializer?.Value.ToString().Contains("Main.player") == true)
-                return true;
 
             return false;
-        }
-
-        private bool IsDirectPlayerAccess(MemberAccessExpressionSyntax access)
-        {
-            string expr = access.Expression.ToString();
-            return expr.StartsWith("Main.player[") || expr.Contains(".player[");
         }
     }
 }

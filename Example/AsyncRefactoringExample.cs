@@ -66,7 +66,7 @@ public class DataService
             // 定义移除规则：移除所有名为 "LogAsync" 的调用
             Func<SyntaxNode, bool> shouldRemove = node =>
             {
-                if (node is AwaitExpressionSyntax awaitExpr && 
+                if (node is AwaitExpressionSyntax awaitExpr &&
                     awaitExpr.Expression is InvocationExpressionSyntax inv &&
                     inv.Expression.ToString() == "LogAsync")
                 {
@@ -81,7 +81,7 @@ public class DataService
 
             Console.WriteLine("\n=== 重构后的代码 (移除了 LogAsync) ===");
             Console.WriteLine(newRoot?.ToFullString());
-            
+
             Console.WriteLine("\n[说明] ExpressionProcessor 能够智能识别 await 表达式。");
             Console.WriteLine("当 await LogAsync(...) 被移除时，整个 await 语句都会被清理，");
             Console.WriteLine("而不会留下悬空的 await 关键字。");

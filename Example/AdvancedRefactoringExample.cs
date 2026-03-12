@@ -12,8 +12,8 @@ namespace Example
     public class CustomPlaceholderSimplifier : ExpressionSimplifier
     {
         public CustomPlaceholderSimplifier(
-            Func<SyntaxNode, bool> shouldRemove, 
-            SemanticModel? model = null) 
+            Func<SyntaxNode, bool> shouldRemove,
+            SemanticModel? model = null)
             : base(shouldRemove, model)
         {
         }
@@ -45,8 +45,8 @@ namespace Example
         public void Execute(SyntaxNode root, SemanticModel model)
         {
             // 1. 定义移除谓词（例如：移除所有名为 "InternalDebug" 的方法调用）
-            Func<SyntaxNode, bool> predicate = node => 
-                node is InvocationExpressionSyntax invocation && 
+            Func<SyntaxNode, bool> predicate = node =>
+                node is InvocationExpressionSyntax invocation &&
                 invocation.Expression.ToString().EndsWith("InternalDebug");
 
             // 2. 使用 ExpressionProcessor.RemoveParts 一次性处理。

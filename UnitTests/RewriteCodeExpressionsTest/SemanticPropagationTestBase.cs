@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Generic;
 using System.Linq;
 using TerrariaTools.RewriteCodeExpressions;
+using TerrariaTools.RewriteCodeExpressions.Pipeline;
 using Xunit;
 
 namespace TerrariaTools.UnitTests

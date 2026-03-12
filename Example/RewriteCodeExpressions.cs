@@ -8,7 +8,8 @@ using Microsoft.CodeAnalysis.FindSymbols;
 
 using TerrariaTools;
 
-namespace Example {
+namespace Example
+{
     class RewriteCodeExpressionsExample
     {
         /// <summary>

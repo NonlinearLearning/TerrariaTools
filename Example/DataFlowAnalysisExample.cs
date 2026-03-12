@@ -10,7 +10,7 @@ using TerrariaTools.Services;
 namespace Example
 {
     /// <summary>
-    /// 演示如何分析特定方法（如 MessageBuffer.GetData）的数据流，
+    /// 演示如何分析特定方法的数据流，
     /// 识别并分类其使用的外部变量（字段/属性）和局部变量。
     /// </summary>
     public class DataFlowAnalysisExample : ITool
@@ -25,7 +25,7 @@ namespace Example
         }
 
         public string Name => "数据流分析";
-        public string Description => "分析特定方法的数据流，识别并分类其使用的变量（局部/外部）。";
+        public string Description => "分析特定方法的数据流，识别并分类其使用的变量。";
 
         public async Task RunAsync(string? projectOrSolutionPath = null)
         {

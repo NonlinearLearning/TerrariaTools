@@ -30,7 +30,7 @@ namespace Example
             if (string.IsNullOrEmpty(solutionPath))
             {
                 solutionPath = _settings.Value.DefaultSolutionPath;
-                
+
                 if (string.IsNullOrEmpty(solutionPath))
                 {
                     Console.WriteLine("请输入解决方案路径:");

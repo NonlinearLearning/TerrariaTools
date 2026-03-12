@@ -10,7 +10,7 @@ namespace TerrariaTools.ConsistentBehaviorGuarantee
     public class ConsistencyGuaranteeService
     {
         private readonly RewritingTraceContext _traceContext;
-        
+
         public DifferentialTester DiffTester { get; }
         public LogicParityVerifier LogicVerifier { get; }
         public DeterministicReplayer Replayer { get; }

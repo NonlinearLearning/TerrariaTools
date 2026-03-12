@@ -25,7 +25,7 @@ namespace Example
         }
 
         public string Name => "动态调用链分析";
-        public string Description => "分析 call_chain.log 中的运行时轨迹，识别死代码并验证静态分析。";
+        public string Description => "分析log中的运行时轨迹，识别冗余代码并验证静态分析。";
 
         public async Task RunAsync(string? solutionPath = null)
         {
@@ -124,11 +124,11 @@ namespace Example
             {
                 // A. 全局静态分析
                 Console.WriteLine("[分析] 1/2 正在构建全局静态调用图...");
-                var staticBuilder = new CallGraphBuilder(solution);
+                var staticBuilder = new FunctionBuildGraph(solution);
                 await staticBuilder.BuildAsync();
                 var allProjectMethods = staticBuilder.AllDeclaredMethods;
 
-                // B. DedServ 针对性分析 (使用 CallGraphBuilder 的路径)
+                // B. DedServ 针对性分析 (使用 FunctionBuildGraph 的路径)
                 Console.WriteLine("[分析] 2/2 正在从全局图中提取 DedServ 依赖链...");
                 string seedName = "Terraria.Main.DedServ";
                 var seeds = await analyzer.FindMethodSymbolAsync(seedName);
@@ -138,7 +138,7 @@ namespace Example
                 {
                     var seed = seeds.First();
                     // 复用全局分析的结果，查找可达方法
-                    dedServStaticMethods = staticBuilder.GetReachableMethods(seed);
+                    dedServStaticMethods = staticBuilder.GetReachableMethods([seed]).ToHashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
                 }
                 else
                 {
@@ -165,7 +165,7 @@ namespace Example
                 Console.WriteLine($"{"分析维度",-20} | {"方法总数",-10} | {"动态覆盖",-10} | {"未执行数",-10}");
                 Console.WriteLine(new string('-', 60));
                 Console.WriteLine($"{"1. 动态轨迹(项目内)",-20} | {dynamicInProject.Count,-10} | {"100%",-10} | {0,-10}");
-                Console.WriteLine($"{"2. 全局静态分析",-20} | {allProjectMethods.Count,-10} | {CalculatePercent(dynamicInProject.Count, allProjectMethods.Count),-10} | {unusedGlobal.Count,-10}");
+                Console.WriteLine($"{"2. 全局静态分析",-20} | {allProjectMethods.Count(),-10} | {CalculatePercent(dynamicInProject.Count, allProjectMethods.Count()),-10} | {unusedGlobal.Count,-10}");
                 Console.WriteLine($"{"3. DedServ 依赖链",-20} | {dedServStaticMethods.Count,-10} | {CalculatePercent(usedInDedServ.Count, dedServStaticMethods.Count),-10} | {unusedDedServ.Count,-10}");
                 Console.WriteLine(new string('=', 60));
 
@@ -184,7 +184,7 @@ namespace Example
                         $"解决方案: {solutionPath}",
                         $"--------------------------------------------------",
                         $"[1] 动态执行(项目内): {dynamicInProject.Count}",
-                        $"[2] 全局静态方法: {allProjectMethods.Count} (未执行: {unusedGlobal.Count})",
+                        $"[2] 全局静态方法: {allProjectMethods.Count()} (未执行: {unusedGlobal.Count})",
                         $"[3] DedServ 依赖方法: {dedServStaticMethods.Count} (未执行: {unusedDedServ.Count})",
                         $"--------------------------------------------------",
                         $"\n=== DedServ 依赖链中未执行的方法 ==="

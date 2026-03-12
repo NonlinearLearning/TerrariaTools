@@ -24,6 +24,9 @@ namespace TerrariaTools
     {
         static async Task Main(string[] args)
         {
+            // 设置控制台输出编码为 UTF-8，防止中文乱码
+            Console.OutputEncoding = System.Text.Encoding.UTF8;
+
             // 1. 注册 MSBuild 实例 (必须在任何 MSBuildWorkspace 创建之前)
             MSBuildLocator.RegisterDefaults();
 
@@ -55,7 +58,7 @@ namespace TerrariaTools
                 // 自动注册所有实现了 ITool 接口的工具
                 var interfaceType = typeof(ITool);
                 var assemblies = AppDomain.CurrentDomain.GetAssemblies();
-                
+
                 // 确保包含当前程序集
                 var currentAssembly = Assembly.GetExecutingAssembly();
                 if (!assemblies.Contains(currentAssembly))

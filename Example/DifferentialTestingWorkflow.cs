@@ -8,7 +8,7 @@ using TerrariaTools.Services;
 namespace Example
 {
     /// <summary>
-    /// 演示如何使用 DifferentialTester 执行差分测试，以确保重构后的逻辑与原逻辑行为一致。
+    /// 演示如何使用DifferentialTester执行差分测试，以确保重构后的逻辑与原逻辑行为一致。
     /// </summary>
     public class DifferentialTestingWorkflow : ITool
     {
@@ -70,7 +70,7 @@ namespace Example
         static class NewCalculator
         {
             // 假设这是一个重构后的版本，逻辑稍有不同（例如边界值处理错误）
-            public static int Calculate(int x) => x >= 0 ? x * 2 : 0; 
+            public static int Calculate(int x) => x >= 0 ? x * 2 : 0;
         }
     }
 }

@@ -25,7 +25,7 @@ namespace Example
         }
 
         public string Name => "语义重构工作流";
-        public string Description => "基于语义分析的跨项目重构（如移除特定符号引用）。";
+        public string Description => "基于语义分析的跨项目重构";
 
         public async Task RunAsync(string? solutionPath = null)
         {
@@ -42,13 +42,13 @@ namespace Example
 
             if (string.IsNullOrEmpty(solutionPath))
             {
-                 Console.WriteLine("错误: 未提供有效的解决方案路径。");
-                 return;
+                Console.WriteLine("错误: 未提供有效的解决方案路径。");
+                return;
             }
 
             var solution = await _loader.LoadSolutionAsync(solutionPath);
             if (solution == null) return;
-            
+
             await ExecuteAsync(solution);
         }
 
@@ -57,7 +57,7 @@ namespace Example
             // 1. 定位目标方法符号 (例如定位所有标记为 [Obsolete] 的方法)
             var project = solution.Projects.First();
             var compilation = await project.GetCompilationAsync();
-            
+
             // 假设我们要寻找并移除所有对 'OldService.Cleanup' 的调用
             var targetType = compilation?.GetTypeByMetadataName("MyProject.OldService");
             var targetMethod = targetType?.GetMembers("Cleanup").FirstOrDefault() as IMethodSymbol;

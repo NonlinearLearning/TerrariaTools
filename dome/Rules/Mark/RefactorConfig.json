@@ -1,0 +1,40 @@
+{
+  "CommentOutWhitelist": {
+    "CollectionMethods": [
+      "Add",
+      "Insert",
+      "Remove",
+      "Clear",
+      "Enqueue",
+      "Dequeue",
+      "Push",
+      "Pop",
+      "TryAdd",
+      "TryRemove"
+    ],
+    "SideEffectMethods": [
+      "Process",
+      "Save",
+      "Update",
+      "Delete",
+      "Log",
+      "Track",
+      "Notify",
+      "Emit",
+      "Post",
+      "Publish"
+    ],
+    "EventAccessors": [
+      "+=",
+      "-="
+    ]
+  },
+  "DefaultValueMapping": {
+    "System.Int32": "0",
+    "System.Boolean": "false",
+    "System.String": "null",
+    "System.Object": "null",
+    "System.DateTime": "default(DateTime)",
+    "System.Collections.Generic.List`1": "null"
+  }
+}

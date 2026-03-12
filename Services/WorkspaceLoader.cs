@@ -43,7 +43,7 @@ namespace TerrariaTools.Services
             // 修复 CS0618 过时警告
             _workspace.RegisterWorkspaceFailedHandler(args =>
             {
-                 Console.WriteLine($"[工作区诊断] {args.Diagnostic.Kind}: {args.Diagnostic.Message}");
+                Console.WriteLine($"[工作区诊断] {args.Diagnostic.Kind}: {args.Diagnostic.Message}");
             });
 
             try

@@ -31,7 +31,7 @@ namespace TerrariaTools.ConsistentBehaviorGuarantee
             var normalizedRewritten = Unwrap(rewrittenNode.NormalizeWhitespace("", ""));
 
             bool isEquivalent = normalizedOriginal.IsEquivalentTo(normalizedRewritten, topLevel: false);
-            
+
             if (!isEquivalent)
             {
                 _traceContext.AddDiagnostic(new RewritingDiagnostic
@@ -42,7 +42,7 @@ namespace TerrariaTools.ConsistentBehaviorGuarantee
                     Severity = "Warning"
                 });
             }
-            
+
             return isEquivalent;
         }
 
@@ -52,12 +52,12 @@ namespace TerrariaTools.ConsistentBehaviorGuarantee
             {
                 return Unwrap(parenthesized.Expression);
             }
-            
+
             // 递归处理子节点中的括号
             var parenNodes = node.DescendantNodes().OfType<ParenthesizedExpressionSyntax>().ToList();
             if (parenNodes.Any())
             {
-                return node.ReplaceNodes(parenNodes, (oldNode, newNode) => 
+                return node.ReplaceNodes(parenNodes, (oldNode, newNode) =>
                 {
                     return Unwrap(oldNode.Expression);
                 });

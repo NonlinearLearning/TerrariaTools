@@ -11,7 +11,7 @@ namespace Example
 {
     /// <summary>
     /// 提取 DedServ 最小影子项目。
-    /// 实现了“从DedServ 依赖链提取最小影子项目”的需求。
+    /// 实现了从DedServ 依赖链提取最小影子项目的需求。
     /// </summary>
     public class DedServShadowProjectExtractorExample : ITool
     {
@@ -24,8 +24,8 @@ namespace Example
             _settings = settings;
         }
 
-        public string Name => "DedServ 影子项目提取";
-        public string Description => "基于 DedServ 依赖链提取最小化影子项目到 TR 目录。";
+        public string Name => "影子项目提取";
+        public string Description => "基于DedServ依赖链提取最小化影子项目到TR目录。";
 
         public async Task RunAsync(string? solutionPath = null)
         {

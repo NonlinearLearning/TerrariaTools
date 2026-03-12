@@ -48,7 +48,8 @@ namespace TerrariaTools
                         defaultPath = null;
                     }
 
-                    await tool.RunAsync(defaultPath);
+                    var targetPath = args.Length > 1 ? args[1] : defaultPath;
+                    await tool.RunAsync(targetPath);
                     return;
                 }
             }

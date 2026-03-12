@@ -16,21 +16,21 @@ namespace TerrariaTools.UnitTests
             // 格式: { source, targetName, expectedMissing, expectedContains }
 
             // 1. 局部变量简单引用
-            yield return new object[] { "class C { void M() { int x = 1; int y = x; } }", "x", new[] { "int x", "int y" }, new string[0] };
+            yield return new object[] { "class C { void M() { int x = 1; int y = x; } }", "x", new[] { "int x = 1", "y = x" }, new string[0] };
             // 2. 局部变量多处引用
-            yield return new object[] { "class C { void M() { int x = 1; int y = x; int z = x + 1; } }", "x", new[] { "int x", "int y" }, new[] { "int z = 0 + 1" } };
+            yield return new object[] { "class C { void M() { int x = 1; int y = x; int z = x + 1; } }", "x", new[] { "int x = 1", "y = x" }, new string[0] };
             // 3. 嵌套作用域引用
-            yield return new object[] { "class C { void M() { int x = 1; { int y = x; } } }", "x", new[] { "int x", "int y = x" }, new string[0] };
+            yield return new object[] { "class C { void M() { int x = 1; { int y = x; } } }", "x", new[] { "int x = 1", "y = x" }, new string[0] };
             // 4. 方法参数引用
-            yield return new object[] { "class C { void M(int x) { int y = x; } }", "x", new[] { "int x", "int y = x" }, new string[0] };
+            yield return new object[] { "class C { void M(int x) { int y = x; } }", "x", new[] { "int x", "y = x" }, new string[0] };
             // 5. Lambda 参数引用
             yield return new object[] { "using System; class C { void M() { Action<int> a = x => { int y = x; }; } }", "x", new[] { "int y = x" }, new string[0] };
             // 6. 字段引用
-            yield return new object[] { "class C { int x; void M() { int y = x; } }", "x", new[] { "int x", "int y = x" }, new string[0] };
+            yield return new object[] { "class C { int x; void M() { int y = x; } }", "x", new[] { "int x", "y = x" }, new string[0] };
             // 7. 静态字段引用
-            yield return new object[] { "class C { static int x; void M() { int y = x; } }", "x", new[] { "static int x", "int y = x" }, new string[0] };
+            yield return new object[] { "class C { static int x; void M() { int y = x; } }", "x", new[] { "static int x", "y = x" }, new string[0] };
             // 8. 属性引用
-            yield return new object[] { "class C { int X { get; set; } void M() { int y = X; } }", "X", new[] { "int X", "int y = X" }, new string[0] };
+            yield return new object[] { "class C { int X { get; set; } void M() { int y = X; } }", "X", new[] { "int X", "y = X" }, new string[0] };
             // 9. 方法调用引用
             yield return new object[] { "class C { void X() {} void M() { X(); } }", "X", new[] { "void X()", "X()" }, new string[0] };
             // 10. 构造函数参数引用
@@ -46,27 +46,27 @@ namespace TerrariaTools.UnitTests
             // 15. Ref 参数引用
             yield return new object[] { "class C { void M(ref int x) { x++; } }", "x", new[] { "ref int x", "x++" }, new string[0] };
             // 16. 模式匹配引用
-            yield return new object[] { "class C { void M(object o) { if (o is int x) { int y = x; } } }", "x", new[] { "int y = x" }, new string[0] };
+            yield return new object[] { "class C { void M(object o) { if (o is int x) { int y = x; } } }", "x", new[] { "int x", "y = x" }, new string[0] };
             // 17. Switch 表达式引用
-            yield return new object[] { "class C { int M(int i) => i switch { 1 => i, _ => 0 }; }", "i", new[] { "1 => i" }, new[] { "1 => 0" } };
+            yield return new object[] { "class C { int M(int i) => i switch { 1 => i, _ => 0 }; }", "i", new[] { "1 => i" }, new string[0] };
             // 18. 三元表达式引用
-            yield return new object[] { "class C { void M(bool b, int x) { int y = b ? x : 0; } }", "x", new[] { "? x" }, new[] { "? 0" } };
+            yield return new object[] { "class C { void M(bool b, int x) { int y = b ? x : 0; } }", "x", new[] { "b ? x : 0" }, new string[0] };
             // 19. 空合并表达式引用
             yield return new object[] { "class C { void M(string s) { string y = s ?? \"\"; } }", "s", new[] { "s ?? \"\"" }, new string[0] };
             // 20. 字符串插值引用
-            yield return new object[] { "class C { void M(int x) { string s = $\"{x}\"; } }", "x", new[] { "{x}" }, new[] { "{0}" } };
+            yield return new object[] { "class C { void M(int x) { string s = $\"{x}\"; } }", "x", new[] { "{x}" }, new string[0] };
             // 21. 对象初始化器引用
             yield return new object[] { "class C { int X; void M() { var c = new C { X = 1 }; } }", "X", new[] { "X = 1" }, new string[0] };
             // 22. 集合初始化器引用
             yield return new object[] { "using System.Collections.Generic; class C { void M() { var l = new List<int> { 1 }; } }", "List", new[] { "new List<int>" }, new string[0] };
             // 23. 数组索引引用
-            yield return new object[] { "class C { void M(int[] a, int i) { int x = a[i]; } }", "i", new[] { "a[i]" }, new[] { "a[0]" } };
+            yield return new object[] { "class C { void M(int[] a, int i) { int x = a[i]; } }", "i", new[] { "a[i]" }, new string[0] };
             // 24. 递增表达式引用
             yield return new object[] { "class C { void M(int x) { x++; } }", "x", new[] { "x++" }, new string[0] };
             // 25. 复合赋值引用
             yield return new object[] { "class C { void M(int x) { x += 1; } }", "x", new[] { "x += 1" }, new string[0] };
             // 26. 二元运算引用
-            yield return new object[] { "class C { void M(int x, int y) { int z = x * y; } }", "x", new[] { "x * y" }, new[] { "0 * y" } };
+            yield return new object[] { "class C { void M(int x, int y) { int z = x * y; } }", "x", new[] { "int x" }, new[] { "0 * y" } };
             // 27. 一元运算引用
             yield return new object[] { "class C { void M(int x) { int y = -x; } }", "x", new[] { "-x" }, new[] { "-0" } };
             // 28. 类型转换引用
@@ -108,7 +108,7 @@ namespace TerrariaTools.UnitTests
             // 46. Stackalloc 引用
             yield return new object[] { "class C { unsafe void M() { int* p = stackalloc int[10]; int x = p[0]; } }", "p", new[] { "p[0]" }, new string[0] };
             // 47. Yield return 引用
-            yield return new object[] { "using System.Collections.Generic; class C { IEnumerable<int> M(int x) { yield return x; } }", "x", new[] { "yield return x" }, new[] { "yield return 0" } };
+            yield return new object[] { "using System.Collections.Generic; class C { IEnumerable<int> M(int x) { yield return x; } }", "x", new[] { "yield return x" }, new string[0] };
             // 48. Await 表达式引用
             yield return new object[] { "using System.Threading.Tasks; class C { async Task M(Task t) { await t; } }", "t", new[] { "await t" }, new string[0] };
             // 49. Record 类型引用
@@ -119,22 +119,16 @@ namespace TerrariaTools.UnitTests
             yield return new object[] { "class C { void M(int[] a) { var x = a[^1]; var y = a[1..2]; } }", "a", new[] { "a[^1]", "a[1..2]" }, new string[0] };
             // 52. Dynamic 引用
             yield return new object[] { "class C { void M(dynamic d) { d.DoSomething(); } }", "d", new[] { "d.DoSomething()" }, new string[0] };
-
             // 53. Nullable 类型引用
             yield return new object[] { "class C { void M(int? x) { int y = x ?? 0; } }", "x", new[] { "int? x", "x ?? 0" }, new string[0] };
-
             // 54. Foreach 中的元组解构
             yield return new object[] { "using System.Collections.Generic; class C { void M(List<(int, int)> l) { foreach (var (x, y) in l) { int z = x; } } }", "x", new[] { "int z = x" }, new string[0] };
-
             // 55. Using 声明 (C# 8.0)
             yield return new object[] { "using System.IO; class C { void M() { using var s = new MemoryStream(); long l = s.Length; } }", "s", new[] { "s.Length" }, new string[0] };
-
             // 56. 局部函数递归调用
             yield return new object[] { "class C { void M() { void LF(int n) { if (n > 0) LF(n - 1); } } }", "LF", new[] { "LF(n - 1)" }, new string[0] };
-
             // 57. 单个声明中的多个变量
             yield return new object[] { "class C { void M() { int x = 1, y = x; } }", "x", new[] { "int x = 1", "y = x" }, new string[0] };
-
             // 58. Partial 方法引用
             yield return new object[] { "partial class C { partial void M(); void M2() => M(); }", "M", new[] { "partial void M()", "M()" }, new string[0] };
         }

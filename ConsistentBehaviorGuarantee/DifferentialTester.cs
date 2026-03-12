@@ -26,7 +26,7 @@ namespace TerrariaTools.ConsistentBehaviorGuarantee
         public bool Compare<T>(T originalOutput, T newOutput, string contextName)
         {
             bool isEqual = EqualityComparer<T>.Default.Equals(originalOutput, newOutput);
-            
+
             if (!isEqual)
             {
                 _traceContext.AddDiagnostic(new RewritingDiagnostic
@@ -35,7 +35,7 @@ namespace TerrariaTools.ConsistentBehaviorGuarantee
                     Severity = "Error"
                 });
             }
-            
+
             return isEqual;
         }
     }

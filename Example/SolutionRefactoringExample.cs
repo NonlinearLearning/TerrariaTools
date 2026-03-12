@@ -20,7 +20,7 @@ namespace Example
         }
 
         public string Name => "解决方案重构";
-        public string Description => "执行全解决方案级别的重构（类/方法移除、私有化等）。";
+        public string Description => "执行全解决方案级别的重构。";
 
         public async Task RunAsync(string? solutionPath = null)
         {

@@ -20,10 +20,8 @@ namespace TerrariaTools.UnitTests
 
         [Theory]
         [MemberData(nameof(PropagationTestCases.GetCases), MemberType = typeof(PropagationTestCases))]
-        public void Propagation_TestCase(string source, string targetName, string[] expectedMissing, string[] expectedContains, string[] Ignored)
+        public void Propagation_TestCase(string source, string targetName, string[] expectedMissing, string[] expectedContains)
         {
-            _ = Ignored;
-            _ = expectedContains;
             var model = GetSemanticModel(source);
             var root = model.SyntaxTree.GetRoot();
 
@@ -46,7 +44,7 @@ namespace TerrariaTools.UnitTests
 
             var result = ExpressionProcessor.RemoveParts(root, n => n == targetNode, model);
             Assert.NotNull(result);
-            var resultText = result!.ToFullString();
+            var resultText = result!.NormalizeWhitespace().ToFullString();
 
             foreach (var missing in expectedMissing)
             {

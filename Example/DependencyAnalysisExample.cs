@@ -10,7 +10,6 @@ namespace Example
 {
     /// <summary>
     /// 演示如何使用 CodeDependencyAnalyzer 执行递归依赖分析。
-    /// 对应“重写思路.txt”中的第二阶段核心逻辑。
     /// </summary>
     public class DependencyAnalysisExample : ITool
     {
@@ -59,7 +58,7 @@ namespace Example
             // 2. 执行高级分析
             var analyzer = new AdvancedCodeAnalyzer(solution);
             Console.WriteLine($"[分析] 开始分析 {targetTypeName}.{targetMethodName} 的依赖关系...");
-            
+
             var result = await analyzer.AnalyzeRecursiveDependenciesAsync(targetTypeName, targetMethodName);
 
             if (!string.IsNullOrEmpty(result.Error))

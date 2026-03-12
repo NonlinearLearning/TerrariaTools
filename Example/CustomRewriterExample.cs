@@ -62,10 +62,10 @@ class UserData {
                 if (node.IsKind(SyntaxKind.StringLiteralExpression))
                 {
                     string value = node.Token.ValueText;
-                    
+
                     // 简单的过滤逻辑：如果字符串看起来像敏感信息（长度>5），则替换
                     // 在实际场景中，这里可以使用正则匹配 API Key 等
-                    if (value.Length > 5 && !value.Contains("User password is")) 
+                    if (value.Length > 5 && !value.Contains("User password is"))
                     {
                         // 创建一个新的字符串字面量节点
                         return SyntaxFactory.LiteralExpression(
