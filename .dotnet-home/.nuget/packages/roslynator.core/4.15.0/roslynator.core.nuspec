@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd">
+  <metadata>
+    <id>Roslynator.Core</id>
+    <version>4.15.0</version>
+    <authors>Josef Pihrt</authors>
+    <license type="expression">Apache-2.0</license>
+    <licenseUrl>https://licenses.nuget.org/Apache-2.0</licenseUrl>
+    <icon>icon.png</icon>
+    <readme>docs/README.md</readme>
+    <projectUrl>https://github.com/dotnet/roslynator</projectUrl>
+    <description>This library extends functionality of package Microsoft.CodeAnalysis.Common.</description>
+    <copyright>Copyright (c) .NET Foundation and Contributors</copyright>
+    <tags>Roslyn CodeAnalysis</tags>
+    <repository type="git" url="https://github.com/dotnet/roslynator.git" commit="cd530a80f95c5426aa824220b9c2e44275bf07e9" />
+    <dependencies>
+      <group targetFramework=".NETStandard2.0">
+        <dependency id="Microsoft.CodeAnalysis.Common" version="4.7.0" exclude="Build,Analyzers" />
+      </group>
+    </dependencies>
+  </metadata>
+</package>

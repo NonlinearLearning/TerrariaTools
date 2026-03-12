@@ -332,7 +332,7 @@ namespace TerrariaTools.Rules.Dome.Mark
                 }
             }
 
-            return paths.Select(MetadataReference.CreateFromFile);
+            return paths.Select(path => MetadataReference.CreateFromFile(path));
         }
 
         private static bool TryMarkObjectInitializerAssignments(
