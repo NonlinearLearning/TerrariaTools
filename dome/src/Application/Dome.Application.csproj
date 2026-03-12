@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Dome.Core.csproj" />
+    <ProjectReference Include="..\Analysis\Roslyn\Dome.Analysis.Roslyn.csproj" />
+    <ProjectReference Include="..\Rules\Dome.Rules.csproj" />
+    <ProjectReference Include="..\Plan\Dome.Plan.csproj" />
+    <ProjectReference Include="..\Rewrite\Roslyn\Dome.Rewrite.Roslyn.csproj" />
+    <ProjectReference Include="..\Reporting\Dome.Reporting.csproj" />
+  </ItemGroup>
+</Project>
