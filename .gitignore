@@ -29,3 +29,6 @@
 TerrariaTools.code-workspace
 .dotnet_cli_home
 .worktrees/
+.worktrees/*
+.dotnet-home/
+.worktrees
