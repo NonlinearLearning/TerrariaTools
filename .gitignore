@@ -28,3 +28,4 @@
 .editorconfig
 TerrariaTools.code-workspace
 .dotnet_cli_home
+.worktrees/
