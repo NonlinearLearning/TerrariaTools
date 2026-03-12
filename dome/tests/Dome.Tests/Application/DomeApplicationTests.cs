@@ -5,8 +5,14 @@ using System.Text.Json;
 
 namespace TerrariaTools.Dome.Tests.Application;
 
+/// <summary>
+/// Dome 应用程序测试类。
+/// </summary>
 public class DomeApplicationTests
 {
+    /// <summary>
+    /// 测试运行异步方法将计划和报告写入输出目录。
+    /// </summary>
     [Fact]
     public async Task RunAsync_WritesPlanAndReportToOutputDirectory()
     {
@@ -54,6 +60,9 @@ public class DomeApplicationTests
         }
     }
 
+    /// <summary>
+    /// 测试运行异步方法通过数据流规划依赖语句。
+    /// </summary>
     [Fact]
     public async Task RunAsync_PlansDependentStatementsThroughDataflow()
     {
@@ -110,6 +119,9 @@ public class DomeApplicationTests
         }
     }
 
+    /// <summary>
+    /// 测试仅分析模式下运行异步方法写入分析和报告但不生成计划或重写。
+    /// </summary>
     [Fact]
     public async Task RunAsync_AnalyzeOnly_WritesAnalysisAndReportWithoutPlanOrRewrite()
     {
@@ -143,10 +155,17 @@ public class DomeApplicationTests
                 CancellationToken.None);
 
             Assert.True(result.IsSuccess);
-            Assert.True(File.Exists(Path.Combine(outputDir, "analysis.json")));
+            var analysisPath = Path.Combine(outputDir, "analysis.json");
+            Assert.True(File.Exists(analysisPath));
             Assert.True(File.Exists(Path.Combine(outputDir, "report.json")));
             Assert.False(File.Exists(Path.Combine(outputDir, "audit-plan.json")));
             Assert.False(Directory.Exists(Path.Combine(outputDir, "rewritten")));
+
+            var analysisJson = await File.ReadAllTextAsync(analysisPath);
+            using var analysis = JsonDocument.Parse(analysisJson);
+            Assert.True(analysis.RootElement.TryGetProperty("TypeGraph", out _));
+            Assert.True(analysis.RootElement.TryGetProperty("FunctionGraph", out _));
+            Assert.True(analysis.RootElement.TryGetProperty("StatementGraph", out _));
         }
         finally
         {
@@ -157,6 +176,9 @@ public class DomeApplicationTests
         }
     }
 
+    /// <summary>
+    /// 测试仅计划模式下运行异步方法写入计划和报告但不重写。
+    /// </summary>
     [Fact]
     public async Task RunAsync_PlanOnly_WritesPlanAndReportWithoutRewrite()
     {
@@ -205,6 +227,9 @@ public class DomeApplicationTests
         }
     }
 
+    /// <summary>
+    /// 测试运行异步方法为成功运行写入结构化报告摘要。
+    /// </summary>
     [Fact]
     public async Task RunAsync_WritesStructuredReportSummaryForSuccessfulRun()
     {
@@ -260,6 +285,9 @@ public class DomeApplicationTests
         }
     }
 
+    /// <summary>
+    /// 测试运行异步方法为计划编译失败写入冲突摘要。
+    /// </summary>
     [Fact]
     public async Task RunAsync_WritesConflictSummaryForPlanCompileFailure()
     {
@@ -314,6 +342,9 @@ public class DomeApplicationTests
         }
     }
 
+    /// <summary>
+    /// 测试运行异步方法为受保护的高风险目标写入风险摘要。
+    /// </summary>
     [Fact]
     public async Task RunAsync_WritesRiskSummaryForProtectedHighRiskTargets()
     {
@@ -373,6 +404,9 @@ public class DomeApplicationTests
         }
     }
 
+    /// <summary>
+    /// 测试标准模式下运行异步方法为多个文件写入重写输出。
+    /// </summary>
     [Fact]
     public async Task RunAsync_StandardMode_WritesRewrittenOutputsForMultipleFiles()
     {
@@ -459,6 +493,9 @@ public class DomeApplicationTests
         }
     }
 
+    /// <summary>
+    /// 测试运行异步方法在重写失败时写入报告。
+    /// </summary>
     [Fact]
     public async Task RunAsync_WritesReportWhenRewriteFails()
     {
@@ -502,6 +539,260 @@ public class DomeApplicationTests
             Assert.False(Directory.Exists(Path.Combine(outputDir, "rewritten")));
             Assert.Equal("RewriteFailed", report.RootElement.GetProperty("FailureSummary").GetProperty("FailureCode").GetString());
             Assert.Contains("unsupported", report.RootElement.GetProperty("FailureSummary").GetProperty("Message").GetString(), StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 测试运行异步方法不规划对象初始化器目标并报告风险。
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_DoesNotPlanObjectInitializerTargetsAndReportsRisk()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Item
+                {
+                    public int Value { get; set; }
+                }
+
+                public class Player
+                {
+                    public void Update(int seed)
+                    {
+                        // dome:delete
+                        var item = new Item { Value = seed };
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var plan = JsonDocument.Parse(planJson);
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal(0, plan.RootElement.GetProperty("Changes").GetArrayLength());
+            Assert.Equal(1, report.RootElement.GetProperty("RiskSummary").GetProperty("SkippedHighRiskTargetCount").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_ProducesMethodLevelPlanForUnreferencedPrivateMethod()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Player
+                {
+                    public void Update()
+                    {
+                    }
+
+                    private void Run()
+                    {
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+
+            Assert.True(result.IsSuccess);
+            Assert.Contains("\"TargetKind\": \"Method\"", planJson);
+            Assert.Contains("\"RuleId\": \"function-mark\"", planJson);
+            Assert.Contains("\"Kind\": \"Delete\"", planJson);
+            Assert.Contains("Sample.Player.Run()", planJson);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_ProducesClassLevelPlanForUnreferencedNestedClass()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Player
+                {
+                    private class CacheEntry
+                    {
+                        public int Value { get; set; }
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+
+            Assert.True(result.IsSuccess);
+            Assert.Contains("\"TargetKind\": \"Class\"", planJson);
+            Assert.Contains("\"RuleId\": \"class-mark\"", planJson);
+            Assert.Contains("Sample.Player.CacheEntry", planJson);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_ProjectsExpressionMarkedStatementsIntoPlan()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Player
+                {
+                    public bool Update(int value)
+                    {
+                        // dome:delete
+                        bool allowed = Run(value) && (value > 0);
+                        return allowed;
+                    }
+
+                    private bool Run(int value) => value > 0;
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            using var plan = JsonDocument.Parse(planJson);
+
+            Assert.True(result.IsSuccess);
+            var expressionChange = Assert.Single(plan.RootElement
+                .GetProperty("Changes")
+                .EnumerateArray()
+                .Where(change => change.GetProperty("Reason").GetProperty("RuleId").GetString() == "expression-mark"));
+            Assert.Equal("bool allowed = Run(value) && (value > 0);", expressionChange.GetProperty("Target").GetProperty("DisplayText").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WritesClassDeleteCoverageSummary()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                class CacheEntry
+                {
+                    private void Run()
+                    {
+                        // dome:comment
+                        int count = 1;
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            Assert.True(report.RootElement.TryGetProperty("PlanCoverageSummary", out var coverage));
+            Assert.Equal(1, coverage.GetProperty("CoveredMethodCount").GetInt32());
+            Assert.Equal(1, coverage.GetProperty("CoveredStatementCount").GetInt32());
         }
         finally
         {

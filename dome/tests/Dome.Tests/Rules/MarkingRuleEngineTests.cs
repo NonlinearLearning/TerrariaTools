@@ -1,11 +1,18 @@
 using TerrariaTools.Dome.Analysis.Roslyn;
+using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Rules;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
 
+/// <summary>
+/// 标记规则引擎测试类。
+/// </summary>
 public class MarkingRuleEngineTests
 {
+    /// <summary>
+    /// 测试执行方法在 Use-Def 链中传播标记决策。
+    /// </summary>
     [Fact]
     public async Task Execute_PropagatesMarkedDecisionAcrossUseDefChain()
     {
@@ -47,6 +54,9 @@ public class MarkingRuleEngineTests
         Assert.NotEmpty(propagated.Reason.RelatedSymbolKeys);
     }
 
+    /// <summary>
+    /// 测试执行方法不为高风险成员发出决策。
+    /// </summary>
     [Fact]
     public async Task Execute_DoesNotEmitDecisionsForHighRiskMembers()
     {
@@ -84,6 +94,9 @@ public class MarkingRuleEngineTests
         Assert.Empty(decisions);
     }
 
+    /// <summary>
+    /// 测试执行方法在干净的重新定义后停止传播。
+    /// </summary>
     [Fact]
     public async Task Execute_StopsPropagationAfterCleanRedefinition()
     {
@@ -116,6 +129,9 @@ public class MarkingRuleEngineTests
         Assert.DoesNotContain(decisions, decision => decision.Target.DisplayText == "int next = count;");
     }
 
+    /// <summary>
+    /// 测试执行方法从参数传播但不跨越到不相关的局部变量。
+    /// </summary>
     [Fact]
     public async Task Execute_PropagatesFromParameterButDoesNotCrossIntoUnrelatedLocal()
     {
@@ -149,6 +165,9 @@ public class MarkingRuleEngineTests
         Assert.DoesNotContain(decisions, decision => decision.Target.DisplayText == "return localValue;");
     }
 
+    /// <summary>
+    /// 测试执行方法构建多跳传播链。
+    /// </summary>
     [Fact]
     public async Task Execute_BuildsMultiHopPropagationChain()
     {
@@ -190,6 +209,9 @@ public class MarkingRuleEngineTests
         Assert.Contains("next", finalDecision.Chain.Hops[1].Evidence.RelatedSymbolNames);
     }
 
+    /// <summary>
+    /// 测试执行方法不为接口属性访问器发出决策。
+    /// </summary>
     [Fact]
     public async Task Execute_DoesNotEmitDecisionsForInterfacePropertyAccessors()
     {
@@ -231,6 +253,9 @@ public class MarkingRuleEngineTests
         Assert.Empty(decisions);
     }
 
+    /// <summary>
+    /// 测试执行方法不为重写属性访问器发出决策。
+    /// </summary>
     [Fact]
     public async Task Execute_DoesNotEmitDecisionsForOverridePropertyAccessors()
     {
@@ -272,6 +297,9 @@ public class MarkingRuleEngineTests
         Assert.Empty(decisions);
     }
 
+    /// <summary>
+    /// 测试执行方法不跨文档传播。
+    /// </summary>
     [Fact]
     public async Task Execute_DoesNotPropagateAcrossDocuments()
     {
@@ -318,5 +346,409 @@ public class MarkingRuleEngineTests
         Assert.Contains(decisions, decision => decision.Target.DocumentPath == "Root.cs" && decision.Target.DisplayText == "int count = 1;");
         Assert.Contains(decisions, decision => decision.Target.DocumentPath == "Root.cs" && decision.Target.DisplayText == "int next = count;");
         Assert.DoesNotContain(decisions, decision => decision.Target.DocumentPath == Path.Combine("Features", "Nested.cs"));
+    }
+
+    /// <summary>
+    /// 测试执行方法对 if 语句使用控制流规则。
+    /// </summary>
+    [Fact]
+    public async Task Execute_UsesControlFlowRuleForIfStatements()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public int Update(int value)
+                        {
+                            // dome:delete
+                            if (value > 0)
+                            {
+                                return value;
+                            }
+
+                            return 0;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(analysis.View);
+        var ifDecision = Assert.Single(decisions.Where(decision => decision.Target.DisplayText.StartsWith("if (value > 0)", StringComparison.Ordinal)));
+
+        Assert.Equal("controlflow-mark", ifDecision.Reason.RuleId);
+        Assert.Equal(PlanActionKind.Delete, ifDecision.Action.Kind);
+    }
+
+    /// <summary>
+    /// 测试执行方法不传播超过消毒赋值。
+    /// </summary>
+    [Fact]
+    public async Task Execute_DoesNotPropagatePastSanitizingAssignments()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update()
+                        {
+                            // dome:delete
+                            int count = 1;
+                            int next = count;
+                            next = 0;
+                            int final = next;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(analysis.View);
+
+        Assert.Contains(decisions, decision => decision.Target.DisplayText == "int next = count;");
+        Assert.DoesNotContain(decisions, decision => decision.Target.DisplayText == "int final = next;");
+    }
+
+    /// <summary>
+    /// 测试执行方法阻止对象初始化器目标。
+    /// </summary>
+    [Fact]
+    public async Task Execute_BlocksObjectInitializerTargets()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Item
+                    {
+                        public int Value { get; set; }
+                    }
+
+                    public class Player
+                    {
+                        public void Update(int seed)
+                        {
+                            // dome:delete
+                            var item = new Item { Value = seed };
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(analysis.View);
+
+        Assert.Empty(decisions);
+    }
+
+    /// <summary>
+    /// 测试执行方法为未引用的私有方法发出删除。
+    /// </summary>
+    [Fact]
+    public async Task Execute_EmitsDeleteForUnreferencedPrivateMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update()
+                        {
+                        }
+
+                        private void Run()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.Contains(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Player.Run()" &&
+            decision.Action.Kind == PlanActionKind.Delete &&
+            decision.Reason.RuleId == "function-mark");
+    }
+
+    /// <summary>
+    /// 测试执行方法为引用的空非 void 方法发出添加返回。
+    /// </summary>
+    [Fact]
+    public async Task Execute_EmitsAddReturnForReferencedEmptyNonVoidMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public int Update()
+                        {
+                            return Compute();
+                        }
+
+                        private int Compute()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.Contains(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Player.Compute()" &&
+            decision.Action.Kind == PlanActionKind.AddReturn &&
+            decision.Action.Payload == "0");
+    }
+
+    /// <summary>
+    /// 测试执行方法不删除重写方法。
+    /// </summary>
+    [Fact]
+    public async Task Execute_DoesNotDeleteOverrideMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public abstract class PlayerBase
+                    {
+                        public abstract int Compute();
+                    }
+
+                    public class Player : PlayerBase
+                    {
+                        public override int Compute()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Player.Compute()");
+    }
+
+    /// <summary>
+    /// 测试执行方法为未引用的嵌套类发出删除。
+    /// </summary>
+    [Fact]
+    public async Task Execute_EmitsDeleteForUnreferencedNestedClass()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        private class CacheEntry
+                        {
+                            public int Value { get; set; }
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.Contains(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.Player.CacheEntry" &&
+            decision.Action.Kind == PlanActionKind.Delete &&
+            decision.Reason.RuleId == "class-mark");
+    }
+
+    /// <summary>
+    /// 测试执行方法不删除引用的类。
+    /// </summary>
+    [Fact]
+    public async Task Execute_DoesNotDeleteReferencedClass()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        private class CacheEntry
+                        {
+                            public int Value { get; set; }
+                        }
+
+                        private readonly CacheEntry _entry = new();
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.Player.CacheEntry");
+    }
+
+    [Fact]
+    public async Task Execute_ProjectsExpressionSeedsToStatementDecisions()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public bool Update(int value)
+                        {
+                            // dome:delete
+                            bool allowed = Run(value) && (value > 0);
+                            return allowed;
+                        }
+
+                        private bool Run(int value) => value > 0;
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(analysis.View);
+        var decision = Assert.Single(decisions.Where(item => item.Target.DisplayText == "bool allowed = Run(value) && (value > 0);"));
+
+        Assert.Equal("expression-mark", decision.Reason.RuleId);
+        Assert.Contains("InvocationExpression", decision.Reason.RelatedSymbolNames!);
+    }
+
+    [Fact]
+    public async Task Execute_EmitsDeleteForUnreferencedTopLevelInternalClass()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    class CacheEntry
+                    {
+                        public int Value { get; set; }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.Contains(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.CacheEntry" &&
+            decision.Action.Kind == PlanActionKind.Delete &&
+            decision.Reason.RuleId == "class-mark");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeletePublicTopLevelClass()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class CacheEntry
+                    {
+                        public int Value { get; set; }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.CacheEntry");
     }
 }

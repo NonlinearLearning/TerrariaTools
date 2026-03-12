@@ -1,57 +1,211 @@
 namespace TerrariaTools.Dome.Core;
 
+/// <summary>
+/// 运行模式枚举。
+/// </summary>
 public enum RunMode
 {
+    /// <summary>
+    /// 标准模式，执行完整流程。
+    /// </summary>
     Standard,
+    /// <summary>
+    /// 仅分析模式。
+    /// </summary>
     AnalyzeOnly,
+    /// <summary>
+    /// 仅规划模式。
+    /// </summary>
     PlanOnly
 }
 
+/// <summary>
+/// 失败代码枚举。
+/// </summary>
 public enum FailureCode
 {
+    /// <summary>
+    /// 无失败。
+    /// </summary>
     None,
+    /// <summary>
+    /// 工作区加载失败。
+    /// </summary>
     WorkspaceLoadFailed,
+    /// <summary>
+    /// 分析失败。
+    /// </summary>
     AnalysisFailed,
+    /// <summary>
+    /// 计划编译失败。
+    /// </summary>
     PlanCompileFailed,
+    /// <summary>
+    /// 重写失败。
+    /// </summary>
     RewriteFailed,
+    /// <summary>
+    /// 报告生成失败。
+    /// </summary>
     ReportFailed
 }
 
+/// <summary>
+/// 成员类型枚举。
+/// </summary>
 public enum MemberKind
 {
+    /// <summary>
+    /// 未知类型。
+    /// </summary>
     Unknown,
+    /// <summary>
+    /// 类。
+    /// </summary>
+    Class,
+    /// <summary>
+    /// 字段。
+    /// </summary>
     Field,
+    /// <summary>
+    /// 方法。
+    /// </summary>
     Method,
+    /// <summary>
+    /// 构造函数。
+    /// </summary>
     Constructor,
+    /// <summary>
+    /// 属性。
+    /// </summary>
     Property,
+    /// <summary>
+    /// 访问器。
+    /// </summary>
     Accessor
 }
 
+/// <summary>
+/// 目标类型枚举。
+/// </summary>
 public enum TargetKind
 {
+    /// <summary>
+    /// 语句。
+    /// </summary>
     Statement,
-    Method
+    /// <summary>
+    /// 方法。
+    /// </summary>
+    Method,
+    /// <summary>
+    /// 类。
+    /// </summary>
+    Class
 }
 
+/// <summary>
+/// 语句类型引用枚举。
+/// 不清楚StatementKindRef干嘛用的也许是输出日志用
+/// </summary>
+public enum StatementKindRef
+{
+    /// <summary>
+    /// 未知类型。
+    /// </summary>
+    Unknown,
+    /// <summary>
+    /// 初始化器。
+    /// </summary>
+    Initializer,
+    /// <summary>
+    /// 声明。
+    /// </summary>
+    Declaration,
+    /// <summary>
+    /// 赋值。
+    /// </summary>
+    Assignment,
+    /// <summary>
+    /// If 语句。
+    /// </summary>
+    If,
+    /// <summary>
+    /// While 循环。
+    /// </summary>
+    While,
+    /// <summary>
+    /// For 循环。
+    /// </summary>
+    For,
+    /// <summary>
+    /// 返回语句。
+    /// </summary>
+    Return,
+    /// <summary>
+    /// 对象初始化器赋值。
+    /// </summary>
+    ObjectInitializerAssignment
+}
+
+/// <summary>
+/// 计划操作类型枚举。
+/// 添加返回语句时同时添加默认值
+/// 要忽略属性这种东西
+/// </summary>
 public enum PlanActionKind
 {
+    /// <summary>
+    /// 删除。
+    /// </summary>
     Delete,
+    /// <summary>
+    /// 注释掉。
+    /// </summary>
     CommentOut,
+    /// <summary>
+    /// 替换为默认值。
+    /// </summary>
     ReplaceWithDefault,
+    /// <summary>
+    /// 添加返回语句。
+    /// </summary>
     AddReturn
 }
 
+/// <summary>
+/// 成员 ID 结构。
+/// </summary>
+/// <param name="Value">ID 值。</param>
 public readonly record struct MemberId(string Value)
 {
+    /// <summary>
+    /// 返回 ID 的字符串表示。
+    /// </summary>
     public override string ToString() => Value;
 }
 
+/// <summary>
+/// 运行请求记录。
+/// </summary>
+/// <param name="InputPath">输入路径。</param>
+/// <param name="OutputPath">输出路径。</param>
+/// <param name="RuleSet">规则集。</param>
+/// <param name="Mode">运行模式。</param>
 public sealed record RunRequest(
     string InputPath,
     string OutputPath,
     IReadOnlyList<string> RuleSet,
     RunMode Mode);
 
+/// <summary>
+/// 运行结果记录。
+/// </summary>
+/// <param name="IsSuccess">是否成功。</param>
+/// <param name="FailureCode">失败代码。</param>
+/// <param name="OutputPath">输出路径。</param>
+/// <param name="ReportPath">报告路径。</param>
+/// <param name="Message">消息。</param>
 public sealed record RunResult(
     bool IsSuccess,
     FailureCode FailureCode,
@@ -59,13 +213,27 @@ public sealed record RunResult(
     string? ReportPath,
     string? Message)
 {
+    /// <summary>
+    /// 创建成功结果。
+    /// </summary>
     public static RunResult Success(string outputPath, string? reportPath) =>
         new(true, FailureCode.None, outputPath, reportPath, null);
 
+    /// <summary>
+    /// 创建失败结果。
+    /// </summary>
     public static RunResult Failure(FailureCode code, string outputPath, string? message) =>
         new(false, code, outputPath, null, message);
 }
 
+/// <summary>
+/// 计划元数据记录。
+/// </summary>
+/// <param name="ToolName">工具名称。</param>
+/// <param name="PlanVersion">计划版本。</param>
+/// <param name="InputPath">输入路径。</param>
+/// <param name="OutputPath">输出路径。</param>
+/// <param name="RunMode">运行模式。</param>
 public sealed record PlanMetadata(
     string ToolName,
     string PlanVersion,
@@ -73,9 +241,22 @@ public sealed record PlanMetadata(
     string OutputPath,
     RunMode RunMode)
 {
+    /// <summary>
+    /// 生成时间（UTC）。
+    /// </summary>
     public DateTimeOffset GeneratedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
+/// <summary>
+/// 计划目标记录。
+/// </summary>
+/// <param name="DocumentPath">文档路径。</param>
+/// <param name="MemberId">成员 ID。</param>
+/// <param name="MemberKind">成员类型。</param>
+/// <param name="TargetKind">目标类型。</param>
+/// <param name="SpanStart">跨度起始位置。</param>
+/// <param name="SpanLength">跨度长度。</param>
+/// <param name="DisplayText">显示文本。</param>
 public sealed record PlanTarget(
     string DocumentPath,
     MemberId MemberId,
@@ -85,13 +266,31 @@ public sealed record PlanTarget(
     int SpanLength,
     string DisplayText)
 {
+    /// <summary>
+    /// 目标唯一键。
+    /// </summary>
     public string TargetKey => $"{DocumentPath}|{MemberId.Value}|{TargetKind}|{SpanStart}|{SpanLength}";
 }
 
+/// <summary>
+/// 计划操作记录。
+/// </summary>
+/// <param name="Kind">操作类型。</param>
+/// <param name="Payload">负载数据。</param>
 public sealed record PlanAction(
     PlanActionKind Kind,
     string? Payload = null);
 
+/// <summary>
+/// 计划原因记录。
+/// </summary>
+/// <param name="RuleId">规则 ID。</param>
+/// <param name="ReasonText">原因文本。</param>
+/// <param name="SourceTargetKey">源目标键。</param>
+/// <param name="SourceTargetDisplayText">源目标显示文本。</param>
+/// <param name="RelatedSymbolKeys">相关符号键。</param>
+/// <param name="RelatedSymbolNames">相关符号名称。</param>
+/// <param name="Severity">严重程度。</param>
 public sealed record PlanReason(
     string RuleId,
     string ReasonText,
@@ -101,10 +300,25 @@ public sealed record PlanReason(
     IReadOnlyList<string>? RelatedSymbolNames = null,
     string? Severity = null);
 
+/// <summary>
+/// 传播证据记录。
+/// </summary>
+/// <param name="RelatedSymbolKeys">相关符号键列表。</param>
+/// <param name="RelatedSymbolNames">相关符号名称列表。</param>
 public sealed record PropagationEvidence(
     IReadOnlyList<string> RelatedSymbolKeys,
     IReadOnlyList<string> RelatedSymbolNames);
 
+/// <summary>
+/// 传播跳跃记录。
+/// </summary>
+/// <param name="FromTargetKey">起始目标键。</param>
+/// <param name="FromTargetDisplayText">起始目标显示文本。</param>
+/// <param name="ToTargetKey">目标目标键。</param>
+/// <param name="ToTargetDisplayText">目标目标显示文本。</param>
+/// <param name="RuleId">规则 ID。</param>
+/// <param name="ActionKind">操作类型。</param>
+/// <param name="Evidence">证据。</param>
 public sealed record PropagationHop(
     string FromTargetKey,
     string FromTargetDisplayText,
@@ -114,17 +328,33 @@ public sealed record PropagationHop(
     PlanActionKind ActionKind,
     PropagationEvidence Evidence);
 
+/// <summary>
+/// 传播链记录。
+/// </summary>
+/// <param name="RootTargetKey">根目标键。</param>
+/// <param name="RootTargetDisplayText">根目标显示文本。</param>
+/// <param name="Hops">跳跃列表。</param>
 public sealed record PropagationChain(
     string RootTargetKey,
     string RootTargetDisplayText,
     IReadOnlyList<PropagationHop> Hops);
 
+/// <summary>
+/// 标记决策记录。
+/// </summary>
+/// <param name="Target">计划目标。</param>
+/// <param name="Action">计划操作。</param>
+/// <param name="Reason">计划原因。</param>
+/// <param name="Chain">传播链。</param>
 public sealed record MarkDecision(
     PlanTarget Target,
     PlanAction Action,
     PlanReason Reason,
     PropagationChain? Chain = null)
 {
+    /// <summary>
+    /// 为目标创建标记决策。
+    /// </summary>
     public static MarkDecision ForTarget(
         PlanTarget target,
         PlanActionKind actionKind,
@@ -151,6 +381,14 @@ public sealed record MarkDecision(
             chain);
 }
 
+/// <summary>
+/// 计划变更记录。
+/// </summary>
+/// <param name="ExecutionOrder">执行顺序。</param>
+/// <param name="Target">计划目标。</param>
+/// <param name="Action">计划操作。</param>
+/// <param name="Reason">计划原因。</param>
+/// <param name="Chain">传播链。</param>
 public sealed record PlannedChange(
     int ExecutionOrder,
     PlanTarget Target,
@@ -158,44 +396,324 @@ public sealed record PlannedChange(
     PlanReason Reason,
     PropagationChain? Chain = null);
 
+/// <summary>
+/// 计划冲突记录。
+/// </summary>
+/// <param name="ConflictCode">冲突代码。</param>
+/// <param name="Target">计划目标。</param>
+/// <param name="ActionKinds">操作类型列表。</param>
+/// <param name="Reason">原因。</param>
 public sealed record PlanConflict(
     string ConflictCode,
     PlanTarget Target,
     IReadOnlyList<PlanActionKind> ActionKinds,
     string Reason);
 
+/// <summary>
+/// 审计计划记录。
+/// </summary>
+/// <param name="Metadata">计划元数据。</param>
+/// <param name="Changes">计划变更列表。</param>
+/// <param name="Conflicts">计划冲突列表。</param>
 public sealed record AuditPlan(
     PlanMetadata Metadata,
     IReadOnlyList<PlannedChange> Changes,
     IReadOnlyList<PlanConflict> Conflicts);
 
+/// <summary>
+/// 类型依赖类型枚举。
+/// 这里有些错误
+/// </summary>
+public enum TypeDependencyKind
+{
+    /// <summary>
+    /// 继承。
+    /// </summary>
+    Inherits,
+    /// <summary>
+    /// 实现。
+    /// </summary>
+    Implements,
+    /// <summary>
+    /// 字段类型。
+    /// </summary>
+    FieldType,
+    /// <summary>
+    /// 属性类型。
+    /// </summary>
+    PropertyType,
+    /// <summary>
+    /// 参数类型。
+    /// </summary>
+    ParameterType,
+    /// <summary>
+    /// 返回类型。
+    /// </summary>
+    ReturnType,
+    /// <summary>
+    /// 对象创建。
+    /// </summary>
+    ObjectCreation,
+    /// <summary>
+    /// 静态成员访问。
+    /// </summary>
+    StaticMemberAccess,
+    /// <summary>
+    /// 成员体引用。
+    /// </summary>
+    MemberBodyReference
+}
+
+/// <summary>
+/// 函数依赖类型枚举。
+/// 这里意义不明并且看不懂
+/// </summary>
+public enum FunctionDependencyKind
+{
+    /// <summary>
+    /// 调用。
+    /// </summary>
+    Calls,
+    /// <summary>
+    /// 创建。
+    /// </summary>
+    Creates,
+    /// <summary>
+    /// 读取成员。
+    /// </summary>
+    ReadsMember,
+    /// <summary>
+    /// 写入成员。
+    /// </summary>
+    WritesMember,
+    /// <summary>
+    /// 使用属性访问器。
+    /// </summary>
+    UsesPropertyAccessor
+}
+
+/// <summary>
+/// 语句依赖类型枚举。
+/// </summary>
+public enum StatementDependencyKind
+{
+    /// <summary>
+    /// 定义。
+    /// </summary>
+    Defines,
+    /// <summary>
+    /// 使用。
+    /// </summary>
+    Uses,
+    /// <summary>
+    /// 先于。
+    /// </summary>
+    Precedes
+}
+
+/// <summary>
+/// 类型节点引用记录。
+/// </summary>
+/// <param name="TypeId">类型 ID。</param>
+/// <param name="DisplayName">显示名称。</param>
+/// <param name="DocumentPath">文档路径。</param>
+public sealed record TypeNodeRef(
+    string TypeId,
+    string DisplayName,
+    string DocumentPath);
+
+/// <summary>
+/// 类型依赖边记录。
+/// </summary>
+/// <param name="SourceTypeId">源类型 ID。</param>
+/// <param name="TargetTypeId">目标类型 ID。</param>
+/// <param name="Kind">依赖类型。</param>
+/// <param name="MemberId">成员 ID。</param>
+/// <param name="SymbolKey">符号键。</param>
+public sealed record TypeDependencyEdge(
+    string SourceTypeId,
+    string TargetTypeId,
+    TypeDependencyKind Kind,
+    string? MemberId = null,
+    string? SymbolKey = null);
+
+/// <summary>
+/// 类型依赖图记录。
+/// </summary>
+/// <param name="Nodes">节点列表。</param>
+/// <param name="Edges">边列表。</param>
+public sealed record TypeDependencyGraph(
+    IReadOnlyList<TypeNodeRef> Nodes,
+    IReadOnlyList<TypeDependencyEdge> Edges);
+
+/// <summary>
+/// 函数节点引用记录。
+/// </summary>
+/// <param name="MemberId">成员 ID。</param>
+/// <param name="MemberKind">成员类型。</param>
+/// <param name="DeclaringTypeId">声明类型 ID。</param>
+/// <param name="DisplayName">显示名称。</param>
+/// <param name="DocumentPath">文档路径。</param>
+/// <param name="SpanStart">跨度起始位置。</param>
+/// <param name="SpanLength">跨度长度。</param>
+/// <param name="IsPrivate">是否私有。</param>
+/// <param name="ReturnsVoid">是否返回 Void。</param>
+/// <param name="HasBody">是否有方法体。</param>
+/// <param name="HasStatements">是否有语句。</param>
+/// <param name="ReturnTypeDisplay">返回类型显示文本。</param>
+public sealed record FunctionNodeRef(
+    MemberId MemberId,
+    MemberKind MemberKind,
+    string DeclaringTypeId,
+    string DisplayName,
+    string DocumentPath,
+    int SpanStart,
+    int SpanLength,
+    bool IsPrivate,
+    bool ReturnsVoid,
+    bool HasBody,
+    bool HasStatements,
+    string ReturnTypeDisplay);
+
+/// <summary>
+/// 函数依赖边记录。
+/// </summary>
+/// <param name="SourceMemberId">源成员 ID。</param>
+/// <param name="TargetMemberId">目标成员 ID。</param>
+/// <param name="Kind">依赖类型。</param>
+/// <param name="SymbolKey">符号键。</param>
+public sealed record FunctionDependencyEdge(
+    MemberId SourceMemberId,
+    MemberId TargetMemberId,
+    FunctionDependencyKind Kind,
+    string? SymbolKey = null);
+
+/// <summary>
+/// 函数依赖图记录。
+/// </summary>
+/// <param name="Nodes">节点列表。</param>
+/// <param name="Edges">边列表。</param>
+public sealed record FunctionDependencyGraph(
+    IReadOnlyList<FunctionNodeRef> Nodes,
+    IReadOnlyList<FunctionDependencyEdge> Edges);
+
+/// <summary>
+/// 语句依赖边记录。
+/// </summary>
+/// <param name="SourceTargetKey">源目标键。</param>
+/// <param name="TargetTargetKey">目标目标键。</param>
+/// <param name="Kind">依赖类型。</param>
+/// <param name="SymbolKey">符号键。</param>
+public sealed record StatementDependencyEdge(
+    string SourceTargetKey,
+    string TargetTargetKey,
+    StatementDependencyKind Kind,
+    string? SymbolKey = null);
+
+/// <summary>
+/// 语句依赖图记录。
+/// </summary>
+/// <param name="Nodes">节点列表。</param>
+/// <param name="Edges">边列表。</param>
+public sealed record StatementDependencyGraph(
+    IReadOnlyList<string> Nodes,
+    IReadOnlyList<StatementDependencyEdge> Edges);
+
+/// <summary>
+/// 分析视图记录。
+/// </summary>
+/// <param name="Targets">分析目标列表。</param>
+/// <param name="Edges">分析边列表。</param>
+/// <param name="TypeGraph">类型依赖图。</param>
+/// <param name="FunctionGraph">函数依赖图。</param>
+/// <param name="StatementGraph">语句依赖图。</param>
 public sealed record AnalysisView(
     IReadOnlyList<AnalysisTarget> Targets,
-    IReadOnlyList<AnalysisEdge> Edges);
+    IReadOnlyList<AnalysisEdge> Edges,
+    TypeDependencyGraph TypeGraph,
+    FunctionDependencyGraph FunctionGraph,
+    StatementDependencyGraph StatementGraph);
 
+/// <summary>
+/// 分析目标记录。
+/// </summary>
+/// <param name="Target">计划目标。</param>
+/// <param name="IsHighRisk">是否高风险。</param>
+/// <param name="Directives">指令列表。</param>
+/// <param name="DefinesSymbols">定义符号列表。</param>
+/// <param name="UsesSymbols">使用符号列表。</param>
+/// <param name="StatementKind">语句类型。</param>
+/// <param name="IsSanitizingAssignment">是否为净化赋值。</param>
+/// <param name="IsObjectInitializerAssignment">是否为对象初始化器赋值。</param>
+/// <param name="HasMarkedExpressionSeed">是否有标记的表达式种子。</param>
+/// <param name="MarkedExpressionKinds">标记的表达式类型。</param>
 public sealed record AnalysisTarget(
     PlanTarget Target,
     bool IsHighRisk,
     IReadOnlyList<DirectiveAction> Directives,
     IReadOnlyList<SymbolRef> DefinesSymbols,
-    IReadOnlyList<SymbolRef> UsesSymbols);
+    IReadOnlyList<SymbolRef> UsesSymbols,
+    StatementKindRef StatementKind,
+    bool IsSanitizingAssignment,
+    bool IsObjectInitializerAssignment,
+    bool HasMarkedExpressionSeed,
+    IReadOnlyList<string> MarkedExpressionKinds);
 
+/// <summary>
+/// 分析边类型枚举。
+/// </summary>
 public enum AnalysisEdgeKind
 {
+    /// <summary>
+    /// 定义。
+    /// </summary>
     Defines,
+    /// <summary>
+    /// 使用。
+    /// </summary>
     Uses,
+    /// <summary>
+    /// 先于。
+    /// </summary>
     Precedes
 }
 
+/// <summary>
+/// 符号类型引用枚举。
+/// </summary>
 public enum SymbolKindRef
 {
+    /// <summary>
+    /// 未知。
+    /// </summary>
     Unknown,
+    /// <summary>
+    /// 局部变量。
+    /// </summary>
     Local,
+    /// <summary>
+    /// 参数。
+    /// </summary>
     Parameter,
+    /// <summary>
+    /// 字段。
+    /// </summary>
     Field,
+    /// <summary>
+    /// 属性。
+    /// </summary>
     Property
 }
 
+/// <summary>
+/// 符号引用记录。
+/// </summary>
+/// <param name="SymbolKey">符号键。</param>
+/// <param name="DisplayName">显示名称。</param>
+/// <param name="SymbolKind">符号类型。</param>
+/// <param name="DeclaringMemberId">声明成员 ID。</param>
+/// <param name="DeclarationSpanStart">声明跨度起始位置。</param>
+/// <param name="DeclarationSpanLength">声明跨度长度。</param>
 public sealed record SymbolRef(
     string SymbolKey,
     string DisplayName,
@@ -204,18 +722,78 @@ public sealed record SymbolRef(
     int DeclarationSpanStart,
     int DeclarationSpanLength);
 
+/// <summary>
+/// 分析边记录。
+/// </summary>
+/// <param name="SourceTargetKey">源目标键。</param>
+/// <param name="TargetTargetKey">目标目标键。</param>
+/// <param name="Kind">边类型。</param>
+/// <param name="SymbolKey">符号键。</param>
 public sealed record AnalysisEdge(
     string SourceTargetKey,
     string TargetTargetKey,
     AnalysisEdgeKind Kind,
     string? SymbolKey = null);
 
+/// <summary>
+/// 继承查询服务接口。
+/// </summary>
+public interface IInheritanceQueryService
+{
+    /// <summary>
+    /// 检查成员是否为重写成员。
+    /// </summary>
+    bool IsOverrideMember(string memberId);
+    /// <summary>
+    /// 检查成员是否实现接口成员。
+    /// </summary>
+    bool ImplementsInterfaceMember(string memberId);
+    /// <summary>
+    /// 检查类型是否在继承链中。
+    /// </summary>
+    bool IsInInheritanceChain(string typeId);
+}
+
+/// <summary>
+/// 引用查询服务接口。
+/// </summary>
+public interface IReferenceQueryService
+{
+    /// <summary>
+    /// 检查符号或成员是否有引用。
+    /// </summary>
+    bool HasReferences(string symbolOrMemberId);
+    /// <summary>
+    /// 获取引用该符号的函数列表。
+    /// </summary>
+    IReadOnlyList<MemberId> GetReferencingFunctions(string symbolOrMemberId);
+    /// <summary>
+    /// 获取引用该符号的类型列表。
+    /// </summary>
+    IReadOnlyList<string> GetReferencingTypes(string symbolOrMemberId);
+}
+
+/// <summary>
+/// 指令操作记录。
+/// </summary>
+/// <param name="ActionKind">操作类型。</param>
+/// <param name="Payload">负载数据。</param>
+/// <param name="RuleId">规则 ID。</param>
+/// <param name="ReasonText">原因文本。</param>
 public sealed record DirectiveAction(
     PlanActionKind ActionKind,
     string? Payload,
     string RuleId,
     string ReasonText);
 
+/// <summary>
+/// 计划编译结果记录。
+/// </summary>
+/// <param name="IsSuccess">是否成功。</param>
+/// <param name="Plan">审计计划。</param>
+/// <param name="FailureCode">失败代码。</param>
+/// <param name="Conflicts">冲突列表。</param>
+/// <param name="Message">消息。</param>
 public sealed record PlanCompilationResult(
     bool IsSuccess,
     AuditPlan? Plan,
@@ -223,30 +801,62 @@ public sealed record PlanCompilationResult(
     IReadOnlyList<PlanConflict> Conflicts,
     string? Message)
 {
+    /// <summary>
+    /// 创建成功结果。
+    /// </summary>
     public static PlanCompilationResult Success(AuditPlan plan) =>
         new(true, plan, FailureCode.None, Array.Empty<PlanConflict>(), null);
 
+    /// <summary>
+    /// 创建失败结果。
+    /// </summary>
     public static PlanCompilationResult Failure(string? message, IReadOnlyList<PlanConflict> conflicts) =>
         new(false, null, FailureCode.PlanCompileFailed, conflicts, message);
 }
 
+/// <summary>
+/// 重写执行结果记录。
+/// </summary>
+/// <param name="IsSuccess">是否成功。</param>
+/// <param name="FailureCode">失败代码。</param>
+/// <param name="RewrittenSource">重写后的源代码。</param>
+/// <param name="Message">消息。</param>
 public sealed record RewriteExecutionResult(
     bool IsSuccess,
     FailureCode FailureCode,
     string? RewrittenSource,
     string? Message)
 {
+    /// <summary>
+    /// 创建成功结果。
+    /// </summary>
     public static RewriteExecutionResult Success(string rewrittenSource) =>
         new(true, FailureCode.None, rewrittenSource, null);
 
+    /// <summary>
+    /// 创建失败结果。
+    /// </summary>
     public static RewriteExecutionResult Failure(string? message) =>
         new(false, FailureCode.RewriteFailed, null, message);
 }
 
+/// <summary>
+/// 失败摘要记录。
+/// </summary>
+/// <param name="FailureCode">失败代码。</param>
+/// <param name="Message">消息。</param>
 public sealed record FailureSummary(
     FailureCode FailureCode,
     string Message);
 
+/// <summary>
+/// 冲突摘要记录。
+/// </summary>
+/// <param name="ConflictCode">冲突代码。</param>
+/// <param name="TargetKey">目标键。</param>
+/// <param name="TargetDisplayText">目标显示文本。</param>
+/// <param name="ActionKinds">操作类型列表。</param>
+/// <param name="Reason">原因。</param>
 public sealed record ConflictSummary(
     string ConflictCode,
     string TargetKey,
@@ -254,10 +864,41 @@ public sealed record ConflictSummary(
     IReadOnlyList<PlanActionKind> ActionKinds,
     string Reason);
 
+/// <summary>
+/// 风险摘要记录。
+/// </summary>
+/// <param name="SkippedHighRiskTargetCount">跳过的高风险目标数量。</param>
+/// <param name="SampleTargetDisplayTexts">示例目标显示文本列表。</param>
 public sealed record RiskSummary(
     int SkippedHighRiskTargetCount,
     IReadOnlyList<string> SampleTargetDisplayTexts);
 
+/// <summary>
+/// 计划覆盖率摘要记录。
+/// </summary>
+/// <param name="CoveredMethodCount">覆盖的方法数量。</param>
+/// <param name="CoveredStatementCount">覆盖的语句数量。</param>
+/// <param name="SampleCoveredTargetDisplayTexts">示例覆盖目标显示文本列表。</param>
+public sealed record PlanCoverageSummary(
+    int CoveredMethodCount,
+    int CoveredStatementCount,
+    IReadOnlyList<string> SampleCoveredTargetDisplayTexts);
+
+/// <summary>
+/// 运行报告记录。
+/// </summary>
+/// <param name="IsSuccess">是否成功。</param>
+/// <param name="FailureCode">失败代码。</param>
+/// <param name="AnalysisTargets">分析目标数量。</param>
+/// <param name="PlannedChanges">计划变更数量。</param>
+/// <param name="Conflicts">冲突数量。</param>
+/// <param name="RewrittenDocuments">重写文档数量。</param>
+/// <param name="GeneratedArtifacts">生成的制品列表。</param>
+/// <param name="FailureSummary">失败摘要。</param>
+/// <param name="ConflictSummaries">冲突摘要列表。</param>
+/// <param name="RiskSummary">风险摘要。</param>
+/// <param name="PlanCoverageSummary">计划覆盖率摘要。</param>
+/// <param name="Message">消息。</param>
 public sealed record RunReport(
     bool IsSuccess,
     FailureCode FailureCode,
@@ -269,4 +910,5 @@ public sealed record RunReport(
     FailureSummary? FailureSummary,
     IReadOnlyList<ConflictSummary> ConflictSummaries,
     RiskSummary RiskSummary,
+    PlanCoverageSummary PlanCoverageSummary,
     string? Message);

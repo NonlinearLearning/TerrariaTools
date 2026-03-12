@@ -4,8 +4,14 @@ using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Plan;
 
+/// <summary>
+/// 审计计划去重测试类。
+/// </summary>
 public class AuditPlanDedupTests
 {
+    /// <summary>
+    /// 测试编译方法为单个目标去重重复的相同操作。
+    /// </summary>
     [Fact]
     public void Compile_DeduplicatesRepeatedSameActionForSingleTarget()
     {

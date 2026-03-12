@@ -1,59 +1,59 @@
-# Dome v1
+# Dome v1.1
 
-`dome` is a Roslyn-based code transformation tool. Its execution flow is fixed:
+`dome` 是一个基于 Roslyn 的计划驱动代码分析与改写工具，固定执行链为：
 
 `Analysis -> Mark -> Plan -> Rewrite -> Report`
 
-v1 is plan-driven. `Rewrite` only executes `audit-plan.json` and does not infer extra changes.
+`Plan` 是执行真源。`Rewrite` 只执行 `audit-plan.json` 中已经编译好的动作，不会在执行阶段再次推导新规则。
 
-## Quick Start
+## 快速开始
 
-Build the CLI:
+构建 CLI：
 
 ```powershell
 dotnet build .\src\Cli\Dome.Cli.csproj -nologo
 ```
 
-Run a full pipeline:
+执行完整流程：
 
 ```powershell
 dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples .\out
 ```
 
-Generate analysis only:
+只生成分析结果：
 
 ```powershell
 dotnet run --project .\src\Cli\Dome.Cli.csproj -- analyze .\samples .\out
 ```
 
-Generate a plan without rewrite:
+只生成计划，不执行改写：
 
 ```powershell
 dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples .\out
 ```
 
-Run from a config file:
+通过配置文件运行：
 
 ```powershell
 dotnet run --project .\src\Cli\Dome.Cli.csproj -- --config .\dome.config.json
 ```
 
-## Commands
+## 命令
 
 - `run <input-path> <output-path>`
-  Runs analysis, marking, plan compilation, rewrite, and reporting.
+  执行分析、标记、计划编译、改写和报告输出。
 - `analyze <input-path> <output-path>`
-  Writes `analysis.json` and `report.json`.
+  输出 `analysis.json` 和 `report.json`。
 - `plan <input-path> <output-path>`
-  Writes `audit-plan.json` and `report.json`.
+  输出 `audit-plan.json` 和 `report.json`。
 - `--config <path>`
-  Loads the same inputs from JSON.
+  从 JSON 配置文件加载同样的输入参数。
 
-`input-path` can be a single `.cs` file or a directory tree. Directory inputs preserve relative paths in `audit-plan.json` and `rewritten/**`.
+`input-path` 可以是单个 `.cs` 文件，也可以是目录树。对于目录输入，`audit-plan.json` 和 `rewritten/**` 会保留相对路径结构。
 
-## Config File
+## 配置文件
 
-Minimal config:
+最小配置示例：
 
 ```json
 {
@@ -65,15 +65,48 @@ Minimal config:
 }
 ```
 
-Supported fields:
+当前接受的字段：
 
-- `Command`: `run`, `analyze`, `plan`
-- `InputPath`: file or directory
-- `OutputPath`: output root
-- `RuleSet`: reserved for future rule-set selection; accepted in v1
-- `LogLevel`: reserved for future logging selection; accepted in v1
+- `Command`：`run`、`analyze`、`plan`
+- `InputPath`：输入文件或目录
+- `OutputPath`：输出根目录
+- `RuleSet`：保留字段，v1.1 会接受但不做细粒度规则开关
+- `LogLevel`：保留字段，v1.1 会接受但不做复杂日志分层
 
-## Output Artifacts
+## 当前规则基线
+
+v1.1 固化的规则能力：
+
+- statement seed / propagation / sanitization
+- high-risk / object-initializer protection
+- method delete / add-return
+- class delete
+- expression-to-statement projection
+
+当前固定的 `RuleId` 集合：
+
+- `dome:delete`
+- `controlflow-mark`
+- `dataflow-propagation`
+- `function-mark`
+- `class-mark`
+- `expression-mark`
+
+## 支持的目标粒度
+
+当前只支持以下 `TargetKind`：
+
+- `Statement`
+- `Method`
+- `Class`
+
+其中：
+
+- `Statement` 是当前 rewrite 的主粒度
+- `Method` 支持 `Delete` 和 `AddReturn`
+- `Class` 当前只支持 `Delete`
+
+## 输出产物
 
 `analyze`
 
@@ -91,70 +124,76 @@ Supported fields:
 - `report.json`
 - `rewritten/**`
 
-See [architecture.md](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/architecture.md) and [artifacts.md](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/artifacts.md) for the stable v1 contract.
+稳定契约说明见 [architecture.md](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/architecture.md) 和 [artifacts.md](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/artifacts.md)。
 
-## Exit Codes
+## 退出码
 
-- `0`: success
-- `1`: CLI argument or config parse failure
-- `2`: `WorkspaceLoadFailed`
-- `3`: `AnalysisFailed`
-- `4`: `PlanCompileFailed`
-- `5`: `RewriteFailed`
-- `6`: `ReportFailed`
+- `0`：成功
+- `1`：CLI 参数或配置解析失败
+- `2`：`WorkspaceLoadFailed`
+- `3`：`AnalysisFailed`
+- `4`：`PlanCompileFailed`
+- `5`：`RewriteFailed`
+- `6`：`ReportFailed`
 
-## Failure Modes
+## 失败语义
 
-`report.json` is the primary failure summary. In v1 it carries:
+`report.json` 是主要失败摘要产物。重点字段包括：
 
 - `FailureCode`
 - `FailureSummary`
 - `ConflictSummaries`
 - `RiskSummary`
+- `PlanCoverageSummary`
 - `GeneratedArtifacts`
 
-Typical failure cases:
+典型失败场景：
 
-- no C# input files found
-- analysis error
-- unresolved plan conflict
-- rewrite target member not found
-- rewrite target span mismatch
-- rewrite target text mismatch
-- unsupported action/target combination
+- 没有找到任何 C# 输入文件
+- 分析阶段异常
+- 计划存在未解决冲突
+- 改写目标成员不存在
+- 改写目标的 span 不匹配
+- 改写目标的文本不匹配
+- 动作和目标类型组合不受支持
 
-Plan conflicts do not produce a fake success plan. Rewrite failures still write `report.json` and preserve the compiled `audit-plan.json`.
+`RewriteFailed` 时，系统仍会尽量保留 `audit-plan.json` 和 `report.json`。
 
-## Multi-file Input Example
+## 多文件输入示例
 
 ```powershell
 dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\input-project .\out
 ```
 
-If `input-project` contains:
+如果 `input-project` 包含：
 
 - `Root.cs`
 - `Features\Nested.cs`
 
-then `run` writes:
+则 `run` 会输出：
 
 - `out\audit-plan.json`
 - `out\report.json`
 - `out\rewritten\Root.cs`
 - `out\rewritten\Features\Nested.cs`
 
-## Known Limits
+## 当前非目标
 
-- No checkpoint or resume support
-- No in-place rewrite
-- No dynamic plugins
-- No HTML/UI report output
-- No first-class lambda/local-function targeting
-- Rewrite remains statement-oriented
-- Initializer analysis is supported, but initializer rewrite is not part of v1
+以下内容明确不属于当前版本范围：
 
-## Related Docs
+- expression-level target
+- expression-level rewrite
+- initializer rewrite
+- struct / record / interface / enum target
+- dynamic call graph
+- checkpoint / 断点续跑
+- 原地改写
+- 动态插件
+- 完整 CFG / 符号执行平台
+- 类型冲突分析
 
-- [Architecture Overview](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/architecture.md)
-- [Artifact Contract](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/artifacts.md)
-- [Original design record](/D:/ProjectItem/SourceCode/Net/TerrariaTools/docs/plans/2026-03-12-dome-architecture-design.md)
+## 相关文档
+
+- [架构说明](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/architecture.md)
+- [产物契约](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/artifacts.md)
+- [原始设计记录](/D:/ProjectItem/SourceCode/Net/TerrariaTools/docs/plans/2026-03-12-dome-architecture-design.md)

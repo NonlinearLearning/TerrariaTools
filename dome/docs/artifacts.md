@@ -1,36 +1,48 @@
-# Dome v1 Artifact Contract
+# Dome v1.1 产物契约
 
 ## `analysis.json`
 
-Written only in `analyze` mode.
+只在 `analyze` 模式下生成。
 
-Primary purpose:
+主要用途：
 
-- expose projected targets
-- expose use/def facts
-- expose analysis edges
+- 暴露投影后的 target 集合
+- 暴露规则事实位
+- 暴露三张图快照
 
-Key data includes:
+关键字段包括：
 
 - `Targets`
 - `Edges`
+- `TypeGraph`
+- `FunctionGraph`
+- `StatementGraph`
+
+常见 target 字段：
+
 - `Target.DocumentPath`
 - `Target.MemberId`
+- `Target.TargetKind`
 - `DefinesSymbols`
 - `UsesSymbols`
+- `StatementKind`
 - `IsHighRisk`
+- `IsSanitizingAssignment`
+- `IsObjectInitializerAssignment`
+- `HasMarkedExpressionSeed`
+- `MarkedExpressionKinds`
 
 ## `audit-plan.json`
 
-Written in `plan` and `run` modes.
+在 `plan` 和 `run` 模式下生成。
 
-This is the executable plan contract. Key sections:
+这是可执行计划的正式契约。关键部分包括：
 
 - `Metadata`
 - `Changes`
 - `Conflicts`
 
-Each `Change` contains:
+每个 `Change` 包含：
 
 - `ExecutionOrder`
 - `Target`
@@ -38,32 +50,39 @@ Each `Change` contains:
 - `Reason`
 - `Chain`
 
-`Chain` is always present in the JSON shape:
+`Chain` 在 JSON 结构中固定存在：
 
-- `null` for direct hits
-- a `PropagationChain` object for propagated changes
+- direct-hit 时为 `null`
+- propagation 时为 `PropagationChain` 对象
 
-Compatibility fields remain in `Reason`:
+兼容字段仍保留在 `Reason` 中：
 
 - `SourceTargetKey`
 - `SourceTargetDisplayText`
 - `RelatedSymbolKeys`
 - `RelatedSymbolNames`
 
-These summarize the last hop and stay aligned with `Chain.Hops`.
+这些字段描述最后一跳摘要，并与 `Chain.Hops` 保持一致。
+
+当前 `TargetKind` 可能出现：
+
+- `Statement`
+- `Method`
+- `Class`
 
 ## `report.json`
 
-Written in all modes, including failure cases.
+所有运行模式都会生成，包括失败场景。
 
-Primary purpose:
+主要用途：
 
-- summarize run outcome
-- explain failure semantics
-- expose artifact inventory
-- expose risk and conflict summaries
+- 汇总运行结果
+- 暴露失败语义
+- 暴露风险和冲突摘要
+- 暴露覆盖统计
+- 暴露产物清单
 
-Key fields:
+关键字段：
 
 - `IsSuccess`
 - `FailureCode`
@@ -75,41 +94,45 @@ Key fields:
 - `FailureSummary`
 - `ConflictSummaries`
 - `RiskSummary`
+- `PlanCoverageSummary`
 - `Message`
 
-Failure expectations:
+`PlanCoverageSummary` 当前用于说明高粒度计划覆盖低粒度计划的结果，包含：
 
-- `PlanCompileFailed`
-  `report.json` exists and explains conflicts
-- `RewriteFailed`
-  `report.json` exists and explains the rewrite failure
-- `AnalyzeOnly`
-  no `audit-plan.json`, no `rewritten/**`
+- `CoveredMethodCount`
+- `CoveredStatementCount`
+- `SampleCoveredTargetDisplayTexts`
 
 ## `rewritten/**`
 
-Written only in `run` mode and only on successful rewrite.
+只在 `run` 模式且 rewrite 成功时生成。
 
-Properties:
+性质：
 
-- relative layout mirrors the input tree
-- each output file is explainable by `audit-plan.json`
-- rewrite is statement-oriented in v1
+- 相对目录结构与输入目录树保持一致
+- 每个输出文件都应能被 `audit-plan.json` 完整解释
+- 当前 rewrite 仍以 statement 为中心，但已支持 method/class 删除
 
-Examples:
+## 冲突语义
 
-- `rewritten/Root.cs`
-- `rewritten/Features/Nested.cs`
+计划冲突会同时出现在 `audit-plan.json` 和 `report.json` 中。
 
-## Conflict Semantics
-
-Plan conflicts are surfaced in both `audit-plan.json` and `report.json`.
-
-Stable fields:
+稳定字段包括：
 
 - `ConflictCode`
 - `Reason`
-- conflicting action kinds
-- target identity
+- 冲突动作集合
+- 冲突 target 标识
 
-v1 does not attempt conflict auto-resolution.
+当前版本不会自动解决未定义的动作冲突。
+
+## 失败语义
+
+典型失败约定：
+
+- `PlanCompileFailed`
+  仍生成 `report.json`，并解释冲突原因
+- `RewriteFailed`
+  仍生成 `report.json`，并解释 rewrite 失败原因
+- `AnalyzeOnly`
+  不生成 `audit-plan.json` 和 `rewritten/**`

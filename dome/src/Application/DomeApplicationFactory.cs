@@ -5,8 +5,15 @@ using TerrariaTools.Dome.Reporting;
 using TerrariaTools.Dome.Rewrite.Roslyn;
 using TerrariaTools.Dome.Rules;
 
+/// <summary>
+/// DomeApplication 工厂类，负责创建 DomeApplication 实例。
+/// </summary>
 public static class DomeApplicationFactory
 {
+    /// <summary>
+    /// 创建默认的 DomeApplication 实例。
+    /// </summary>
+    /// <returns>配置了默认组件的 DomeApplication 实例。</returns>
     public static DomeApplication CreateDefault()
     {
         return new DomeApplication(

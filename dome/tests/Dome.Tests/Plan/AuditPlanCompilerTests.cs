@@ -5,8 +5,14 @@ using System.Text.Json;
 
 namespace TerrariaTools.Dome.Tests.Plan;
 
+/// <summary>
+/// 审计计划编译器测试类。
+/// </summary>
 public class AuditPlanCompilerTests
 {
+    /// <summary>
+    /// 测试编译方法在同一目标具有未解决的冲突操作时失败。
+    /// </summary>
     [Fact]
     public void Compile_FailsWhenSameTargetHasUnresolvedConflictingActions()
     {
@@ -36,6 +42,9 @@ public class AuditPlanCompilerTests
         Assert.Contains("no resolver is configured", conflict.Reason);
     }
 
+    /// <summary>
+    /// 测试编译方法为编译后的更改保留传播链。
+    /// </summary>
     [Fact]
     public void Compile_PreservesPropagationChainForCompiledChanges()
     {
@@ -101,6 +110,9 @@ public class AuditPlanCompilerTests
         Assert.Contains("count", propagated.Reason.RelatedSymbolNames!);
     }
 
+    /// <summary>
+    /// 测试编译方法为直接和传播更改生成一致的 JSON 形状。
+    /// </summary>
     [Fact]
     public void Compile_ProducesConsistentJsonShapeForDirectAndPropagationChanges()
     {
@@ -197,5 +209,88 @@ public class AuditPlanCompilerTests
         Assert.Equal(1, singleChain.GetProperty("Hops").GetArrayLength());
         Assert.True(changes[2].TryGetProperty("Chain", out var multiChain));
         Assert.Equal(2, multiChain.GetProperty("Hops").GetArrayLength());
+    }
+
+    /// <summary>
+    /// 测试编译方法在存在方法删除时丢弃语句更改。
+    /// </summary>
+    [Fact]
+    public void Compile_DropsStatementChangesWhenMethodDeleteExists()
+    {
+        var methodTarget = new PlanTarget(
+            "Sample.cs",
+            new MemberId("Sample.Player.Run()"),
+            MemberKind.Method,
+            TargetKind.Method,
+            100,
+            40,
+            "private void Run() { }");
+        var statementTarget = new PlanTarget(
+            "Sample.cs",
+            new MemberId("Sample.Player.Run()"),
+            MemberKind.Method,
+            TargetKind.Statement,
+            120,
+            14,
+            "int count = 1;");
+
+        var result = AuditPlanCompiler.Compile(
+            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+            new[]
+            {
+                MarkDecision.ForTarget(methodTarget, PlanActionKind.Delete, "function-mark", "method delete"),
+                MarkDecision.ForTarget(statementTarget, PlanActionKind.CommentOut, "dome:comment", "statement comment")
+            });
+
+        var plan = Assert.IsType<AuditPlan>(result.Plan);
+        var change = Assert.Single(plan.Changes);
+        Assert.Equal(TargetKind.Method, change.Target.TargetKind);
+        Assert.Equal(PlanActionKind.Delete, change.Action.Kind);
+    }
+
+    /// <summary>
+    /// 测试编译方法在存在类删除时丢弃方法和语句更改。
+    /// </summary>
+    [Fact]
+    public void Compile_DropsMethodAndStatementChangesWhenClassDeleteExists()
+    {
+        var classTarget = new PlanTarget(
+            "Sample.cs",
+            new MemberId("Sample.Player.CacheEntry"),
+            MemberKind.Class,
+            TargetKind.Class,
+            20,
+            60,
+            "private class CacheEntry { }");
+        var methodTarget = new PlanTarget(
+            "Sample.cs",
+            new MemberId("Sample.Player.CacheEntry.Run()"),
+            MemberKind.Method,
+            TargetKind.Method,
+            40,
+            20,
+            "private void Run() { }");
+        var statementTarget = new PlanTarget(
+            "Sample.cs",
+            new MemberId("Sample.Player.CacheEntry.Run()"),
+            MemberKind.Method,
+            TargetKind.Statement,
+            50,
+            14,
+            "int count = 1;");
+
+        var result = AuditPlanCompiler.Compile(
+            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+            new[]
+            {
+                MarkDecision.ForTarget(classTarget, PlanActionKind.Delete, "class-mark", "class delete"),
+                MarkDecision.ForTarget(methodTarget, PlanActionKind.Delete, "function-mark", "method delete"),
+                MarkDecision.ForTarget(statementTarget, PlanActionKind.CommentOut, "dome:comment", "statement comment")
+            });
+
+        var plan = Assert.IsType<AuditPlan>(result.Plan);
+        var change = Assert.Single(plan.Changes);
+        Assert.Equal(TargetKind.Class, change.Target.TargetKind);
+        Assert.Equal(PlanActionKind.Delete, change.Action.Kind);
     }
 }

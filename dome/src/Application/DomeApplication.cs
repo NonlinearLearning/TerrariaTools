@@ -7,6 +7,9 @@ using TerrariaTools.Dome.Reporting;
 using TerrariaTools.Dome.Rewrite.Roslyn;
 using TerrariaTools.Dome.Rules;
 
+/// <summary>
+/// Dome 应用程序核心类，负责协调分析、规划和重写流程。
+/// </summary>
 public sealed class DomeApplication
 {
     private readonly SourceWorkspaceLoader _workspaceLoader;
@@ -15,6 +18,14 @@ public sealed class DomeApplication
     private readonly RoslynRewriteExecutor _rewriteExecutor;
     private readonly JsonArtifactWriter _artifactWriter;
 
+    /// <summary>
+    /// 初始化 DomeApplication 的新实例。
+    /// </summary>
+    /// <param name="workspaceLoader">源代码工作区加载器。</param>
+    /// <param name="analysisEngine">Roslyn 分析引擎。</param>
+    /// <param name="markingRuleEngine">标记规则引擎。</param>
+    /// <param name="rewriteExecutor">Roslyn 重写执行器。</param>
+    /// <param name="artifactWriter">JSON 制品写入器。</param>
     public DomeApplication(
         SourceWorkspaceLoader workspaceLoader,
         RoslynAnalysisEngine analysisEngine,
@@ -29,6 +40,12 @@ public sealed class DomeApplication
         _artifactWriter = artifactWriter;
     }
 
+    /// <summary>
+    /// 异步运行应用程序。
+    /// </summary>
+    /// <param name="request">运行请求。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>运行结果。</returns>
     public async Task<RunResult> RunAsync(RunRequest request, CancellationToken cancellationToken)
     {
         var documents = await _workspaceLoader.LoadAsync(request.InputPath, cancellationToken);
@@ -47,8 +64,10 @@ public sealed class DomeApplication
             return RunResult.Failure(FailureCode.AnalysisFailed, request.OutputPath, ex.Message);
         }
 
+        var analysisContext = _analysisEngine.CreateContext(analysisResult);
         var generatedArtifacts = new List<string>();
         var riskSummary = BuildRiskSummary(analysisResult.View);
+        var emptyCoverageSummary = new PlanCoverageSummary(0, 0, Array.Empty<string>());
 
         if (request.Mode == RunMode.AnalyzeOnly)
         {
@@ -68,15 +87,19 @@ public sealed class DomeApplication
                 null,
                 Array.Empty<ConflictSummary>(),
                 riskSummary,
+                emptyCoverageSummary,
                 null);
             await WriteArtifactsAsync(request.OutputPath, null, analyzeReport, null, cancellationToken);
             return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
         }
 
-        var decisions = _markingRuleEngine.Execute(analysisResult.View);
+        var decisions = _markingRuleEngine.Execute(analysisContext);
         var planResult = AuditPlanCompiler.Compile(
             new PlanMetadata("dome", "1", request.InputPath, request.OutputPath, request.Mode),
             decisions);
+        var coverageSummary = planResult.Plan == null
+            ? emptyCoverageSummary
+            : BuildPlanCoverageSummary(decisions, planResult.Plan);
 
         if (!planResult.IsSuccess || planResult.Plan == null)
         {
@@ -95,6 +118,7 @@ public sealed class DomeApplication
                     new FailureSummary(FailureCode.PlanCompileFailed, planResult.Message ?? "Plan compilation failed."),
                     conflictSummaries,
                     riskSummary,
+                    coverageSummary,
                     planResult.Message),
                 null,
                 cancellationToken);
@@ -118,6 +142,7 @@ public sealed class DomeApplication
                 null,
                 BuildConflictSummaries(planResult.Plan.Conflicts),
                 riskSummary,
+                coverageSummary,
                 null);
             await WriteArtifactsAsync(request.OutputPath, planResult.Plan, planReport, null, cancellationToken);
             return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
@@ -148,6 +173,7 @@ public sealed class DomeApplication
                         new FailureSummary(FailureCode.RewriteFailed, rewriteResult.Message ?? "Rewrite failed."),
                         BuildConflictSummaries(documentPlan.Conflicts),
                         riskSummary,
+                        coverageSummary,
                         rewriteResult.Message),
                     null,
                     cancellationToken);
@@ -174,11 +200,17 @@ public sealed class DomeApplication
             null,
             BuildConflictSummaries(planResult.Plan.Conflicts),
             riskSummary,
+            coverageSummary,
             null);
         await WriteArtifactsAsync(request.OutputPath, planResult.Plan, finalReport, null, cancellationToken);
         return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
     }
 
+    /// <summary>
+    /// 构建冲突摘要列表。
+    /// </summary>
+    /// <param name="conflicts">计划冲突列表。</param>
+    /// <returns>冲突摘要列表。</returns>
     private static IReadOnlyList<ConflictSummary> BuildConflictSummaries(IReadOnlyList<PlanConflict> conflicts)
     {
         return conflicts
@@ -191,6 +223,11 @@ public sealed class DomeApplication
             .ToArray();
     }
 
+    /// <summary>
+    /// 构建风险摘要。
+    /// </summary>
+    /// <param name="view">分析视图。</param>
+    /// <returns>风险摘要。</returns>
     private static RiskSummary BuildRiskSummary(AnalysisView view)
     {
         var skippedHighRiskTargets = view.Targets
@@ -204,6 +241,66 @@ public sealed class DomeApplication
             skippedHighRiskTargets.Take(5).ToArray());
     }
 
+    /// <summary>
+    /// 构建计划覆盖率摘要。
+    /// </summary>
+    /// <param name="decisions">标记决策列表。</param>
+    /// <param name="plan">审计计划。</param>
+    /// <returns>计划覆盖率摘要。</returns>
+    private static PlanCoverageSummary BuildPlanCoverageSummary(
+        IReadOnlyList<MarkDecision> decisions,
+        AuditPlan plan)
+    {
+        var classDeleteIds = plan.Changes
+            .Where(change => change.Target.TargetKind == TargetKind.Class && change.Action.Kind == PlanActionKind.Delete)
+            .Select(change => $"{change.Target.DocumentPath}|{change.Target.MemberId.Value}")
+            .ToArray();
+        var plannedTargetKeys = plan.Changes
+            .Select(change => change.Target.TargetKey)
+            .ToHashSet(StringComparer.Ordinal);
+        var covered = decisions
+            .Where(decision => !plannedTargetKeys.Contains(decision.Target.TargetKey))
+            .Where(decision => decision.Target.TargetKind is TargetKind.Method or TargetKind.Statement)
+            .Where(decision => classDeleteIds.Any(classId => IsCoveredByClassDelete(decision.Target, classId)))
+            .ToArray();
+
+        return new PlanCoverageSummary(
+            covered.Count(decision => decision.Target.TargetKind == TargetKind.Method),
+            covered.Count(decision => decision.Target.TargetKind == TargetKind.Statement),
+            covered.Select(decision => decision.Target.DisplayText)
+                .Distinct(StringComparer.Ordinal)
+                .Take(5)
+                .ToArray());
+    }
+
+    /// <summary>
+    /// 检查目标是否被类删除操作覆盖。
+    /// </summary>
+    /// <param name="target">计划目标。</param>
+    /// <param name="classDeleteId">类删除 ID。</param>
+    /// <returns>如果被覆盖则返回 true，否则返回 false。</returns>
+    private static bool IsCoveredByClassDelete(PlanTarget target, string classDeleteId)
+    {
+        var separator = classDeleteId.IndexOf('|');
+        if (separator < 0)
+        {
+            return false;
+        }
+
+        var documentPath = classDeleteId[..separator];
+        var classId = classDeleteId[(separator + 1)..];
+        return string.Equals(target.DocumentPath, documentPath, StringComparison.Ordinal) &&
+               target.MemberId.Value.StartsWith($"{classId}.", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 异步写入制品。
+    /// </summary>
+    /// <param name="outputPath">输出路径。</param>
+    /// <param name="plan">审计计划。</param>
+    /// <param name="report">运行报告。</param>
+    /// <param name="analysisView">分析视图。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     private async Task WriteArtifactsAsync(
         string outputPath,
         AuditPlan? plan,

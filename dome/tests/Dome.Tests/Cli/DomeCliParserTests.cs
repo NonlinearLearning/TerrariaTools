@@ -4,8 +4,16 @@ using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Cli;
 
+/// <summary>
+/// Dome 命令行解析器测试类。
+/// </summary>
 public class DomeCliParserTests
 {
+    /// <summary>
+    /// 测试解析异步方法将命令映射到运行模式。
+    /// </summary>
+    /// <param name="command">命令字符串。</param>
+    /// <param name="expectedMode">预期的运行模式。</param>
     [Theory]
     [InlineData("run", RunMode.Standard)]
     [InlineData("analyze", RunMode.AnalyzeOnly)]
@@ -19,6 +27,9 @@ public class DomeCliParserTests
         Assert.Equal(expectedMode, result.Request!.Mode);
     }
 
+    /// <summary>
+    /// 测试解析异步方法加载最小配置文件。
+    /// </summary>
     [Fact]
     public async Task ParseAsync_LoadsMinimalConfigFile()
     {
@@ -56,6 +67,9 @@ public class DomeCliParserTests
         }
     }
 
+    /// <summary>
+    /// 测试解析异步方法对未知命令失败。
+    /// </summary>
     [Fact]
     public async Task ParseAsync_FailsForUnknownCommand()
     {
@@ -65,6 +79,9 @@ public class DomeCliParserTests
         Assert.Contains("Unknown command", result.ErrorMessage);
     }
 
+    /// <summary>
+    /// 测试解析异步方法在配置缺少输入或输出时失败。
+    /// </summary>
     [Fact]
     public async Task ParseAsync_FailsWhenConfigMissesInputOrOutput()
     {

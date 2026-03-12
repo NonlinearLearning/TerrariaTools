@@ -4,8 +4,14 @@ using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;
 
+/// <summary>
+/// 数据流分析测试类。
+/// </summary>
 public class DataFlowAnalysisTests
 {
+    /// <summary>
+    /// 测试分析异步方法为简单语句投影定义和使用。
+    /// </summary>
     [Fact]
     public async Task AnalyzeAsync_ProjectsDefinesAndUsesForSimpleStatements()
     {
@@ -27,7 +33,9 @@ public class DataFlowAnalysisTests
             """);
 
         var result = await engine.AnalyzeAsync(new[] { document }, CancellationToken.None);
-        var targets = result.View.Targets.ToArray();
+        var targets = result.View.Targets
+            .Where(target => target.Target.TargetKind == TargetKind.Statement)
+            .ToArray();
 
         Assert.Equal(2, targets.Length);
         Assert.Contains(targets[0].DefinesSymbols, symbol => symbol.DisplayName == "count");
@@ -36,6 +44,9 @@ public class DataFlowAnalysisTests
         Assert.Contains(result.View.Edges, edge => edge.Kind == AnalysisEdgeKind.Precedes);
     }
 
+    /// <summary>
+    /// 测试分析异步方法为简单赋值语句投影定义和使用。
+    /// </summary>
     [Fact]
     public async Task AnalyzeAsync_ProjectsDefinesAndUsesForSimpleAssignmentStatements()
     {
@@ -64,6 +75,9 @@ public class DataFlowAnalysisTests
         Assert.Contains(assignmentTarget.UsesSymbols, symbol => symbol.DisplayName == "count");
     }
 
+    /// <summary>
+    /// 测试分析异步方法区分参数和本地定义。
+    /// </summary>
     [Fact]
     public async Task AnalyzeAsync_DistinguishesParameterFromLocalDefinitions()
     {
@@ -101,6 +115,9 @@ public class DataFlowAnalysisTests
         Assert.NotEqual(parameterUse.SymbolKey, localSymbol.SymbolKey);
     }
 
+    /// <summary>
+    /// 测试分析异步方法返回语句产生使用但不产生定义。
+    /// </summary>
     [Fact]
     public async Task AnalyzeAsync_ReturnStatementProducesUsesWithoutDefines()
     {
@@ -121,7 +138,7 @@ public class DataFlowAnalysisTests
             """);
 
         var result = await engine.AnalyzeAsync(new[] { document }, CancellationToken.None);
-        var returnTarget = Assert.Single(result.View.Targets);
+        var returnTarget = Assert.Single(result.View.Targets.Where(target => target.Target.TargetKind == TargetKind.Statement));
 
         Assert.Empty(returnTarget.DefinesSymbols);
         var returnUse = Assert.Single(returnTarget.UsesSymbols);
@@ -129,6 +146,9 @@ public class DataFlowAnalysisTests
         Assert.Equal(SymbolKindRef.Parameter, returnUse.SymbolKind);
     }
 
+    /// <summary>
+    /// 测试分析异步方法投影字段和属性初始化器。
+    /// </summary>
     [Fact]
     public async Task AnalyzeAsync_ProjectsFieldAndPropertyInitializers()
     {
@@ -156,6 +176,9 @@ public class DataFlowAnalysisTests
         Assert.Contains(propertyInitializer.UsesSymbols, symbol => symbol.DisplayName == "_seed");
     }
 
+    /// <summary>
+    /// 测试分析异步方法投影构造函数成员赋值。
+    /// </summary>
     [Fact]
     public async Task AnalyzeAsync_ProjectsConstructorMemberAssignments()
     {
@@ -184,6 +207,9 @@ public class DataFlowAnalysisTests
         Assert.Contains(assignmentTarget.UsesSymbols, symbol => symbol.DisplayName == "seed");
     }
 
+    /// <summary>
+    /// 测试分析异步方法投影访问器赋值和返回。
+    /// </summary>
     [Fact]
     public async Task AnalyzeAsync_ProjectsAccessorAssignmentsAndReturns()
     {
@@ -222,6 +248,9 @@ public class DataFlowAnalysisTests
         Assert.Contains(assignmentTarget.UsesSymbols, symbol => symbol.DisplayName == "value");
     }
 
+    /// <summary>
+    /// 测试分析异步方法跨多个文件保留相对路径和成员ID。
+    /// </summary>
     [Fact]
     public async Task AnalyzeAsync_PreservesRelativePathsAndMemberIdsAcrossMultipleFiles()
     {
@@ -266,5 +295,130 @@ public class DataFlowAnalysisTests
         Assert.Contains(result.View.Targets, target =>
             target.Target.DocumentPath == Path.Combine("Features", "Nested.cs") &&
             target.Target.MemberId.Value == "Sample.Features.NestedPlayer.Update()");
+    }
+
+    /// <summary>
+    /// 测试分析异步方法投影控制流和规则事实。
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeAsync_ProjectsControlFlowAndRuleFacts()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var document = new SourceDocument(
+            "Sample.cs",
+            "Sample.cs",
+            """
+            namespace Sample;
+
+            public class Player
+            {
+                public int Update(int value)
+                {
+                    if (value > 0)
+                    {
+                        return value;
+                    }
+
+                    while (value > 1)
+                    {
+                        value = 0;
+                    }
+
+                    for (int i = 0; i < 1; i++)
+                    {
+                        value = i;
+                    }
+
+                    return 0;
+                }
+            }
+            """);
+
+        var result = await engine.AnalyzeAsync(new[] { document }, CancellationToken.None);
+
+        var ifTarget = result.View.Targets.Single(target => target.Target.DisplayText.StartsWith("if (value > 0)", StringComparison.Ordinal));
+        var whileTarget = result.View.Targets.Single(target => target.Target.DisplayText.StartsWith("while (value > 1)", StringComparison.Ordinal));
+        var forTarget = result.View.Targets.Single(target => target.Target.DisplayText.StartsWith("for (int i = 0;", StringComparison.Ordinal));
+        var sanitizeTarget = result.View.Targets.Single(target => target.Target.DisplayText == "value = 0;");
+        var returnTarget = result.View.Targets.Single(target => target.Target.DisplayText == "return value;");
+
+        Assert.Equal(StatementKindRef.If, ifTarget.StatementKind);
+        Assert.Equal(StatementKindRef.While, whileTarget.StatementKind);
+        Assert.Equal(StatementKindRef.For, forTarget.StatementKind);
+        Assert.Equal(StatementKindRef.Assignment, sanitizeTarget.StatementKind);
+        Assert.Equal(StatementKindRef.Return, returnTarget.StatementKind);
+        Assert.True(sanitizeTarget.IsSanitizingAssignment);
+    }
+
+    /// <summary>
+    /// 测试分析异步方法将对象初始化器赋值识别为受保护事实。
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeAsync_RecognizesObjectInitializerAssignmentsAsProtectedFacts()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var document = new SourceDocument(
+            "Sample.cs",
+            "Sample.cs",
+            """
+            namespace Sample;
+
+            public class Item
+            {
+                public int Value { get; set; }
+            }
+
+            public class Player
+            {
+                public void Update(int seed)
+                {
+                    // dome:delete
+                    var item = new Item { Value = seed };
+                }
+            }
+            """);
+
+        var result = await engine.AnalyzeAsync(new[] { document }, CancellationToken.None);
+        var objectInitializerTarget = result.View.Targets.Single(target => target.Target.DisplayText == "var item = new Item { Value = seed };");
+
+        Assert.True(objectInitializerTarget.IsObjectInitializerAssignment);
+        Assert.Equal(StatementKindRef.ObjectInitializerAssignment, objectInitializerTarget.StatementKind);
+        Assert.Contains(objectInitializerTarget.UsesSymbols, symbol => symbol.DisplayName == "seed");
+    }
+
+    /// <summary>
+    /// 测试分析异步方法将无跟踪符号的静态值赋值视为清理。
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeAsync_TreatsStaticValueAssignmentsWithoutTrackedSymbolsAsSanitizing()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var document = new SourceDocument(
+            "Sample.cs",
+            "Sample.cs",
+            """
+            namespace Sample;
+
+            public static class Defaults
+            {
+                public static int Value => 42;
+            }
+
+            public class Player
+            {
+                public void Update()
+                {
+                    int count = 1;
+                    count = Defaults.Value;
+                    int next = count;
+                }
+            }
+            """);
+
+        var result = await engine.AnalyzeAsync(new[] { document }, CancellationToken.None);
+        var assignmentTarget = result.View.Targets.Single(target => target.Target.DisplayText == "count = Defaults.Value;");
+
+        Assert.True(assignmentTarget.IsSanitizingAssignment);
+        Assert.Empty(assignmentTarget.UsesSymbols);
     }
 }

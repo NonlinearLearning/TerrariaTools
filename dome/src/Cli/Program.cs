@@ -1,6 +1,8 @@
 using TerrariaTools.Dome.Application;
 using TerrariaTools.Dome.Core;
+using TerrariaTools.Dome.Cli;
 
+// 解析命令行参数
 var parseResult = await DomeCliParser.ParseAsync(args, CancellationToken.None);
 if (!parseResult.IsSuccess || parseResult.Request == null)
 {
@@ -8,6 +10,7 @@ if (!parseResult.IsSuccess || parseResult.Request == null)
     return 1;
 }
 
+// 创建并运行应用程序
 var result = await DomeApplicationFactory.CreateDefault().RunAsync(parseResult.Request, CancellationToken.None);
 if (!result.IsSuccess)
 {
@@ -18,6 +21,11 @@ if (!result.IsSuccess)
 Console.WriteLine($"Artifacts written to {result.OutputPath}");
 return 0;
 
+/// <summary>
+/// 将失败代码映射为退出代码。
+/// </summary>
+/// <param name="failureCode">失败代码。</param>
+/// <returns>进程退出代码。</returns>
 static int MapExitCode(FailureCode failureCode)
 {
     return failureCode switch
