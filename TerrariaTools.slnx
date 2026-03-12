@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="TerrariaTools.csproj" />
-  <Project Path="UnitTests\TerrariaTools.UnitTests.csproj" />
-</Solution>
