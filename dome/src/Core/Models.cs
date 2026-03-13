@@ -1,3 +1,5 @@
+using Microsoft.CodeAnalysis;
+
 namespace TerrariaTools.Dome.Core;
 
 /// <summary>
@@ -17,6 +19,45 @@ public enum RunMode
     /// 仅规划模式。
     /// </summary>
     PlanOnly
+}
+
+/// <summary>
+/// 工作区加载偏好枚举。
+/// </summary>
+public enum WorkspaceLoaderPreference
+{
+    /// <summary>
+    /// 自动选择。
+    /// </summary>
+    Auto,
+    /// <summary>
+    /// 优先使用 CodeAnalysis。
+    /// </summary>
+    CodeAnalysisFirst,
+    /// <summary>
+    /// 仅使用源码扫描。
+    /// </summary>
+    SourceOnly
+}
+
+/// <summary>
+/// 工作区加载模式枚举。
+/// </summary>
+public enum WorkspaceLoadMode
+{
+    CodeAnalysis,
+    SourceOnly,
+    CodeAnalysisFallbackToSourceOnly
+}
+
+/// <summary>
+/// 工作区加载诊断级别。
+/// </summary>
+public enum WorkspaceLoadDiagnosticSeverity
+{
+    Info,
+    Warning,
+    Error
 }
 
 /// <summary>
@@ -106,7 +147,8 @@ public enum TargetKind
 
 /// <summary>
 /// 语句类型引用枚举。
-/// 不清楚StatementKindRef干嘛用的也许是输出日志用
+/// 用于区分控制流语句（If, While, For, Return）和其他语句，
+/// 以便在规则引擎中应用特定的分析逻辑（如 DirectiveSeedRule 和 ExpressionProjectionRule）。
 /// </summary>
 public enum StatementKindRef
 {
@@ -149,6 +191,59 @@ public enum StatementKindRef
 }
 
 /// <summary>
+/// 语句分析作用域模式。
+/// </summary>
+public enum StatementScopeMode
+{
+    /// <summary>
+    /// 最小块范围。
+    /// </summary>
+    MinimalBlock,
+    /// <summary>
+    /// 穿透父级块范围。
+    /// </summary>
+    ParentBlockPiercing
+}
+
+/// <summary>
+/// StatementGraph 物化状态。
+/// </summary>
+public enum StatementGraphMaterialization
+{
+    None,
+    SnapshotOnly,
+    Full
+}
+
+/// <summary>
+/// FunctionGraph 物化状态。
+/// </summary>
+public enum FunctionGraphMaterialization
+{
+    None,
+    WholeProject,
+    ExpandedMembers
+}
+
+/// <summary>
+/// 边界提升类型。
+/// </summary>
+public enum BoundaryKind
+{
+    Invocation
+}
+
+/// <summary>
+/// 语句分析作用域选项。
+/// </summary>
+public sealed record ScopeAnalysisOptions(
+    StatementScopeMode StatementScopeMode)
+{
+    public static ScopeAnalysisOptions Default { get; } =
+        new(StatementScopeMode.MinimalBlock);
+}
+
+/// <summary>
 /// 计划操作类型枚举。
 /// 添加返回语句时同时添加默认值
 /// 要忽略属性这种东西
@@ -186,6 +281,72 @@ public readonly record struct MemberId(string Value)
 }
 
 /// <summary>
+/// 工作区加载选项。
+/// </summary>
+/// <param name="PreferredLoader">首选加载器。</param>
+/// <param name="AllowFallbackToSourceOnly">是否允许回退到源码扫描。</param>
+public sealed record WorkspaceLoadOptions(
+    WorkspaceLoaderPreference PreferredLoader,
+    bool AllowFallbackToSourceOnly)
+{
+    public static WorkspaceLoadOptions Default { get; } =
+        new(WorkspaceLoaderPreference.Auto, true);
+}
+
+/// <summary>
+/// 工作区加载诊断。
+/// </summary>
+/// <param name="Stage">诊断阶段。</param>
+/// <param name="Severity">诊断级别。</param>
+/// <param name="Message">诊断消息。</param>
+public sealed record WorkspaceLoadDiagnostic(
+    string Stage,
+    WorkspaceLoadDiagnosticSeverity Severity,
+    string Message);
+
+/// <summary>
+/// 源码文档记录。
+/// </summary>
+/// <param name="SourcePath">源码绝对路径。</param>
+/// <param name="RelativePath">相对路径。</param>
+/// <param name="SourceText">源码内容。</param>
+public sealed record SourceDocument(
+    string SourcePath,
+    string RelativePath,
+    string SourceText);
+
+/// <summary>
+/// 分析输入抽象。
+/// </summary>
+public abstract record AnalysisInput(string RootPath);
+
+/// <summary>
+/// 纯源码分析输入。
+/// </summary>
+public sealed record SourceOnlyAnalysisInput(
+    string RootPath,
+    IReadOnlyList<SourceDocument> Documents) : AnalysisInput(RootPath);
+
+/// <summary>
+/// Workspace 文档上下文。
+/// </summary>
+public sealed record WorkspaceDocumentContext(
+    Document Document,
+    SourceDocument SourceDocument,
+    Compilation Compilation,
+    SemanticModel SemanticModel,
+    SyntaxNode Root);
+
+/// <summary>
+/// Workspace 分析输入。
+/// </summary>
+public sealed record WorkspaceAnalysisInput(
+    Solution Solution,
+    Project? Project,
+    string RootPath,
+    IReadOnlyList<WorkspaceDocumentContext> Documents) : AnalysisInput(RootPath);
+
+/// <summary>
 /// 运行请求记录。
 /// </summary>
 /// <param name="InputPath">输入路径。</param>
@@ -196,7 +357,14 @@ public sealed record RunRequest(
     string InputPath,
     string OutputPath,
     IReadOnlyList<string> RuleSet,
-    RunMode Mode);
+    RunMode Mode,
+    WorkspaceLoadOptions WorkspaceLoadOptions)
+{
+    public RunRequest(string inputPath, string outputPath, IReadOnlyList<string> ruleSet, RunMode mode)
+        : this(inputPath, outputPath, ruleSet, mode, WorkspaceLoadOptions.Default)
+    {
+    }
+}
 
 /// <summary>
 /// 运行结果记录。
@@ -298,7 +466,10 @@ public sealed record PlanReason(
     string? SourceTargetDisplayText = null,
     IReadOnlyList<string>? RelatedSymbolKeys = null,
     IReadOnlyList<string>? RelatedSymbolNames = null,
-    string? Severity = null);
+    string? Severity = null,
+    string? SourceMemberId = null,
+    BoundaryKind? BoundaryKind = null,
+    IReadOnlyList<string>? TriggeredSymbolKeys = null);
 
 /// <summary>
 /// 传播证据记录。
@@ -366,6 +537,9 @@ public sealed record MarkDecision(
         IReadOnlyList<string>? relatedSymbolKeys = null,
         IReadOnlyList<string>? relatedSymbolNames = null,
         string? severity = null,
+        string? sourceMemberId = null,
+        BoundaryKind? boundaryKind = null,
+        IReadOnlyList<string>? triggeredSymbolKeys = null,
         PropagationChain? chain = null) =>
         new(
             target,
@@ -377,7 +551,10 @@ public sealed record MarkDecision(
                 sourceTargetDisplayText,
                 relatedSymbolKeys ?? Array.Empty<string>(),
                 relatedSymbolNames ?? Array.Empty<string>(),
-                severity),
+                severity,
+                sourceMemberId,
+                boundaryKind,
+                triggeredSymbolKeys ?? Array.Empty<string>()),
             chain);
 }
 
@@ -422,7 +599,7 @@ public sealed record AuditPlan(
 
 /// <summary>
 /// 类型依赖类型枚举。
-/// 这里有些错误
+/// 描述类型之间的静态依赖关系，如继承、实现、字段类型等。
 /// </summary>
 public enum TypeDependencyKind
 {
@@ -466,7 +643,10 @@ public enum TypeDependencyKind
 
 /// <summary>
 /// 函数依赖类型枚举。
-/// 这里意义不明并且看不懂
+/// 描述函数之间的动态依赖关系。
+/// 注意：目前 FunctionGraphProvider 主要支持 Calls 类型。
+/// 其他类型（Creates, ReadsMember, WritesMember 等）在分析阶段有生成逻辑，
+/// 但可能未被完全持久化或在视图中利用。
 /// </summary>
 public enum FunctionDependencyKind
 {
@@ -598,6 +778,16 @@ public sealed record FunctionDependencyGraph(
     IReadOnlyList<FunctionDependencyEdge> Edges);
 
 /// <summary>
+/// 函数删除影响范围集合。
+/// </summary>
+public sealed record FunctionImpactSet(
+    IReadOnlyList<string> DeletedFunctionIds,
+    IReadOnlyList<string> AffectedFunctionIds,
+    IReadOnlyList<string> AffectedDocumentPaths,
+    int ExpansionDepth,
+    IReadOnlyList<FunctionDependencyKind> EdgeKinds);
+
+/// <summary>
 /// 语句依赖边记录。
 /// </summary>
 /// <param name="SourceTargetKey">源目标键。</param>
@@ -620,6 +810,163 @@ public sealed record StatementDependencyGraph(
     IReadOnlyList<StatementDependencyEdge> Edges);
 
 /// <summary>
+/// 函数索引。
+/// </summary>
+public sealed record FunctionIndex(
+    IReadOnlyDictionary<string, FunctionNodeRef> NodesByMemberId,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> MemberIdsByDocumentPath)
+{
+    public static FunctionIndex Empty { get; } = new(
+        new Dictionary<string, FunctionNodeRef>(StringComparer.Ordinal),
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
+}
+
+/// <summary>
+/// 函数事实记录。
+/// </summary>
+public sealed record FunctionFact(
+    FunctionNodeRef Node,
+    IReadOnlyList<MemberId> CalledMemberIds);
+
+/// <summary>
+/// 函数事实索引。
+/// </summary>
+public sealed record FunctionFactsIndex(
+    IReadOnlyDictionary<string, FunctionFact> FactsByMemberId,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> MemberIdsByDocumentPath,
+    IReadOnlyDictionary<string, IReadOnlyList<MemberId>> IncomingCallersByMemberId)
+{
+    public static FunctionFactsIndex Empty { get; } = new(
+        new Dictionary<string, FunctionFact>(StringComparer.Ordinal),
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal),
+        new Dictionary<string, IReadOnlyList<MemberId>>(StringComparer.Ordinal));
+}
+
+/// <summary>
+/// 函数图范围。
+/// </summary>
+public enum FunctionGraphScope
+{
+    WholeProject,
+    ExpandedMembers
+}
+
+/// <summary>
+/// 函数图快照。
+/// </summary>
+public sealed record FunctionGraphSnapshot(
+    FunctionGraphScope Scope,
+    IReadOnlyList<MemberId> RootMemberIds,
+    IReadOnlyList<string> IncludedDocumentPaths,
+    FunctionDependencyGraph Graph);
+
+/// <summary>
+/// 函数图请求。
+/// </summary>
+public sealed record FunctionGraphRequest(
+    FunctionGraphScope Scope,
+    IReadOnlyList<MemberId> RootMemberIds,
+    int Depth,
+    IReadOnlyList<FunctionDependencyKind> EdgeKinds,
+    string Requester,
+    string Reason);
+
+/// <summary>
+/// Supported function graph request factories for the current analysis stage.
+/// </summary>
+public static class FunctionGraphRequests
+{
+    public static FunctionGraphRequest WholeProjectCalls(string requester, string reason) =>
+        new(
+            FunctionGraphScope.WholeProject,
+            Array.Empty<MemberId>(),
+            0,
+            new[] { FunctionDependencyKind.Calls },
+            requester,
+            reason);
+
+    public static FunctionGraphRequest ExpandedMembersCalls(
+        IReadOnlyList<MemberId> rootMemberIds,
+        string requester,
+        string reason) =>
+        new(
+            FunctionGraphScope.ExpandedMembers,
+            rootMemberIds,
+            1,
+            new[] { FunctionDependencyKind.Calls },
+            requester,
+            reason);
+}
+
+/// <summary>
+/// 函数图提供器。
+/// </summary>
+public interface IFunctionGraphProvider
+{
+    FunctionGraphSnapshot GetSnapshot(FunctionGraphRequest request);
+
+    FunctionGraphSnapshot GetWholeProjectSnapshot() =>
+        GetSnapshot(FunctionGraphRequests.WholeProjectCalls("IFunctionGraphProvider", "Whole-project function graph snapshot"));
+
+    FunctionGraphSnapshot GetExpandedMembersSnapshot(IReadOnlyList<MemberId> rootMemberIds, int depth = 1)
+    {
+        if (depth != 1)
+        {
+            throw new NotSupportedException("ExpandedMembers snapshots currently only support depth = 1.");
+        }
+
+        return GetSnapshot(FunctionGraphRequests.ExpandedMembersCalls(
+            rootMemberIds,
+            "IFunctionGraphProvider",
+            "Expanded-members function graph snapshot"));
+    }
+}
+
+/// <summary>
+/// 语句事实记录。
+/// </summary>
+public sealed record StatementFact(
+    string TargetKey,
+    MemberId MemberId,
+    StatementKindRef StatementKind,
+    IReadOnlyList<SymbolRef> DefinesSymbols,
+    IReadOnlyList<SymbolRef> UsesSymbols,
+    IReadOnlyList<MemberId> InvokedMemberIds,
+    StatementScopeMode ScopeMode,
+    string? ScopeId,
+    string? ParentScopeId,
+    int SpanStart,
+    int SpanLength);
+
+/// <summary>
+/// 语句事实索引。
+/// </summary>
+public sealed record StatementFactsIndex(
+    IReadOnlyDictionary<string, IReadOnlyList<StatementFact>> FactsByMemberId)
+{
+    public static StatementFactsIndex Empty { get; } =
+        new(new Dictionary<string, IReadOnlyList<StatementFact>>(StringComparer.Ordinal));
+}
+
+/// <summary>
+/// 局部语句依赖图快照。
+/// </summary>
+public sealed record StatementGraphSnapshot(
+    string SeedTargetKey,
+    StatementScopeMode ScopeMode,
+    MemberId BoundaryMemberId,
+    IReadOnlyList<string> Nodes,
+    IReadOnlyList<StatementDependencyEdge> Edges);
+
+/// <summary>
+/// 语句级分析服务。
+/// </summary>
+public interface IStatementAnalysisService
+{
+    StatementGraphSnapshot Analyze(PlanTarget seedTarget, StatementScopeMode scopeMode);
+}
+
+/// <summary>
 /// 分析视图记录。
 /// </summary>
 /// <param name="Targets">分析目标列表。</param>
@@ -632,7 +979,37 @@ public sealed record AnalysisView(
     IReadOnlyList<AnalysisEdge> Edges,
     TypeDependencyGraph TypeGraph,
     FunctionDependencyGraph FunctionGraph,
-    StatementDependencyGraph StatementGraph);
+    StatementDependencyGraph StatementGraph,
+    StatementGraphMaterialization StatementGraphMaterialization,
+    FunctionGraphMaterialization FunctionGraphMaterialization);
+
+/// <summary>
+/// 全局分析事实目录。
+/// </summary>
+public sealed record AnalysisSnapshot(
+    AnalysisView View,
+    FunctionIndex FunctionIndex,
+    FunctionFactsIndex FunctionFacts,
+    StatementFactsIndex StatementFacts);
+
+/// <summary>
+/// 分析查询服务集合。
+/// </summary>
+public sealed record AnalysisServices(
+    IInheritanceQueryService Inheritance,
+    IReferenceQueryService References,
+    IStatementAnalysisService Statements,
+    IFunctionGraphProvider FunctionGraphs);
+
+/// <summary>
+/// 单次规则或预测执行上下文。
+/// </summary>
+public sealed record RuleExecutionContext(
+    string Requester,
+    PlanTarget? SeedTarget,
+    StatementScopeMode StatementScopeMode,
+    CancellationToken CancellationToken,
+    string? Reason = null);
 
 /// <summary>
 /// 分析目标记录。
@@ -653,11 +1030,15 @@ public sealed record AnalysisTarget(
     IReadOnlyList<DirectiveAction> Directives,
     IReadOnlyList<SymbolRef> DefinesSymbols,
     IReadOnlyList<SymbolRef> UsesSymbols,
+    IReadOnlyList<MemberId> InvokedMemberIds,
     StatementKindRef StatementKind,
     bool IsSanitizingAssignment,
     bool IsObjectInitializerAssignment,
     bool HasMarkedExpressionSeed,
-    IReadOnlyList<string> MarkedExpressionKinds);
+    IReadOnlyList<string> MarkedExpressionKinds,
+    StatementScopeMode ScopeMode,
+    string? ScopeId,
+    string? ParentScopeId);
 
 /// <summary>
 /// 分析边类型枚举。
@@ -787,6 +1168,88 @@ public sealed record DirectiveAction(
     string ReasonText);
 
 /// <summary>
+/// 工作区加载结果。
+/// </summary>
+/// <param name="IsSuccess">是否成功。</param>
+/// <param name="Documents">加载后的源码文档。</param>
+/// <param name="LoadMode">实际加载模式。</param>
+/// <param name="PrimaryLoader">主加载器名称。</param>
+/// <param name="FallbackUsed">是否发生了回退。</param>
+/// <param name="Diagnostics">加载诊断。</param>
+public sealed record WorkspaceLoadResult(
+    bool IsSuccess,
+    AnalysisInput? AnalysisInput,
+    IReadOnlyList<SourceDocument> Documents,
+    WorkspaceLoadMode LoadMode,
+    string PrimaryLoader,
+    bool FallbackUsed,
+    IReadOnlyList<WorkspaceLoadDiagnostic> Diagnostics)
+{
+    public static WorkspaceLoadResult Success(
+        AnalysisInput analysisInput,
+        WorkspaceLoadMode loadMode,
+        string primaryLoader,
+        bool fallbackUsed = false,
+        IReadOnlyList<WorkspaceLoadDiagnostic>? diagnostics = null) =>
+        new(
+            true,
+            analysisInput,
+            ExtractDocuments(analysisInput),
+            loadMode,
+            primaryLoader,
+            fallbackUsed,
+            diagnostics ?? Array.Empty<WorkspaceLoadDiagnostic>());
+
+    public static WorkspaceLoadResult Success(
+        IReadOnlyList<SourceDocument> documents,
+        WorkspaceLoadMode loadMode,
+        string primaryLoader,
+        bool fallbackUsed = false,
+        IReadOnlyList<WorkspaceLoadDiagnostic>? diagnostics = null) =>
+        new(
+            true,
+            new SourceOnlyAnalysisInput(ResolveRootPath(documents), documents),
+            documents,
+            loadMode,
+            primaryLoader,
+            fallbackUsed,
+            diagnostics ?? Array.Empty<WorkspaceLoadDiagnostic>());
+
+    public static WorkspaceLoadResult Failure(
+        WorkspaceLoadMode loadMode,
+        string primaryLoader,
+        IReadOnlyList<WorkspaceLoadDiagnostic> diagnostics) =>
+        new(false, null, Array.Empty<SourceDocument>(), loadMode, primaryLoader, false, diagnostics);
+
+    private static IReadOnlyList<SourceDocument> ExtractDocuments(AnalysisInput analysisInput)
+    {
+        return analysisInput switch
+        {
+            SourceOnlyAnalysisInput sourceOnly => sourceOnly.Documents,
+            WorkspaceAnalysisInput workspace => workspace.Documents
+                .Select(document => document.SourceDocument)
+                .ToArray(),
+            _ => Array.Empty<SourceDocument>()
+        };
+    }
+
+    private static string ResolveRootPath(IReadOnlyList<SourceDocument> documents)
+    {
+        if (documents.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (documents.Count == 1)
+        {
+            return Path.GetDirectoryName(documents[0].SourcePath) ?? string.Empty;
+        }
+
+        return Path.GetDirectoryName(documents[0].SourcePath) ?? string.Empty;
+    }
+}
+
+/// <summary>
 /// 计划编译结果记录。
 /// </summary>
 /// <param name="IsSuccess">是否成功。</param>
@@ -885,6 +1348,33 @@ public sealed record PlanCoverageSummary(
     IReadOnlyList<string> SampleCoveredTargetDisplayTexts);
 
 /// <summary>
+/// 函数删除影响摘要。
+/// </summary>
+public sealed record FunctionImpactSummary(
+    int DeletedFunctionCount,
+    int AffectedFunctionCount,
+    int AffectedDocumentCount,
+    int ExpansionDepth,
+    IReadOnlyList<FunctionDependencyKind> EdgeKinds,
+    IReadOnlyList<string> SampleAffectedFunctionIds,
+    IReadOnlyList<string> SampleAffectedDocumentPaths);
+
+/// <summary>
+/// 引用归零预测摘要。
+/// </summary>
+public sealed record ReferenceZeroPredictionSummary(
+    int PredictedMethodDeleteCount,
+    IReadOnlyList<string> SamplePredictedMethodIds);
+
+/// <summary>
+/// 边界提升摘要。
+/// </summary>
+public sealed record BoundaryPromotionSummary(
+    BoundaryKind BoundaryKind,
+    int PromotedMethodDeleteCount,
+    IReadOnlyList<string> SamplePromotedMethodIds);
+
+/// <summary>
 /// 运行报告记录。
 /// </summary>
 /// <param name="IsSuccess">是否成功。</param>
@@ -911,4 +1401,10 @@ public sealed record RunReport(
     IReadOnlyList<ConflictSummary> ConflictSummaries,
     RiskSummary RiskSummary,
     PlanCoverageSummary PlanCoverageSummary,
+    FunctionImpactSummary? FunctionImpactSummary,
+    BoundaryPromotionSummary? BoundaryPromotionSummary,
+    ReferenceZeroPredictionSummary? ReferenceZeroPredictionSummary,
+    WorkspaceLoadMode WorkspaceLoadMode,
+    bool WorkspaceFallbackUsed,
+    IReadOnlyList<WorkspaceLoadDiagnostic> WorkspaceDiagnostics,
     string? Message);

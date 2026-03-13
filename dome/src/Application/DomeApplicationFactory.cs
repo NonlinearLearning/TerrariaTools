@@ -17,8 +17,12 @@ public static class DomeApplicationFactory
     public static DomeApplication CreateDefault()
     {
         return new DomeApplication(
-            new SourceWorkspaceLoader(),
+            new WorkspaceLoadCoordinator(
+                new CodeAnalysisWorkspaceLoader(),
+                new SourceWorkspaceLoader()),
             new RoslynAnalysisEngine(),
+            new FunctionImpactAnalyzer(),
+            new ReferenceZeroPredictionAnalyzer(),
             new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()),
             new RoslynRewriteExecutor(),
             new JsonArtifactWriter());

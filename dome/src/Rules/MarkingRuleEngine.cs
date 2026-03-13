@@ -86,6 +86,22 @@ public interface IClassRule
 }
 
 /// <summary>
+/// 边界提升规则接口。
+/// </summary>
+public interface IBoundaryPromotionRule
+{
+    IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target, MarkDecision decision);
+}
+
+/// <summary>
+/// 语句作用域选择规则接口。
+/// </summary>
+public interface IStatementScopeRule
+{
+    StatementScopeMode SelectScopeMode(AnalysisContext context, AnalysisTarget seedTarget);
+}
+
+/// <summary>
 /// 指令种子规则。
 /// </summary>
 public sealed class DirectiveSeedRule : ISeedRule
@@ -294,6 +310,116 @@ public sealed class ClassMarkingRule : IClassRule
 }
 
 /// <summary>
+/// 调用语句边界提升规则。
+/// </summary>
+public sealed class InvocationBoundaryPromotionRule : IBoundaryPromotionRule
+{
+    /// <summary>
+    /// 评估是否进行边界提升。
+    /// </summary>
+    public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target, MarkDecision decision)
+    {
+        if (target.Target.TargetKind != TargetKind.Statement ||
+            decision.Action.Kind != PlanActionKind.Delete ||
+            target.InvokedMemberIds.Count != 1)
+        {
+            yield break;
+        }
+
+        var invokedMemberId = target.InvokedMemberIds[0];
+        if (!context.FunctionIndex.NodesByMemberId.TryGetValue(invokedMemberId.Value, out var functionNode) ||
+            functionNode.MemberKind != MemberKind.Method ||
+            !functionNode.IsPrivate ||
+            !functionNode.HasBody ||
+            context.Inheritance.IsOverrideMember(invokedMemberId.Value) ||
+            context.Inheritance.ImplementsInterfaceMember(invokedMemberId.Value))
+        {
+            yield break;
+        }
+
+        var remainingReferences = context.References.GetReferencingFunctions(invokedMemberId.Value)
+            .Select(memberId => memberId.Value)
+            .ToHashSet(StringComparer.Ordinal);
+        remainingReferences.Remove(target.Target.MemberId.Value);
+        if (remainingReferences.Count > 0)
+        {
+            yield break;
+        }
+
+        yield return MarkDecision.ForTarget(
+            new PlanTarget(
+                functionNode.DocumentPath,
+                functionNode.MemberId,
+                functionNode.MemberKind,
+                TargetKind.Method,
+                functionNode.SpanStart,
+                functionNode.SpanLength,
+                functionNode.DisplayName),
+            PlanActionKind.Delete,
+            "boundary-promotion",
+            "Invocation delete crossed the statement boundary and was promoted to a method delete candidate.",
+            sourceTargetKey: target.Target.TargetKey,
+            sourceTargetDisplayText: target.Target.DisplayText,
+            sourceMemberId: target.Target.MemberId.Value,
+            boundaryKind: BoundaryKind.Invocation,
+            triggeredSymbolKeys: new[] { invokedMemberId.Value },
+            relatedSymbolKeys: new[] { invokedMemberId.Value },
+            relatedSymbolNames: new[] { functionNode.DisplayName });
+    }
+}
+
+/// <summary>
+/// 父块穿透作用域选择规则。
+/// </summary>
+public sealed class ParentBlockPiercingScopeRule : IStatementScopeRule
+{
+    /// <summary>
+    /// 选择语句作用域模式。
+    /// </summary>
+    public StatementScopeMode SelectScopeMode(AnalysisContext context, AnalysisTarget seedTarget)
+    {
+        if (seedTarget.Target.TargetKind != TargetKind.Statement ||
+            seedTarget.IsHighRisk ||
+            seedTarget.IsObjectInitializerAssignment ||
+            seedTarget.IsSanitizingAssignment ||
+            string.IsNullOrEmpty(seedTarget.ScopeId) ||
+            string.IsNullOrEmpty(seedTarget.ParentScopeId) ||
+            !context.StatementFacts.FactsByMemberId.TryGetValue(seedTarget.Target.MemberId.Value, out var bucket))
+        {
+            return StatementScopeMode.MinimalBlock;
+        }
+
+        var sameScopeDefinitions = bucket
+            .Where(fact =>
+                string.Equals(fact.ScopeId, seedTarget.ScopeId, StringComparison.Ordinal) &&
+                fact.SpanStart < seedTarget.Target.SpanStart)
+            .SelectMany(fact => fact.DefinesSymbols)
+            .Select(symbol => symbol.SymbolKey)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var symbol in seedTarget.UsesSymbols)
+        {
+            if (symbol.DeclaringMemberId != seedTarget.Target.MemberId)
+            {
+                continue;
+            }
+
+            if (symbol.SymbolKind == SymbolKindRef.Parameter)
+            {
+                return StatementScopeMode.ParentBlockPiercing;
+            }
+
+            if (symbol.SymbolKind == SymbolKindRef.Local && !sameScopeDefinitions.Contains(symbol.SymbolKey))
+            {
+                return StatementScopeMode.ParentBlockPiercing;
+            }
+        }
+
+        return StatementScopeMode.MinimalBlock;
+    }
+}
+
+/// <summary>
 /// 标记规则注册表。
 /// </summary>
 public sealed class MarkingRuleRegistry
@@ -307,13 +433,16 @@ public sealed class MarkingRuleRegistry
     /// <param name="protectionRules">保护规则。</param>
     /// <param name="methodRules">方法规则。</param>
     /// <param name="classRules">类规则。</param>
+    /// <param name="boundaryPromotionRules">边界提升规则。</param>
     public MarkingRuleRegistry(
         IEnumerable<ISeedRule> seedRules,
         IEnumerable<IExpressionProjectionRule> expressionProjectionRules,
         IEnumerable<IPropagationRule> propagationRules,
         IEnumerable<IProtectionRule> protectionRules,
         IEnumerable<IMethodRule> methodRules,
-        IEnumerable<IClassRule> classRules)
+        IEnumerable<IClassRule> classRules,
+        IEnumerable<IBoundaryPromotionRule> boundaryPromotionRules,
+        IEnumerable<IStatementScopeRule> statementScopeRules)
     {
         SeedRules = seedRules.ToArray();
         ExpressionProjectionRules = expressionProjectionRules.ToArray();
@@ -321,6 +450,8 @@ public sealed class MarkingRuleRegistry
         ProtectionRules = protectionRules.ToArray();
         MethodRules = methodRules.ToArray();
         ClassRules = classRules.ToArray();
+        BoundaryPromotionRules = boundaryPromotionRules.ToArray();
+        StatementScopeRules = statementScopeRules.ToArray();
     }
 
     /// <summary>
@@ -354,6 +485,16 @@ public sealed class MarkingRuleRegistry
     public IReadOnlyList<IClassRule> ClassRules { get; }
 
     /// <summary>
+    /// 获取边界提升规则。
+    /// </summary>
+    public IReadOnlyList<IBoundaryPromotionRule> BoundaryPromotionRules { get; }
+
+    /// <summary>
+    /// 获取语句作用域规则。
+    /// </summary>
+    public IReadOnlyList<IStatementScopeRule> StatementScopeRules { get; }
+
+    /// <summary>
     /// 创建默认规则注册表。
     /// </summary>
     /// <returns>默认规则注册表。</returns>
@@ -364,7 +505,9 @@ public sealed class MarkingRuleRegistry
             [new SanitizationPropagationRule()],
             [new HighRiskProtectionRule(), new ObjectInitializerProtectionRule()],
             [new FunctionMarkingRule()],
-            [new ClassMarkingRule()]);
+            [new ClassMarkingRule()],
+            [new InvocationBoundaryPromotionRule()],
+            [new ParentBlockPiercingScopeRule()]);
 }
 
 /// <summary>
@@ -390,12 +533,59 @@ public sealed class MarkingRuleEngine
     /// <returns>标记决策集合。</returns>
     public IReadOnlyList<MarkDecision> Execute(AnalysisView analysisView)
     {
+        var statementFacts = new StatementFactsIndex(
+            analysisView.Targets
+                .Where(target => target.Target.TargetKind == TargetKind.Statement)
+                .GroupBy(target => target.Target.MemberId.Value, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<StatementFact>)group
+                        .OrderBy(target => target.Target.SpanStart)
+                        .ThenBy(target => target.Target.TargetKey, StringComparer.Ordinal)
+                        .Select(target => new StatementFact(
+                            target.Target.TargetKey,
+                            target.Target.MemberId,
+                            target.StatementKind,
+                            target.DefinesSymbols,
+                            target.UsesSymbols,
+                            target.InvokedMemberIds,
+                            target.ScopeMode,
+                            target.ScopeId,
+                            target.ParentScopeId,
+                            target.Target.SpanStart,
+                            target.Target.SpanLength))
+                        .ToArray(),
+                    StringComparer.Ordinal));
+        var snapshot = new AnalysisSnapshot(
+            analysisView,
+            FunctionIndex.Empty,
+            FunctionFactsIndex.Empty,
+            statementFacts);
+        var services = new AnalysisServices(
+            new NoOpInheritanceQueryService(),
+            new NoOpReferenceQueryService(),
+            new StatementAnalysisService(statementFacts),
+            new NoOpFunctionGraphProvider());
         return ExecuteCore(
-            new AnalysisContext(
-                analysisView,
-                new NoOpInheritanceQueryService(),
-                new NoOpReferenceQueryService()),
+            AnalysisContext.Create(snapshot, services),
+            new RuleExecutionContext(
+                "MarkingRuleEngine",
+                null,
+                StatementScopeMode.MinimalBlock,
+                CancellationToken.None,
+                "AnalysisView compatibility execution"),
             includeMethodRules: false);
+    }
+
+    public IReadOnlyList<MarkDecision> Execute(
+        AnalysisSnapshot snapshot,
+        AnalysisServices services,
+        RuleExecutionContext executionContext)
+    {
+        return ExecuteCore(
+            AnalysisContext.Create(snapshot, services),
+            executionContext,
+            includeMethodRules: true);
     }
 
     /// <summary>
@@ -405,15 +595,33 @@ public sealed class MarkingRuleEngine
     /// <returns>标记决策集合。</returns>
     public IReadOnlyList<MarkDecision> Execute(AnalysisContext context)
     {
-        return ExecuteCore(context, includeMethodRules: true);
+        return ExecuteCore(
+            context,
+            new RuleExecutionContext(
+                "MarkingRuleEngine",
+                null,
+                StatementScopeMode.MinimalBlock,
+                CancellationToken.None,
+                "AnalysisContext compatibility execution"),
+            includeMethodRules: true);
     }
 
-    private IReadOnlyList<MarkDecision> ExecuteCore(AnalysisContext context, bool includeMethodRules)
+    private IReadOnlyList<MarkDecision> ExecuteCore(
+        AnalysisContext context,
+        RuleExecutionContext executionContext,
+        bool includeMethodRules)
     {
         var seedDecisionsByTarget = new Dictionary<string, List<MarkDecision>>(StringComparer.Ordinal);
+        var targetsByKey = context.View.Targets.ToDictionary(target => target.Target.TargetKey, StringComparer.Ordinal);
 
         foreach (var target in context.View.Targets)
         {
+            if (executionContext.SeedTarget != null &&
+                target.Target.TargetKey != executionContext.SeedTarget.TargetKey)
+            {
+                continue;
+            }
+
             if (IsProtected(target))
             {
                 continue;
@@ -448,104 +656,24 @@ public sealed class MarkingRuleEngine
             }
         }
 
-        var finalDecisions = new List<MarkDecision>();
-
-        foreach (var memberTargets in context.View.Targets
-                     .GroupBy(target => $"{target.Target.DocumentPath}|{target.Target.MemberId.Value}", StringComparer.Ordinal)
-                     .Select(group => group.OrderBy(target => target.Target.SpanStart).ToArray()))
+        var finalDecisions = seedDecisionsByTarget.Values.SelectMany(list => list).ToList();
+        foreach (var seedGroup in seedDecisionsByTarget)
         {
-            var taintedSymbols = new Dictionary<string, MarkDecision>(StringComparer.Ordinal);
-
-            foreach (var target in memberTargets)
+            if (!targetsByKey.TryGetValue(seedGroup.Key, out var seedTarget) ||
+                seedTarget.Target.TargetKind != TargetKind.Statement ||
+                IsProtected(seedTarget))
             {
-                if (IsProtected(target))
-                {
-                    foreach (var definedSymbol in target.DefinesSymbols)
-                    {
-                        taintedSymbols.Remove(definedSymbol.SymbolKey);
-                    }
-
-                    continue;
-                }
-
-                IReadOnlyList<MarkDecision> directDecisions = seedDecisionsByTarget.TryGetValue(target.Target.TargetKey, out var seeds)
-                    ? seeds
-                    : Array.Empty<MarkDecision>();
-
-                var emitted = new List<MarkDecision>(directDecisions);
-
-                if (emitted.Count == 0)
-                {
-                    var propagatedByAction = new Dictionary<PlanActionKind, (MarkDecision SourceDecision, List<SymbolRef> Symbols)>();
-
-                    foreach (var usedSymbol in target.UsesSymbols)
-                    {
-                        if (!taintedSymbols.TryGetValue(usedSymbol.SymbolKey, out var sourceDecision))
-                        {
-                            continue;
-                        }
-
-                        if (_registry.PropagationRules.Any(rule => !rule.CanPropagate(target, usedSymbol, sourceDecision)))
-                        {
-                            continue;
-                        }
-
-                        if (!propagatedByAction.TryGetValue(sourceDecision.Action.Kind, out var propagation))
-                        {
-                            propagation = (sourceDecision, new List<SymbolRef>());
-                            propagatedByAction[sourceDecision.Action.Kind] = propagation;
-                        }
-
-                        if (propagation.Symbols.All(symbol => !string.Equals(symbol.SymbolKey, usedSymbol.SymbolKey, StringComparison.Ordinal)))
-                        {
-                            propagation.Symbols.Add(usedSymbol);
-                        }
-                    }
-
-                    foreach (var propagation in propagatedByAction.Values)
-                    {
-                        var evidence = new PropagationEvidence(
-                            propagation.Symbols.Select(symbol => symbol.SymbolKey).ToArray(),
-                            propagation.Symbols.Select(symbol => symbol.DisplayName).Distinct(StringComparer.Ordinal).ToArray());
-                        var chain = AppendPropagationChain(
-                            propagation.SourceDecision,
-                            target.Target,
-                            evidence);
-
-                        emitted.Add(MarkDecision.ForTarget(
-                            target.Target,
-                            propagation.SourceDecision.Action.Kind,
-                            "dataflow-propagation",
-                            "Propagated through a use/def dependency.",
-                            propagation.SourceDecision.Action.Payload,
-                            propagation.SourceDecision.Target.TargetKey,
-                            propagation.SourceDecision.Target.DisplayText,
-                            evidence.RelatedSymbolKeys,
-                            evidence.RelatedSymbolNames,
-                            chain: chain));
-                    }
-                }
-
-                finalDecisions.AddRange(emitted);
-
-                foreach (var definedSymbol in target.DefinesSymbols)
-                {
-                    var sourceDecision = emitted.FirstOrDefault();
-                    if (sourceDecision != null)
-                    {
-                        taintedSymbols[definedSymbol.SymbolKey] = sourceDecision;
-                    }
-                    else
-                    {
-                        taintedSymbols.Remove(definedSymbol.SymbolKey);
-                    }
-                }
+                continue;
             }
+
+            finalDecisions.AddRange(PropagateWithinSnapshot(context, seedTarget, seedDecisionsByTarget, targetsByKey));
         }
+
+        finalDecisions.AddRange(PromoteBoundaryDecisions(context, finalDecisions, targetsByKey));
 
         if (includeMethodRules)
         {
-            foreach (var functionNode in context.View.FunctionGraph.Nodes)
+            foreach (var functionNode in context.FunctionIndex.NodesByMemberId.Values.OrderBy(node => node.MemberId.Value, StringComparer.Ordinal))
             {
                 foreach (var rule in _registry.MethodRules)
                 {
@@ -570,6 +698,150 @@ public sealed class MarkingRuleEngine
 
     private bool IsProtected(AnalysisTarget target) =>
         _registry.ProtectionRules.Any(rule => rule.Blocks(target));
+
+    private IEnumerable<MarkDecision> PropagateWithinSnapshot(
+        AnalysisContext context,
+        AnalysisTarget seedTarget,
+        IReadOnlyDictionary<string, List<MarkDecision>> seedDecisionsByTarget,
+        IReadOnlyDictionary<string, AnalysisTarget> targetsByKey)
+    {
+        var scopeMode = ResolveScopeMode(context, seedTarget);
+        var snapshot = context.Statements.Analyze(seedTarget.Target, scopeMode);
+        var taintedSymbols = new Dictionary<string, MarkDecision>(StringComparer.Ordinal);
+        var propagated = new List<MarkDecision>();
+
+        foreach (var target in snapshot.Nodes
+                     .Select(nodeKey => targetsByKey[nodeKey])
+                     .OrderBy(target => target.Target.SpanStart)
+                     .ThenBy(target => target.Target.TargetKey, StringComparer.Ordinal))
+        {
+            if (IsProtected(target))
+            {
+                foreach (var definedSymbol in target.DefinesSymbols)
+                {
+                    taintedSymbols.Remove(definedSymbol.SymbolKey);
+                }
+
+                continue;
+            }
+
+            IReadOnlyList<MarkDecision> directDecisions = seedDecisionsByTarget.TryGetValue(target.Target.TargetKey, out var seeds)
+                ? seeds
+                : Array.Empty<MarkDecision>();
+
+            var emitted = new List<MarkDecision>(directDecisions);
+            if (emitted.Count == 0)
+            {
+                var propagatedByAction = new Dictionary<PlanActionKind, (MarkDecision SourceDecision, List<SymbolRef> Symbols)>();
+                foreach (var usedSymbol in target.UsesSymbols)
+                {
+                    if (!taintedSymbols.TryGetValue(usedSymbol.SymbolKey, out var sourceDecision))
+                    {
+                        continue;
+                    }
+
+                    if (_registry.PropagationRules.Any(rule => !rule.CanPropagate(target, usedSymbol, sourceDecision)))
+                    {
+                        continue;
+                    }
+
+                    if (!propagatedByAction.TryGetValue(sourceDecision.Action.Kind, out var propagation))
+                    {
+                        propagation = (sourceDecision, new List<SymbolRef>());
+                        propagatedByAction[sourceDecision.Action.Kind] = propagation;
+                    }
+
+                    if (propagation.Symbols.All(symbol => !string.Equals(symbol.SymbolKey, usedSymbol.SymbolKey, StringComparison.Ordinal)))
+                    {
+                        propagation.Symbols.Add(usedSymbol);
+                    }
+                }
+
+                foreach (var propagation in propagatedByAction.Values)
+                {
+                    var evidence = new PropagationEvidence(
+                        propagation.Symbols.Select(symbol => symbol.SymbolKey).ToArray(),
+                        propagation.Symbols.Select(symbol => symbol.DisplayName).Distinct(StringComparer.Ordinal).ToArray());
+                    var chain = AppendPropagationChain(propagation.SourceDecision, target.Target, evidence);
+                    var propagatedDecision = MarkDecision.ForTarget(
+                        target.Target,
+                        propagation.SourceDecision.Action.Kind,
+                        "dataflow-propagation",
+                        "Propagated through a use/def dependency.",
+                        propagation.SourceDecision.Action.Payload,
+                        propagation.SourceDecision.Target.TargetKey,
+                        propagation.SourceDecision.Target.DisplayText,
+                        evidence.RelatedSymbolKeys,
+                        evidence.RelatedSymbolNames,
+                        chain: chain);
+                    emitted.Add(propagatedDecision);
+                    propagated.Add(propagatedDecision);
+                }
+            }
+
+            foreach (var definedSymbol in target.DefinesSymbols)
+            {
+                var sourceDecision = emitted.FirstOrDefault();
+                if (sourceDecision != null)
+                {
+                    taintedSymbols[definedSymbol.SymbolKey] = sourceDecision;
+                }
+                else
+                {
+                    taintedSymbols.Remove(definedSymbol.SymbolKey);
+                }
+            }
+        }
+
+        return propagated;
+    }
+
+    private StatementScopeMode ResolveScopeMode(AnalysisContext context, AnalysisTarget seedTarget)
+    {
+        foreach (var rule in _registry.StatementScopeRules)
+        {
+            var selected = rule.SelectScopeMode(context, seedTarget);
+            if (selected != StatementScopeMode.MinimalBlock)
+            {
+                return selected;
+            }
+        }
+
+        return StatementScopeMode.MinimalBlock;
+    }
+
+    private IEnumerable<MarkDecision> PromoteBoundaryDecisions(
+        AnalysisContext context,
+        IReadOnlyList<MarkDecision> currentDecisions,
+        IReadOnlyDictionary<string, AnalysisTarget> targetsByKey)
+    {
+        var promoted = new List<MarkDecision>();
+        var existingMethodDeletes = currentDecisions
+            .Where(decision => decision.Target.TargetKind == TargetKind.Method && decision.Action.Kind == PlanActionKind.Delete)
+            .Select(decision => decision.Target.MemberId.Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var decision in currentDecisions.Where(decision => decision.Target.TargetKind == TargetKind.Statement))
+        {
+            if (!targetsByKey.TryGetValue(decision.Target.TargetKey, out var target))
+            {
+                continue;
+            }
+
+            foreach (var rule in _registry.BoundaryPromotionRules)
+            {
+                foreach (var promotedDecision in rule.Evaluate(context, target, decision))
+                {
+                    if (existingMethodDeletes.Add(promotedDecision.Target.MemberId.Value))
+                    {
+                        promoted.Add(promotedDecision);
+                    }
+                }
+            }
+        }
+
+        return promoted;
+    }
 
     private static PropagationChain AppendPropagationChain(
         MarkDecision sourceDecision,
@@ -651,4 +923,21 @@ internal sealed class NoOpReferenceQueryService : IReferenceQueryService
     public IReadOnlyList<MemberId> GetReferencingFunctions(string symbolOrMemberId) => Array.Empty<MemberId>();
 
     public IReadOnlyList<string> GetReferencingTypes(string symbolOrMemberId) => Array.Empty<string>();
+}
+
+internal sealed class NoOpStatementAnalysisService : IStatementAnalysisService
+{
+    public StatementGraphSnapshot Analyze(PlanTarget seedTarget, StatementScopeMode scopeMode) =>
+        new(seedTarget.TargetKey, scopeMode, seedTarget.MemberId, Array.Empty<string>(), Array.Empty<StatementDependencyEdge>());
+}
+
+internal sealed class NoOpFunctionGraphProvider : IFunctionGraphProvider
+{
+    private static readonly FunctionGraphSnapshot EmptySnapshot = new(
+        FunctionGraphScope.ExpandedMembers,
+        Array.Empty<MemberId>(),
+        Array.Empty<string>(),
+        new FunctionDependencyGraph(Array.Empty<FunctionNodeRef>(), Array.Empty<FunctionDependencyEdge>()));
+
+    public FunctionGraphSnapshot GetSnapshot(FunctionGraphRequest request) => EmptySnapshot;
 }

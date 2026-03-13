@@ -1,177 +1,208 @@
-# Dome v1.1 架构说明
+# Dome 架构总览
 
-## 执行模型
+`dome` 是一个面向 C# 源码的静态分析与批量改写工具。它围绕一条固定主链路工作：
 
-`dome` 使用固定流水线：
+`CLI -> Application -> Analysis -> Rules -> Plan -> Rewrite -> Reporting`
 
-`Analysis -> Mark -> Plan -> Rewrite -> Report`
+工具支持三种运行模式：
 
-各阶段职责：
+- `RunMode.AnalyzeOnly`：只做加载、语义分析和分析结果输出。
+- `RunMode.PlanOnly`：分析后生成 `audit-plan.json`，不改写源码。
+- `RunMode.Standard`：执行完整流程，输出计划、报告和重写后的源码。
 
-- `Analysis`
-  将 Roslyn 语法和语义事实投影为 `AnalysisView`
-- `Mark`
-  执行规则，输出 `MarkDecision`
-- `Plan`
-  将规则决策编译为可执行的 `AuditPlan`
-- `Rewrite`
-  只按计划执行改写
-- `Report`
-  输出稳定 JSON 产物
+## 1. 设计目标
 
-当前架构是单次运行、计划驱动，不支持 checkpoint，也不在 rewrite 阶段补做规则推理。
+当前实现的设计重点不是“做最复杂的语义推理”，而是先稳定以下能力：
 
-## 项目结构
+- 对 `.sln`、`.csproj`、目录、单文件四类输入建立统一入口。
+- 把 Roslyn 分析结果整理成跨层可复用的 `AnalysisView`、`AnalysisSnapshot`，并沿单一装配路径构造 `AnalysisServices` 和兼容 `AnalysisContext`。
+- 通过规则系统把“命中目标”转成 `MarkDecision`。
+- 将决策编译成顺序化、可序列化的 `AuditPlan`。
+- 用 Roslyn 语法树把计划重新投射回源码，最终输出 JSON 产物与重写结果。
 
-- `src/Core`
-  稳定契约和共享模型
-- `src/Analysis/Roslyn`
-  Roslyn 投影、三张图和查询服务
-- `src/Rules`
-  seed、传播、保护、方法级、类级、表达式投影规则
-- `src/Plan`
-  计划编译、冲突裁决、覆盖裁决
-- `src/Rewrite/Roslyn`
-  计划驱动改写
-- `src/Reporting`
-  JSON 产物输出
-- `src/Application`
-  运行模式和阶段编排
-- `src/Cli`
-  命令解析、配置加载、退出码
-- `tests/Dome.Tests`
-  Analysis、Rules、Plan、Rewrite、Cli、Application 六类测试
+## 2. 总体分层
 
-## 稳定契约
+```mermaid
+flowchart LR
+    CLI["Cli\nProgram / DomeCliParser"] --> APP["Application\nDomeApplication"]
+    APP --> ANALYSIS["Analysis\nWorkspaceLoader / RoslynAnalysisEngine"]
+    APP --> RULES["Rules\nMarkingRuleEngine"]
+    APP --> PLAN["Plan\nAuditPlanCompiler"]
+    APP --> REWRITE["Rewrite\nRoslynRewriteExecutor"]
+    APP --> REPORT["Reporting\nJsonArtifactWriter"]
 
-当前对外稳定的核心契约：
+    ANALYSIS --> CORE["Core\n共享模型与契约"]
+    RULES --> CORE
+    PLAN --> CORE
+    REWRITE --> CORE
+    REPORT --> CORE
+```
 
-- `RunRequest`
-- `RunResult`
-- `FailureCode`
-- `AnalysisView`
-- `AuditPlan`
-- `PlanConflict`
-- `RunReport`
+## 3. 每一层负责什么
 
-当前已经固定的 `TargetKind`：
+| 层 | 目录 | 主要职责 | 代表 API |
+| --- | --- | --- | --- |
+| Cli | `src/Cli` | 解析命令行或配置文件，构造 `RunRequest` | `DomeCliParser.ParseAsync` |
+| Application | `src/Application` | 组装依赖并调度全流程 | `DomeApplication.RunAsync` |
+| Core | `src/Core` | 提供共享模型、枚举、图契约、报告契约 | `RunRequest`、`AnalysisView`、`AuditPlan` |
+| Analysis | `src/Analysis/Roslyn` | 加载输入、做 Roslyn 语义分析、构建查询服务与惰性图快照 | `RoslynAnalysisEngine.AnalyzeAsync` |
+| Rules | `src/Rules` | 根据分析上下文生成标记决策 | `MarkingRuleEngine.Execute` |
+| Plan | `src/Plan` | 把决策编译为无冲突、可执行的计划 | `AuditPlanCompiler.Compile` |
+| Rewrite | `src/Rewrite/Roslyn` | 把 `AuditPlan` 投射回语法树并改写源码 | `RoslynRewriteExecutor.ExecuteAsync` |
+| Reporting | `src/Reporting` | 将分析、计划、报告写成 JSON artifact | `JsonArtifactWriter` |
 
-- `Statement`
-- `Method`
-- `Class`
+详细说明见：
 
-当前动作集合：
+- [执行流程](./execution-flow.md)
+- [产物说明](./artifacts.md)
+- [Core 层](./layers/core.md)
+- [Cli 层](./layers/cli.md)
+- [Application 层](./layers/application.md)
+- [Analysis 层](./layers/analysis.md)
+- [Rules 层](./layers/rules.md)
+- [Plan 层](./layers/plan.md)
+- [Rewrite 层](./layers/rewrite.md)
+- [Reporting 层](./layers/reporting.md)
 
-- `Delete`
-- `CommentOut`
-- `ReplaceWithDefault`
-- `AddReturn`
+## 4. 依赖方向与边界
 
-## Analysis 设计
+`dome` 当前遵循比较严格的单向依赖：
 
-`AnalysisView` 由两部分组成：
+- `Cli` 只依赖 `Core`，负责把外部参数转成内部请求。
+- `Application` 依赖其他所有执行层，但其他层不依赖 `Application`。
+- `Analysis`、`Rules`、`Plan`、`Rewrite`、`Reporting` 都依赖 `Core` 契约。
+- `Rules` 不直接改源码，只生成 `MarkDecision`。
+- `Plan` 不理解 Roslyn 语法树，只处理目标、动作、冲突和执行顺序。
+- `Rewrite` 不重新做语义分析，只消费已经编译好的 `AuditPlan`。
 
-- target 事实
-- 图快照
+这种分层的直接收益是：
 
-当前包含三张图：
+- 规则和计划逻辑可以在不触碰 Roslyn 改写代码的情况下迭代。
+- JSON 产物可以复用 `Core` 契约序列化，不需要层间私有 DTO。
+- `Application` 可以清晰区分“加载失败”“分析失败”“计划失败”“重写失败”。
 
-- `TypeGraph`
-  类型级依赖图
-- `FunctionGraph`
-  函数级依赖图
-- `StatementGraph`
-  语句级依赖图
+## 5. 主执行通路
 
-当前仍然保持规则优先，而不是平台优先：
+运行时的固定入口是 `src/Cli/Program.cs`：
 
-- 不做完整 CFG
-- 不做符号执行平台
-- 不做类型冲突分析
-- 不做动态调用链
+1. `Program` 调用 `DomeCliParser.ParseAsync` 解析参数。
+2. `Program` 通过 `DomeApplicationFactory.CreateDefault()` 组装默认实现。
+3. `Program` 调用 `DomeApplication.RunAsync(request, cancellationToken)`。
+4. `DomeApplication` 根据模式执行：
+   - 加载输入
+   - 分析
+   - 规则决策
+   - 计划编译
+   - 可选重写
+   - artifact 输出
+5. `Program` 把 `FailureCode` 映射成进程退出码。
 
-## Rules 设计
+完整时序见 [execution-flow.md](./execution-flow.md)。
 
-当前规则体系按职责分层：
+## 6. Analysis 子系统的关键设计
 
-- `Seed`
-- `Propagation`
-- `Protection`
-- `Method`
-- `Class`
-- `ExpressionProjection`
+Analysis 是整个系统最重的一层，也是当前架构里最需要说清楚边界的一层。
 
-当前规则基线：
+### 6.1 输入模型统一为 `AnalysisInput`
 
-- `dome:delete`
-- `controlflow-mark`
-- `dataflow-propagation`
-- `function-mark`
-- `class-mark`
-- `expression-mark`
+分析引擎不再以“裸 `SourceDocument[]`”作为唯一中心，而是统一消费：
 
-当前规则输出统一为 `MarkDecision`，不会直接产出 rewrite 行为。
+- `SourceOnlyAnalysisInput`
+- `WorkspaceAnalysisInput`
 
-## Plan 设计
+其中 `WorkspaceAnalysisInput` 直接承载真实 Roslyn 语义对象：
 
-`Plan` 是执行真源。职责包括：
+- `Solution`
+- `Project`
+- `WorkspaceDocumentContext`
+  - `Document`
+  - `SourceDocument`
+  - `Compilation`
+  - `SemanticModel`
+  - `Root`
 
-- 将 `MarkDecision` 编译成 `AuditPlan`
-- 做冲突检测
-- 做覆盖裁决
-- 为审计和报告固化原因链
+这意味着 `.sln` / `.csproj` 路径下的分析默认复用真实 workspace/project compilation，而不是退回“文本 + 极简 `CSharpCompilation`”。
 
-当前裁决优先级：
+### 6.2 默认不物化全量函数图
 
-- `Class Delete` 高于同类中的 `Method` 和 `Statement`
-- `Method Delete` 高于同方法中的 `Statement`
-- 同一 target 上不同 action 仍然是 `PlanCompileFailed`
+当前版本已经把函数分析收口到“全项目轻量索引 + 按需快照”：
 
-## Rewrite 设计
+- 默认产出：
+  - `FunctionIndex`
+  - `FunctionFactsIndex`
+  - `TypeDependencyGraph`
+  - statement facts / statement services
+- 默认不产出：
+  - 全量 `FunctionDependencyGraph`
+  - 全量 `StatementDependencyGraph`
 
-`Rewrite` 只消费 `AuditPlan`，不会重新读取规则或分析图补决策。
+因此 `AnalysisView` 里的状态被显式标注为：
 
-当前支持：
+- `StatementGraphMaterialization = SnapshotOnly`
+- `FunctionGraphMaterialization = None`
 
-- `TargetKind.Statement`
-- `TargetKind.Method`
-- `TargetKind.Class`
+`AnalysisView.StatementGraph` 与 `AnalysisView.FunctionGraph` 当前都只是兼容占位，不是规则传播的正式输入。
 
-当前不支持：
+### 6.3 惰性函数图快照
 
-- expression-level rewrite
-- initializer rewrite
-- class-level `CommentOut`
-- 原地改写
+函数图的正式入口是 `IFunctionGraphProvider.GetSnapshot(FunctionGraphRequest request)`。
+当前 Analysis 层默认通过 `FunctionGraphRequests` 构造受支持的请求，而不是手工拼装任意 request。
 
-目标定位顺序固定为：
+兼容便捷入口 `GetWholeProjectSnapshot()` 与 `GetExpandedMembersSnapshot(...)` 仍可保留，但正式协议已经收口为请求对象：
 
-1. `DocumentPath + MemberId`
-2. `SpanStart + SpanLength`
-3. `DisplayText`
+- `Scope`
+- `RootMemberIds`
+- `Depth`
+- `EdgeKinds`
+- `Requester`
+- `Reason`
 
-任一层不匹配都会快速失败。
+当前实现约束：
 
-## 保护模型
+- `WholeProject` 只物化 `Calls` 边。
+- `ExpandedMembers(depth=1)` 使用双向 `Calls` 邻接扩张：
+  - 向外看被 root 调用的方法
+  - 向内看调用 root 的方法
+- 扩张是“先按成员扩张，再按文件集合重建 snapshot”。
+- 当前不做 snapshot 缓存，也不把 `Creates` / `ReadsMember` / `WritesMember` / `UsesPropertyAccessor` 纳入局部扩张。
 
-保护发生在可执行计划产出之前。当前高风险保护包括：
+## 7. Core 契约如何贯穿全流程
 
-- `virtual`
-- `override`
-- `abstract`
-- 接口实现成员
-- object initializer 路径
-- 其他当前不安全的改写路径
+`src/Core/Models.cs` 是整个项目的公共语言层。最重要的契约可以按阶段理解：
 
-被保护的 target 仍然可以被分析，但不会进入可执行计划。
+- 入口与运行：
+  - `RunRequest`
+  - `RunResult`
+  - `RunMode`
+  - `FailureCode`
+- 加载与分析输入：
+  - `WorkspaceLoadOptions`
+  - `WorkspaceLoadResult`
+  - `AnalysisInput`
+  - `WorkspaceAnalysisInput`
+- 分析输出：
+  - `AnalysisView`
+  - `AnalysisSnapshot`
+  - `AnalysisServices`
+  - `AnalysisTarget`
+  - `AnalysisEdge`
+  - `FunctionIndex`
+  - `FunctionFactsIndex`
+- 规则与计划：
+  - `MarkDecision`
+  - `PlanTarget`
+  - `PlanAction`
+  - `AuditPlan`
+  - `PlanConflict`
+- 报告与 summary：
+  - `RunReport`
+  - `RiskSummary`
+  - `PlanCoverageSummary`
+  - `FunctionImpactSummary`
 
-## 当前边界
+换句话说，`Core` 决定了各层如何协作，而不是各层自行定义私有数据结构后再互相转换。
 
-当前版本明确不做：
+## 8. 当前代码库里的专题文档
 
-- expression-level target
-- initializer rewrite
-- struct / record / interface / enum target
-- dynamic call graph
-- checkpoint / 断点续跑
-- 通用静态分析平台化
+- [experimental-cross-boundary-analysis.md](./experimental-cross-boundary-analysis.md) 是专题补充文档，不是主架构入口。
+- 主入口应当从本文开始，再根据需要进入执行流程、各层说明和产物说明。

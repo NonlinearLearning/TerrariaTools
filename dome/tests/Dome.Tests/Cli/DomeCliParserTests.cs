@@ -25,6 +25,21 @@ public class DomeCliParserTests
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Request);
         Assert.Equal(expectedMode, result.Request!.Mode);
+        Assert.Equal(WorkspaceLoaderPreference.Auto, result.Request.WorkspaceLoadOptions.PreferredLoader);
+        Assert.True(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
+    }
+
+    [Fact]
+    public async Task ParseAsync_MapsLoaderArgumentsToWorkspaceLoadOptions()
+    {
+        var result = await DomeCliParser.ParseAsync(
+            new[] { "run", "input.cs", "out", "--loader", "codeanalysis", "--no-fallback" },
+            CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Request);
+        Assert.Equal(WorkspaceLoaderPreference.CodeAnalysisFirst, result.Request!.WorkspaceLoadOptions.PreferredLoader);
+        Assert.False(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
     }
 
     /// <summary>
@@ -47,7 +62,9 @@ public class DomeCliParserTests
                   "InputPath": "input.cs",
                   "OutputPath": "out",
                   "RuleSet": ["r1"],
-                  "LogLevel": "Info"
+                  "LogLevel": "Info",
+                  "Loader": "sourceonly",
+                  "AllowFallbackToSourceOnly": false
                 }
                 """);
 
@@ -57,6 +74,45 @@ public class DomeCliParserTests
             Assert.NotNull(result.Request);
             Assert.Equal(RunMode.PlanOnly, result.Request!.Mode);
             Assert.Single(result.Request.RuleSet);
+            Assert.Equal(WorkspaceLoaderPreference.SourceOnly, result.Request.WorkspaceLoadOptions.PreferredLoader);
+            Assert.False(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task ParseAsync_LoadsWorkspaceOptionsFromConfigFile()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-cli-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var configPath = Path.Combine(tempRoot, "dome.config.json");
+            await File.WriteAllTextAsync(
+                configPath,
+                """
+                {
+                  "Command": "plan",
+                  "InputPath": "input.csproj",
+                  "OutputPath": "out",
+                  "Loader": "sourceonly",
+                  "AllowFallbackToSourceOnly": false
+                }
+                """);
+
+            var result = await DomeCliParser.ParseAsync(new[] { "--config", configPath }, CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+            Assert.NotNull(result.Request);
+            Assert.Equal(WorkspaceLoaderPreference.SourceOnly, result.Request!.WorkspaceLoadOptions.PreferredLoader);
+            Assert.False(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
         }
         finally
         {

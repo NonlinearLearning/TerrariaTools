@@ -1,48 +1,118 @@
-# Dome v1.1 产物契约
+# Dome 输出产物说明
 
-## `analysis.json`
+本文说明 `dome` 在不同模式下会生成哪些文件、这些文件由哪个层负责产生、主要字段表达什么。
 
-只在 `analyze` 模式下生成。
+相关文档：
 
-主要用途：
+- [架构总览](./architecture.md)
+- [执行流程](./execution-flow.md)
 
-- 暴露投影后的 target 集合
-- 暴露规则事实位
-- 暴露三张图快照
+## 1. 产物总表
 
-关键字段包括：
+| 产物 | 生成时机 | 直接写入者 | 上游来源 | 主要用途 |
+| --- | --- | --- | --- | --- |
+| `analysis.json` | `AnalyzeOnly` | `JsonArtifactWriter.WriteAnalysisAsync` | `AnalysisView` | 导出分析结果，供人工检查或外部工具消费 |
+| `audit-plan.json` | `PlanOnly`、`Standard` | `JsonArtifactWriter.WritePlanAsync` | `AuditPlan` | 导出计划变更、顺序与冲突 |
+| `report.json` | 所有模式 | `JsonArtifactWriter.WriteReportAsync` | `RunReport` | 总结本次运行状态、产物、风险与失败信息 |
+| `rewritten/**` | `Standard` | `DomeApplication` + `RoslynRewriteExecutor` | `AuditPlan` + 原源码 | 输出重写后的 C# 文件 |
+
+## 2. 各模式会产生什么
+
+| 模式 | 产物 |
+| --- | --- |
+| `AnalyzeOnly` | `analysis.json`、`report.json` |
+| `PlanOnly` | `audit-plan.json`、`report.json` |
+| `Standard` | `audit-plan.json`、`report.json`、`rewritten/**` |
+
+## 3. `analysis.json`
+
+`analysis.json` 是 `AnalysisView` 的直接序列化结果。它由 Analysis 层提供数据，Reporting 层落盘。
+
+### 3.1 主要内容
 
 - `Targets`
 - `Edges`
 - `TypeGraph`
 - `FunctionGraph`
 - `StatementGraph`
+- `StatementGraphMaterialization`
+- `FunctionGraphMaterialization`
 
-常见 target 字段：
+### 3.2 如何理解
 
-- `Target.DocumentPath`
-- `Target.MemberId`
-- `Target.TargetKind`
+#### `Targets`
+
+每个 `AnalysisTarget` 描述一个可参与规则判定的目标，可能是：
+
+- `TargetKind.Statement`
+- `TargetKind.Method`
+- `TargetKind.Class`
+
+重要字段包括：
+
+- `Target`
+- `IsHighRisk`
+- `Directives`
 - `DefinesSymbols`
 - `UsesSymbols`
+- `InvokedMemberIds`
 - `StatementKind`
-- `IsHighRisk`
 - `IsSanitizingAssignment`
 - `IsObjectInitializerAssignment`
 - `HasMarkedExpressionSeed`
 - `MarkedExpressionKinds`
 
-## `audit-plan.json`
+#### `Edges`
 
-在 `plan` 和 `run` 模式下生成。
+当前 statement 分析边只表示：
 
-这是可执行计划的正式契约。关键部分包括：
+- `Defines`
+- `Uses`
+- `Precedes`
+
+它们用于构建 statement facts 和局部传播视图。
+
+#### 图字段的当前语义
+
+虽然 `analysis.json` 里仍保留：
+
+- `FunctionGraph`
+- `StatementGraph`
+
+但当前版本需要结合物化状态一起理解：
+
+- `FunctionGraphMaterialization = None`
+- `StatementGraphMaterialization = SnapshotOnly`
+
+也就是说：
+
+- `FunctionGraph` 不是正式的默认全局函数图。
+- `StatementGraph` 不是规则传播的正式全局输入。
+- 正式入口分别是 `AnalysisServices.FunctionGraphs` 和 `AnalysisServices.Statements`。
+
+## 4. `audit-plan.json`
+
+`audit-plan.json` 是 `AuditPlan` 的序列化结果，表示“已经可执行”的计划，而不是原始规则命中。
+
+### 4.1 主要内容
 
 - `Metadata`
 - `Changes`
 - `Conflicts`
 
-每个 `Change` 包含：
+### 4.2 `Metadata`
+
+记录本次计划的上下文，例如：
+
+- 工具名和计划版本
+- 输入路径
+- 输出路径
+- 运行模式
+- 生成时间
+
+### 4.3 `Changes`
+
+每个 `PlannedChange` 都包含：
 
 - `ExecutionOrder`
 - `Target`
@@ -50,39 +120,27 @@
 - `Reason`
 - `Chain`
 
-`Chain` 在 JSON 结构中固定存在：
+其中：
 
-- direct-hit 时为 `null`
-- propagation 时为 `PropagationChain` 对象
+- `Target` 指明改哪一个 class / method / statement。
+- `Action` 是 `Delete`、`CommentOut`、`ReplaceWithDefault`、`AddReturn` 之一。
+- `Reason` 表示该变更来自哪条规则。
+- `Chain` 用于记录数据流传播链路。
 
-兼容字段仍保留在 `Reason` 中：
+### 4.4 `Conflicts`
 
-- `SourceTargetKey`
-- `SourceTargetDisplayText`
-- `RelatedSymbolKeys`
-- `RelatedSymbolNames`
+如果同一个 target 被编译出多个不兼容动作，`AuditPlanCompiler` 会输出 `PlanConflict`，并使计划编译失败。
 
-这些字段描述最后一跳摘要，并与 `Chain.Hops` 保持一致。
+常见含义：
 
-当前 `TargetKind` 可能出现：
+- 同一 target 上同时出现多种 action。
+- 当前没有 resolver 去自动裁决冲突。
 
-- `Statement`
-- `Method`
-- `Class`
+## 5. `report.json`
 
-## `report.json`
+`report.json` 是 Application 层对整次运行的总结，既覆盖成功结果，也覆盖失败信息。
 
-所有运行模式都会生成，包括失败场景。
-
-主要用途：
-
-- 汇总运行结果
-- 暴露失败语义
-- 暴露风险和冲突摘要
-- 暴露覆盖统计
-- 暴露产物清单
-
-关键字段：
+### 5.1 主要内容
 
 - `IsSuccess`
 - `FailureCode`
@@ -95,44 +153,61 @@
 - `ConflictSummaries`
 - `RiskSummary`
 - `PlanCoverageSummary`
+- `FunctionImpactSummary`
+- `BoundaryPromotionSummary`
+- `ReferenceZeroPredictionSummary`
+- `WorkspaceLoadMode`
+- `WorkspaceFallbackUsed`
+- `WorkspaceDiagnostics`
 - `Message`
 
-`PlanCoverageSummary` 当前用于说明高粒度计划覆盖低粒度计划的结果，包含：
+### 5.2 为什么 `report.json` 很重要
 
-- `CoveredMethodCount`
-- `CoveredStatementCount`
-- `SampleCoveredTargetDisplayTexts`
+它是最适合自动化系统消费的单一状态出口，因为它同时回答：
 
-## `rewritten/**`
+- 本次运行是否成功
+- 失败在哪一层
+- 生成了哪些文件
+- 是否发生 fallback
+- 是否存在风险目标或冲突
+- 计划对 method / statement 的覆盖情况如何
 
-只在 `run` 模式且 rewrite 成功时生成。
+## 6. `rewritten/**`
 
-性质：
+`rewritten/**` 只在 `RunMode.Standard` 下生成。
 
-- 相对目录结构与输入目录树保持一致
-- 每个输出文件都应能被 `audit-plan.json` 完整解释
-- 当前 rewrite 仍以 statement 为中心，但已支持 method/class 删除
+### 6.1 写入方式
 
-## 冲突语义
+`DomeApplication` 会逐个分析文档：
 
-计划冲突会同时出现在 `audit-plan.json` 和 `report.json` 中。
+1. 从全局 `AuditPlan` 中筛出该文档对应的 `PlannedChange[]`。
+2. 调用 `RoslynRewriteExecutor.ExecuteAsync`。
+3. 按原始相对路径写到 `rewritten/<relative-path>`。
 
-稳定字段包括：
+### 6.2 文件语义
 
-- `ConflictCode`
-- `Reason`
-- 冲突动作集合
-- 冲突 target 标识
+- 这是“重写后的源码副本”，不会直接覆写输入源码。
+- 目录结构跟随原始 `RelativePath`。
+- 如果某个文档 rewrite 失败，流程会返回 `RewriteFailed` 并通过 `report.json` 说明原因。
 
-当前版本不会自动解决未定义的动作冲突。
+## 7. 产物与层的映射
 
-## 失败语义
+```mermaid
+flowchart LR
+    ANALYSIS["AnalysisView"] --> A["analysis.json"]
+    DECISIONS["MarkDecision[]"] --> PLAN["AuditPlan"]
+    PLAN --> P["audit-plan.json"]
+    PLAN --> REWRITE["RoslynRewriteExecutor"]
+    REWRITE --> R["rewritten/**"]
+    ANALYSIS --> REPORT["RunReport"]
+    PLAN --> REPORT
+    REWRITE --> REPORT
+    REPORT --> J["report.json"]
+```
 
-典型失败约定：
+## 8. 使用建议
 
-- `PlanCompileFailed`
-  仍生成 `report.json`，并解释冲突原因
-- `RewriteFailed`
-  仍生成 `report.json`，并解释 rewrite 失败原因
-- `AnalyzeOnly`
-  不生成 `audit-plan.json` 和 `rewritten/**`
+- 想看“工具看到了什么”，优先看 `analysis.json`。
+- 想看“工具准备怎么改”，优先看 `audit-plan.json`。
+- 想看“这次运行整体成败与摘要”，优先看 `report.json`。
+- 想检查“改完后的源码是什么”，查看 `rewritten/**`。

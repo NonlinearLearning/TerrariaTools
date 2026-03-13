@@ -1,58 +1,61 @@
-# 任务列表：添加中文注释 (UTF-8)
+# Dome Project Documentation Tasks
 
-> **要求**：所有代码文件必须添加中文注释，且文件编码必须为 UTF-8。
+This file tracks the progress of adding or translating documentation comments for functions in the project.
 
-## src/Analysis/Roslyn
-- [x] src/Analysis/Roslyn/AnalysisContext.cs
-- [x] src/Analysis/Roslyn/DirectiveReader.cs
-- [x] src/Analysis/Roslyn/MetadataMemberIdBuilder.cs
-- [x] src/Analysis/Roslyn/MetadataTypeIdBuilder.cs
-- [x] src/Analysis/Roslyn/QueryServices.cs
-- [x] src/Analysis/Roslyn/RoslynAnalysisEngine.cs
-- [x] src/Analysis/Roslyn/SourceWorkspaceLoader.cs
-- [x] src/Analysis/Roslyn/SymbolRefProjector.cs
+## Completed Tasks
 
-## src/Application
-- [x] src/Application/DomeApplication.cs
-- [x] src/Application/DomeApplicationFactory.cs
+- [x] `src\Analysis\Roslyn\ReferenceZeroPredictionAnalyzer.cs`
+    - `Predict` (Overload 1)
+    - `Predict` (Overload 2)
+- [x] `src\Analysis\Roslyn\FunctionImpactAnalyzer.cs`
+    - `Analyze` (Overload 1)
+- [x] `src\Analysis\Roslyn\WorkspaceLoaders.cs`
+    - `IWorkspaceLoader.LoadAsync`
+    - `CodeAnalysisWorkspaceLoader` (Class)
+    - `CodeAnalysisWorkspaceLoader.LoadAsync`
+    - `CodeAnalysisWorkspaceLoader.EnsureMsBuildRegistered`
+    - `CodeAnalysisWorkspaceLoader.BuildResultFromSolutionAsync`
+    - `CodeAnalysisWorkspaceLoader.BuildResultFromProjectAsync`
+    - `CodeAnalysisWorkspaceLoader.BuildDocumentContextsAsync`
+    - `WorkspaceLoadCoordinator` (Class)
+    - `WorkspaceLoadCoordinator.LoadAsync`
+    - `WorkspaceLoadCoordinator.GetSourceOnlyRoot`
+- [x] `src\Analysis\Roslyn\AnalysisContext.cs`
+    - `AnalysisContext` (Class - Translate to Chinese)
+    - `Snapshot`
+    - `Services`
+    - `View`
+    - `Inheritance`
+    - `References`
+    - `FunctionIndex`
+    - `FunctionFacts`
+    - `StatementFacts`
+    - `Statements`
+    - `FunctionGraphs`
+    - `Create`
+- [x] `src\Analysis\Roslyn\SourceWorkspaceLoader.cs`
+    - `SourceWorkspaceLoader` (Class)
+    - `LoadAsync`
+    - `LoadFromRootAsync`
+    - `LoadInternalAsync`
+- [x] `src\Analysis\Roslyn\FunctionGraphProvider.cs`
+- [x] `src\Analysis\Roslyn\StatementAnalysisService.cs`
+- [x] `src\Analysis\Roslyn\RoslynAnalysisEngine.cs`
+- [x] `src\Core\Models.cs`
+- [x] `src\Application\DomeApplication.cs`
+- [x] `src\Rules\MarkingRuleEngine.cs`
+- [x] `src\Application\DomeApplicationFactory.cs`
+- [x] `src\Cli\DomeCliParser.cs`
+- [x] `src\Rewrite\Roslyn\RoslynRewriteExecutor.cs`
+- [x] `src\Reporting\JsonArtifactWriter.cs`
+- [x] `src\Plan\AuditPlanCompiler.cs`
+- [x] `src\Cli\Program.cs`
+- [x] `src\Analysis\Roslyn\SymbolRefProjector.cs`
+- [x] `src\Analysis\Roslyn\QueryServices.cs`
+- [x] `src\Analysis\Roslyn\MetadataTypeIdBuilder.cs`
+- [x] `src\Analysis\Roslyn\MetadataMemberIdBuilder.cs`
+- [x] `src\Analysis\Roslyn\DirectiveReader.cs`
 
-## src/Cli
-- [x] src/Cli/DomeCliParser.cs
-- [x] src/Cli/Program.cs
+## Pending Tasks
 
-## src/Core
-- [x] src/Core/Models.cs
-
-## src/Plan
-- [x] src/Plan/AuditPlanCompiler.cs
-
-## src/Reporting
-- [x] src/Reporting/JsonArtifactWriter.cs
-
-## src/Rewrite/Roslyn
-- [x] src/Rewrite/Roslyn/RoslynRewriteExecutor.cs
-
-## src/Rules
-- [x] src/Rules/MarkingRuleEngine.cs
-
-## tests/Dome.Tests/Analysis
-- [x] tests/Dome.Tests/Analysis/AnalysisGraphTests.cs
-- [x] tests/Dome.Tests/Analysis/AnalysisQueryServiceTests.cs
-- [x] tests/Dome.Tests/Analysis/DataFlowAnalysisTests.cs
-- [x] tests/Dome.Tests/Analysis/MemberIdBuilderTests.cs
-
-## tests/Dome.Tests/Application
-- [x] tests/Dome.Tests/Application/DomeApplicationTests.cs
-
-## tests/Dome.Tests/Cli
-- [x] tests/Dome.Tests/Cli/DomeCliParserTests.cs
-
-## tests/Dome.Tests/Plan
-- [x] tests/Dome.Tests/Plan/AuditPlanCompilerTests.cs
-- [x] tests/Dome.Tests/Plan/AuditPlanDedupTests.cs
-
-## tests/Dome.Tests/Rewrite
-- [x] tests/Dome.Tests/Rewrite/RewriteExecutorTests.cs
-
-## tests/Dome.Tests/Rules
-- [x] tests/Dome.Tests/Rules/MarkingRuleEngineTests.cs
+(None)

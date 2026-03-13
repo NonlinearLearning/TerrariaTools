@@ -129,6 +129,41 @@ public class MarkingRuleEngineTests
         Assert.DoesNotContain(decisions, decision => decision.Target.DisplayText == "int next = count;");
     }
 
+    [Fact]
+    public async Task Execute_DoesNotPropagateAcrossParentBlockByDefault()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update(int seed)
+                        {
+                            // dome:delete
+                            int parent = seed;
+                            {
+                                int child = parent;
+                            }
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.Contains(decisions, decision => decision.Target.DisplayText == "int parent = seed;");
+        Assert.DoesNotContain(decisions, decision => decision.Target.DisplayText == "int child = parent;" && decision.Reason.RuleId == "dataflow-propagation");
+    }
+
     /// <summary>
     /// 测试执行方法从参数传播但不跨越到不相关的局部变量。
     /// </summary>
@@ -544,6 +579,130 @@ public class MarkingRuleEngineTests
             decision.Action.Payload == "0");
     }
 
+    [Fact]
+    public async Task Execute_PromotesDeletedInvocationToMethodDeleteWhenItIsTheOnlyReference()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update(int value)
+                        {
+                            // dome:delete
+                            fun2(value);
+                        }
+
+                        private void fun2(int i)
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        var promoted = Assert.Single(decisions.Where(decision =>
+            decision.Reason.RuleId == "boundary-promotion" &&
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Player.fun2(int)"));
+        Assert.NotNull(promoted.Reason.SourceTargetKey);
+        Assert.Equal("fun2(value);", promoted.Reason.SourceTargetDisplayText);
+        Assert.Equal("Sample.Player.Update(int)", promoted.Reason.SourceMemberId);
+        Assert.Equal(BoundaryKind.Invocation, promoted.Reason.BoundaryKind);
+        Assert.Contains("Sample.Player.fun2(int)", promoted.Reason.TriggeredSymbolKeys!);
+    }
+
+    [Fact]
+    public async Task Execute_UsesParentBlockPiercingForSeedThatReadsParentScopeSymbol()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update(int seed)
+                        {
+                            int parent = seed;
+                            {
+                                // dome:delete
+                                int child = parent;
+                                int next = child;
+                            }
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var recordingStatements = new RecordingStatementAnalysisService(context.Statements);
+        var patchedServices = context.Services with { Statements = recordingStatements };
+        var patchedContext = AnalysisContext.Create(context.Snapshot, patchedServices);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(patchedContext);
+
+        Assert.Contains(decisions, decision => decision.Target.DisplayText == "int child = parent;");
+
+        var childTarget = Assert.Single(analysis.View.Targets.Where(target => target.Target.DisplayText == "int child = parent;"));
+        Assert.Contains(
+            recordingStatements.Calls,
+            call => call.TargetKey == childTarget.Target.TargetKey && call.ScopeMode == StatementScopeMode.ParentBlockPiercing);
+    }
+
+    [Fact]
+    public async Task Execute_AcceptsCatalogServicesAndExecutionContext()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update()
+                        {
+                            // dome:delete
+                            int count = 1;
+                            int next = count;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var seedTarget = Assert.Single(analysis.View.Targets.Where(target => target.Target.DisplayText == "int count = 1;"));
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(
+            context.Snapshot,
+            context.Services,
+            new RuleExecutionContext("MarkingRuleEngineTests", seedTarget.Target, StatementScopeMode.MinimalBlock, CancellationToken.None, "verify explicit context"));
+
+        Assert.Contains(decisions, decision => decision.Target.DisplayText == "int count = 1;");
+        Assert.Contains(decisions, decision => decision.Target.DisplayText == "int next = count;");
+    }
+
     /// <summary>
     /// 测试执行方法不删除重写方法。
     /// </summary>
@@ -750,5 +909,16 @@ public class MarkingRuleEngineTests
         Assert.DoesNotContain(decisions, decision =>
             decision.Target.TargetKind == TargetKind.Class &&
             decision.Target.MemberId.Value == "Sample.CacheEntry");
+    }
+
+    private sealed class RecordingStatementAnalysisService(IStatementAnalysisService inner) : IStatementAnalysisService
+    {
+        public List<(string TargetKey, StatementScopeMode ScopeMode)> Calls { get; } = new();
+
+        public StatementGraphSnapshot Analyze(PlanTarget seedTarget, StatementScopeMode scopeMode)
+        {
+            Calls.Add((seedTarget.TargetKey, scopeMode));
+            return inner.Analyze(seedTarget, scopeMode);
+        }
     }
 }

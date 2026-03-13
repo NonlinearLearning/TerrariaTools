@@ -26,12 +26,14 @@ public sealed record RoslynAnalysisDocument(
 /// <param name="Documents">Roslyn分析文档列表。</param>
 public sealed record RoslynAnalysisResult(
     AnalysisView View,
-    IReadOnlyList<RoslynAnalysisDocument> Documents);
+    IReadOnlyList<RoslynAnalysisDocument> Documents,
+    FunctionIndex FunctionIndex,
+    FunctionFactsIndex FunctionFacts);
 
 /// <summary>
 /// Roslyn分析引擎，负责协调文档的解析、编译和依赖分析。
-/// 类依赖图是读取sln项目就进行全部分析，函数依赖分析需要支持性能更好的动态文件范围分析和,全sln项目分析
-/// 而语句初版需要支持最小作用域分析,然后支持引用关系穿透,即跨越作用域但此阶段不会跨越函数作用域和类作用域
+/// 类依赖图是读取sln项目就进行全部分析，函数依赖分析需要支持性能更好的动态文件范围分析和全sln项目分析
+/// 而语句分析初版需要支持最小作用域分析,然后支持引用关系穿透,即跨越作用域但此阶段不会跨越函数作用域和类作用域
 /// 下一阶段是支持域分析穿透支持到函数和类成员属性.下阶段更为复杂需要支持多作用跨越和不同作用域的混合分析
 /// </summary>
 public sealed class RoslynAnalysisEngine
@@ -46,6 +48,33 @@ public sealed class RoslynAnalysisEngine
         IReadOnlyList<SourceDocument> documents,
         CancellationToken cancellationToken)
     {
+        return AnalyzeAsync(
+            new SourceOnlyAnalysisInput(
+                documents.Count == 0 ? string.Empty : Path.GetDirectoryName(documents[0].SourcePath) ?? string.Empty,
+                documents),
+            cancellationToken);
+    }
+
+    public async Task<RoslynAnalysisResult> AnalyzeAsync(
+        AnalysisInput input,
+        CancellationToken cancellationToken)
+    {
+        return input switch
+        {
+            SourceOnlyAnalysisInput sourceOnly => await AnalyzeSourceOnlyAsync(sourceOnly, cancellationToken),
+            WorkspaceAnalysisInput workspace => await AnalyzeWorkspaceAsync(workspace, cancellationToken),
+            _ => throw new NotSupportedException($"Unsupported analysis input '{input.GetType().Name}'.")
+        };
+    }
+
+    /// <summary>
+    /// 仅分析源码模式。
+    /// </summary>
+    private Task<RoslynAnalysisResult> AnalyzeSourceOnlyAsync(
+        SourceOnlyAnalysisInput input,
+        CancellationToken cancellationToken)
+    {
+        var documents = input.Documents;
         var trees = documents
             .Select(document => CSharpSyntaxTree.ParseText(document.SourceText, path: document.SourcePath))
             .ToArray();
@@ -61,7 +90,6 @@ public sealed class RoslynAnalysisEngine
         var typeNodes = new Dictionary<string, TypeNodeRef>(StringComparer.Ordinal);
         var typeEdges = new HashSet<TypeDependencyEdge>();
         var functionNodes = new Dictionary<string, FunctionNodeRef>(StringComparer.Ordinal);
-        var functionEdges = new HashSet<FunctionDependencyEdge>();
 
         for (var index = 0; index < trees.Length; index++)
         {
@@ -73,7 +101,7 @@ public sealed class RoslynAnalysisEngine
 
             RegisterTypeGraphDocuments(documents[index], root, semanticModel, typeNodes, typeEdges);
             RegisterFunctionNodes(documents[index], root, semanticModel, functionNodes);
-            RegisterBodyGraphs(root, semanticModel, typeEdges, functionEdges);
+            RegisterTypeBodyGraphs(root, semanticModel, typeEdges);
 
             var targets = AnalyzeDocument(documents[index], root, semanticModel, allEdges);
             analyzedDocuments.Add(new RoslynAnalysisDocument(documents[index], root, semanticModel, targets));
@@ -82,8 +110,8 @@ public sealed class RoslynAnalysisEngine
 
         //抽象写法
         //语句级分析不能使用sln项目级的全量分析
-        //在语句级的作用分析中为了支持跨越作用域需要保存函数和类的依赖节点,而不是传整个图进去
-        var statementGraph = BuildStatementGraph(allTargets, allEdges);
+        var functionIndex = BuildFunctionIndex(functionNodes.Values);
+        var functionFacts = BuildFunctionFactsIndex(functionNodes.Values, analyzedDocuments);
         var view = new AnalysisView(
             allTargets,
             allEdges,
@@ -93,15 +121,63 @@ public sealed class RoslynAnalysisEngine
                     .ThenBy(edge => edge.TargetTypeId, StringComparer.Ordinal)
                     .ThenBy(edge => edge.Kind)
                     .ToArray()),
-            new FunctionDependencyGraph(
-                functionNodes.Values.OrderBy(node => node.MemberId.Value, StringComparer.Ordinal).ToArray(),
-                functionEdges.OrderBy(edge => edge.SourceMemberId.Value, StringComparer.Ordinal)
-                    .ThenBy(edge => edge.TargetMemberId.Value, StringComparer.Ordinal)
+            new FunctionDependencyGraph(Array.Empty<FunctionNodeRef>(), Array.Empty<FunctionDependencyEdge>()),
+            new StatementDependencyGraph(Array.Empty<string>(), Array.Empty<StatementDependencyEdge>()),
+            StatementGraphMaterialization.SnapshotOnly,
+            FunctionGraphMaterialization.None);
+
+        return Task.FromResult(new RoslynAnalysisResult(view, analyzedDocuments, functionIndex, functionFacts));
+    }
+
+    /// <summary>
+    /// 分析工作区模式。
+    /// </summary>
+    private async Task<RoslynAnalysisResult> AnalyzeWorkspaceAsync(
+        WorkspaceAnalysisInput input,
+        CancellationToken cancellationToken)
+    {
+        var analyzedDocuments = new List<RoslynAnalysisDocument>(input.Documents.Count);
+        var allTargets = new List<AnalysisTarget>();
+        var allEdges = new List<AnalysisEdge>();
+        var typeNodes = new Dictionary<string, TypeNodeRef>(StringComparer.Ordinal);
+        var typeEdges = new HashSet<TypeDependencyEdge>();
+        var functionNodes = new Dictionary<string, FunctionNodeRef>(StringComparer.Ordinal);
+
+        foreach (var documentContext in input.Documents)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var root = documentContext.Root as CompilationUnitSyntax
+                ?? throw new InvalidOperationException("WorkspaceDocumentContext.Root must be a CompilationUnitSyntax.");
+            var sourceDocument = documentContext.SourceDocument;
+            var semanticModel = documentContext.SemanticModel;
+
+            RegisterTypeGraphDocuments(sourceDocument, root, semanticModel, typeNodes, typeEdges);
+            RegisterFunctionNodes(sourceDocument, root, semanticModel, functionNodes);
+            RegisterTypeBodyGraphs(root, semanticModel, typeEdges);
+
+            var targets = AnalyzeDocument(sourceDocument, root, semanticModel, allEdges);
+            analyzedDocuments.Add(new RoslynAnalysisDocument(sourceDocument, root, semanticModel, targets));
+            allTargets.AddRange(targets);
+        }
+
+        var functionIndex = BuildFunctionIndex(functionNodes.Values);
+        var functionFacts = BuildFunctionFactsIndex(functionNodes.Values, analyzedDocuments);
+        var view = new AnalysisView(
+            allTargets,
+            allEdges,
+            new TypeDependencyGraph(
+                typeNodes.Values.OrderBy(node => node.TypeId, StringComparer.Ordinal).ToArray(),
+                typeEdges.OrderBy(edge => edge.SourceTypeId, StringComparer.Ordinal)
+                    .ThenBy(edge => edge.TargetTypeId, StringComparer.Ordinal)
                     .ThenBy(edge => edge.Kind)
                     .ToArray()),
-            statementGraph);
+            new FunctionDependencyGraph(Array.Empty<FunctionNodeRef>(), Array.Empty<FunctionDependencyEdge>()),
+            new StatementDependencyGraph(Array.Empty<string>(), Array.Empty<StatementDependencyEdge>()),
+            StatementGraphMaterialization.SnapshotOnly,
+            FunctionGraphMaterialization.None);
 
-        return Task.FromResult(new RoslynAnalysisResult(view, analyzedDocuments));
+        return new RoslynAnalysisResult(view, analyzedDocuments, functionIndex, functionFacts);
     }
 
     /// <summary>
@@ -111,13 +187,49 @@ public sealed class RoslynAnalysisEngine
     /// </summary>
     /// <param name="result">Roslyn分析结果。</param>
     /// <returns>分析上下文。</returns>
+    public AnalysisSnapshot CreateSnapshot(RoslynAnalysisResult result)
+    {
+        return new AnalysisSnapshot(
+            result.View,
+            result.FunctionIndex,
+            result.FunctionFacts,
+            BuildStatementFactsIndex(result.View.Targets));
+    }
+
+    /// <summary>
+    /// 创建分析服务。
+    /// </summary>
+    /// <param name="result">Roslyn分析结果。</param>
+    /// <returns>分析服务。</returns>
+    public AnalysisServices CreateServices(RoslynAnalysisResult result)
+    {
+        return CreateContext(result).Services;
+    }
+
+    /// <summary>
+    /// 创建分析上下文。
+    /// </summary>
+    /// <param name="result">Roslyn分析结果。</param>
+    /// <returns>分析上下文。</returns>
     public AnalysisContext CreateContext(RoslynAnalysisResult result)
+    {
+        var snapshot = CreateSnapshot(result);
+        var services = CreateServicesCore(result.Documents, snapshot);
+        return AnalysisContext.Create(snapshot, services);
+    }
+
+    /// <summary>
+    /// 核心创建分析服务逻辑。
+    /// </summary>
+    private static AnalysisServices CreateServicesCore(
+        IReadOnlyList<RoslynAnalysisDocument> documents,
+        AnalysisSnapshot snapshot)
     {
         var overrideMembers = new HashSet<string>(StringComparer.Ordinal);
         var interfaceMembers = new HashSet<string>(StringComparer.Ordinal);
         var inheritanceTypes = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var edge in result.View.TypeGraph.Edges)
+        foreach (var edge in snapshot.View.TypeGraph.Edges)
         {
             if (edge.Kind is TypeDependencyKind.Inherits or TypeDependencyKind.Implements)
             {
@@ -130,7 +242,7 @@ public sealed class RoslynAnalysisEngine
             }
         }
 
-        foreach (var document in result.Documents)
+        foreach (var document in documents)
         {
             foreach (var method in document.Root.DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
@@ -185,23 +297,21 @@ public sealed class RoslynAnalysisEngine
             }
         }
 
-        var nodeByMemberId = result.View.FunctionGraph.Nodes.ToDictionary(node => node.MemberId.Value, StringComparer.Ordinal);
         var memberToFunctions = new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal);
         var memberToTypes = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
-        foreach (var edge in result.View.FunctionGraph.Edges)
+        foreach (var fact in snapshot.FunctionFacts.FactsByMemberId.Values)
         {
-            RegisterReference(memberToFunctions, edge.TargetMemberId.Value, edge.SourceMemberId);
-
-            if (nodeByMemberId.TryGetValue(edge.SourceMemberId.Value, out var node))
+            foreach (var calledMemberId in fact.CalledMemberIds)
             {
-                RegisterReference(memberToTypes, edge.TargetMemberId.Value, node.DeclaringTypeId);
+                RegisterReference(memberToFunctions, calledMemberId.Value, fact.Node.MemberId);
+                RegisterReference(memberToTypes, calledMemberId.Value, fact.Node.DeclaringTypeId);
             }
         }
 
         var typeToFunctions = new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal);
         var typeToTypes = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        foreach (var edge in result.View.TypeGraph.Edges)
+        foreach (var edge in snapshot.View.TypeGraph.Edges)
         {
             if (!string.IsNullOrEmpty(edge.MemberId))
             {
@@ -211,10 +321,132 @@ public sealed class RoslynAnalysisEngine
             RegisterReference(typeToTypes, edge.TargetTypeId, edge.SourceTypeId);
         }
 
-        return new AnalysisContext(
-            result.View,
+        return new AnalysisServices(
             new InheritanceQueryService(overrideMembers, interfaceMembers, inheritanceTypes),
-            new ReferenceQueryService(memberToFunctions, memberToTypes, typeToFunctions, typeToTypes));
+            new ReferenceQueryService(memberToFunctions, memberToTypes, typeToFunctions, typeToTypes),
+            new StatementAnalysisService(snapshot.StatementFacts),
+            new FunctionGraphProvider(snapshot.FunctionIndex, snapshot.FunctionFacts));
+    }
+
+    /// <summary>
+    /// 构建函数索引。
+    /// </summary>
+    private static FunctionIndex BuildFunctionIndex(IEnumerable<FunctionNodeRef> nodes)
+    {
+        var nodeArray = nodes.ToArray();
+        var nodesByMemberId = nodeArray.ToDictionary(node => node.MemberId.Value, StringComparer.Ordinal);
+        var memberIdsByDocumentPath = nodeArray
+            .GroupBy(node => node.DocumentPath, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group.Select(node => node.MemberId.Value)
+                    .OrderBy(memberId => memberId, StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.Ordinal);
+
+        return new FunctionIndex(nodesByMemberId, memberIdsByDocumentPath);
+    }
+
+    /// <summary>
+    /// 构建函数事实索引。
+    /// </summary>
+    private static FunctionFactsIndex BuildFunctionFactsIndex(
+        IEnumerable<FunctionNodeRef> nodes,
+        IEnumerable<RoslynAnalysisDocument> documents)
+    {
+        var nodeArray = nodes.ToArray();
+        var calledMembersByMemberId = documents
+            .SelectMany(CreateFunctionFactsForDocument)
+            .GroupBy(item => item.MemberId.Value, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<MemberId>)group
+                    .SelectMany(item => item.CalledMemberIds)
+                    .DistinctBy(memberId => memberId.Value)
+                    .OrderBy(memberId => memberId.Value, StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.Ordinal);
+        var factsByMemberId = nodeArray.ToDictionary(
+            node => node.MemberId.Value,
+            node => new FunctionFact(
+                node,
+                calledMembersByMemberId.TryGetValue(node.MemberId.Value, out var calledMemberIds)
+                    ? calledMemberIds
+                    : Array.Empty<MemberId>()),
+            StringComparer.Ordinal);
+        var memberIdsByDocumentPath = nodeArray
+            .GroupBy(node => node.DocumentPath, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group.Select(node => node.MemberId.Value)
+                    .OrderBy(memberId => memberId, StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.Ordinal);
+        var incomingCallersByMemberId = new Dictionary<string, IReadOnlyList<MemberId>>(StringComparer.Ordinal);
+        foreach (var fact in factsByMemberId.Values)
+        {
+            foreach (var calledMemberId in fact.CalledMemberIds)
+            {
+                if (!incomingCallersByMemberId.TryGetValue(calledMemberId.Value, out var callers))
+                {
+                    callers = Array.Empty<MemberId>();
+                }
+
+                incomingCallersByMemberId[calledMemberId.Value] = callers
+                    .Append(fact.Node.MemberId)
+                    .DistinctBy(memberId => memberId.Value)
+                    .OrderBy(memberId => memberId.Value, StringComparer.Ordinal)
+                    .ToArray();
+            }
+        }
+
+        return new FunctionFactsIndex(factsByMemberId, memberIdsByDocumentPath, incomingCallersByMemberId);
+    }
+
+    /// <summary>
+    /// 为文档创建函数事实。
+    /// </summary>
+    private static IEnumerable<(MemberId MemberId, IReadOnlyList<MemberId> CalledMemberIds)> CreateFunctionFactsForDocument(
+        RoslynAnalysisDocument document)
+    {
+        foreach (var method in document.Root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+        {
+            var symbol = document.SemanticModel.GetDeclaredSymbol(method);
+            if (symbol == null)
+            {
+                continue;
+            }
+
+            yield return (
+                MetadataMemberIdBuilder.Build(symbol),
+                CollectCalledMemberIds(GetBodyOrExpression(method), document.SemanticModel));
+        }
+
+        foreach (var ctor in document.Root.DescendantNodes().OfType<ConstructorDeclarationSyntax>())
+        {
+            var symbol = document.SemanticModel.GetDeclaredSymbol(ctor);
+            if (symbol == null)
+            {
+                continue;
+            }
+
+            yield return (
+                MetadataMemberIdBuilder.Build(symbol),
+                CollectCalledMemberIds(GetBodyOrExpression(ctor), document.SemanticModel));
+        }
+
+        foreach (var accessor in document.Root.DescendantNodes().OfType<AccessorDeclarationSyntax>())
+        {
+            var symbol = document.SemanticModel.GetDeclaredSymbol(accessor);
+            if (symbol == null)
+            {
+                continue;
+            }
+
+            yield return (
+                MetadataMemberIdBuilder.Build(symbol),
+                CollectCalledMemberIds(GetBodyOrExpression(accessor), document.SemanticModel));
+        }
     }
 
     /// <summary>
@@ -238,27 +470,32 @@ public sealed class RoslynAnalysisEngine
     /// <summary>
     /// 构建语句依赖图。
     /// </summary>
-    private static StatementDependencyGraph BuildStatementGraph(
-        IReadOnlyList<AnalysisTarget> targets,
-        IReadOnlyList<AnalysisEdge> edges)
+    private static StatementFactsIndex BuildStatementFactsIndex(IReadOnlyList<AnalysisTarget> targets)
     {
-        return new StatementDependencyGraph(
-            targets.Where(target => target.Target.TargetKind == TargetKind.Statement)
-                .Select(target => target.Target.TargetKey)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(key => key, StringComparer.Ordinal)
-                .ToArray(),
-            edges.Select(edge => new StatementDependencyEdge(
-                    edge.SourceTargetKey,
-                    edge.TargetTargetKey,
-                    edge.Kind switch
-                    {
-                        AnalysisEdgeKind.Defines => StatementDependencyKind.Defines,
-                        AnalysisEdgeKind.Uses => StatementDependencyKind.Uses,
-                        _ => StatementDependencyKind.Precedes
-                    },
-                    edge.SymbolKey))
-                .ToArray());
+        var buckets = targets
+            .Where(target => target.Target.TargetKind == TargetKind.Statement)
+            .GroupBy(target => target.Target.MemberId.Value, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<StatementFact>)group
+                    .OrderBy(target => target.Target.SpanStart)
+                    .ThenBy(target => target.Target.TargetKey, StringComparer.Ordinal)
+                    .Select(target => new StatementFact(
+                        target.Target.TargetKey,
+                        target.Target.MemberId,
+                        target.StatementKind,
+                        target.DefinesSymbols,
+                        target.UsesSymbols,
+                        target.InvokedMemberIds,
+                        target.ScopeMode,
+                        target.ScopeId,
+                        target.ParentScopeId,
+                        target.Target.SpanStart,
+                        target.Target.SpanLength))
+                    .ToArray(),
+                StringComparer.Ordinal);
+
+        return new StatementFactsIndex(buckets);
     }
 
     /// <summary>
@@ -271,7 +508,7 @@ public sealed class RoslynAnalysisEngine
         ICollection<AnalysisEdge> edges)
     {
         var targets = new List<AnalysisTarget>();
-        var previousTargetsByMember = new Dictionary<string, AnalysisTarget>(StringComparer.Ordinal);
+        var previousTargetsByScope = new Dictionary<string, AnalysisTarget>(StringComparer.Ordinal);
 
         foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
         {
@@ -285,7 +522,7 @@ public sealed class RoslynAnalysisEngine
 
                 var currentTarget = CreateInitializerTarget(document, field, variable.Initializer!, memberSymbol, model, MemberKind.Field);
                 targets.Add(currentTarget);
-                AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByMember, currentTarget), edges);
+                AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByScope, currentTarget), edges);
             }
         }
 
@@ -299,7 +536,7 @@ public sealed class RoslynAnalysisEngine
 
             var currentTarget = CreateInitializerTarget(document, property, property.Initializer!, memberSymbol, model, MemberKind.Property);
             targets.Add(currentTarget);
-            AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByMember, currentTarget), edges);
+            AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByScope, currentTarget), edges);
         }
 
         foreach (var classDeclaration in root.DescendantNodes().OfType<ClassDeclarationSyntax>())
@@ -325,7 +562,7 @@ public sealed class RoslynAnalysisEngine
             {
                 var currentTarget = CreateStatementTarget(document, statement, memberSymbol, model, MemberKind.Method);
                 targets.Add(currentTarget);
-                AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByMember, currentTarget), edges);
+                AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByScope, currentTarget), edges);
             }
         }
 
@@ -341,7 +578,7 @@ public sealed class RoslynAnalysisEngine
             {
                 var currentTarget = CreateStatementTarget(document, statement, memberSymbol, model, MemberKind.Constructor);
                 targets.Add(currentTarget);
-                AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByMember, currentTarget), edges);
+                AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByScope, currentTarget), edges);
             }
         }
 
@@ -357,7 +594,7 @@ public sealed class RoslynAnalysisEngine
             {
                 var currentTarget = CreateStatementTarget(document, statement, memberSymbol, model, MemberKind.Accessor);
                 targets.Add(currentTarget);
-                AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByMember, currentTarget), edges);
+                AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByScope, currentTarget), edges);
             }
         }
 
@@ -388,22 +625,36 @@ public sealed class RoslynAnalysisEngine
             Array.Empty<DirectiveAction>(),
             Array.Empty<SymbolRef>(),
             Array.Empty<SymbolRef>(),
+            Array.Empty<MemberId>(),
             StatementKindRef.Unknown,
             false,
             false,
             false,
-            Array.Empty<string>());
+            Array.Empty<string>(),
+            StatementScopeMode.MinimalBlock,
+            null,
+            null);
     }
 
     /// <summary>
     /// 解析前一个目标，用于建立执行顺序。
     /// </summary>
     private static AnalysisTarget? ResolvePreviousTarget(
-        IDictionary<string, AnalysisTarget> previousTargetsByMember,
+        IDictionary<string, AnalysisTarget> previousTargetsByScope,
         AnalysisTarget currentTarget)
     {
-        previousTargetsByMember.TryGetValue(currentTarget.Target.MemberId.Value, out var previousTarget);
-        previousTargetsByMember[currentTarget.Target.MemberId.Value] = currentTarget;
+        AnalysisTarget? previousTarget = null;
+
+        if (!string.IsNullOrEmpty(currentTarget.ScopeId))
+        {
+            previousTargetsByScope.TryGetValue(currentTarget.ScopeId, out previousTarget);
+        }
+
+        if (!string.IsNullOrEmpty(currentTarget.ScopeId))
+        {
+            previousTargetsByScope[currentTarget.ScopeId] = currentTarget;
+        }
+
         return previousTarget;
     }
 
@@ -490,6 +741,62 @@ public sealed class RoslynAnalysisEngine
         foreach (var accessor in root.DescendantNodes().OfType<AccessorDeclarationSyntax>())
         {
             RegisterFunctionNode(model.GetDeclaredSymbol(accessor), MemberKind.Accessor, document.RelativePath, functionNodes);
+        }
+    }
+
+    private static void RegisterTypeBodyGraphs(
+        CompilationUnitSyntax root,
+        SemanticModel model,
+        ISet<TypeDependencyEdge> typeEdges)
+    {
+        var ignoredFunctionEdges = new HashSet<FunctionDependencyEdge>();
+
+        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+        {
+            var symbol = model.GetDeclaredSymbol(method);
+            if (symbol != null)
+            {
+                RegisterFunctionBodyDependencies(symbol, GetBodyOrExpression(method), model, typeEdges, ignoredFunctionEdges);
+            }
+        }
+
+        foreach (var ctor in root.DescendantNodes().OfType<ConstructorDeclarationSyntax>())
+        {
+            var symbol = model.GetDeclaredSymbol(ctor);
+            if (symbol != null)
+            {
+                RegisterFunctionBodyDependencies(symbol, GetBodyOrExpression(ctor), model, typeEdges, ignoredFunctionEdges);
+            }
+        }
+
+        foreach (var accessor in root.DescendantNodes().OfType<AccessorDeclarationSyntax>())
+        {
+            var symbol = model.GetDeclaredSymbol(accessor);
+            if (symbol != null)
+            {
+                RegisterFunctionBodyDependencies(symbol, GetBodyOrExpression(accessor), model, typeEdges, ignoredFunctionEdges);
+            }
+        }
+
+        foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
+        {
+            foreach (var variable in field.Declaration.Variables.Where(variable => variable.Initializer != null))
+            {
+                var fieldSymbol = model.GetDeclaredSymbol(variable) as IFieldSymbol;
+                if (fieldSymbol?.ContainingType != null)
+                {
+                    RegisterTypeBodyDependencies(fieldSymbol.ContainingType, variable.Initializer!.Value, model, typeEdges);
+                }
+            }
+        }
+
+        foreach (var property in root.DescendantNodes().OfType<PropertyDeclarationSyntax>().Where(property => property.Initializer != null))
+        {
+            var propertySymbol = model.GetDeclaredSymbol(property) as IPropertySymbol;
+            if (propertySymbol?.ContainingType != null)
+            {
+                RegisterTypeBodyDependencies(propertySymbol.ContainingType, property.Initializer!.Value, model, typeEdges);
+            }
         }
     }
 
@@ -721,8 +1028,8 @@ public sealed class RoslynAnalysisEngine
         {
             if (model.GetSymbolInfo(creation).Symbol is IMethodSymbol ctorSymbol)
             {
-                typeEdges.Add(new TypeDependencyEdge(currentTypeId, MetadataTypeIdBuilder.Build(ctorSymbol.ContainingType), TypeDependencyKind.ObjectCreation));
-            }
+            typeEdges.Add(new TypeDependencyEdge(currentTypeId, MetadataTypeIdBuilder.Build(ctorSymbol.ContainingType), TypeDependencyKind.ObjectCreation));
+        }
         }
 
         foreach (var memberAccess in node.DescendantNodesAndSelf().OfType<MemberAccessExpressionSyntax>())
@@ -735,6 +1042,36 @@ public sealed class RoslynAnalysisEngine
             var kind = memberSymbol.IsStatic ? TypeDependencyKind.StaticMemberAccess : TypeDependencyKind.MemberBodyReference;
             typeEdges.Add(new TypeDependencyEdge(currentTypeId, MetadataTypeIdBuilder.Build(memberSymbol.ContainingType), kind));
         }
+    }
+
+    private static SyntaxNode? GetBodyOrExpression(BaseMethodDeclarationSyntax declaration)
+    {
+        return declaration switch
+        {
+            MethodDeclarationSyntax method => (SyntaxNode?)method.Body ?? method.ExpressionBody?.Expression,
+            ConstructorDeclarationSyntax ctor => (SyntaxNode?)ctor.Body ?? ctor.ExpressionBody?.Expression,
+            _ => null
+        };
+    }
+
+    private static SyntaxNode? GetBodyOrExpression(AccessorDeclarationSyntax accessor) =>
+        (SyntaxNode?)accessor.Body ?? accessor.ExpressionBody?.Expression;
+
+    private static IReadOnlyList<MemberId> CollectCalledMemberIds(SyntaxNode? bodyOrExpression, SemanticModel model)
+    {
+        if (bodyOrExpression == null)
+        {
+            return Array.Empty<MemberId>();
+        }
+
+        return bodyOrExpression.DescendantNodesAndSelf()
+            .OfType<InvocationExpressionSyntax>()
+            .Select(invocation => model.GetSymbolInfo(invocation).Symbol)
+            .OfType<IMethodSymbol>()
+            .Select(MetadataMemberIdBuilder.Build)
+            .DistinctBy(memberId => memberId.Value)
+            .OrderBy(memberId => memberId.Value, StringComparer.Ordinal)
+            .ToArray();
     }
 
     /// <summary>
@@ -785,11 +1122,15 @@ public sealed class RoslynAnalysisEngine
             Array.Empty<DirectiveAction>(),
             definesSymbols,
             usesSymbols,
+            Array.Empty<MemberId>(),
             StatementKindRef.Initializer,
             IsSanitizingNode(initializer, model, memberId),
             false,
             false,
-            Array.Empty<string>());
+            Array.Empty<string>(),
+            StatementScopeMode.MinimalBlock,
+            memberId.Value,
+            null);
     }
 
     /// <summary>
@@ -805,9 +1146,11 @@ public sealed class RoslynAnalysisEngine
         var memberId = MetadataMemberIdBuilder.Build(memberSymbol);
         var definesSymbols = GetDefinedSymbols(statement, model, memberId);
         var usesSymbols = GetUsedSymbols(statement, model, memberId);
+        var invokedMemberIds = GetInvokedMemberIds(statement, model);
         var statementKind = ClassifyStatementKind(statement);
         var isObjectInitializerAssignment = IsObjectInitializerAssignment(statement);
         var markedExpressionKinds = GetMarkedExpressionKinds(statement);
+        var scopeInfo = GetScopeInfo(statement);
         return new AnalysisTarget(
             new PlanTarget(
                 document.RelativePath,
@@ -821,11 +1164,91 @@ public sealed class RoslynAnalysisEngine
             DirectiveReader.Read(statement),
             definesSymbols,
             usesSymbols,
+            invokedMemberIds,
             statementKind,
             IsSanitizingNode(statement, model, memberId),
             isObjectInitializerAssignment,
             markedExpressionKinds.Length > 0,
-            markedExpressionKinds);
+            markedExpressionKinds,
+            scopeInfo.ScopeMode,
+            scopeInfo.ScopeId,
+            scopeInfo.ParentScopeId);
+    }
+
+    /// <summary>
+    /// 获取语句直接调用到的方法标识。
+    /// </summary>
+    private static IReadOnlyList<MemberId> GetInvokedMemberIds(StatementSyntax statement, SemanticModel model)
+    {
+        InvocationExpressionSyntax? invocation = statement switch
+        {
+            ExpressionStatementSyntax { Expression: InvocationExpressionSyntax expressionInvocation } => expressionInvocation,
+            ReturnStatementSyntax { Expression: InvocationExpressionSyntax returnInvocation } => returnInvocation,
+            _ => null
+        };
+
+        if (invocation == null)
+        {
+            return Array.Empty<MemberId>();
+        }
+
+        if (model.GetSymbolInfo(invocation).Symbol is not IMethodSymbol methodSymbol)
+        {
+            return Array.Empty<MemberId>();
+        }
+
+        return new[] { MetadataMemberIdBuilder.Build(methodSymbol) };
+    }
+
+    /// <summary>
+    /// 计算语句的最小作用域与父块穿透信息。
+    /// </summary>
+    private static (StatementScopeMode ScopeMode, string ScopeId, string? ParentScopeId) GetScopeInfo(
+        StatementSyntax statement)
+    {
+        var currentBlock = statement.Parent as BlockSyntax;
+        if (currentBlock == null)
+        {
+            return (StatementScopeMode.MinimalBlock, CreateFallbackScopeId(statement), null);
+        }
+
+        var scopeId = CreateScopeId(currentBlock);
+        var parentBlock = GetParentBlock(currentBlock);
+        var parentScopeId = parentBlock == null ? null : CreateScopeId(parentBlock);
+
+        if (parentBlock == null)
+        {
+            return (StatementScopeMode.MinimalBlock, scopeId, null);
+        }
+
+        return (StatementScopeMode.MinimalBlock, scopeId, parentScopeId);
+    }
+
+    private static string CreateFallbackScopeId(StatementSyntax statement) =>
+        $"fallback|{statement.SyntaxTree.FilePath}|{statement.SpanStart}|{statement.Span.Length}";
+
+    private static string CreateScopeId(BlockSyntax block) =>
+        $"block|{block.SyntaxTree.FilePath}|{block.SpanStart}|{block.Span.Length}";
+
+    private static BlockSyntax? GetParentBlock(BlockSyntax block)
+    {
+        var current = block.Parent;
+        while (current != null)
+        {
+            if (current is BlockSyntax parentBlock)
+            {
+                return parentBlock;
+            }
+
+            if (current is BaseMethodDeclarationSyntax or AccessorDeclarationSyntax)
+            {
+                return null;
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 
     /// <summary>

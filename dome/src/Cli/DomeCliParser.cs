@@ -16,7 +16,9 @@ public sealed record DomeCliConfiguration(
     string? InputPath,
     string? OutputPath,
     IReadOnlyList<string>? RuleSet,
-    string? LogLevel);
+    string? LogLevel,
+    string? Loader,
+    bool? AllowFallbackToSourceOnly);
 
 /// <summary>
 /// Dome CLI 解析结果记录。
@@ -63,7 +65,7 @@ public static class DomeCliParser
             return await ParseConfigAsync(args[1], cancellationToken);
         }
 
-        if (args.Length != 3)
+        if (args.Length < 3)
         {
             return new DomeCliParseResult(false, null, UsageText);
         }
@@ -73,9 +75,15 @@ public static class DomeCliParser
             return new DomeCliParseResult(false, null, $"Unknown command '{args[0]}'.{Environment.NewLine}{UsageText}");
         }
 
+        var optionsResult = ParseWorkspaceLoadOptions(args.Skip(3).ToArray());
+        if (!optionsResult.IsSuccess)
+        {
+            return new DomeCliParseResult(false, null, optionsResult.ErrorMessage);
+        }
+
         return new DomeCliParseResult(
             true,
-            new RunRequest(args[1], args[2], Array.Empty<string>(), mode),
+            new RunRequest(args[1], args[2], Array.Empty<string>(), mode, optionsResult.Options!),
             null);
     }
 
@@ -105,14 +113,78 @@ public static class DomeCliParser
             return new DomeCliParseResult(false, null, $"Unknown config command '{command}'.");
         }
 
+        if (!string.IsNullOrWhiteSpace(config.Loader) &&
+            !TryParseLoaderPreference(config.Loader, out _))
+        {
+            return new DomeCliParseResult(false, null, $"Unknown config loader '{config.Loader}'.");
+        }
+
         return new DomeCliParseResult(
             true,
             new RunRequest(
                 config.InputPath,
                 config.OutputPath,
                 config.RuleSet ?? Array.Empty<string>(),
-                mode),
+                mode,
+                BuildWorkspaceLoadOptions(config.Loader, config.AllowFallbackToSourceOnly)),
             null);
+    }
+
+    /// <summary>
+    /// 解析工作区加载选项。
+    /// </summary>
+    /// <param name="args">命令行参数数组。</param>
+    /// <returns>解析结果（是否成功、选项、错误信息）。</returns>
+    private static (bool IsSuccess, WorkspaceLoadOptions? Options, string? ErrorMessage) ParseWorkspaceLoadOptions(string[] args)
+    {
+        var preferredLoader = WorkspaceLoaderPreference.Auto;
+        var allowFallback = true;
+
+        for (var index = 0; index < args.Length; index++)
+        {
+            if (string.Equals(args[index], "--no-fallback", StringComparison.OrdinalIgnoreCase))
+            {
+                allowFallback = false;
+                continue;
+            }
+
+            if (string.Equals(args[index], "--loader", StringComparison.OrdinalIgnoreCase))
+            {
+                if (index + 1 >= args.Length)
+                {
+                    return (false, null, "Option '--loader' requires a value.");
+                }
+
+                if (!TryParseLoaderPreference(args[index + 1], out preferredLoader))
+                {
+                    return (false, null, $"Unknown loader '{args[index + 1]}'.");
+                }
+
+                index++;
+                continue;
+            }
+
+            return (false, null, $"Unknown option '{args[index]}'.");
+        }
+
+        return (true, new WorkspaceLoadOptions(preferredLoader, allowFallback), null);
+    }
+
+    /// <summary>
+    /// 构建工作区加载选项。
+    /// </summary>
+    /// <param name="loader">加载器偏好字符串。</param>
+    /// <param name="allowFallback">是否允许回退。</param>
+    /// <returns>工作区加载选项。</returns>
+    private static WorkspaceLoadOptions BuildWorkspaceLoadOptions(string? loader, bool? allowFallback)
+    {
+        var preferredLoader = WorkspaceLoaderPreference.Auto;
+        if (!string.IsNullOrWhiteSpace(loader) && TryParseLoaderPreference(loader, out var parsedPreference))
+        {
+            preferredLoader = parsedPreference;
+        }
+
+        return new WorkspaceLoadOptions(preferredLoader, allowFallback ?? true);
     }
 
     /// <summary>
@@ -133,5 +205,25 @@ public static class DomeCliParser
         };
 
         return normalized is "run" or "analyze" or "plan";
+    }
+
+    /// <summary>
+    /// 尝试解析加载器偏好。
+    /// </summary>
+    /// <param name="value">输入字符串。</param>
+    /// <param name="preference">输出的加载器偏好。</param>
+    /// <returns>如果解析成功则返回 true，否则返回 false。</returns>
+    private static bool TryParseLoaderPreference(string value, out WorkspaceLoaderPreference preference)
+    {
+        var normalized = value.ToLowerInvariant();
+        preference = normalized switch
+        {
+            "auto" => WorkspaceLoaderPreference.Auto,
+            "codeanalysis" => WorkspaceLoaderPreference.CodeAnalysisFirst,
+            "sourceonly" => WorkspaceLoaderPreference.SourceOnly,
+            _ => WorkspaceLoaderPreference.Auto
+        };
+
+        return normalized is "auto" or "codeanalysis" or "sourceonly";
     }
 }

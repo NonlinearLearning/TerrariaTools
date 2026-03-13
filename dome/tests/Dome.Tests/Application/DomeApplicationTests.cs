@@ -1,5 +1,9 @@
 using TerrariaTools.Dome.Application;
+using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
+using TerrariaTools.Dome.Reporting;
+using TerrariaTools.Dome.Rewrite.Roslyn;
+using TerrariaTools.Dome.Rules;
 using Xunit;
 using System.Text.Json;
 
@@ -166,6 +170,8 @@ public class DomeApplicationTests
             Assert.True(analysis.RootElement.TryGetProperty("TypeGraph", out _));
             Assert.True(analysis.RootElement.TryGetProperty("FunctionGraph", out _));
             Assert.True(analysis.RootElement.TryGetProperty("StatementGraph", out _));
+            Assert.Equal("SnapshotOnly", analysis.RootElement.GetProperty("StatementGraphMaterialization").GetString());
+            Assert.Equal("None", analysis.RootElement.GetProperty("FunctionGraphMaterialization").GetString());
         }
         finally
         {
@@ -275,6 +281,8 @@ public class DomeApplicationTests
             Assert.Equal(0, conflicts.GetArrayLength());
             Assert.True(report.RootElement.TryGetProperty("RiskSummary", out var riskSummary));
             Assert.Equal(0, riskSummary.GetProperty("SkippedHighRiskTargetCount").GetInt32());
+            Assert.Equal("SourceOnly", report.RootElement.GetProperty("WorkspaceLoadMode").GetString());
+            Assert.False(report.RootElement.GetProperty("WorkspaceFallbackUsed").GetBoolean());
         }
         finally
         {
@@ -800,6 +808,307 @@ public class DomeApplicationTests
             {
                 Directory.Delete(tempRoot, recursive: true);
             }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WritesFallbackLoaderSummaryWhenCodeAnalysisFallsBack()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Player
+                {
+                    public void Update()
+                    {
+                    }
+                }
+                """);
+
+            var sourceText = await File.ReadAllTextAsync(inputFile);
+            var app = new DomeApplication(
+                new FakeWorkspaceLoader(_ => Task.FromResult(WorkspaceLoadResult.Success(
+                    new[] { new SourceDocument(inputFile, "Sample.cs", sourceText) },
+                    WorkspaceLoadMode.CodeAnalysisFallbackToSourceOnly,
+                    "CodeAnalysis",
+                    true,
+                    new[]
+                    {
+                        new WorkspaceLoadDiagnostic("CodeAnalysisLoad", WorkspaceLoadDiagnosticSeverity.Error, "MSBuild load failed.")
+                    }))),
+                new RoslynAnalysisEngine(),
+                new FunctionImpactAnalyzer(),
+                new ReferenceZeroPredictionAnalyzer(),
+                new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()),
+                new RoslynRewriteExecutor(),
+                new JsonArtifactWriter());
+
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal("CodeAnalysisFallbackToSourceOnly", report.RootElement.GetProperty("WorkspaceLoadMode").GetString());
+            Assert.True(report.RootElement.GetProperty("WorkspaceFallbackUsed").GetBoolean());
+            Assert.Equal(1, report.RootElement.GetProperty("WorkspaceDiagnostics").GetArrayLength());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WritesFunctionImpactSummaryForMethodDeleteUsingCallsOnly()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Player
+                {
+                    private void Run()
+                    {
+                        Ping();
+                    }
+
+                    private void Ping()
+                    {
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            Assert.True(report.RootElement.TryGetProperty("FunctionImpactSummary", out var impact));
+            Assert.Equal(1, impact.GetProperty("DeletedFunctionCount").GetInt32());
+            Assert.Equal(1, impact.GetProperty("AffectedFunctionCount").GetInt32());
+            Assert.Equal(1, impact.GetProperty("AffectedDocumentCount").GetInt32());
+            Assert.Equal(1, impact.GetProperty("ExpansionDepth").GetInt32());
+            Assert.Equal("Calls", impact.GetProperty("EdgeKinds")[0].GetString());
+            var functionIds = impact.GetProperty("SampleAffectedFunctionIds").EnumerateArray().Select(item => item.GetString()).OfType<string>().ToArray();
+            Assert.Contains("Sample.Player.Ping()", functionIds);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_FunctionImpactSummaryIgnoresNonCallEdgesInFirstStage()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Player
+                {
+                    private int _value;
+
+                    private int Touch()
+                    {
+                        return _value;
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            Assert.True(report.RootElement.TryGetProperty("FunctionImpactSummary", out var impact));
+            Assert.Equal(1, impact.GetProperty("DeletedFunctionCount").GetInt32());
+            Assert.Equal(0, impact.GetProperty("AffectedFunctionCount").GetInt32());
+            Assert.Equal(0, impact.GetProperty("SampleAffectedFunctionIds").GetArrayLength());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_AddsMethodDeleteWhenAllCallReferencesArePlannedForDeletion()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Player
+                {
+                    public void Update(int value)
+                    {
+                        int i = value;
+                        int j = i;
+                        int k = j;
+                        // dome:delete
+                        fun2(k);
+                    }
+
+                    private void fun2(int i)
+                    {
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            Assert.Contains("\"RuleId\": \"boundary-promotion\"", planJson);
+            Assert.Contains("\"TargetKind\": \"Method\"", planJson);
+            Assert.Contains("Sample.Player.fun2(int)", planJson);
+            Assert.Contains("\"SourceMemberId\": \"Sample.Player.Update(int)\"", planJson);
+            Assert.Contains("\"BoundaryKind\": \"Invocation\"", planJson);
+            Assert.Contains("\"TriggeredSymbolKeys\": [", planJson);
+            Assert.True(report.RootElement.TryGetProperty("BoundaryPromotionSummary", out var promotion));
+            Assert.Equal(1, promotion.GetProperty("PromotedMethodDeleteCount").GetInt32());
+            Assert.True(report.RootElement.TryGetProperty("ReferenceZeroPredictionSummary", out var prediction));
+            Assert.Equal(0, prediction.GetProperty("PredictedMethodDeleteCount").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_DoesNotPredictMethodDeleteWhenOtherCallReferencesRemain()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public class Player
+                {
+                    public void Update(int value)
+                    {
+                        // dome:delete
+                        fun2(value);
+                    }
+
+                    public void Update2(int value)
+                    {
+                        fun2(value);
+                    }
+
+                    private void fun2(int i)
+                    {
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            Assert.DoesNotContain("\"RuleId\": \"boundary-promotion\"", planJson);
+            Assert.DoesNotContain("\"RuleId\": \"reference-zero-prediction\"", planJson);
+            Assert.True(report.RootElement.TryGetProperty("BoundaryPromotionSummary", out var promotion));
+            Assert.Equal(0, promotion.GetProperty("PromotedMethodDeleteCount").GetInt32());
+            Assert.True(report.RootElement.TryGetProperty("ReferenceZeroPredictionSummary", out var prediction));
+            Assert.Equal(0, prediction.GetProperty("PredictedMethodDeleteCount").GetInt32());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    private sealed class FakeWorkspaceLoader(Func<string, Task<WorkspaceLoadResult>> handler) : IWorkspaceLoader
+    {
+        public Task<WorkspaceLoadResult> LoadAsync(string inputPath, WorkspaceLoadOptions options, CancellationToken cancellationToken)
+        {
+            return handler(inputPath);
         }
     }
 }

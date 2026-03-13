@@ -1,41 +1,45 @@
 namespace TerrariaTools.Dome.Analysis.Roslyn;
 
-/// <summary>
-/// 源代码文档记录，包含源路径、相对路径和源代码文本。
-/// </summary>
-/// <param name="SourcePath">源文件的绝对路径。</param>
-/// <param name="RelativePath">相对于工作区根目录的路径。</param>
-/// <param name="SourceText">源代码文本内容。</param>
-public sealed record SourceDocument(string SourcePath, string RelativePath, string SourceText);
+using TerrariaTools.Dome.Core;
 
 /// <summary>
-/// 源代码工作区加载器，负责从文件或目录加载源代码文档。
+/// 基于源码文件的工作区加载器。
+/// 仅加载 .cs 文件内容，不进行编译或语义分析。
 /// </summary>
-public sealed class SourceWorkspaceLoader
+public sealed class SourceWorkspaceLoader : IWorkspaceLoader
 {
-    /// <summary>
-    /// 异步加载指定路径下的源代码文档。
-    /// </summary>
-    /// <param name="inputPath">输入的文件或目录路径。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>加载的源代码文档列表。</returns>
-    public async Task<IReadOnlyList<SourceDocument>> LoadAsync(string inputPath, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public Task<WorkspaceLoadResult> LoadAsync(string inputPath, WorkspaceLoadOptions options, CancellationToken cancellationToken)
     {
-        if (File.Exists(inputPath))
+        return LoadInternalAsync(inputPath, cancellationToken);
+    }
+
+    /// <summary>
+    /// 从根路径加载源码文档。
+    /// </summary>
+    /// <param name="rootPath">根路径（文件或目录）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>加载结果。</returns>
+    internal static async Task<WorkspaceLoadResult> LoadFromRootAsync(string rootPath, CancellationToken cancellationToken)
+    {
+        if (File.Exists(rootPath) && string.Equals(Path.GetExtension(rootPath), ".cs", StringComparison.OrdinalIgnoreCase))
         {
-            var sourceText = await File.ReadAllTextAsync(inputPath, cancellationToken);
-            return new[]
-            {
-                new SourceDocument(
-                    Path.GetFullPath(inputPath),
-                    Path.GetFileName(inputPath),
-                    sourceText)
-            };
+            var sourceText = await File.ReadAllTextAsync(rootPath, cancellationToken);
+            return WorkspaceLoadResult.Success(
+                new[]
+                {
+                    new SourceDocument(
+                        Path.GetFullPath(rootPath),
+                        Path.GetFileName(rootPath),
+                        sourceText)
+                },
+                WorkspaceLoadMode.SourceOnly,
+                "SourceOnly");
         }
 
-        if (Directory.Exists(inputPath))
+        if (Directory.Exists(rootPath))
         {
-            var files = Directory.GetFiles(inputPath, "*.cs", SearchOption.AllDirectories)
+            var files = Directory.GetFiles(rootPath, "*.cs", SearchOption.AllDirectories)
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
@@ -45,13 +49,47 @@ public sealed class SourceWorkspaceLoader
                 var sourceText = await File.ReadAllTextAsync(file, cancellationToken);
                 documents.Add(new SourceDocument(
                     Path.GetFullPath(file),
-                    Path.GetRelativePath(inputPath, file),
+                    Path.GetRelativePath(rootPath, file),
                     sourceText));
             }
 
-            return documents;
+            return WorkspaceLoadResult.Success(
+                documents,
+                WorkspaceLoadMode.SourceOnly,
+                "SourceOnly");
         }
 
-        return Array.Empty<SourceDocument>();
+        return WorkspaceLoadResult.Failure(
+            WorkspaceLoadMode.SourceOnly,
+            "SourceOnly",
+            new[]
+            {
+                new WorkspaceLoadDiagnostic(
+                    "SourceOnlyLoad",
+                    WorkspaceLoadDiagnosticSeverity.Error,
+                    $"Input path '{rootPath}' was not found.")
+            });
+    }
+
+    /// <summary>
+    /// 内部加载逻辑。
+    /// </summary>
+    private static async Task<WorkspaceLoadResult> LoadInternalAsync(string inputPath, CancellationToken cancellationToken)
+    {
+        if (File.Exists(inputPath) && !string.Equals(Path.GetExtension(inputPath), ".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            return WorkspaceLoadResult.Failure(
+                WorkspaceLoadMode.SourceOnly,
+                "SourceOnly",
+                new[]
+                {
+                    new WorkspaceLoadDiagnostic(
+                        "SourceOnlyLoad",
+                        WorkspaceLoadDiagnosticSeverity.Error,
+                        $"Input file '{inputPath}' is not a C# source file.")
+                });
+        }
+
+        return await LoadFromRootAsync(inputPath, cancellationToken);
     }
 }

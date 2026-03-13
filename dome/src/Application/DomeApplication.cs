@@ -12,8 +12,10 @@ using TerrariaTools.Dome.Rules;
 /// </summary>
 public sealed class DomeApplication
 {
-    private readonly SourceWorkspaceLoader _workspaceLoader;
+    private readonly IWorkspaceLoader _workspaceLoader;
     private readonly RoslynAnalysisEngine _analysisEngine;
+    private readonly FunctionImpactAnalyzer _functionImpactAnalyzer;
+    private readonly ReferenceZeroPredictionAnalyzer _referenceZeroPredictionAnalyzer;
     private readonly MarkingRuleEngine _markingRuleEngine;
     private readonly RoslynRewriteExecutor _rewriteExecutor;
     private readonly JsonArtifactWriter _artifactWriter;
@@ -27,14 +29,18 @@ public sealed class DomeApplication
     /// <param name="rewriteExecutor">Roslyn 重写执行器。</param>
     /// <param name="artifactWriter">JSON 制品写入器。</param>
     public DomeApplication(
-        SourceWorkspaceLoader workspaceLoader,
+        IWorkspaceLoader workspaceLoader,
         RoslynAnalysisEngine analysisEngine,
+        FunctionImpactAnalyzer functionImpactAnalyzer,
+        ReferenceZeroPredictionAnalyzer referenceZeroPredictionAnalyzer,
         MarkingRuleEngine markingRuleEngine,
         RoslynRewriteExecutor rewriteExecutor,
         JsonArtifactWriter artifactWriter)
     {
         _workspaceLoader = workspaceLoader;
         _analysisEngine = analysisEngine;
+        _functionImpactAnalyzer = functionImpactAnalyzer;
+        _referenceZeroPredictionAnalyzer = referenceZeroPredictionAnalyzer;
         _markingRuleEngine = markingRuleEngine;
         _rewriteExecutor = rewriteExecutor;
         _artifactWriter = artifactWriter;
@@ -48,16 +54,39 @@ public sealed class DomeApplication
     /// <returns>运行结果。</returns>
     public async Task<RunResult> RunAsync(RunRequest request, CancellationToken cancellationToken)
     {
-        var documents = await _workspaceLoader.LoadAsync(request.InputPath, cancellationToken);
-        if (documents.Count == 0)
+        var loadResult = await _workspaceLoader.LoadAsync(request.InputPath, request.WorkspaceLoadOptions, cancellationToken);
+        if (!loadResult.IsSuccess || loadResult.Documents.Count == 0)
         {
-            return RunResult.Failure(FailureCode.WorkspaceLoadFailed, request.OutputPath, "No C# input files were found.");
+            var message = loadResult.Diagnostics.FirstOrDefault()?.Message ?? "No C# input files were found.";
+            var loadFailureReport = new RunReport(
+                false,
+                FailureCode.WorkspaceLoadFailed,
+                0,
+                0,
+                0,
+                0,
+                new[] { "report.json" },
+                new FailureSummary(FailureCode.WorkspaceLoadFailed, message),
+                Array.Empty<ConflictSummary>(),
+                new RiskSummary(0, Array.Empty<string>()),
+                new PlanCoverageSummary(0, 0, Array.Empty<string>()),
+                null,
+                null,
+                null,
+                loadResult.LoadMode,
+                loadResult.FallbackUsed,
+                loadResult.Diagnostics,
+                message);
+            await WriteArtifactsAsync(request.OutputPath, null, loadFailureReport, null, cancellationToken);
+            return RunResult.Failure(FailureCode.WorkspaceLoadFailed, request.OutputPath, message);
         }
 
         RoslynAnalysisResult analysisResult;
         try
         {
-            analysisResult = await _analysisEngine.AnalyzeAsync(documents, cancellationToken);
+            analysisResult = await _analysisEngine.AnalyzeAsync(
+                loadResult.AnalysisInput ?? new SourceOnlyAnalysisInput(request.InputPath, loadResult.Documents),
+                cancellationToken);
         }
         catch (Exception ex)
         {
@@ -65,9 +94,14 @@ public sealed class DomeApplication
         }
 
         var analysisContext = _analysisEngine.CreateContext(analysisResult);
+        var analysisSnapshot = analysisContext.Snapshot;
+        var analysisServices = analysisContext.Services;
         var generatedArtifacts = new List<string>();
         var riskSummary = BuildRiskSummary(analysisResult.View);
         var emptyCoverageSummary = new PlanCoverageSummary(0, 0, Array.Empty<string>());
+        FunctionImpactSummary? functionImpactSummary = null;
+        BoundaryPromotionSummary? boundaryPromotionSummary = null;
+        ReferenceZeroPredictionSummary? referenceZeroPredictionSummary = null;
 
         if (request.Mode == RunMode.AnalyzeOnly)
         {
@@ -88,18 +122,57 @@ public sealed class DomeApplication
                 Array.Empty<ConflictSummary>(),
                 riskSummary,
                 emptyCoverageSummary,
+                null,
+                null,
+                null,
+                loadResult.LoadMode,
+                loadResult.FallbackUsed,
+                loadResult.Diagnostics,
                 null);
             await WriteArtifactsAsync(request.OutputPath, null, analyzeReport, null, cancellationToken);
             return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
         }
 
-        var decisions = _markingRuleEngine.Execute(analysisContext);
+        var initialDecisions = _markingRuleEngine.Execute(
+            analysisSnapshot,
+            analysisServices,
+            new RuleExecutionContext(
+                "DomeApplication",
+                null,
+                StatementScopeMode.MinimalBlock,
+                cancellationToken,
+                "Primary marking pass"));
+        boundaryPromotionSummary = BuildBoundaryPromotionSummary(initialDecisions);
+        var predictedDecisions = _referenceZeroPredictionAnalyzer.Predict(
+            analysisSnapshot,
+            analysisServices,
+            new RuleExecutionContext(
+                "DomeApplication",
+                null,
+                StatementScopeMode.MinimalBlock,
+                cancellationToken,
+                "Reference-zero prediction pass"),
+            initialDecisions);
+        var decisions = initialDecisions
+            .Concat(predictedDecisions)
+            .ToArray();
         var planResult = AuditPlanCompiler.Compile(
             new PlanMetadata("dome", "1", request.InputPath, request.OutputPath, request.Mode),
             decisions);
         var coverageSummary = planResult.Plan == null
             ? emptyCoverageSummary
             : BuildPlanCoverageSummary(decisions, planResult.Plan);
+        if (planResult.Plan != null)
+        {
+            functionImpactSummary = BuildFunctionImpactSummary(
+                _functionImpactAnalyzer.Analyze(
+                    planResult.Plan,
+                    analysisServices,
+                    FunctionGraphRequests.WholeProjectCalls(
+                        "DomeApplication",
+                        "Whole-project impact summary")));
+            referenceZeroPredictionSummary = BuildReferenceZeroPredictionSummary(predictedDecisions);
+        }
 
         if (!planResult.IsSuccess || planResult.Plan == null)
         {
@@ -119,6 +192,12 @@ public sealed class DomeApplication
                     conflictSummaries,
                     riskSummary,
                     coverageSummary,
+                    functionImpactSummary,
+                    boundaryPromotionSummary,
+                    referenceZeroPredictionSummary,
+                    loadResult.LoadMode,
+                    loadResult.FallbackUsed,
+                    loadResult.Diagnostics,
                     planResult.Message),
                 null,
                 cancellationToken);
@@ -143,6 +222,12 @@ public sealed class DomeApplication
                 BuildConflictSummaries(planResult.Plan.Conflicts),
                 riskSummary,
                 coverageSummary,
+                functionImpactSummary,
+                boundaryPromotionSummary,
+                referenceZeroPredictionSummary,
+                loadResult.LoadMode,
+                loadResult.FallbackUsed,
+                loadResult.Diagnostics,
                 null);
             await WriteArtifactsAsync(request.OutputPath, planResult.Plan, planReport, null, cancellationToken);
             return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
@@ -174,6 +259,12 @@ public sealed class DomeApplication
                         BuildConflictSummaries(documentPlan.Conflicts),
                         riskSummary,
                         coverageSummary,
+                        functionImpactSummary,
+                        boundaryPromotionSummary,
+                        referenceZeroPredictionSummary,
+                        loadResult.LoadMode,
+                        loadResult.FallbackUsed,
+                        loadResult.Diagnostics,
                         rewriteResult.Message),
                     null,
                     cancellationToken);
@@ -201,6 +292,12 @@ public sealed class DomeApplication
             BuildConflictSummaries(planResult.Plan.Conflicts),
             riskSummary,
             coverageSummary,
+            functionImpactSummary,
+            boundaryPromotionSummary,
+            referenceZeroPredictionSummary,
+            loadResult.LoadMode,
+            loadResult.FallbackUsed,
+            loadResult.Diagnostics,
             null);
         await WriteArtifactsAsync(request.OutputPath, planResult.Plan, finalReport, null, cancellationToken);
         return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
@@ -271,6 +368,65 @@ public sealed class DomeApplication
                 .Distinct(StringComparer.Ordinal)
                 .Take(5)
                 .ToArray());
+    }
+
+    /// <summary>
+    /// 构建函数删除影响摘要。
+    /// </summary>
+    /// <param name="impactSet">函数影响范围。</param>
+    /// <returns>函数删除影响摘要。</returns>
+    private static FunctionImpactSummary? BuildFunctionImpactSummary(FunctionImpactSet impactSet)
+    {
+        if (impactSet.DeletedFunctionIds.Count == 0)
+        {
+            return null;
+        }
+
+        return new FunctionImpactSummary(
+            impactSet.DeletedFunctionIds.Count,
+            impactSet.AffectedFunctionIds.Count,
+            impactSet.AffectedDocumentPaths.Count,
+            impactSet.ExpansionDepth,
+            impactSet.EdgeKinds,
+            impactSet.AffectedFunctionIds.Take(5).ToArray(),
+            impactSet.AffectedDocumentPaths.Take(5).ToArray());
+    }
+
+    /// <summary>
+    /// 构建引用归零预测摘要。
+    /// </summary>
+    private static ReferenceZeroPredictionSummary BuildReferenceZeroPredictionSummary(
+        IReadOnlyList<MarkDecision> decisions)
+    {
+        var predictedMethods = decisions
+            .Where(decision => decision.Reason.RuleId == "reference-zero-prediction")
+            .Select(decision => decision.Target.MemberId.Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
+
+        return new ReferenceZeroPredictionSummary(
+            predictedMethods.Length,
+            predictedMethods.Take(5).ToArray());
+    }
+
+    /// <summary>
+    /// 构建边界提升摘要。
+    /// </summary>
+    private static BoundaryPromotionSummary BuildBoundaryPromotionSummary(
+        IReadOnlyList<MarkDecision> decisions)
+    {
+        var promotedMethods = decisions
+            .Where(decision => decision.Reason.RuleId == "boundary-promotion")
+            .Select(decision => decision.Target.MemberId.Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
+
+        return new BoundaryPromotionSummary(
+            BoundaryKind.Invocation,
+            promotedMethods.Length,
+            promotedMethods.Take(5).ToArray());
     }
 
     /// <summary>
