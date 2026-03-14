@@ -64,6 +64,38 @@ public class DomeApplicationTests
         }
     }
 
+    [Fact]
+    public async Task RunAsync_WritesReportWhenAnalysisFails()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var outputDir = Path.Combine(tempRoot, "out");
+            var app = CreateApplication(new FakeWorkspaceLoader(_ => Task.FromResult(CreateUnsupportedAnalysisLoadResult())));
+
+            var result = await app.RunAsync(
+                new RunRequest(tempRoot, outputDir, Array.Empty<string>(), RunMode.Standard),
+                CancellationToken.None);
+
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal(FailureCode.AnalysisFailed, result.FailureCode);
+            Assert.True(File.Exists(Path.Combine(outputDir, "report.json")));
+            Assert.Equal("AnalysisFailed", report.RootElement.GetProperty("FailureSummary").GetProperty("FailureCode").GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     /// <summary>
     /// 测试运行异步方法通过数据流规划依赖语句。
     /// </summary>
@@ -557,6 +589,40 @@ public class DomeApplicationTests
         }
     }
 
+    [Fact]
+    public async Task RunAsync_RewriteFailure_PreservesWrittenArtifactsInReport()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var outputDir = Path.Combine(tempRoot, "out");
+            var app = CreateApplication(new FakeWorkspaceLoader(_ => Task.FromResult(CreateRewriteFailureLoadResult())));
+
+            var result = await app.RunAsync(
+                new RunRequest(tempRoot, outputDir, Array.Empty<string>(), RunMode.Standard),
+                CancellationToken.None);
+
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.False(result.IsSuccess);
+            Assert.Equal(FailureCode.RewriteFailed, result.FailureCode);
+            Assert.True(File.Exists(Path.Combine(outputDir, "rewritten", "First.cs")));
+            Assert.Contains(
+                report.RootElement.GetProperty("GeneratedArtifacts").EnumerateArray().Select(item => item.GetString()).OfType<string>(),
+                artifact => string.Equals(artifact, Path.Combine("rewritten", "First.cs"), StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     /// <summary>
     /// 测试运行异步方法不规划对象初始化器目标并报告风险。
     /// </summary>
@@ -764,6 +830,145 @@ public class DomeApplicationTests
     }
 
     [Fact]
+    public async Task RunAsync_ClosedLoopDirectDelete_RewritesMarkedStatement()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Player.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public sealed class Player
+                {
+                    public void Update()
+                    {
+                        Prepare();
+
+                        // dome:delete
+                        int count = 1;
+
+                        Keep();
+                    }
+
+                    private static void Prepare()
+                    {
+                    }
+
+                    private static void Keep()
+                    {
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            var rewritten = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.cs"));
+            using var plan = JsonDocument.Parse(planJson);
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            var change = Assert.Single(plan.RootElement.GetProperty("Changes").EnumerateArray());
+            Assert.Equal("Statement", change.GetProperty("Target").GetProperty("TargetKind").GetString());
+            Assert.Equal("Delete", change.GetProperty("Action").GetProperty("Kind").GetString());
+            Assert.Equal("dome:delete", change.GetProperty("Reason").GetProperty("RuleId").GetString());
+            Assert.Equal("int count = 1;", change.GetProperty("Target").GetProperty("DisplayText").GetString());
+            Assert.True(report.RootElement.GetProperty("IsSuccess").GetBoolean());
+            Assert.Equal(1, report.RootElement.GetProperty("PlannedChanges").GetInt32());
+            Assert.Contains(
+                report.RootElement.GetProperty("GeneratedArtifacts").EnumerateArray().Select(item => item.GetString()).OfType<string>(),
+                item => item == @"rewritten\Player.cs");
+            Assert.Contains("Prepare();", rewritten);
+            Assert.Contains("Keep();", rewritten);
+            Assert.DoesNotContain("int count = 1;", rewritten);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_ExpressionLoop_ProjectsAndPropagatesIntoRewrite()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Player.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public sealed class Player
+                {
+                    public bool Update(int value)
+                    {
+                        // dome:delete
+                        bool allowed = Run(value) && (value > 0);
+                        return allowed;
+                    }
+
+                    private static bool Run(int value)
+                    {
+                        return value > 0;
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            var rewritten = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.cs"));
+            using var plan = JsonDocument.Parse(planJson);
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            var changes = plan.RootElement.GetProperty("Changes").EnumerateArray().ToArray();
+            Assert.Contains(changes, change =>
+                change.GetProperty("Reason").GetProperty("RuleId").GetString() == "expression-mark" &&
+                change.GetProperty("Target").GetProperty("DisplayText").GetString() == "bool allowed = Run(value) && (value > 0);");
+            Assert.Contains(changes, change =>
+                change.GetProperty("Reason").GetProperty("RuleId").GetString() == "dataflow-propagation" &&
+                change.GetProperty("Target").GetProperty("DisplayText").GetString() == "return allowed;");
+            Assert.True(report.RootElement.GetProperty("IsSuccess").GetBoolean());
+            Assert.Equal(2, report.RootElement.GetProperty("PlannedChanges").GetInt32());
+            Assert.DoesNotContain("bool allowed = Run(value) && (value > 0);", rewritten);
+            Assert.DoesNotContain("return allowed;", rewritten);
+            Assert.Contains("public bool Update(int value)", rewritten);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_WritesClassDeleteCoverageSummary()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
@@ -851,6 +1056,8 @@ public class DomeApplicationTests
                 new ReferenceZeroPredictionAnalyzer(),
                 new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()),
                 new RoslynRewriteExecutor(),
+                new RunReportBuilder(),
+                new ArtifactPlanBuilder(),
                 new JsonArtifactWriter());
 
             var result = await app.RunAsync(
@@ -1111,4 +1318,74 @@ public class DomeApplicationTests
             return handler(inputPath);
         }
     }
+
+    private static DomeApplication CreateApplication(IWorkspaceLoader workspaceLoader) =>
+        new(
+            workspaceLoader,
+            new RoslynAnalysisEngine(),
+            new FunctionImpactAnalyzer(),
+            new ReferenceZeroPredictionAnalyzer(),
+            new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()),
+            new RoslynRewriteExecutor(),
+            new RunReportBuilder(),
+            new ArtifactPlanBuilder(),
+            new JsonArtifactWriter());
+
+    private static WorkspaceLoadResult CreateUnsupportedAnalysisLoadResult()
+    {
+        var document = new SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
+        return new WorkspaceLoadResult(
+            true,
+            new UnsupportedAnalysisInput("SampleRoot"),
+            new[] { document },
+            WorkspaceLoadMode.SourceOnly,
+            "StubLoader",
+            false,
+            Array.Empty<WorkspaceLoadDiagnostic>());
+    }
+
+    private static WorkspaceLoadResult CreateRewriteFailureLoadResult()
+    {
+        var first = new SourceDocument(
+            Path.Combine("Input", "First.cs"),
+            "First.cs",
+            """
+            namespace Sample;
+
+            public class FirstPlayer
+            {
+                public void Update()
+                {
+                    // dome:delete
+                    Run();
+                }
+
+                private void Run() { }
+            }
+            """);
+        var second = new SourceDocument(
+            Path.Combine("Input", "Second.cs"),
+            "Second.cs",
+            """
+            namespace Sample;
+
+            public class SecondPlayer
+            {
+                public void Update()
+                {
+                    // dome:default
+                    Run();
+                }
+
+                private void Run() { }
+            }
+            """);
+
+        return WorkspaceLoadResult.Success(
+            new SourceOnlyAnalysisInput("SampleRoot", new[] { first, second }),
+            WorkspaceLoadMode.SourceOnly,
+            "StubLoader");
+    }
+
+    private sealed record UnsupportedAnalysisInput(string RootPath) : AnalysisInput(RootPath);
 }

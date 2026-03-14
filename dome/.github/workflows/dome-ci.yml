@@ -1,0 +1,100 @@
+name: dome-ci
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - 'codex/**'
+  pull_request:
+
+jobs:
+  build-test-smoke:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+    env:
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 preview
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+          include-prerelease: true
+
+      - name: Show SDK
+        run: dotnet --version
+
+      - name: Build CLI
+        run: dotnet build .\src\Cli\Dome.Cli.csproj -nologo
+
+      - name: Run full tests
+        run: dotnet test .\tests\Dome.Tests\Dome.Tests.csproj --no-build
+
+      - name: Smoke test closed-loop sample
+        run: |
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\closed-loop .\.tmp\ci\closed-loop\plan
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\closed-loop .\.tmp\ci\closed-loop\run
+
+      - name: Validate closed-loop artifacts
+        run: |
+          $plan = Get-Content -Raw -Encoding utf8 .\.tmp\ci\closed-loop\plan\audit-plan.json | ConvertFrom-Json
+          if ($plan.Changes.Count -ne 1) { throw "closed-loop plan should contain exactly 1 change." }
+          if ($plan.Changes[0].Target.TargetKind -ne 'Statement') { throw "closed-loop target kind should be Statement." }
+          if ($plan.Changes[0].Action.Kind -ne 'Delete') { throw "closed-loop action should be Delete." }
+          if ($plan.Changes[0].Reason.RuleId -ne 'dome:delete') { throw "closed-loop reason should be dome:delete." }
+          if ($plan.Changes[0].Target.DisplayText -ne 'int count = 1;') { throw "closed-loop display text mismatch." }
+
+          $report = Get-Content -Raw -Encoding utf8 .\.tmp\ci\closed-loop\run\report.json | ConvertFrom-Json
+          if (-not $report.IsSuccess) { throw "closed-loop run should succeed." }
+          if ($report.PlannedChanges -ne 1) { throw "closed-loop PlannedChanges should be 1." }
+          if (-not ($report.GeneratedArtifacts -contains 'rewritten\Player.cs')) { throw "closed-loop rewritten artifact missing." }
+
+          $rewritten = Get-Content -Raw -Encoding utf8 .\.tmp\ci\closed-loop\run\rewritten\Player.cs
+          if ($rewritten -match 'int count = 1;') { throw "closed-loop statement should be removed from rewritten source." }
+          if ($rewritten -notmatch 'Prepare\(\);') { throw "closed-loop rewritten source should keep Prepare()." }
+          if ($rewritten -notmatch 'Keep\(\);') { throw "closed-loop rewritten source should keep Keep()." }
+
+      - name: Smoke test expression-loop sample
+        run: |
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\expression-loop .\.tmp\ci\expression-loop\plan
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\expression-loop .\.tmp\ci\expression-loop\run
+
+      - name: Validate expression-loop artifacts
+        run: |
+          $plan = Get-Content -Raw -Encoding utf8 .\.tmp\ci\expression-loop\plan\audit-plan.json | ConvertFrom-Json
+          if ($plan.Changes.Count -ne 2) { throw "expression-loop plan should contain exactly 2 changes." }
+
+          $expressionMark = $plan.Changes | Where-Object { $_.Reason.RuleId -eq 'expression-mark' }
+          if ($expressionMark.Count -ne 1) { throw "expression-loop should contain exactly 1 expression-mark change." }
+          if ($expressionMark[0].Target.DisplayText -ne 'bool allowed = Run(value) && (value > 0);') { throw "expression-loop expression-mark target mismatch." }
+
+          $propagation = $plan.Changes | Where-Object { $_.Reason.RuleId -eq 'dataflow-propagation' }
+          if ($propagation.Count -ne 1) { throw "expression-loop should contain exactly 1 dataflow-propagation change." }
+          if ($propagation[0].Target.DisplayText -ne 'return allowed;') { throw "expression-loop propagated target mismatch." }
+
+          $report = Get-Content -Raw -Encoding utf8 .\.tmp\ci\expression-loop\run\report.json | ConvertFrom-Json
+          if (-not $report.IsSuccess) { throw "expression-loop run should succeed." }
+          if ($report.PlannedChanges -ne 2) { throw "expression-loop PlannedChanges should be 2." }
+          if (-not ($report.GeneratedArtifacts -contains 'rewritten\Player.cs')) { throw "expression-loop rewritten artifact missing." }
+
+          $rewritten = Get-Content -Raw -Encoding utf8 .\.tmp\ci\expression-loop\run\rewritten\Player.cs
+          if ($rewritten -match 'bool allowed = Run\(value\) && \(value > 0\);') { throw "expression-loop projected statement should be removed." }
+          if ($rewritten -match 'return allowed;') { throw "expression-loop propagated return should be removed." }
+          if ($rewritten -notmatch 'public bool Update\(int value\)') { throw "expression-loop method declaration should remain." }
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dome-smoke-artifacts
+          path: |
+            .tmp/ci/closed-loop/**
+            .tmp/ci/expression-loop/**

@@ -13,8 +13,13 @@ public class MarkingRuleEngineTests
     /// <summary>
     /// 测试执行方法在 Use-Def 链中传播标记决策。
     /// </summary>
+    // Rule family: ISeedRule
+    // Direct behavior: a statement with a dome:delete directive emits a direct statement delete.
+    // Propagation: the direct decision remains a propagation source for downstream use/def statements.
+    // Blocking: propagation may later stop because of sanitization, redefinition, or protection rules.
+    // Boundary promotion: the direct statement delete remains eligible for boundary promotion.
     [Fact]
-    public async Task Execute_PropagatesMarkedDecisionAcrossUseDefChain()
+    public async Task DirectiveSeedRule_MarksStatementWithDeleteDirective()
     {
         var engine = new RoslynAnalysisEngine();
         var analysis = await engine.AnalyzeAsync(
@@ -54,11 +59,51 @@ public class MarkingRuleEngineTests
         Assert.NotEmpty(propagated.Reason.RelatedSymbolKeys);
     }
 
+    // Rule family: ISeedRule
+    // Direct behavior: statements without a directive do not emit direct mark decisions.
+    // Propagation: without a direct decision there is no propagation source.
+    // Blocking: not applicable because the rule never matches.
+    // Boundary promotion: not applicable because no statement delete is emitted.
+    [Fact]
+    public async Task DirectiveSeedRule_DoesNotMarkStatementWithoutDirective()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update(int value)
+                        {
+                            int count = value;
+                            int next = count;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(analysis.View);
+
+        Assert.Empty(decisions);
+    }
+
     /// <summary>
     /// 测试执行方法不为高风险成员发出决策。
     /// </summary>
+    // Rule family: IProtectionRule
+    // Direct behavior: high-risk targets do not emit direct decisions even if a directive is present.
+    // Propagation: protected high-risk targets do not become propagation sources or propagation targets.
+    // Blocking: protection takes precedence over directive matching.
+    // Boundary promotion: protected high-risk targets do not produce promotable statement deletes.
     [Fact]
-    public async Task Execute_DoesNotEmitDecisionsForHighRiskMembers()
+    public async Task HighRiskProtectionRule_BlocksPropagationIntoProtectedTarget()
     {
         var engine = new RoslynAnalysisEngine();
         var analysis = await engine.AnalyzeAsync(
@@ -97,8 +142,13 @@ public class MarkingRuleEngineTests
     /// <summary>
     /// 测试执行方法在干净的重新定义后停止传播。
     /// </summary>
+    // Rule family: propagation semantics
+    // Direct behavior: the seed statement still emits a direct delete.
+    // Propagation: propagation stops once a clean redefinition replaces the tainted symbol.
+    // Blocking: clean redefinition clears taint for later uses in the same snapshot.
+    // Boundary promotion: no later statement delete should remain for promotion after the reset point.
     [Fact]
-    public async Task Execute_StopsPropagationAfterCleanRedefinition()
+    public async Task Propagation_StopsAfterCleanRedefinition()
     {
         var engine = new RoslynAnalysisEngine();
         var analysis = await engine.AnalyzeAsync(
@@ -426,8 +476,13 @@ public class MarkingRuleEngineTests
     /// <summary>
     /// 测试执行方法不传播超过消毒赋值。
     /// </summary>
+    // Rule family: IPropagationRule
+    // Direct behavior: the seed statement emits a direct delete and the first dependent statement is marked.
+    // Propagation: sanitizing assignment becomes the terminal point for taint propagation.
+    // Blocking: the sanitizing assignment prevents later uses from inheriting the delete.
+    // Boundary promotion: statements after sanitization should not produce promotable delete decisions.
     [Fact]
-    public async Task Execute_DoesNotPropagatePastSanitizingAssignments()
+    public async Task SanitizationPropagationRule_StopsPropagationAfterSanitizingAssignment()
     {
         var engine = new RoslynAnalysisEngine();
         var analysis = await engine.AnalyzeAsync(
@@ -463,8 +518,13 @@ public class MarkingRuleEngineTests
     /// <summary>
     /// 测试执行方法阻止对象初始化器目标。
     /// </summary>
+    // Rule family: IProtectionRule
+    // Direct behavior: object initializer assignments do not produce direct mark decisions.
+    // Propagation: initializer targets are excluded from the propagation graph.
+    // Blocking: the protection rule blocks both direct marking and downstream propagation through the initializer.
+    // Boundary promotion: no protected initializer statement can participate in promotion.
     [Fact]
-    public async Task Execute_BlocksObjectInitializerTargets()
+    public async Task ObjectInitializerProtectionRule_DoesNotMarkInitializerAssignment()
     {
         var engine = new RoslynAnalysisEngine();
         var analysis = await engine.AnalyzeAsync(
@@ -703,6 +763,185 @@ public class MarkingRuleEngineTests
         Assert.Contains(decisions, decision => decision.Target.DisplayText == "int next = count;");
     }
 
+    [Fact]
+    public async Task Execute_UsesExplicitStatementScopeModeFromExecutionContext()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update(int seed)
+                        {
+                            int parent = seed;
+                            {
+                                // dome:delete
+                                int child = parent;
+                                int next = child;
+                            }
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var recordingStatements = new RecordingStatementAnalysisService(context.Statements);
+        var patchedContext = AnalysisContext.Create(context.Snapshot, context.Services with { Statements = recordingStatements });
+        var seedTarget = Assert.Single(analysis.View.Targets.Where(target => target.Target.DisplayText == "int child = parent;"));
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(
+            patchedContext.Snapshot,
+            patchedContext.Services,
+            new RuleExecutionContext("MarkingRuleEngineTests", seedTarget.Target, StatementScopeMode.ParentBlockPiercing, CancellationToken.None, "explicit scope"));
+
+        Assert.Contains(decisions, decision => decision.Target.DisplayText == "int next = child;");
+        Assert.Contains(
+            recordingStatements.Calls,
+            call => call.TargetKey == seedTarget.Target.TargetKey && call.ScopeMode == StatementScopeMode.ParentBlockPiercing);
+    }
+
+    [Fact]
+    public async Task Execute_CompatibilityContextMatchesExplicitExecution()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update(int value)
+                        {
+                            // dome:delete
+                            fun2(value);
+                        }
+
+                        private void fun2(int i)
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var rules = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault());
+        var compatibilityDecisions = rules.Execute(context);
+        var explicitDecisions = rules.Execute(
+            context.Snapshot,
+            context.Services,
+            new RuleExecutionContext("MarkingRuleEngineTests", null, StatementScopeMode.MinimalBlock, CancellationToken.None, "equivalence"));
+
+        Assert.Equal(
+            compatibilityDecisions.Select(ToDecisionSignature).OrderBy(value => value, StringComparer.Ordinal),
+            explicitDecisions.Select(ToDecisionSignature).OrderBy(value => value, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Execute_PreservesOtherDirectDecisionsWithinSameSnapshot()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update()
+                        {
+                            // dome:delete
+                            int count = 1;
+                            // dome:delete
+                            int next = count;
+                            int final = next;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(analysis.View);
+
+        Assert.Equal(3, decisions.Count);
+        Assert.Equal(1, decisions.Count(decision => decision.Reason.RuleId == "dome:delete"));
+        Assert.Equal(1, decisions.Count(decision => decision.Reason.RuleId == "expression-mark"));
+        Assert.Contains(decisions, decision => decision.Target.DisplayText == "int final = next;" && decision.Reason.RuleId == "dataflow-propagation");
+    }
+
+    [Fact]
+    public async Task BoundaryPromotionEngine_DoesNotDuplicateExistingMethodDelete()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update(int value)
+                        {
+                            // dome:delete
+                            fun2(value);
+                        }
+
+                        private void fun2(int i)
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var statementDecision = Assert.Single(
+            new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault())
+                .Execute(analysis.View)
+                .Where(decision => decision.Target.TargetKind == TargetKind.Statement));
+        var methodTarget = context.FunctionIndex.NodesByMemberId.Values.Single(function => function.MemberId.Value == "Sample.Player.fun2(int)");
+        var existingMethodDelete = MarkDecision.ForTarget(
+            new PlanTarget(
+                methodTarget.DocumentPath,
+                methodTarget.MemberId,
+                methodTarget.MemberKind,
+                TargetKind.Method,
+                methodTarget.SpanStart,
+                methodTarget.SpanLength,
+                methodTarget.DisplayName),
+            PlanActionKind.Delete,
+            "existing-delete",
+            "already deleted");
+
+        var promoted = new BoundaryPromotionEngine(MarkingRuleRegistry.CreateDefault()).Promote(
+            context,
+            new[] { statementDecision, existingMethodDelete },
+            context.View.Targets.ToDictionary(target => target.Target.TargetKey, StringComparer.Ordinal));
+
+        Assert.Empty(promoted);
+    }
+
     /// <summary>
     /// 测试执行方法不删除重写方法。
     /// </summary>
@@ -816,8 +1055,13 @@ public class MarkingRuleEngineTests
             decision.Target.MemberId.Value == "Sample.Player.CacheEntry");
     }
 
+    // Rule family: IExpressionProjectionRule
+    // Direct behavior: expression-bearing statements with a directive project the expression match to the containing statement.
+    // Propagation: the projected statement decision acts as a direct decision and may propagate to downstream use/def targets.
+    // Blocking: high-risk and object-initializer statement targets are excluded from projection.
+    // Boundary promotion: projected statement deletes remain eligible for boundary promotion.
     [Fact]
-    public async Task Execute_ProjectsExpressionSeedsToStatementDecisions()
+    public async Task ExpressionProjectionRule_ProjectsDeleteToContainingStatement()
     {
         var engine = new RoslynAnalysisEngine();
         var analysis = await engine.AnalyzeAsync(
@@ -848,7 +1092,53 @@ public class MarkingRuleEngineTests
         var decision = Assert.Single(decisions.Where(item => item.Target.DisplayText == "bool allowed = Run(value) && (value > 0);"));
 
         Assert.Equal("expression-mark", decision.Reason.RuleId);
+        Assert.DoesNotContain(
+            decisions,
+            item => item.Target.DisplayText == "bool allowed = Run(value) && (value > 0);" && item.Reason.RuleId == "dome:delete");
         Assert.Contains("InvocationExpression", decision.Reason.RelatedSymbolNames!);
+    }
+
+    // Rule family: IExpressionProjectionRule
+    // Direct behavior: projection only applies to the statement that actually carries the marked expression seed.
+    // Propagation: only the correctly projected statement may become a propagation source.
+    // Blocking: similar expression-bearing statements without the matching directive must not be projected.
+    // Boundary promotion: only the correctly projected statement may later participate in promotion.
+    [Fact]
+    public async Task ExpressionProjectionRule_DoesNotProjectAcrossDifferentStatement()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public bool Update(int value)
+                        {
+                            // dome:delete
+                            bool allowed = Run(value) && (value > 0);
+                            bool fallback = Check(value) && (value < 10);
+                            return allowed || fallback;
+                        }
+
+                        private bool Run(int value) => value > 0;
+                        private bool Check(int value) => value < 10;
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(analysis.View);
+        var expressionMarks = decisions.Where(decision => decision.Reason.RuleId == "expression-mark").ToArray();
+
+        var projected = Assert.Single(expressionMarks);
+        Assert.Equal("bool allowed = Run(value) && (value > 0);", projected.Target.DisplayText);
+        Assert.DoesNotContain(expressionMarks, decision => decision.Target.DisplayText == "bool fallback = Check(value) && (value < 10);");
     }
 
     [Fact]
@@ -911,6 +1201,666 @@ public class MarkingRuleEngineTests
             decision.Target.MemberId.Value == "Sample.CacheEntry");
     }
 
+    [Fact]
+    public async Task Execute_DoesNotDeleteEventSubscribedPrivateMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    using System;
+
+                    namespace Sample;
+
+                    public sealed class Player
+                    {
+                        private event Action? Changed;
+
+                        public Player()
+                        {
+                            Changed += HandleChanged;
+                        }
+
+                        private void HandleChanged()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Player.HandleChanged()");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteDelegateAssignedPrivateMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    using System;
+
+                    namespace Sample;
+
+                    public sealed class Player
+                    {
+                        private readonly Action _handler;
+
+                        public Player()
+                        {
+                            _handler = HandleChanged;
+                        }
+
+                        private void HandleChanged()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Player.HandleChanged()");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteKnownFrameworkEntrypointMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Terraria.WorldBuilding
+                    {
+                        public abstract class GenPass
+                        {
+                        }
+                    }
+
+                    namespace Sample;
+
+                    public sealed class DemoPass : Terraria.WorldBuilding.GenPass
+                    {
+                        private void Apply()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.DemoPass.Apply()");
+    }
+
+    [Fact]
+    public async Task Execute_DeletesSameNamedMethodOutsideKnownFrameworkType()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class DemoPass
+                    {
+                        private void Apply()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.Contains(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.DemoPass.Apply()" &&
+            decision.Reason.RuleId == "function-mark");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteClassRegisteredInStaticManager()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    using System.Collections.Generic;
+
+                    namespace Sample;
+
+                    internal sealed class NodeRule
+                    {
+                        public void Apply()
+                        {
+                        }
+                    }
+
+                    public static class RuleManager
+                    {
+                        private static readonly List<NodeRule> Rules = new() { new NodeRule() };
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.NodeRule");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteClassRegisteredViaGenericRegister()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class NetManager
+                    {
+                        public static NetManager Instance { get; } = new();
+
+                        public void Register<T>()
+                        {
+                        }
+                    }
+
+                    internal sealed class NetLiquidModule
+                    {
+                    }
+
+                    public static class Bootstrap
+                    {
+                        public static void Load()
+                        {
+                            NetManager.Instance.Register<NetLiquidModule>();
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.NetLiquidModule");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteClassRegisteredViaManagerIndexer()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class SkyManager
+                    {
+                        public static SkyManager Instance { get; } = new();
+
+                        public object this[string key]
+                        {
+                            set
+                            {
+                            }
+                        }
+                    }
+
+                    internal sealed class PartySky
+                    {
+                        private void Draw()
+                        {
+                        }
+                    }
+
+                    public static class Bootstrap
+                    {
+                        public static void Load()
+                        {
+                            SkyManager.Instance["Party"] = new PartySky();
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.PartySky");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteRuleNodeAddedToComposerChain()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    using System.Collections.Generic;
+
+                    namespace Sample;
+
+                    public interface IItemDropRule
+                    {
+                        bool CanDrop();
+                    }
+
+                    internal sealed class DropRule : IItemDropRule
+                    {
+                        public bool CanDrop()
+                        {
+                            return true;
+                        }
+                    }
+
+                    public sealed class LeadingConditionRule
+                    {
+                        private readonly List<IItemDropRule> ChainedRules = new();
+
+                        public void Add(IItemDropRule rule)
+                        {
+                            ChainedRules.Add(rule);
+                        }
+                    }
+
+                    public static class Bootstrap
+                    {
+                        public static LeadingConditionRule Create()
+                        {
+                            var chain = new LeadingConditionRule();
+                            chain.Add(new DropRule());
+                            return chain;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.DropRule");
+    }
+
+    [Fact]
+    public async Task Execute_DeletesTypeAddedOnlyToLocalTemporaryList()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    using System.Collections.Generic;
+
+                    namespace Sample;
+
+                    internal sealed class TempRule
+                    {
+                    }
+
+                    public static class Bootstrap
+                    {
+                        public static void Build()
+                        {
+                            var local = new List<TempRule>();
+                            local.Add(new TempRule());
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.Contains(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.TempRule" &&
+            decision.Reason.RuleId == "class-mark");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteKnownFrameworkShutdownMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Terraria.Social.Base
+                    {
+                        public abstract class NetSocialModule
+                        {
+                        }
+                    }
+
+                    namespace Sample;
+
+                    public sealed class DemoModule : Terraria.Social.Base.NetSocialModule
+                    {
+                        private void Shutdown()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.DemoModule.Shutdown()");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteKnownFrameworkDrawMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Terraria.WorldBuilding
+                    {
+                        public abstract class GenShape
+                        {
+                        }
+                    }
+
+                    namespace Sample;
+
+                    public sealed class DemoShape : Terraria.WorldBuilding.GenShape
+                    {
+                        private void Draw()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.DemoShape.Draw()");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteKnownFrameworkApplyPassMethod()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Terraria.WorldBuilding
+                    {
+                        public abstract class GenPass
+                        {
+                        }
+                    }
+
+                    namespace Sample;
+
+                    public sealed class DemoPass : Terraria.WorldBuilding.GenPass
+                    {
+                        private void ApplyPass()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.DemoPass.ApplyPass()");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteMethodCachedInDelegateDictionary()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    using System;
+                    using System.Collections.Generic;
+
+                    namespace Sample;
+
+                    public sealed class Player
+                    {
+                        private readonly Dictionary<int, Func<bool>> _spawnConditions = new();
+
+                        public Player()
+                        {
+                            _spawnConditions[1] = CanSpawn;
+                        }
+
+                        private bool CanSpawn()
+                        {
+                            return true;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Player.CanSpawn()");
+    }
+
+    [Fact]
+    public async Task Execute_DeletesUnreferencedPrivateHelperInsideRegisteredType()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class NetManager
+                    {
+                        public static NetManager Instance { get; } = new();
+
+                        public void Register<T>()
+                        {
+                        }
+                    }
+
+                    internal sealed class NetLiquidModule
+                    {
+                        private void Helper()
+                        {
+                        }
+                    }
+
+                    public static class Bootstrap
+                    {
+                        public static void Load()
+                        {
+                            NetManager.Instance.Register<NetLiquidModule>();
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.NetLiquidModule");
+        Assert.Contains(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.NetLiquidModule.Helper()" &&
+            decision.Reason.RuleId == "function-mark");
+    }
+
+    [Fact]
+    public async Task Execute_DeletesSameNamedFrameworkMethodOutsideKnownFrameworkType()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class DemoWidget
+                    {
+                        private void Shutdown()
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.Contains(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.DemoWidget.Shutdown()" &&
+            decision.Reason.RuleId == "function-mark");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeletePrivateMethodReferencedByExpressionBodiedProperty()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class WorldGenRange
+                    {
+                        public int Minimum { get; set; }
+
+                        public int ScaledMinimum => ScaleValue(Minimum);
+
+                        private int ScaleValue(int value)
+                        {
+                            return value * 2;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.WorldGenRange.ScaleValue(int)" &&
+            decision.Reason.RuleId == "function-mark");
+    }
+
     private sealed class RecordingStatementAnalysisService(IStatementAnalysisService inner) : IStatementAnalysisService
     {
         public List<(string TargetKey, StatementScopeMode ScopeMode)> Calls { get; } = new();
@@ -921,4 +1871,13 @@ public class MarkingRuleEngineTests
             return inner.Analyze(seedTarget, scopeMode);
         }
     }
+
+    private static string ToDecisionSignature(MarkDecision decision) =>
+        string.Join(
+            "|",
+            decision.Target.TargetKey,
+            decision.Action.Kind,
+            decision.Reason.RuleId,
+            decision.Reason.SourceTargetKey ?? string.Empty,
+            decision.Action.Payload ?? string.Empty);
 }

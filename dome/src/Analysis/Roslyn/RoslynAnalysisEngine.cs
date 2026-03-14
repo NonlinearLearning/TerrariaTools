@@ -38,6 +38,13 @@ public sealed record RoslynAnalysisResult(
 /// </summary>
 public sealed class RoslynAnalysisEngine
 {
+    private static readonly string[] KnownPersistentOwnerTypeMarkers =
+    [
+        "Manager",
+        "Registry",
+        "Resolver"
+    ];
+
     /// <summary>
     /// 异步执行分析。
     /// </summary>
@@ -309,10 +316,42 @@ public sealed class RoslynAnalysisEngine
             }
         }
 
+        foreach (var document in documents)
+        {
+            RegisterMethodGroupReferences(
+                document.Root.DescendantNodes().OfType<MethodDeclarationSyntax>(),
+                document.SemanticModel,
+                memberToFunctions,
+                memberToTypes,
+                static method => GetBodyOrExpression(method));
+            RegisterMethodGroupReferences(
+                document.Root.DescendantNodes().OfType<ConstructorDeclarationSyntax>(),
+                document.SemanticModel,
+                memberToFunctions,
+                memberToTypes,
+                static ctor => GetBodyOrExpression(ctor));
+            RegisterMethodGroupReferences(
+                document.Root.DescendantNodes().OfType<AccessorDeclarationSyntax>(),
+                document.SemanticModel,
+                memberToFunctions,
+                memberToTypes,
+                static accessor => GetBodyOrExpression(accessor));
+            RegisterPropertyMethodGroupReferences(
+                document.Root.DescendantNodes().OfType<PropertyDeclarationSyntax>().Where(static property => property.ExpressionBody != null),
+                document.SemanticModel,
+                memberToFunctions,
+                memberToTypes);
+        }
+
         var typeToFunctions = new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal);
         var typeToTypes = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var edge in snapshot.View.TypeGraph.Edges)
         {
+            if (!IsPersistentTypeReference(edge.Kind))
+            {
+                continue;
+            }
+
             if (!string.IsNullOrEmpty(edge.MemberId))
             {
                 RegisterReference(typeToFunctions, edge.TargetTypeId, new MemberId(edge.MemberId));
@@ -321,11 +360,149 @@ public sealed class RoslynAnalysisEngine
             RegisterReference(typeToTypes, edge.TargetTypeId, edge.SourceTypeId);
         }
 
+        foreach (var document in documents)
+        {
+            RegisterPersistentTypeReferences(
+                document.Root.DescendantNodes().OfType<MethodDeclarationSyntax>(),
+                document.SemanticModel,
+                typeToFunctions,
+                typeToTypes,
+                static method => GetBodyOrExpression(method));
+            RegisterPersistentTypeReferences(
+                document.Root.DescendantNodes().OfType<ConstructorDeclarationSyntax>(),
+                document.SemanticModel,
+                typeToFunctions,
+                typeToTypes,
+                static ctor => GetBodyOrExpression(ctor));
+            RegisterPersistentTypeReferences(
+                document.Root.DescendantNodes().OfType<AccessorDeclarationSyntax>(),
+                document.SemanticModel,
+                typeToFunctions,
+                typeToTypes,
+                static accessor => GetBodyOrExpression(accessor));
+            RegisterPersistentInitializerTypeReferences(document.Root, document.SemanticModel, typeToFunctions, typeToTypes);
+        }
+
         return new AnalysisServices(
             new InheritanceQueryService(overrideMembers, interfaceMembers, inheritanceTypes),
             new ReferenceQueryService(memberToFunctions, memberToTypes, typeToFunctions, typeToTypes),
             new StatementAnalysisService(snapshot.StatementFacts),
             new FunctionGraphProvider(snapshot.FunctionIndex, snapshot.FunctionFacts));
+    }
+
+    private static bool IsPersistentTypeReference(TypeDependencyKind kind) =>
+        kind is TypeDependencyKind.Inherits
+            or TypeDependencyKind.Implements
+            or TypeDependencyKind.FieldType
+            or TypeDependencyKind.PropertyType
+            or TypeDependencyKind.ParameterType
+            or TypeDependencyKind.ReturnType
+            or TypeDependencyKind.StaticMemberAccess;
+
+    private static void RegisterMethodGroupReferences<TDeclaration>(
+        IEnumerable<TDeclaration> declarations,
+        SemanticModel model,
+        Dictionary<string, HashSet<MemberId>> memberToFunctions,
+        Dictionary<string, HashSet<string>> memberToTypes,
+        Func<TDeclaration, SyntaxNode?> getBodyOrExpression)
+        where TDeclaration : SyntaxNode
+    {
+        foreach (var declaration in declarations)
+        {
+            if (model.GetDeclaredSymbol(declaration) is not IMethodSymbol currentMethod)
+            {
+                continue;
+            }
+
+            var currentMemberId = MetadataMemberIdBuilder.Build(currentMethod);
+            var currentTypeId = MetadataTypeIdBuilder.Build(currentMethod.ContainingType);
+            foreach (var referencedMethodId in CollectReferencedMethodIds(getBodyOrExpression(declaration), model))
+            {
+                RegisterReference(memberToFunctions, referencedMethodId.Value, currentMemberId);
+                RegisterReference(memberToTypes, referencedMethodId.Value, currentTypeId);
+            }
+        }
+    }
+
+    private static void RegisterPropertyMethodGroupReferences(
+        IEnumerable<PropertyDeclarationSyntax> properties,
+        SemanticModel model,
+        Dictionary<string, HashSet<MemberId>> memberToFunctions,
+        Dictionary<string, HashSet<string>> memberToTypes)
+    {
+        foreach (var property in properties)
+        {
+            if (model.GetDeclaredSymbol(property) is not IPropertySymbol { GetMethod: not null } propertySymbol)
+            {
+                continue;
+            }
+
+            var currentMemberId = MetadataMemberIdBuilder.Build(propertySymbol.GetMethod);
+            var currentTypeId = MetadataTypeIdBuilder.Build(propertySymbol.ContainingType);
+            foreach (var referencedMethodId in CollectReferencedMethodIds(GetBodyOrExpression(property), model))
+            {
+                RegisterReference(memberToFunctions, referencedMethodId.Value, currentMemberId);
+                RegisterReference(memberToTypes, referencedMethodId.Value, currentTypeId);
+            }
+        }
+    }
+
+    private static void RegisterPersistentTypeReferences<TDeclaration>(
+        IEnumerable<TDeclaration> declarations,
+        SemanticModel model,
+        Dictionary<string, HashSet<MemberId>> typeToFunctions,
+        Dictionary<string, HashSet<string>> typeToTypes,
+        Func<TDeclaration, SyntaxNode?> getBodyOrExpression)
+        where TDeclaration : SyntaxNode
+    {
+        foreach (var declaration in declarations)
+        {
+            if (model.GetDeclaredSymbol(declaration) is not IMethodSymbol currentMethod)
+            {
+                continue;
+            }
+
+            var currentMemberId = MetadataMemberIdBuilder.Build(currentMethod);
+            var currentTypeId = MetadataTypeIdBuilder.Build(currentMethod.ContainingType);
+            foreach (var referencedTypeId in CollectPersistentReferencedTypeIds(getBodyOrExpression(declaration), model))
+            {
+                RegisterReference(typeToFunctions, referencedTypeId, currentMemberId);
+                RegisterReference(typeToTypes, referencedTypeId, currentTypeId);
+            }
+        }
+    }
+
+    private static void RegisterPersistentInitializerTypeReferences(
+        CompilationUnitSyntax root,
+        SemanticModel model,
+        Dictionary<string, HashSet<MemberId>> typeToFunctions,
+        Dictionary<string, HashSet<string>> typeToTypes)
+    {
+        foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
+        {
+            foreach (var variable in field.Declaration.Variables.Where(variable => variable.Initializer != null))
+            {
+                if (model.GetDeclaredSymbol(variable) is not IFieldSymbol fieldSymbol ||
+                    !fieldSymbol.IsStatic)
+                {
+                    continue;
+                }
+
+                if (!LooksLikePersistentOwner(fieldSymbol.ContainingType) &&
+                    !LooksLikeKnownPersistentField(fieldSymbol))
+                {
+                    continue;
+                }
+
+                var memberId = MetadataMemberIdBuilder.Build(fieldSymbol);
+                var typeId = MetadataTypeIdBuilder.Build(fieldSymbol.ContainingType);
+                foreach (var referencedTypeId in CollectCreatedTypeIds(variable.Initializer!.Value, model))
+                {
+                    RegisterReference(typeToFunctions, referencedTypeId, memberId);
+                    RegisterReference(typeToTypes, referencedTypeId, typeId);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -446,6 +623,19 @@ public sealed class RoslynAnalysisEngine
             yield return (
                 MetadataMemberIdBuilder.Build(symbol),
                 CollectCalledMemberIds(GetBodyOrExpression(accessor), document.SemanticModel));
+        }
+
+        foreach (var property in document.Root.DescendantNodes().OfType<PropertyDeclarationSyntax>().Where(static property => property.ExpressionBody != null))
+        {
+            var propertySymbol = document.SemanticModel.GetDeclaredSymbol(property) as IPropertySymbol;
+            if (propertySymbol?.GetMethod == null)
+            {
+                continue;
+            }
+
+            yield return (
+                MetadataMemberIdBuilder.Build(propertySymbol.GetMethod),
+                CollectCalledMemberIds(GetBodyOrExpression(property), document.SemanticModel));
         }
     }
 
@@ -742,6 +932,12 @@ public sealed class RoslynAnalysisEngine
         {
             RegisterFunctionNode(model.GetDeclaredSymbol(accessor), MemberKind.Accessor, document.RelativePath, functionNodes);
         }
+
+        foreach (var property in root.DescendantNodes().OfType<PropertyDeclarationSyntax>().Where(static property => property.ExpressionBody != null))
+        {
+            var propertySymbol = model.GetDeclaredSymbol(property) as IPropertySymbol;
+            RegisterFunctionNode(propertySymbol?.GetMethod, MemberKind.Accessor, document.RelativePath, functionNodes, property);
+        }
     }
 
     private static void RegisterTypeBodyGraphs(
@@ -778,6 +974,15 @@ public sealed class RoslynAnalysisEngine
             }
         }
 
+        foreach (var property in root.DescendantNodes().OfType<PropertyDeclarationSyntax>().Where(static property => property.ExpressionBody != null))
+        {
+            var propertySymbol = model.GetDeclaredSymbol(property) as IPropertySymbol;
+            if (propertySymbol?.GetMethod != null)
+            {
+                RegisterFunctionBodyDependencies(propertySymbol.GetMethod, GetBodyOrExpression(property), model, typeEdges, ignoredFunctionEdges);
+            }
+        }
+
         foreach (var field in root.DescendantNodes().OfType<FieldDeclarationSyntax>())
         {
             foreach (var variable in field.Declaration.Variables.Where(variable => variable.Initializer != null))
@@ -807,7 +1012,8 @@ public sealed class RoslynAnalysisEngine
         ISymbol? symbol,
         MemberKind memberKind,
         string documentPath,
-        IDictionary<string, FunctionNodeRef> functionNodes)
+        IDictionary<string, FunctionNodeRef> functionNodes,
+        SyntaxNode? declarationSyntaxOverride = null)
     {
         if (symbol == null)
         {
@@ -815,7 +1021,7 @@ public sealed class RoslynAnalysisEngine
         }
 
         var memberId = MetadataMemberIdBuilder.Build(symbol);
-        var declarationSyntax = symbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
+        var declarationSyntax = declarationSyntaxOverride ?? symbol.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax();
         var methodSymbol = symbol as IMethodSymbol;
         var returnsVoid = methodSymbol?.ReturnsVoid ?? false;
         var hasBody = declarationSyntax switch
@@ -823,6 +1029,7 @@ public sealed class RoslynAnalysisEngine
             MethodDeclarationSyntax methodDeclaration => methodDeclaration.Body != null,
             ConstructorDeclarationSyntax constructorDeclaration => constructorDeclaration.Body != null,
             AccessorDeclarationSyntax accessorDeclaration => accessorDeclaration.Body != null,
+            PropertyDeclarationSyntax propertyDeclaration => propertyDeclaration.ExpressionBody != null,
             _ => false
         };
         var hasStatements = declarationSyntax switch
@@ -830,6 +1037,7 @@ public sealed class RoslynAnalysisEngine
             MethodDeclarationSyntax methodDeclaration => methodDeclaration.Body?.Statements.Count > 0,
             ConstructorDeclarationSyntax constructorDeclaration => constructorDeclaration.Body?.Statements.Count > 0,
             AccessorDeclarationSyntax accessorDeclaration => accessorDeclaration.Body?.Statements.Count > 0,
+            PropertyDeclarationSyntax => false,
             _ => false
         };
         var returnTypeDisplay = methodSymbol?.ReturnType.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? "void";
@@ -881,6 +1089,15 @@ public sealed class RoslynAnalysisEngine
             if (symbol != null)
             {
                 RegisterFunctionBodyDependencies(symbol, accessor.Body ?? (SyntaxNode?)accessor.ExpressionBody, model, typeEdges, functionEdges);
+            }
+        }
+
+        foreach (var property in root.DescendantNodes().OfType<PropertyDeclarationSyntax>().Where(static property => property.ExpressionBody != null))
+        {
+            var propertySymbol = model.GetDeclaredSymbol(property) as IPropertySymbol;
+            if (propertySymbol?.GetMethod != null)
+            {
+                RegisterFunctionBodyDependencies(propertySymbol.GetMethod, GetBodyOrExpression(property), model, typeEdges, functionEdges);
             }
         }
 
@@ -1057,6 +1274,9 @@ public sealed class RoslynAnalysisEngine
     private static SyntaxNode? GetBodyOrExpression(AccessorDeclarationSyntax accessor) =>
         (SyntaxNode?)accessor.Body ?? accessor.ExpressionBody?.Expression;
 
+    private static SyntaxNode? GetBodyOrExpression(PropertyDeclarationSyntax property) =>
+        property.ExpressionBody?.Expression;
+
     private static IReadOnlyList<MemberId> CollectCalledMemberIds(SyntaxNode? bodyOrExpression, SemanticModel model)
     {
         if (bodyOrExpression == null)
@@ -1072,6 +1292,157 @@ public sealed class RoslynAnalysisEngine
             .DistinctBy(memberId => memberId.Value)
             .OrderBy(memberId => memberId.Value, StringComparer.Ordinal)
             .ToArray();
+    }
+
+    private static IReadOnlyList<MemberId> CollectReferencedMethodIds(SyntaxNode? bodyOrExpression, SemanticModel model)
+    {
+        if (bodyOrExpression == null)
+        {
+            return Array.Empty<MemberId>();
+        }
+
+        return bodyOrExpression.DescendantNodesAndSelf()
+            .Where(node => node is IdentifierNameSyntax or MemberAccessExpressionSyntax)
+            .SelectMany(node =>
+            {
+                var info = model.GetSymbolInfo(node);
+                if (info.Symbol is IMethodSymbol methodSymbol)
+                {
+                    return new[] { methodSymbol };
+                }
+
+                return info.CandidateSymbols.OfType<IMethodSymbol>();
+            })
+            .Where(symbol => symbol.MethodKind is not MethodKind.AnonymousFunction and not MethodKind.LocalFunction)
+            .Select(MetadataMemberIdBuilder.Build)
+            .DistinctBy(memberId => memberId.Value)
+            .OrderBy(memberId => memberId.Value, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> CollectPersistentReferencedTypeIds(SyntaxNode? bodyOrExpression, SemanticModel model)
+    {
+        if (bodyOrExpression == null)
+        {
+            return Array.Empty<string>();
+        }
+
+        var referencedTypeIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var invocation in bodyOrExpression.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+        {
+            if (model.GetSymbolInfo(invocation).Symbol is not IMethodSymbol methodSymbol)
+            {
+                continue;
+            }
+
+            if (string.Equals(methodSymbol.Name, "Register", StringComparison.Ordinal))
+            {
+                foreach (var typeArgument in methodSymbol.TypeArguments.OfType<INamedTypeSymbol>())
+                {
+                    referencedTypeIds.Add(MetadataTypeIdBuilder.Build(typeArgument));
+                }
+
+                continue;
+            }
+
+            if (string.Equals(methodSymbol.Name, "Add", StringComparison.Ordinal) &&
+                invocation.ArgumentList.Arguments.Count > 0 &&
+                invocation.ArgumentList.Arguments[0].Expression is BaseObjectCreationExpressionSyntax creation &&
+                methodSymbol.Parameters.Length > 0 &&
+                IsKnownRuleNodeType(methodSymbol.Parameters[0].Type))
+            {
+                if (model.GetSymbolInfo(creation).Symbol is IMethodSymbol ctorSymbol)
+                {
+                    referencedTypeIds.Add(MetadataTypeIdBuilder.Build(ctorSymbol.ContainingType));
+                }
+            }
+        }
+
+        foreach (var assignment in bodyOrExpression.DescendantNodesAndSelf().OfType<AssignmentExpressionSyntax>())
+        {
+            if (assignment.Left is not ElementAccessExpressionSyntax elementAccess ||
+                assignment.Right is not BaseObjectCreationExpressionSyntax creation)
+            {
+                continue;
+            }
+
+            if (!IsKnownManagerOrResolverIndexer(elementAccess, model))
+            {
+                continue;
+            }
+
+            if (model.GetSymbolInfo(creation).Symbol is IMethodSymbol ctorSymbol)
+            {
+                referencedTypeIds.Add(MetadataTypeIdBuilder.Build(ctorSymbol.ContainingType));
+            }
+        }
+
+        return referencedTypeIds
+            .OrderBy(typeId => typeId, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> CollectCreatedTypeIds(SyntaxNode node, SemanticModel model)
+    {
+        return node.DescendantNodesAndSelf()
+            .OfType<BaseObjectCreationExpressionSyntax>()
+            .Select(creation => model.GetSymbolInfo(creation).Symbol as IMethodSymbol)
+            .OfType<IMethodSymbol>()
+            .Select(symbol => MetadataTypeIdBuilder.Build(symbol.ContainingType))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(typeId => typeId, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static bool IsKnownManagerOrResolverIndexer(ElementAccessExpressionSyntax elementAccess, SemanticModel model)
+    {
+        if (model.GetTypeInfo(elementAccess.Expression).Type is not ITypeSymbol typeSymbol)
+        {
+            return false;
+        }
+
+        return LooksLikeKnownPersistentOwnerType(typeSymbol.Name) ||
+               (typeSymbol.ContainingType != null && LooksLikeKnownPersistentOwnerType(typeSymbol.ContainingType.Name)) ||
+               IsStaticInstanceAccess(elementAccess.Expression);
+    }
+
+    private static bool IsStaticInstanceAccess(ExpressionSyntax expression)
+    {
+        return expression switch
+        {
+            MemberAccessExpressionSyntax
+            {
+                Name.Identifier.ValueText: "Instance",
+                Expression: IdentifierNameSyntax owner
+            } => LooksLikeKnownPersistentOwnerType(owner.Identifier.ValueText),
+            _ => false
+        };
+    }
+
+    private static bool LooksLikeKnownPersistentOwnerType(string? name) =>
+        !string.IsNullOrWhiteSpace(name) &&
+        KnownPersistentOwnerTypeMarkers.Any(marker => name.Contains(marker, StringComparison.Ordinal));
+
+    private static bool LooksLikePersistentOwner(INamedTypeSymbol typeSymbol) =>
+        LooksLikeKnownPersistentOwnerType(typeSymbol.Name);
+
+    private static bool LooksLikeKnownPersistentField(IFieldSymbol fieldSymbol) =>
+        fieldSymbol.IsStatic &&
+        (string.Equals(fieldSymbol.Name, "Rules", StringComparison.Ordinal) ||
+         string.Equals(fieldSymbol.Name, "ChainedRules", StringComparison.Ordinal)) &&
+        fieldSymbol.Type is INamedTypeSymbol namedType &&
+        namedType.IsGenericType;
+
+    private static bool IsKnownRuleNodeType(ITypeSymbol typeSymbol)
+    {
+        if (typeSymbol is INamedTypeSymbol namedType &&
+            namedType.AllInterfaces.Any(iface => iface.Name.Contains("ItemDropRule", StringComparison.Ordinal)))
+        {
+            return true;
+        }
+
+        return typeSymbol.Name.Contains("ItemDropRule", StringComparison.Ordinal);
     }
 
     /// <summary>

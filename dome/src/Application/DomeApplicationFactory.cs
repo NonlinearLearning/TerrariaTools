@@ -25,6 +25,8 @@ public static class DomeApplicationFactory
             new ReferenceZeroPredictionAnalyzer(),
             new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()),
             new RoslynRewriteExecutor(),
+            new RunReportBuilder(),
+            new ArtifactPlanBuilder(),
             new JsonArtifactWriter());
     }
 }

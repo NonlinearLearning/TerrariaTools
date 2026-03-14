@@ -8,6 +8,12 @@
 
 ## 快速开始
 
+执行前要求：
+
+- 工作目录固定为 `D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome`
+- SDK 由 [global.json](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/global.json) 固定为 `.NET 10 preview`
+- 详细执行说明见 [rapid-build-test.md](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/rapid-build-test.md)
+
 构建 CLI：
 
 ```powershell
@@ -37,6 +43,39 @@ dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples .\out
 ```powershell
 dotnet run --project .\src\Cli\Dome.Cli.csproj -- --config .\dome.config.json
 ```
+
+## 最短闭环演示
+
+如果你要直接证明 `dome` 不只是“能出计划”，而是真的会删掉被标记的代码，先看这两组仓内样本：
+
+- 纯 statement direct hit：
+  - 样本：[samples\closed-loop\Player.cs](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\samples\closed-loop\Player.cs)
+  - 说明：[closed-loop-demo.md](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\docs\closed-loop-demo.md)
+- expression projection + propagation：
+  - 样本：[samples\expression-loop\Player.cs](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\samples\expression-loop\Player.cs)
+  - 说明：[closed-loop-demo.md](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\docs\closed-loop-demo.md)
+
+纯 statement 样本的最短命令：
+
+```powershell
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\closed-loop .\.tmp\closed-loop-demo\plan
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\closed-loop .\.tmp\closed-loop-demo\run
+```
+
+看结果时固定顺序：
+
+1. 看 `audit-plan.json`
+2. 看 `report.json`
+3. 看 `rewritten\*.cs`
+
+当前仓内已经生成好的证据产物：
+
+- [closed-loop audit-plan.json](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\closed-loop-demo\plan\audit-plan.json)
+- [closed-loop report.json](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\closed-loop-demo\run\report.json)
+- [closed-loop rewritten Player.cs](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\closed-loop-demo\run\rewritten\Player.cs)
+- [expression-loop audit-plan.json](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\expression-loop-demo\plan\audit-plan.json)
+- [expression-loop report.json](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\expression-loop-demo\run\report.json)
+- [expression-loop rewritten Player.cs](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\expression-loop-demo\run\rewritten\Player.cs)
 
 ## 命令
 

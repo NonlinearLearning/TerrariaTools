@@ -57,6 +57,38 @@ Rules 层对扩展点做了显式分组：
 - `InvocationBoundaryPromotionRule`
 - `ParentBlockPiercingScopeRule`
 
+### 规则语义模板与规格清单
+
+Rules 层新增或调整规则时，正式文档入口固定为：
+
+- [规则设计与测试规范](../rule-authoring-guidelines.md)
+- [默认规则规格清单](../rule-spec-catalog.md)
+- [规则术语定义](../rule-concepts.md)
+
+约束固定为：
+
+- 新规则必须先写统一语义模板，再写测试，再写实现
+- propagation 是规则语义的一部分，不是后补细节
+- 默认 registry 中的规则解释以规格清单为准，而不是只靠源码阅读
+- 规则注释里出现的专有概念，以术语定义文档中的代码级解释为准
+
+### 快速落地版默认边界
+
+首轮 TR 项目试跑阶段，只保留已验证的最小保护集：
+
+- 委托 / 事件方法组引用保护
+- `Register<T>()` 类型保护
+- 已知 manager / resolver indexer 注册保护
+- `IItemDropRule` 组合器 `Add(new Xxx())` 保护
+- 已知框架入口“类型结构 + 入口名”联合保护
+
+首轮固定限制：
+
+- 注册型保护默认只作用于 `class-mark`
+- 不因“类型被注册”自动保护整类私有方法
+- 不扩新的 propagation 语义
+- 忽略 `CallTracker` 等 AOP 注入结构
+
 ## 5. 这一层承担的职责
 
 ### 5.1 从 directive 或表达式命中生成种子决策

@@ -3,7 +3,6 @@ namespace TerrariaTools.Dome.Rules;
 using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
 
-/// <summary>
 /// 种子规则接口。
 /// </summary>
 public interface ISeedRule
@@ -16,7 +15,6 @@ public interface ISeedRule
     IEnumerable<MarkDecision> Evaluate(AnalysisTarget target);
 }
 
-/// <summary>
 /// 传播规则接口。
 /// </summary>
 public interface IPropagationRule
@@ -103,6 +101,15 @@ public interface IStatementScopeRule
 
 /// <summary>
 /// 指令种子规则。
+/// 规则族：ISeedRule。
+/// 命中目标：携带 dome 指令的 statement target；控制流语句会统一为 controlflow-mark。
+/// 直接产出：statement 级 MarkDecision，action 取自 directive，reason 为 directive rule id。
+/// 传播：是，直接种子决策可沿 statement snapshot 的 use/def 边继续传播。
+/// 阻断：sanitization、clean redefinition、protection rule、scope boundary。
+/// 提升：是，direct statement delete 仍可进入 boundary promotion。
+/// 最小测试：
+/// - DirectiveSeedRule_MarksStatementWithDeleteDirective
+/// - DirectiveSeedRule_DoesNotMarkStatementWithoutDirective
 /// </summary>
 public sealed class DirectiveSeedRule : ISeedRule
 {
@@ -143,6 +150,18 @@ public sealed class DirectiveSeedRule : ISeedRule
 /// <summary>
 /// 表达式投影规则。
 /// </summary>
+/// <summary>
+/// 表达式投影规则。
+/// 规则族：IExpressionProjectionRule。
+/// 命中目标：带 directive 且 HasMarkedExpressionSeed 为 true 的非控制流 statement target。
+/// 直接产出：statement 级 MarkDecision，reason 固定为 expression-mark。
+/// 传播：是，投影结果按 direct decision 处理。
+/// 阻断：高风险 target、对象初始化赋值、错误的 statement 归属、scope boundary。
+/// 提升：是，投影产生的 statement delete 仍属于可提升的 direct delete。
+/// 最小测试：
+/// - ExpressionProjectionRule_ProjectsDeleteToContainingStatement
+/// - ExpressionProjectionRule_DoesNotProjectAcrossDifferentStatement
+/// </summary>
 public sealed class ExpressionProjectionRule : IExpressionProjectionRule
 {
     /// <summary>
@@ -178,6 +197,17 @@ public sealed class ExpressionProjectionRule : IExpressionProjectionRule
 /// <summary>
 /// 清理传播规则。
 /// </summary>
+/// <summary>
+/// 清洗传播规则。
+/// 规则族：IPropagationRule。
+/// 命中目标：传播遍历过程中被识别为 sanitizing assignment 的节点。
+/// 直接产出：无；该规则只负责终止传播。
+/// 传播：不适用；它不是传播源规则。
+/// 阻断：任意 sanitizing assignment 都会终止经过该节点的传播。
+/// 提升：否。
+/// 最小测试：
+/// - SanitizationPropagationRule_StopsPropagationAfterSanitizingAssignment
+/// </summary>
 public sealed class SanitizationPropagationRule : IPropagationRule
 {
     /// <summary>
@@ -196,6 +226,17 @@ public sealed class SanitizationPropagationRule : IPropagationRule
 /// <summary>
 /// 高风险保护规则。
 /// </summary>
+/// <summary>
+/// 高风险保护规则。
+/// 规则族：IProtectionRule。
+/// 命中目标：被分析结果标记为高风险的 target。
+/// 直接产出：无；该规则会同时阻止 direct mark 和 propagation。
+/// 传播：否；被保护 target 同时是传播边界。
+/// 阻断：一旦命中，当前 target 被跳过，taint 不得继续穿过该节点。
+/// 提升：否。
+/// 最小测试：
+/// - HighRiskProtectionRule_BlocksPropagationIntoProtectedTarget
+/// </summary>
 public sealed class HighRiskProtectionRule : IProtectionRule
 {
     /// <summary>
@@ -208,6 +249,17 @@ public sealed class HighRiskProtectionRule : IProtectionRule
 
 /// <summary>
 /// 对象初始化器保护规则。
+/// </summary>
+/// <summary>
+/// 对象初始化器保护规则。
+/// 规则族：IProtectionRule。
+/// 命中目标：被识别为 object initializer assignment 的 statement target。
+/// 直接产出：无；该规则阻止对象初始化赋值被直接标记。
+/// 传播：否；被保护的对象初始化语句同时是传播边界。
+/// 阻断：一旦命中，当前 target 被跳过，taint 不得继续穿过该节点。
+/// 提升：否。
+/// 最小测试：
+/// - ObjectInitializerProtectionRule_DoesNotMarkInitializerAssignment
 /// </summary>
 public sealed class ObjectInitializerProtectionRule : IProtectionRule
 {
@@ -222,8 +274,67 @@ public sealed class ObjectInitializerProtectionRule : IProtectionRule
 /// <summary>
 /// 函数标记规则。
 /// </summary>
+/// <summary>
+/// 函数标记规则。
+/// 规则族：IMethodRule。
+/// 命中目标：未被 override/interface 语义保护的私有方法。
+/// 直接产出：
+/// - 无引用的私有方法产出 method 级 Delete，reason 为 function-mark
+/// - 已被引用但非 void 且空体的方法产出 method 级 AddReturn
+/// 传播：不适用。
+/// 依据：FunctionIndex、IInheritanceQueryService、IReferenceQueryService。
+/// 阻断：override、interface implementation、已知框架入口保护、仍有引用。
+/// 提升：否。
+/// 最小测试：
+/// - Execute_EmitsDeleteForUnreferencedPrivateMethod
+/// - Execute_EmitsAddReturnForReferencedEmptyNonVoidMethod
+/// - Execute_DoesNotDeleteOverrideMethod
+/// - Execute_DoesNotDeleteEventSubscribedPrivateMethod
+/// - Execute_DoesNotDeleteDelegateAssignedPrivateMethod
+/// - Execute_DoesNotDeleteMethodCachedInDelegateDictionary
+/// - Execute_DoesNotDeleteKnownFrameworkEntrypointMethod
+/// - Execute_DoesNotDeleteKnownFrameworkShutdownMethod
+/// - Execute_DoesNotDeleteKnownFrameworkDrawMethod
+/// - Execute_DoesNotDeleteKnownFrameworkApplyPassMethod
+/// - Execute_DeletesUnreferencedPrivateHelperInsideRegisteredType
+/// - Execute_DeletesSameNamedMethodOutsideKnownFrameworkType
+/// </summary>
 public sealed class FunctionMarkingRule : IMethodRule
 {
+    private static readonly HashSet<string> KnownFrameworkEntrypointNames =
+        new(StringComparer.Ordinal)
+        {
+            "Initialize",
+            "Shutdown",
+            "Connect",
+            "Send",
+            "Receive",
+            "StartListening",
+            "Apply",
+            "ApplyPass",
+            "TryDroppingItem",
+            "CanDrop",
+            "Find",
+            "Perform",
+            "Load",
+            "OnBegin",
+            "OnEnd",
+            "OnActivate",
+            "Draw",
+            "Recalculate"
+        };
+
+    private static readonly string[] KnownFrameworkTypeMarkers =
+    [
+        "GenPass",
+        "GenShape",
+        "GenAction",
+        "GenStructure",
+        "NetSocialModule",
+        "IItemDropRule",
+        "ISocialModule"
+    ];
+
     /// <summary>
     /// 评估函数节点并生成标记决策。
     /// </summary>
@@ -239,6 +350,11 @@ public sealed class FunctionMarkingRule : IMethodRule
 
         if (context.Inheritance.IsOverrideMember(functionNode.MemberId.Value) ||
             context.Inheritance.ImplementsInterfaceMember(functionNode.MemberId.Value))
+        {
+            yield break;
+        }
+
+        if (IsKnownFrameworkEntrypoint(context, functionNode))
         {
             yield break;
         }
@@ -274,10 +390,61 @@ public sealed class FunctionMarkingRule : IMethodRule
             functionNode.SpanStart,
             functionNode.SpanLength,
             functionNode.DisplayName);
+
+    private static bool IsKnownFrameworkEntrypoint(AnalysisContext context, FunctionNodeRef functionNode)
+    {
+        var methodName = TryGetMethodName(functionNode.MemberId.Value);
+        if (string.IsNullOrEmpty(methodName) || !KnownFrameworkEntrypointNames.Contains(methodName))
+        {
+            return false;
+        }
+
+        return context.View.TypeGraph.Edges.Any(edge =>
+            string.Equals(edge.SourceTypeId, functionNode.DeclaringTypeId, StringComparison.Ordinal) &&
+            edge.Kind is TypeDependencyKind.Inherits or TypeDependencyKind.Implements &&
+            KnownFrameworkTypeMarkers.Any(marker => edge.TargetTypeId.Contains(marker, StringComparison.Ordinal)));
+    }
+
+    private static string TryGetMethodName(string memberId)
+    {
+        var parameterStart = memberId.IndexOf('(');
+        if (parameterStart <= 0)
+        {
+            return string.Empty;
+        }
+
+        var lastDot = memberId.LastIndexOf('.', parameterStart);
+        if (lastDot < 0 || lastDot + 1 >= parameterStart)
+        {
+            return string.Empty;
+        }
+
+        return memberId.Substring(lastDot + 1, parameterStart - lastDot - 1);
+    }
 }
 
 /// <summary>
 /// 类标记规则。
+/// </summary>
+/// <summary>
+/// 类标记规则。
+/// 规则族：IClassRule。
+/// 命中目标：未被继承、引用或高风险状态保护的 class target。
+/// 直接产出：class 级 Delete，reason 为 class-mark。
+/// 传播：不适用。
+/// 依据：IInheritanceQueryService、IReferenceQueryService。
+/// 阻断：高风险类型、位于继承链中、仍有引用、明确的注册/组合器持有。
+/// 提升：否。
+/// 最小测试：
+/// - Execute_EmitsDeleteForUnreferencedNestedClass
+/// - Execute_EmitsDeleteForUnreferencedTopLevelInternalClass
+/// - Execute_DoesNotDeleteReferencedClass
+/// - Execute_DoesNotDeletePublicTopLevelClass
+/// - Execute_DoesNotDeleteClassRegisteredInStaticManager
+/// - Execute_DoesNotDeleteClassRegisteredViaGenericRegister
+/// - Execute_DoesNotDeleteClassRegisteredViaManagerIndexer
+/// - Execute_DoesNotDeleteRuleNodeAddedToComposerChain
+/// - Execute_DeletesTypeAddedOnlyToLocalTemporaryList
 /// </summary>
 public sealed class ClassMarkingRule : IClassRule
 {
@@ -289,14 +456,16 @@ public sealed class ClassMarkingRule : IClassRule
     /// <returns>标记决策集合。</returns>
     public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target)
     {
+        var typeId = target.Target.MemberId.Value;
         if (target.Target.TargetKind != TargetKind.Class)
         {
             yield break;
         }
 
         if (target.IsHighRisk ||
-            context.Inheritance.IsInInheritanceChain(target.Target.MemberId.Value) ||
-            context.References.HasReferences(target.Target.MemberId.Value))
+            context.Inheritance.IsInInheritanceChain(typeId) ||
+            context.References.HasReferences(typeId) ||
+            IsKnownFrameworkType(context, typeId))
         {
             yield break;
         }
@@ -307,10 +476,38 @@ public sealed class ClassMarkingRule : IClassRule
             "class-mark",
             "Class has no references and is not protected by inheritance.");
     }
+
+    private static bool IsKnownFrameworkType(AnalysisContext context, string typeId)
+    {
+        return context.View.TypeGraph.Edges.Any(edge =>
+            string.Equals(edge.SourceTypeId, typeId, StringComparison.Ordinal) &&
+            edge.Kind is TypeDependencyKind.Inherits or TypeDependencyKind.Implements &&
+            (edge.TargetTypeId.Contains("GenPass", StringComparison.Ordinal) ||
+             edge.TargetTypeId.Contains("GenShape", StringComparison.Ordinal) ||
+             edge.TargetTypeId.Contains("GenAction", StringComparison.Ordinal) ||
+             edge.TargetTypeId.Contains("GenStructure", StringComparison.Ordinal) ||
+             edge.TargetTypeId.Contains("NetSocialModule", StringComparison.Ordinal) ||
+             edge.TargetTypeId.Contains("ISocialModule", StringComparison.Ordinal) ||
+             edge.TargetTypeId.Contains("IItemDropRule", StringComparison.Ordinal)));
+    }
 }
 
 /// <summary>
 /// 调用语句边界提升规则。
+/// </summary>
+/// <summary>
+/// 调用边界提升规则。
+/// 规则族：IBoundaryPromotionRule。
+/// 命中目标：direct statement-level Delete，且该 statement 恰好调用一个私有方法。
+/// 直接产出：method 级 Delete，reason 为 boundary-promotion。
+/// 传播：否；该规则消费已有 statement decision，本身不产生传播。
+/// 依据：InvokedMemberIds、FunctionIndex、IReferenceQueryService、IInheritanceQueryService。
+/// 阻断：propagated delete、非私有或受保护的方法、仍有剩余引用、多调用 statement、已存在 method delete。
+/// 提升：是，固定从 statement delete 提升到 method delete。
+/// 最小测试：
+/// - InvocationBoundaryPromotionRule_PromotesSingleStatementDeleteToMethodDelete
+/// - InvocationBoundaryPromotionRule_DoesNotPromotePropagatedDelete
+/// - BoundaryPromotionEngine_DoesNotDuplicateExistingMethodDelete
 /// </summary>
 public sealed class InvocationBoundaryPromotionRule : IBoundaryPromotionRule
 {
@@ -321,6 +518,7 @@ public sealed class InvocationBoundaryPromotionRule : IBoundaryPromotionRule
     {
         if (target.Target.TargetKind != TargetKind.Statement ||
             decision.Action.Kind != PlanActionKind.Delete ||
+            string.Equals(decision.Reason.RuleId, "dataflow-propagation", StringComparison.Ordinal) ||
             target.InvokedMemberIds.Count != 1)
         {
             yield break;
@@ -370,6 +568,20 @@ public sealed class InvocationBoundaryPromotionRule : IBoundaryPromotionRule
 
 /// <summary>
 /// 父块穿透作用域选择规则。
+/// </summary>
+/// <summary>
+/// 父块穿透作用域规则。
+/// 规则族：IStatementScopeRule。
+/// 命中目标：读取了参数或父块 local，且满足父块穿透条件的 statement seed。
+/// 直接产出：无；该规则只负责把 StatementScopeMode 从 MinimalBlock 切到 ParentBlockPiercing。
+/// 传播：不适用；该规则只改变 statement snapshot 的可见范围。
+/// 依据：StatementFactsIndex、UsesSymbols、ScopeId、ParentScopeId。
+/// 阻断：高风险 target、对象初始化赋值、sanitizing assignment、缺失 scope 信息、跨 function boundary。
+/// 提升：否。
+/// 最小测试：
+/// - ParentBlockPiercingScopeRule_ExpandsSnapshotWhenExplicitlyRequired
+/// - Execute_DoesNotPropagateAcrossParentBlockByDefault
+/// - Execute_UsesExplicitStatementScopeModeFromExecutionContext
 /// </summary>
 public sealed class ParentBlockPiercingScopeRule : IStatementScopeRule
 {
@@ -516,14 +728,24 @@ public sealed class MarkingRuleRegistry
 public sealed class MarkingRuleEngine
 {
     private readonly MarkingRuleRegistry _registry;
+    private readonly StatementPropagationEngine _statementPropagationEngine;
+    private readonly BoundaryPromotionEngine _boundaryPromotionEngine;
+    private readonly RuleCompatibilityAdapter _compatibilityAdapter;
 
     /// <summary>
     /// 初始化标记规则引擎的新实例。
     /// </summary>
     /// <param name="registry">标记规则注册表。</param>
-    public MarkingRuleEngine(MarkingRuleRegistry registry)
+    public MarkingRuleEngine(
+        MarkingRuleRegistry registry,
+        StatementPropagationEngine? statementPropagationEngine = null,
+        BoundaryPromotionEngine? boundaryPromotionEngine = null,
+        RuleCompatibilityAdapter? compatibilityAdapter = null)
     {
         _registry = registry;
+        _statementPropagationEngine = statementPropagationEngine ?? new StatementPropagationEngine(registry);
+        _boundaryPromotionEngine = boundaryPromotionEngine ?? new BoundaryPromotionEngine(registry);
+        _compatibilityAdapter = compatibilityAdapter ?? new RuleCompatibilityAdapter();
     }
 
     /// <summary>
@@ -533,47 +755,9 @@ public sealed class MarkingRuleEngine
     /// <returns>标记决策集合。</returns>
     public IReadOnlyList<MarkDecision> Execute(AnalysisView analysisView)
     {
-        var statementFacts = new StatementFactsIndex(
-            analysisView.Targets
-                .Where(target => target.Target.TargetKind == TargetKind.Statement)
-                .GroupBy(target => target.Target.MemberId.Value, StringComparer.Ordinal)
-                .ToDictionary(
-                    group => group.Key,
-                    group => (IReadOnlyList<StatementFact>)group
-                        .OrderBy(target => target.Target.SpanStart)
-                        .ThenBy(target => target.Target.TargetKey, StringComparer.Ordinal)
-                        .Select(target => new StatementFact(
-                            target.Target.TargetKey,
-                            target.Target.MemberId,
-                            target.StatementKind,
-                            target.DefinesSymbols,
-                            target.UsesSymbols,
-                            target.InvokedMemberIds,
-                            target.ScopeMode,
-                            target.ScopeId,
-                            target.ParentScopeId,
-                            target.Target.SpanStart,
-                            target.Target.SpanLength))
-                        .ToArray(),
-                    StringComparer.Ordinal));
-        var snapshot = new AnalysisSnapshot(
-            analysisView,
-            FunctionIndex.Empty,
-            FunctionFactsIndex.Empty,
-            statementFacts);
-        var services = new AnalysisServices(
-            new NoOpInheritanceQueryService(),
-            new NoOpReferenceQueryService(),
-            new StatementAnalysisService(statementFacts),
-            new NoOpFunctionGraphProvider());
         return ExecuteCore(
-            AnalysisContext.Create(snapshot, services),
-            new RuleExecutionContext(
-                "MarkingRuleEngine",
-                null,
-                StatementScopeMode.MinimalBlock,
-                CancellationToken.None,
-                "AnalysisView compatibility execution"),
+            _compatibilityAdapter.CreateContext(analysisView),
+            _compatibilityAdapter.CreateExecutionContext("AnalysisView compatibility execution"),
             includeMethodRules: false);
     }
 
@@ -597,12 +781,7 @@ public sealed class MarkingRuleEngine
     {
         return ExecuteCore(
             context,
-            new RuleExecutionContext(
-                "MarkingRuleEngine",
-                null,
-                StatementScopeMode.MinimalBlock,
-                CancellationToken.None,
-                "AnalysisContext compatibility execution"),
+            _compatibilityAdapter.CreateExecutionContext("AnalysisContext compatibility execution"),
             includeMethodRules: true);
     }
 
@@ -656,6 +835,13 @@ public sealed class MarkingRuleEngine
             }
         }
 
+        // Propagation only reads direct seed decisions; build the read-only view once
+        // for the whole execution to avoid per-seed map copies.
+        var seedDecisionView = seedDecisionsByTarget.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<MarkDecision>)pair.Value,
+            StringComparer.Ordinal);
+
         var finalDecisions = seedDecisionsByTarget.Values.SelectMany(list => list).ToList();
         foreach (var seedGroup in seedDecisionsByTarget)
         {
@@ -666,10 +852,15 @@ public sealed class MarkingRuleEngine
                 continue;
             }
 
-            finalDecisions.AddRange(PropagateWithinSnapshot(context, seedTarget, seedDecisionsByTarget, targetsByKey));
+            finalDecisions.AddRange(
+                _statementPropagationEngine.Propagate(
+                    context,
+                    executionContext,
+                    seedTarget,
+                    seedDecisionView));
         }
 
-        finalDecisions.AddRange(PromoteBoundaryDecisions(context, finalDecisions, targetsByKey));
+        finalDecisions.AddRange(_boundaryPromotionEngine.Promote(context, finalDecisions, targetsByKey));
 
         if (includeMethodRules)
         {
@@ -699,172 +890,6 @@ public sealed class MarkingRuleEngine
     private bool IsProtected(AnalysisTarget target) =>
         _registry.ProtectionRules.Any(rule => rule.Blocks(target));
 
-    private IEnumerable<MarkDecision> PropagateWithinSnapshot(
-        AnalysisContext context,
-        AnalysisTarget seedTarget,
-        IReadOnlyDictionary<string, List<MarkDecision>> seedDecisionsByTarget,
-        IReadOnlyDictionary<string, AnalysisTarget> targetsByKey)
-    {
-        var scopeMode = ResolveScopeMode(context, seedTarget);
-        var snapshot = context.Statements.Analyze(seedTarget.Target, scopeMode);
-        var taintedSymbols = new Dictionary<string, MarkDecision>(StringComparer.Ordinal);
-        var propagated = new List<MarkDecision>();
-
-        foreach (var target in snapshot.Nodes
-                     .Select(nodeKey => targetsByKey[nodeKey])
-                     .OrderBy(target => target.Target.SpanStart)
-                     .ThenBy(target => target.Target.TargetKey, StringComparer.Ordinal))
-        {
-            if (IsProtected(target))
-            {
-                foreach (var definedSymbol in target.DefinesSymbols)
-                {
-                    taintedSymbols.Remove(definedSymbol.SymbolKey);
-                }
-
-                continue;
-            }
-
-            IReadOnlyList<MarkDecision> directDecisions = seedDecisionsByTarget.TryGetValue(target.Target.TargetKey, out var seeds)
-                ? seeds
-                : Array.Empty<MarkDecision>();
-
-            var emitted = new List<MarkDecision>(directDecisions);
-            if (emitted.Count == 0)
-            {
-                var propagatedByAction = new Dictionary<PlanActionKind, (MarkDecision SourceDecision, List<SymbolRef> Symbols)>();
-                foreach (var usedSymbol in target.UsesSymbols)
-                {
-                    if (!taintedSymbols.TryGetValue(usedSymbol.SymbolKey, out var sourceDecision))
-                    {
-                        continue;
-                    }
-
-                    if (_registry.PropagationRules.Any(rule => !rule.CanPropagate(target, usedSymbol, sourceDecision)))
-                    {
-                        continue;
-                    }
-
-                    if (!propagatedByAction.TryGetValue(sourceDecision.Action.Kind, out var propagation))
-                    {
-                        propagation = (sourceDecision, new List<SymbolRef>());
-                        propagatedByAction[sourceDecision.Action.Kind] = propagation;
-                    }
-
-                    if (propagation.Symbols.All(symbol => !string.Equals(symbol.SymbolKey, usedSymbol.SymbolKey, StringComparison.Ordinal)))
-                    {
-                        propagation.Symbols.Add(usedSymbol);
-                    }
-                }
-
-                foreach (var propagation in propagatedByAction.Values)
-                {
-                    var evidence = new PropagationEvidence(
-                        propagation.Symbols.Select(symbol => symbol.SymbolKey).ToArray(),
-                        propagation.Symbols.Select(symbol => symbol.DisplayName).Distinct(StringComparer.Ordinal).ToArray());
-                    var chain = AppendPropagationChain(propagation.SourceDecision, target.Target, evidence);
-                    var propagatedDecision = MarkDecision.ForTarget(
-                        target.Target,
-                        propagation.SourceDecision.Action.Kind,
-                        "dataflow-propagation",
-                        "Propagated through a use/def dependency.",
-                        propagation.SourceDecision.Action.Payload,
-                        propagation.SourceDecision.Target.TargetKey,
-                        propagation.SourceDecision.Target.DisplayText,
-                        evidence.RelatedSymbolKeys,
-                        evidence.RelatedSymbolNames,
-                        chain: chain);
-                    emitted.Add(propagatedDecision);
-                    propagated.Add(propagatedDecision);
-                }
-            }
-
-            foreach (var definedSymbol in target.DefinesSymbols)
-            {
-                var sourceDecision = emitted.FirstOrDefault();
-                if (sourceDecision != null)
-                {
-                    taintedSymbols[definedSymbol.SymbolKey] = sourceDecision;
-                }
-                else
-                {
-                    taintedSymbols.Remove(definedSymbol.SymbolKey);
-                }
-            }
-        }
-
-        return propagated;
-    }
-
-    private StatementScopeMode ResolveScopeMode(AnalysisContext context, AnalysisTarget seedTarget)
-    {
-        foreach (var rule in _registry.StatementScopeRules)
-        {
-            var selected = rule.SelectScopeMode(context, seedTarget);
-            if (selected != StatementScopeMode.MinimalBlock)
-            {
-                return selected;
-            }
-        }
-
-        return StatementScopeMode.MinimalBlock;
-    }
-
-    private IEnumerable<MarkDecision> PromoteBoundaryDecisions(
-        AnalysisContext context,
-        IReadOnlyList<MarkDecision> currentDecisions,
-        IReadOnlyDictionary<string, AnalysisTarget> targetsByKey)
-    {
-        var promoted = new List<MarkDecision>();
-        var existingMethodDeletes = currentDecisions
-            .Where(decision => decision.Target.TargetKind == TargetKind.Method && decision.Action.Kind == PlanActionKind.Delete)
-            .Select(decision => decision.Target.MemberId.Value)
-            .ToHashSet(StringComparer.Ordinal);
-
-        foreach (var decision in currentDecisions.Where(decision => decision.Target.TargetKind == TargetKind.Statement))
-        {
-            if (!targetsByKey.TryGetValue(decision.Target.TargetKey, out var target))
-            {
-                continue;
-            }
-
-            foreach (var rule in _registry.BoundaryPromotionRules)
-            {
-                foreach (var promotedDecision in rule.Evaluate(context, target, decision))
-                {
-                    if (existingMethodDeletes.Add(promotedDecision.Target.MemberId.Value))
-                    {
-                        promoted.Add(promotedDecision);
-                    }
-                }
-            }
-        }
-
-        return promoted;
-    }
-
-    private static PropagationChain AppendPropagationChain(
-        MarkDecision sourceDecision,
-        PlanTarget target,
-        PropagationEvidence evidence)
-    {
-        var existingHops = sourceDecision.Chain?.Hops ?? Array.Empty<PropagationHop>();
-        var rootTargetKey = sourceDecision.Chain?.RootTargetKey ?? sourceDecision.Target.TargetKey;
-        var rootTargetDisplayText = sourceDecision.Chain?.RootTargetDisplayText ?? sourceDecision.Target.DisplayText;
-        var newHop = new PropagationHop(
-            sourceDecision.Target.TargetKey,
-            sourceDecision.Target.DisplayText,
-            target.TargetKey,
-            target.DisplayText,
-            "dataflow-propagation",
-            sourceDecision.Action.Kind,
-            evidence);
-
-        return new PropagationChain(
-            rootTargetKey,
-            rootTargetDisplayText,
-            existingHops.Concat([newHop]).ToArray());
-    }
 }
 
 /// <summary>
@@ -899,45 +924,4 @@ internal static class DefaultValueFormatter
         return returnTypeDisplay.Contains('.', StringComparison.Ordinal) ||
                returnTypeDisplay.Contains('<', StringComparison.Ordinal);
     }
-}
-
-/// <summary>
-/// 无操作继承查询服务。
-/// </summary>
-internal sealed class NoOpInheritanceQueryService : IInheritanceQueryService
-{
-    public bool IsOverrideMember(string memberId) => false;
-
-    public bool ImplementsInterfaceMember(string memberId) => false;
-
-    public bool IsInInheritanceChain(string typeId) => false;
-}
-
-/// <summary>
-/// 无操作引用查询服务。
-/// </summary>
-internal sealed class NoOpReferenceQueryService : IReferenceQueryService
-{
-    public bool HasReferences(string symbolOrMemberId) => false;
-
-    public IReadOnlyList<MemberId> GetReferencingFunctions(string symbolOrMemberId) => Array.Empty<MemberId>();
-
-    public IReadOnlyList<string> GetReferencingTypes(string symbolOrMemberId) => Array.Empty<string>();
-}
-
-internal sealed class NoOpStatementAnalysisService : IStatementAnalysisService
-{
-    public StatementGraphSnapshot Analyze(PlanTarget seedTarget, StatementScopeMode scopeMode) =>
-        new(seedTarget.TargetKey, scopeMode, seedTarget.MemberId, Array.Empty<string>(), Array.Empty<StatementDependencyEdge>());
-}
-
-internal sealed class NoOpFunctionGraphProvider : IFunctionGraphProvider
-{
-    private static readonly FunctionGraphSnapshot EmptySnapshot = new(
-        FunctionGraphScope.ExpandedMembers,
-        Array.Empty<MemberId>(),
-        Array.Empty<string>(),
-        new FunctionDependencyGraph(Array.Empty<FunctionNodeRef>(), Array.Empty<FunctionDependencyEdge>()));
-
-    public FunctionGraphSnapshot GetSnapshot(FunctionGraphRequest request) => EmptySnapshot;
 }

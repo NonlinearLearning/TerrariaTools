@@ -38,6 +38,8 @@ sequenceDiagram
     Plan-->>App: PlanCompilationResult
     App->>Rewrite: ExecuteAsync(source, plan)
     Rewrite-->>App: RewriteExecutionResult
+    App->>App: Build RunReport
+    App->>App: Build ArtifactPlan
     App->>Report: WriteAnalysis / WritePlan / WriteReport
     Report-->>App: files
     App-->>Program: RunResult

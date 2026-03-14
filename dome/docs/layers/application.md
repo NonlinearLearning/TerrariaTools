@@ -43,6 +43,8 @@ Application 层的核心目标是：
 - `ReferenceZeroPredictionAnalyzer`
 - `MarkingRuleEngine`
 - `RoslynRewriteExecutor`
+- `RunReportBuilder`
+- `ArtifactPlanBuilder`
 - `JsonArtifactWriter`
 
 这说明 Application 层处在“所有执行服务的上游”，但不承担这些服务内部逻辑。
@@ -59,7 +61,9 @@ Application 层的核心目标是：
 4. Execute rules
 5. Compile plan
 6. Optional rewrite
-7. Write artifacts
+7. Build report
+8. Build artifact plan
+9. Write artifacts
 
 ### 5.2 模式分支控制
 
@@ -77,15 +81,22 @@ Application 层是三种模式的分叉点：
 - `RunResult`
 - `RunReport`
 
-### 5.4 统一 summary 构建
+### 5.4 应用层辅助服务
 
-以下 summary 目前都在 `DomeApplication` 内汇总：
+`DomeApplication` 现在把以下职责委托给独立 builder：
+
+- `RunReportBuilder`
+- `ArtifactPlanBuilder`
+
+其中 `RunReportBuilder` 负责：
 
 - `RiskSummary`
 - `PlanCoverageSummary`
 - `FunctionImpactSummary`
 - `BoundaryPromotionSummary`
 - `ReferenceZeroPredictionSummary`
+
+`ArtifactPlanBuilder` 负责不同 `RunMode` 和失败分支下的 artifact policy。
 
 ## 6. 在主执行流程中的位置
 
