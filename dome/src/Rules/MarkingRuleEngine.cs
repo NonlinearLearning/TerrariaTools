@@ -1,90 +1,89 @@
-namespace TerrariaTools.Dome.Rules;
+﻿namespace TerrariaTools.Dome.Rules;
 
-using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
 
-/// 种子规则接口。
+/// 绉嶅瓙瑙勫垯鎺ュ彛銆?
 /// </summary>
 public interface ISeedRule
 {
     /// <summary>
-    /// 评估目标并生成标记决策。
+    /// 璇勪及鐩爣骞剁敓鎴愭爣璁板喅绛栥€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     IEnumerable<MarkDecision> Evaluate(AnalysisTarget target);
 }
 
-/// 传播规则接口。
+/// 浼犳挱瑙勫垯鎺ュ彛銆?
 /// </summary>
 public interface IPropagationRule
 {
     /// <summary>
-    /// 检查是否可以传播。
+    /// 妫€鏌ユ槸鍚﹀彲浠ヤ紶鎾€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <param name="usedSymbol">使用的符号。</param>
-    /// <param name="sourceDecision">源决策。</param>
-    /// <returns>如果可以传播则返回 true，否则返回 false。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <param name="usedSymbol">浣跨敤鐨勭鍙枫€?/param>
+    /// <param name="sourceDecision">婧愬喅绛栥€?/param>
+    /// <returns>濡傛灉鍙互浼犳挱鍒欒繑鍥?true锛屽惁鍒欒繑鍥?false銆?/returns>
     bool CanPropagate(AnalysisTarget target, SymbolRef usedSymbol, MarkDecision sourceDecision);
 }
 
 /// <summary>
-/// 保护规则接口。
+/// 淇濇姢瑙勫垯鎺ュ彛銆?
 /// </summary>
 public interface IProtectionRule
 {
     /// <summary>
-    /// 检查是否阻止标记。
+    /// 妫€鏌ユ槸鍚﹂樆姝㈡爣璁般€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <returns>如果阻止则返回 true，否则返回 false。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>濡傛灉闃绘鍒欒繑鍥?true锛屽惁鍒欒繑鍥?false銆?/returns>
     bool Blocks(AnalysisTarget target);
 }
 
 /// <summary>
-/// 表达式投影规则接口。
+/// 琛ㄨ揪寮忔姇褰辫鍒欐帴鍙ｃ€?
 /// </summary>
 public interface IExpressionProjectionRule
 {
     /// <summary>
-    /// 评估目标并生成标记决策。
+    /// 璇勪及鐩爣骞剁敓鎴愭爣璁板喅绛栥€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     IEnumerable<MarkDecision> Evaluate(AnalysisTarget target);
 }
 
 /// <summary>
-/// 方法规则接口。
+/// 鏂规硶瑙勫垯鎺ュ彛銆?
 /// </summary>
 public interface IMethodRule
 {
     /// <summary>
-    /// 评估函数节点并生成标记决策。
+    /// 璇勪及鍑芥暟鑺傜偣骞剁敓鎴愭爣璁板喅绛栥€?
     /// </summary>
-    /// <param name="context">分析上下文。</param>
-    /// <param name="functionNode">函数节点引用。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="context">鍒嗘瀽涓婁笅鏂囥€?/param>
+    /// <param name="functionNode">鍑芥暟鑺傜偣寮曠敤銆?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     IEnumerable<MarkDecision> Evaluate(AnalysisContext context, FunctionNodeRef functionNode);
 }
 
 /// <summary>
-/// 类规则接口。
+/// 绫昏鍒欐帴鍙ｃ€?
 /// </summary>
 public interface IClassRule
 {
     /// <summary>
-    /// 评估分析目标并生成标记决策。
+    /// 璇勪及鍒嗘瀽鐩爣骞剁敓鎴愭爣璁板喅绛栥€?
     /// </summary>
-    /// <param name="context">分析上下文。</param>
-    /// <param name="target">分析目标。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="context">鍒嗘瀽涓婁笅鏂囥€?/param>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target);
 }
 
 /// <summary>
-/// 边界提升规则接口。
+/// 杈圭晫鎻愬崌瑙勫垯鎺ュ彛銆?
 /// </summary>
 public interface IBoundaryPromotionRule
 {
@@ -92,7 +91,7 @@ public interface IBoundaryPromotionRule
 }
 
 /// <summary>
-/// 语句作用域选择规则接口。
+/// 璇彞浣滅敤鍩熼€夋嫨瑙勫垯鎺ュ彛銆?
 /// </summary>
 public interface IStatementScopeRule
 {
@@ -100,24 +99,24 @@ public interface IStatementScopeRule
 }
 
 /// <summary>
-/// 指令种子规则。
-/// 规则族：ISeedRule。
-/// 命中目标：携带 dome 指令的 statement target；控制流语句会统一为 controlflow-mark。
-/// 直接产出：statement 级 MarkDecision，action 取自 directive，reason 为 directive rule id。
-/// 传播：是，直接种子决策可沿 statement snapshot 的 use/def 边继续传播。
-/// 阻断：sanitization、clean redefinition、protection rule、scope boundary。
-/// 提升：是，direct statement delete 仍可进入 boundary promotion。
-/// 最小测试：
+/// 鎸囦护绉嶅瓙瑙勫垯銆?
+/// 瑙勫垯鏃忥細ISeedRule銆?
+/// 鍛戒腑鐩爣锛氭惡甯?dome 鎸囦护鐨?statement target锛涙帶鍒舵祦璇彞浼氱粺涓€涓?controlflow-mark銆?
+/// 鐩存帴浜у嚭锛歴tatement 绾?MarkDecision锛宎ction 鍙栬嚜 directive锛宺eason 涓?directive rule id銆?
+/// 浼犳挱锛氭槸锛岀洿鎺ョ瀛愬喅绛栧彲娌?statement snapshot 鐨?use/def 杈圭户缁紶鎾€?
+/// 闃绘柇锛歴anitization銆乧lean redefinition銆乸rotection rule銆乻cope boundary銆?
+/// 鎻愬崌锛氭槸锛宒irect statement delete 浠嶅彲杩涘叆 boundary promotion銆?
+/// 鏈€灏忔祴璇曪細
 /// - DirectiveSeedRule_MarksStatementWithDeleteDirective
 /// - DirectiveSeedRule_DoesNotMarkStatementWithoutDirective
 /// </summary>
 public sealed class DirectiveSeedRule : ISeedRule
 {
     /// <summary>
-    /// 评估目标并生成标记决策。
+    /// 璇勪及鐩爣骞剁敓鎴愭爣璁板喅绛栥€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     public IEnumerable<MarkDecision> Evaluate(AnalysisTarget target)
     {
         if (target.HasMarkedExpressionSeed && !IsControlFlowTarget(target.StatementKind))
@@ -139,7 +138,8 @@ public sealed class DirectiveSeedRule : ISeedRule
                 directive.ActionKind,
                 ruleId,
                 reasonText,
-                directive.Payload);
+                directive.Payload,
+                origin: DecisionOrigin.Seed);
         }
     }
 
@@ -148,27 +148,27 @@ public sealed class DirectiveSeedRule : ISeedRule
 }
 
 /// <summary>
-/// 表达式投影规则。
+/// 琛ㄨ揪寮忔姇褰辫鍒欍€?
 /// </summary>
 /// <summary>
-/// 表达式投影规则。
-/// 规则族：IExpressionProjectionRule。
-/// 命中目标：带 directive 且 HasMarkedExpressionSeed 为 true 的非控制流 statement target。
-/// 直接产出：statement 级 MarkDecision，reason 固定为 expression-mark。
-/// 传播：是，投影结果按 direct decision 处理。
-/// 阻断：高风险 target、对象初始化赋值、错误的 statement 归属、scope boundary。
-/// 提升：是，投影产生的 statement delete 仍属于可提升的 direct delete。
-/// 最小测试：
+/// 琛ㄨ揪寮忔姇褰辫鍒欍€?
+/// 瑙勫垯鏃忥細IExpressionProjectionRule銆?
+/// 鍛戒腑鐩爣锛氬甫 directive 涓?HasMarkedExpressionSeed 涓?true 鐨勯潪鎺у埗娴?statement target銆?
+/// 鐩存帴浜у嚭锛歴tatement 绾?MarkDecision锛宺eason 鍥哄畾涓?expression-mark銆?
+/// 浼犳挱锛氭槸锛屾姇褰辩粨鏋滄寜 direct decision 澶勭悊銆?
+/// 闃绘柇锛氶珮椋庨櫓 target銆佸璞″垵濮嬪寲璧嬪€笺€侀敊璇殑 statement 褰掑睘銆乻cope boundary銆?
+/// 鎻愬崌锛氭槸锛屾姇褰变骇鐢熺殑 statement delete 浠嶅睘浜庡彲鎻愬崌鐨?direct delete銆?
+/// 鏈€灏忔祴璇曪細
 /// - ExpressionProjectionRule_ProjectsDeleteToContainingStatement
 /// - ExpressionProjectionRule_DoesNotProjectAcrossDifferentStatement
 /// </summary>
 public sealed class ExpressionProjectionRule : IExpressionProjectionRule
 {
     /// <summary>
-    /// 评估目标并生成标记决策。
+    /// 璇勪及鐩爣骞剁敓鎴愭爣璁板喅绛栥€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     public IEnumerable<MarkDecision> Evaluate(AnalysisTarget target)
     {
         if (!target.HasMarkedExpressionSeed ||
@@ -189,34 +189,35 @@ public sealed class ExpressionProjectionRule : IExpressionProjectionRule
                 "expression-mark",
                 "Directive matched an expression-bearing statement and was projected to the statement target.",
                 directive.Payload,
-                relatedSymbolNames: target.MarkedExpressionKinds);
+                relatedSymbolNames: target.MarkedExpressionKinds,
+                origin: DecisionOrigin.Projection);
         }
     }
 }
 
 /// <summary>
-/// 清理传播规则。
+/// 娓呯悊浼犳挱瑙勫垯銆?
 /// </summary>
 /// <summary>
-/// 清洗传播规则。
-/// 规则族：IPropagationRule。
-/// 命中目标：传播遍历过程中被识别为 sanitizing assignment 的节点。
-/// 直接产出：无；该规则只负责终止传播。
-/// 传播：不适用；它不是传播源规则。
-/// 阻断：任意 sanitizing assignment 都会终止经过该节点的传播。
-/// 提升：否。
-/// 最小测试：
+/// 娓呮礂浼犳挱瑙勫垯銆?
+/// 瑙勫垯鏃忥細IPropagationRule銆?
+/// 鍛戒腑鐩爣锛氫紶鎾亶鍘嗚繃绋嬩腑琚瘑鍒负 sanitizing assignment 鐨勮妭鐐广€?
+/// 鐩存帴浜у嚭锛氭棤锛涜瑙勫垯鍙礋璐ｇ粓姝紶鎾€?
+/// 浼犳挱锛氫笉閫傜敤锛涘畠涓嶆槸浼犳挱婧愯鍒欍€?
+/// 闃绘柇锛氫换鎰?sanitizing assignment 閮戒細缁堟缁忚繃璇ヨ妭鐐圭殑浼犳挱銆?
+/// 鎻愬崌锛氬惁銆?
+/// 鏈€灏忔祴璇曪細
 /// - SanitizationPropagationRule_StopsPropagationAfterSanitizingAssignment
 /// </summary>
 public sealed class SanitizationPropagationRule : IPropagationRule
 {
     /// <summary>
-    /// 检查是否可以传播。
+    /// 妫€鏌ユ槸鍚﹀彲浠ヤ紶鎾€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <param name="usedSymbol">使用的符号。</param>
-    /// <param name="sourceDecision">源决策。</param>
-    /// <returns>如果可以传播则返回 true，否则返回 false。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <param name="usedSymbol">浣跨敤鐨勭鍙枫€?/param>
+    /// <param name="sourceDecision">婧愬喅绛栥€?/param>
+    /// <returns>濡傛灉鍙互浼犳挱鍒欒繑鍥?true锛屽惁鍒欒繑鍥?false銆?/returns>
     public bool CanPropagate(AnalysisTarget target, SymbolRef usedSymbol, MarkDecision sourceDecision)
     {
         return !target.IsSanitizingAssignment;
@@ -224,68 +225,68 @@ public sealed class SanitizationPropagationRule : IPropagationRule
 }
 
 /// <summary>
-/// 高风险保护规则。
+/// 楂橀闄╀繚鎶よ鍒欍€?
 /// </summary>
 /// <summary>
-/// 高风险保护规则。
-/// 规则族：IProtectionRule。
-/// 命中目标：被分析结果标记为高风险的 target。
-/// 直接产出：无；该规则会同时阻止 direct mark 和 propagation。
-/// 传播：否；被保护 target 同时是传播边界。
-/// 阻断：一旦命中，当前 target 被跳过，taint 不得继续穿过该节点。
-/// 提升：否。
-/// 最小测试：
+/// 楂橀闄╀繚鎶よ鍒欍€?
+/// 瑙勫垯鏃忥細IProtectionRule銆?
+/// 鍛戒腑鐩爣锛氳鍒嗘瀽缁撴灉鏍囪涓洪珮椋庨櫓鐨?target銆?
+/// 鐩存帴浜у嚭锛氭棤锛涜瑙勫垯浼氬悓鏃堕樆姝?direct mark 鍜?propagation銆?
+/// 浼犳挱锛氬惁锛涜淇濇姢 target 鍚屾椂鏄紶鎾竟鐣屻€?
+/// 闃绘柇锛氫竴鏃﹀懡涓紝褰撳墠 target 琚烦杩囷紝taint 涓嶅緱缁х画绌胯繃璇ヨ妭鐐广€?
+/// 鎻愬崌锛氬惁銆?
+/// 鏈€灏忔祴璇曪細
 /// - HighRiskProtectionRule_BlocksPropagationIntoProtectedTarget
 /// </summary>
 public sealed class HighRiskProtectionRule : IProtectionRule
 {
     /// <summary>
-    /// 检查是否阻止标记。
+    /// 妫€鏌ユ槸鍚﹂樆姝㈡爣璁般€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <returns>如果阻止则返回 true，否则返回 false。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>濡傛灉闃绘鍒欒繑鍥?true锛屽惁鍒欒繑鍥?false銆?/returns>
     public bool Blocks(AnalysisTarget target) => target.IsHighRisk;
 }
 
 /// <summary>
-/// 对象初始化器保护规则。
+/// 瀵硅薄鍒濆鍖栧櫒淇濇姢瑙勫垯銆?
 /// </summary>
 /// <summary>
-/// 对象初始化器保护规则。
-/// 规则族：IProtectionRule。
-/// 命中目标：被识别为 object initializer assignment 的 statement target。
-/// 直接产出：无；该规则阻止对象初始化赋值被直接标记。
-/// 传播：否；被保护的对象初始化语句同时是传播边界。
-/// 阻断：一旦命中，当前 target 被跳过，taint 不得继续穿过该节点。
-/// 提升：否。
-/// 最小测试：
+/// 瀵硅薄鍒濆鍖栧櫒淇濇姢瑙勫垯銆?
+/// 瑙勫垯鏃忥細IProtectionRule銆?
+/// 鍛戒腑鐩爣锛氳璇嗗埆涓?object initializer assignment 鐨?statement target銆?
+/// 鐩存帴浜у嚭锛氭棤锛涜瑙勫垯闃绘瀵硅薄鍒濆鍖栬祴鍊艰鐩存帴鏍囪銆?
+/// 浼犳挱锛氬惁锛涜淇濇姢鐨勫璞″垵濮嬪寲璇彞鍚屾椂鏄紶鎾竟鐣屻€?
+/// 闃绘柇锛氫竴鏃﹀懡涓紝褰撳墠 target 琚烦杩囷紝taint 涓嶅緱缁х画绌胯繃璇ヨ妭鐐广€?
+/// 鎻愬崌锛氬惁銆?
+/// 鏈€灏忔祴璇曪細
 /// - ObjectInitializerProtectionRule_DoesNotMarkInitializerAssignment
 /// </summary>
 public sealed class ObjectInitializerProtectionRule : IProtectionRule
 {
     /// <summary>
-    /// 检查是否阻止标记。
+    /// 妫€鏌ユ槸鍚﹂樆姝㈡爣璁般€?
     /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <returns>如果阻止则返回 true，否则返回 false。</returns>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>濡傛灉闃绘鍒欒繑鍥?true锛屽惁鍒欒繑鍥?false銆?/returns>
     public bool Blocks(AnalysisTarget target) => target.IsObjectInitializerAssignment;
 }
 
 /// <summary>
-/// 函数标记规则。
+/// 鍑芥暟鏍囪瑙勫垯銆?
 /// </summary>
 /// <summary>
-/// 函数标记规则。
-/// 规则族：IMethodRule。
-/// 命中目标：未被 override/interface 语义保护的私有方法。
-/// 直接产出：
-/// - 无引用的私有方法产出 method 级 Delete，reason 为 function-mark
-/// - 已被引用但非 void 且空体的方法产出 method 级 AddReturn
-/// 传播：不适用。
-/// 依据：FunctionIndex、IInheritanceQueryService、IReferenceQueryService。
-/// 阻断：override、interface implementation、已知框架入口保护、仍有引用。
-/// 提升：否。
-/// 最小测试：
+/// 鍑芥暟鏍囪瑙勫垯銆?
+/// 瑙勫垯鏃忥細IMethodRule銆?
+/// 鍛戒腑鐩爣锛氭湭琚?override/interface 璇箟淇濇姢鐨勭鏈夋柟娉曘€?
+/// 鐩存帴浜у嚭锛?
+/// - 鏃犲紩鐢ㄧ殑绉佹湁鏂规硶浜у嚭 method 绾?Delete锛宺eason 涓?function-mark
+/// - 宸茶寮曠敤浣嗛潪 void 涓旂┖浣撶殑鏂规硶浜у嚭 method 绾?AddReturn
+/// 浼犳挱锛氫笉閫傜敤銆?
+/// 渚濇嵁锛欶unctionIndex銆両InheritanceQueryService銆両ReferenceQueryService銆?
+/// 闃绘柇锛歰verride銆乮nterface implementation銆佸凡鐭ユ鏋跺叆鍙ｄ繚鎶ゃ€佷粛鏈夊紩鐢ㄣ€?
+/// 鎻愬崌锛氬惁銆?
+/// 鏈€灏忔祴璇曪細
 /// - Execute_EmitsDeleteForUnreferencedPrivateMethod
 /// - Execute_EmitsAddReturnForReferencedEmptyNonVoidMethod
 /// - Execute_DoesNotDeleteOverrideMethod
@@ -336,11 +337,11 @@ public sealed class FunctionMarkingRule : IMethodRule
     ];
 
     /// <summary>
-    /// 评估函数节点并生成标记决策。
+    /// 璇勪及鍑芥暟鑺傜偣骞剁敓鎴愭爣璁板喅绛栥€?
     /// </summary>
-    /// <param name="context">分析上下文。</param>
-    /// <param name="functionNode">函数节点引用。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="context">鍒嗘瀽涓婁笅鏂囥€?/param>
+    /// <param name="functionNode">鍑芥暟鑺傜偣寮曠敤銆?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, FunctionNodeRef functionNode)
     {
         if (functionNode.MemberKind != MemberKind.Method || !functionNode.IsPrivate)
@@ -436,18 +437,18 @@ public sealed class FunctionMarkingRule : IMethodRule
 }
 
 /// <summary>
-/// 类标记规则。
+/// 绫绘爣璁拌鍒欍€?
 /// </summary>
 /// <summary>
-/// 类标记规则。
-/// 规则族：IClassRule。
-/// 命中目标：未被继承、引用或高风险状态保护的 class target。
-/// 直接产出：class 级 Delete，reason 为 class-mark。
-/// 传播：不适用。
-/// 依据：IInheritanceQueryService、IReferenceQueryService。
-/// 阻断：高风险类型、位于继承链中、仍有引用、明确的注册/组合器持有。
-/// 提升：否。
-/// 最小测试：
+/// 绫绘爣璁拌鍒欍€?
+/// 瑙勫垯鏃忥細IClassRule銆?
+/// 鍛戒腑鐩爣锛氭湭琚户鎵裤€佸紩鐢ㄦ垨楂橀闄╃姸鎬佷繚鎶ょ殑 class target銆?
+/// 鐩存帴浜у嚭锛歝lass 绾?Delete锛宺eason 涓?class-mark銆?
+/// 浼犳挱锛氫笉閫傜敤銆?
+/// 渚濇嵁锛欼InheritanceQueryService銆両ReferenceQueryService銆?
+/// 闃绘柇锛氶珮椋庨櫓绫诲瀷銆佷綅浜庣户鎵块摼涓€佷粛鏈夊紩鐢ㄣ€佹槑纭殑娉ㄥ唽/缁勫悎鍣ㄦ寔鏈夈€?
+/// 鎻愬崌锛氬惁銆?
+/// 鏈€灏忔祴璇曪細
 /// - Execute_EmitsDeleteForUnreferencedNestedClass
 /// - Execute_EmitsDeleteForUnreferencedTopLevelInternalClass
 /// - Execute_DoesNotDeleteReferencedClass
@@ -461,11 +462,11 @@ public sealed class FunctionMarkingRule : IMethodRule
 public sealed class ClassMarkingRule : IClassRule
 {
     /// <summary>
-    /// 评估分析目标并生成标记决策。
+    /// 璇勪及鍒嗘瀽鐩爣骞剁敓鎴愭爣璁板喅绛栥€?
     /// </summary>
-    /// <param name="context">分析上下文。</param>
-    /// <param name="target">分析目标。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="context">鍒嗘瀽涓婁笅鏂囥€?/param>
+    /// <param name="target">鍒嗘瀽鐩爣銆?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target)
     {
         var typeId = target.Target.MemberId.Value;
@@ -505,18 +506,18 @@ public sealed class ClassMarkingRule : IClassRule
 }
 
 /// <summary>
-/// 调用语句边界提升规则。
+/// 璋冪敤璇彞杈圭晫鎻愬崌瑙勫垯銆?
 /// </summary>
 /// <summary>
-/// 调用边界提升规则。
-/// 规则族：IBoundaryPromotionRule。
-/// 命中目标：direct statement-level Delete，且该 statement 恰好调用一个私有方法。
-/// 直接产出：method 级 Delete，reason 为 boundary-promotion。
-/// 传播：否；该规则消费已有 statement decision，本身不产生传播。
-/// 依据：InvokedMemberIds、FunctionIndex、IReferenceQueryService、IInheritanceQueryService。
-/// 阻断：propagated delete、非私有或受保护的方法、仍有剩余引用、多调用 statement、已存在 method delete。
-/// 提升：是，固定从 statement delete 提升到 method delete。
-/// 最小测试：
+/// 璋冪敤杈圭晫鎻愬崌瑙勫垯銆?
+/// 瑙勫垯鏃忥細IBoundaryPromotionRule銆?
+/// 鍛戒腑鐩爣锛歞irect statement-level Delete锛屼笖璇?statement 鎭板ソ璋冪敤涓€涓鏈夋柟娉曘€?
+/// 鐩存帴浜у嚭锛歮ethod 绾?Delete锛宺eason 涓?boundary-promotion銆?
+/// 浼犳挱锛氬惁锛涜瑙勫垯娑堣垂宸叉湁 statement decision锛屾湰韬笉浜х敓浼犳挱銆?
+/// 渚濇嵁锛欼nvokedMemberIds銆丗unctionIndex銆両ReferenceQueryService銆両InheritanceQueryService銆?
+/// 闃绘柇锛歱ropagated delete銆侀潪绉佹湁鎴栧彈淇濇姢鐨勬柟娉曘€佷粛鏈夊墿浣欏紩鐢ㄣ€佸璋冪敤 statement銆佸凡瀛樺湪 method delete銆?
+/// 鎻愬崌锛氭槸锛屽浐瀹氫粠 statement delete 鎻愬崌鍒?method delete銆?
+/// 鏈€灏忔祴璇曪細
 /// - InvocationBoundaryPromotionRule_PromotesSingleStatementDeleteToMethodDelete
 /// - InvocationBoundaryPromotionRule_DoesNotPromotePropagatedDelete
 /// - BoundaryPromotionEngine_DoesNotDuplicateExistingMethodDelete
@@ -524,12 +525,13 @@ public sealed class ClassMarkingRule : IClassRule
 public sealed class InvocationBoundaryPromotionRule : IBoundaryPromotionRule
 {
     /// <summary>
-    /// 评估是否进行边界提升。
+    /// 璇勪及鏄惁杩涜杈圭晫鎻愬崌銆?
     /// </summary>
     public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target, MarkDecision decision)
     {
         if (target.Target.TargetKind != TargetKind.Statement ||
             decision.Action.Kind != PlanActionKind.Delete ||
+            decision.Reason.Origin == DecisionOrigin.Propagation ||
             string.Equals(decision.Reason.RuleId, "dataflow-propagation", StringComparison.Ordinal) ||
             target.InvokedMemberIds.Count != 1)
         {
@@ -575,23 +577,24 @@ public sealed class InvocationBoundaryPromotionRule : IBoundaryPromotionRule
             boundaryKind: BoundaryKind.Invocation,
             triggeredSymbolKeys: new[] { invokedMemberId.Value },
             relatedSymbolKeys: new[] { invokedMemberId.Value },
-            relatedSymbolNames: new[] { functionNode.DisplayName });
+            relatedSymbolNames: new[] { functionNode.DisplayName },
+            origin: DecisionOrigin.BoundaryPromotion);
     }
 }
 
 /// <summary>
-/// 父块穿透作用域选择规则。
+/// 鐖跺潡绌块€忎綔鐢ㄥ煙閫夋嫨瑙勫垯銆?
 /// </summary>
 /// <summary>
-/// 父块穿透作用域规则。
-/// 规则族：IStatementScopeRule。
-/// 命中目标：读取了参数或父块 local，且满足父块穿透条件的 statement seed。
-/// 直接产出：无；该规则只负责把 StatementScopeMode 从 MinimalBlock 切到 ParentBlockPiercing。
-/// 传播：不适用；该规则只改变 statement snapshot 的可见范围。
-/// 依据：StatementFactsIndex、UsesSymbols、ScopeId、ParentScopeId。
-/// 阻断：高风险 target、对象初始化赋值、sanitizing assignment、缺失 scope 信息、跨 function boundary。
-/// 提升：否。
-/// 最小测试：
+/// 鐖跺潡绌块€忎綔鐢ㄥ煙瑙勫垯銆?
+/// 瑙勫垯鏃忥細IStatementScopeRule銆?
+/// 鍛戒腑鐩爣锛氳鍙栦簡鍙傛暟鎴栫埗鍧?local锛屼笖婊¤冻鐖跺潡绌块€忔潯浠剁殑 statement seed銆?
+/// 鐩存帴浜у嚭锛氭棤锛涜瑙勫垯鍙礋璐ｆ妸 StatementScopeMode 浠?MinimalBlock 鍒囧埌 ParentBlockPiercing銆?
+/// 浼犳挱锛氫笉閫傜敤锛涜瑙勫垯鍙敼鍙?statement snapshot 鐨勫彲瑙佽寖鍥淬€?
+/// 渚濇嵁锛歋tatementFactsIndex銆乁sesSymbols銆丼copeId銆丳arentScopeId銆?
+/// 闃绘柇锛氶珮椋庨櫓 target銆佸璞″垵濮嬪寲璧嬪€笺€乻anitizing assignment銆佺己澶?scope 淇℃伅銆佽法 function boundary銆?
+/// 鎻愬崌锛氬惁銆?
+/// 鏈€灏忔祴璇曪細
 /// - ParentBlockPiercingScopeRule_ExpandsSnapshotWhenExplicitlyRequired
 /// - Execute_DoesNotPropagateAcrossParentBlockByDefault
 /// - Execute_UsesExplicitStatementScopeModeFromExecutionContext
@@ -599,7 +602,7 @@ public sealed class InvocationBoundaryPromotionRule : IBoundaryPromotionRule
 public sealed class ParentBlockPiercingScopeRule : IStatementScopeRule
 {
     /// <summary>
-    /// 选择语句作用域模式。
+    /// 閫夋嫨璇彞浣滅敤鍩熸ā寮忋€?
     /// </summary>
     public StatementScopeMode SelectScopeMode(AnalysisContext context, AnalysisTarget seedTarget)
     {
@@ -645,26 +648,27 @@ public sealed class ParentBlockPiercingScopeRule : IStatementScopeRule
 }
 
 /// <summary>
-/// 标记规则注册表。
+/// 鏍囪瑙勫垯娉ㄥ唽琛ㄣ€?
 /// </summary>
 public sealed class MarkingRuleRegistry
 {
     /// <summary>
-    /// 初始化标记规则注册表的新实例。
+    /// 鍒濆鍖栨爣璁拌鍒欐敞鍐岃〃鐨勬柊瀹炰緥銆?
     /// </summary>
-    /// <param name="seedRules">种子规则。</param>
-    /// <param name="expressionProjectionRules">表达式投影规则。</param>
-    /// <param name="propagationRules">传播规则。</param>
-    /// <param name="protectionRules">保护规则。</param>
-    /// <param name="methodRules">方法规则。</param>
-    /// <param name="classRules">类规则。</param>
-    /// <param name="boundaryPromotionRules">边界提升规则。</param>
+    /// <param name="seedRules">绉嶅瓙瑙勫垯銆?/param>
+    /// <param name="expressionProjectionRules">琛ㄨ揪寮忔姇褰辫鍒欍€?/param>
+    /// <param name="propagationRules">浼犳挱瑙勫垯銆?/param>
+    /// <param name="protectionRules">淇濇姢瑙勫垯銆?/param>
+    /// <param name="methodRules">鏂规硶瑙勫垯銆?/param>
+    /// <param name="classRules">绫昏鍒欍€?/param>
+    /// <param name="boundaryPromotionRules">杈圭晫鎻愬崌瑙勫垯銆?/param>
     public MarkingRuleRegistry(
         IEnumerable<ISeedRule> seedRules,
         IEnumerable<IExpressionProjectionRule> expressionProjectionRules,
         IEnumerable<IPropagationRule> propagationRules,
         IEnumerable<IProtectionRule> protectionRules,
         IEnumerable<IMethodRule> methodRules,
+        IEnumerable<IMemberTargetRule> memberTargetRules,
         IEnumerable<IClassRule> classRules,
         IEnumerable<IBoundaryPromotionRule> boundaryPromotionRules,
         IEnumerable<IStatementScopeRule> statementScopeRules)
@@ -674,105 +678,107 @@ public sealed class MarkingRuleRegistry
         PropagationRules = propagationRules.ToArray();
         ProtectionRules = protectionRules.ToArray();
         MethodRules = methodRules.ToArray();
+        MemberTargetRules = memberTargetRules.ToArray();
         ClassRules = classRules.ToArray();
         BoundaryPromotionRules = boundaryPromotionRules.ToArray();
         StatementScopeRules = statementScopeRules.ToArray();
     }
 
     /// <summary>
-    /// 获取种子规则。
+    /// 鑾峰彇绉嶅瓙瑙勫垯銆?
     /// </summary>
     public IReadOnlyList<ISeedRule> SeedRules { get; }
 
     /// <summary>
-    /// 获取表达式投影规则。
+    /// 鑾峰彇琛ㄨ揪寮忔姇褰辫鍒欍€?
     /// </summary>
     public IReadOnlyList<IExpressionProjectionRule> ExpressionProjectionRules { get; }
 
     /// <summary>
-    /// 获取传播规则。
+    /// 鑾峰彇浼犳挱瑙勫垯銆?
     /// </summary>
     public IReadOnlyList<IPropagationRule> PropagationRules { get; }
 
     /// <summary>
-    /// 获取保护规则。
+    /// 鑾峰彇淇濇姢瑙勫垯銆?
     /// </summary>
     public IReadOnlyList<IProtectionRule> ProtectionRules { get; }
 
     /// <summary>
-    /// 获取方法规则。
+    /// 鑾峰彇鏂规硶瑙勫垯銆?
     /// </summary>
     public IReadOnlyList<IMethodRule> MethodRules { get; }
 
     /// <summary>
-    /// 获取类规则。
+    /// 鑾峰彇鎴愬憳 target 瑙勫垯銆?
+    /// </summary>
+    public IReadOnlyList<IMemberTargetRule> MemberTargetRules { get; }
+
+    /// <summary>
+    /// 鑾峰彇绫昏鍒欍€?
     /// </summary>
     public IReadOnlyList<IClassRule> ClassRules { get; }
 
     /// <summary>
-    /// 获取边界提升规则。
+    /// 鑾峰彇杈圭晫鎻愬崌瑙勫垯銆?
     /// </summary>
     public IReadOnlyList<IBoundaryPromotionRule> BoundaryPromotionRules { get; }
 
     /// <summary>
-    /// 获取语句作用域规则。
+    /// 鑾峰彇璇彞浣滅敤鍩熻鍒欍€?
     /// </summary>
     public IReadOnlyList<IStatementScopeRule> StatementScopeRules { get; }
 
     /// <summary>
-    /// 创建默认规则注册表。
+    /// 鍒涘缓榛樿瑙勫垯娉ㄥ唽琛ㄣ€?
     /// </summary>
-    /// <returns>默认规则注册表。</returns>
+    /// <returns>榛樿瑙勫垯娉ㄥ唽琛ㄣ€?/returns>
     public static MarkingRuleRegistry CreateDefault() =>
         new(
             [new DirectiveSeedRule()],
             [new ExpressionProjectionRule()],
             [new SanitizationPropagationRule()],
             [new HighRiskProtectionRule(), new ObjectInitializerProtectionRule()],
-            [new FunctionMarkingRule()],
-            [new ClassMarkingRule()],
+            [new FunctionMarkingRule(), new PublicMethodPrivatizationRule(), new UnusedMethodRule()],
+            [new UnusedMemberRule()],
+            [new UnusedClassRule(), new PublicMethodOrderingRule()],
             [new InvocationBoundaryPromotionRule()],
             [new ParentBlockPiercingScopeRule()]);
 }
 
 /// <summary>
-/// 标记规则引擎。
+/// 鏍囪瑙勫垯寮曟搸銆?
 /// </summary>
 public sealed class MarkingRuleEngine
 {
     private readonly MarkingRuleRegistry _registry;
     private readonly StatementPropagationEngine _statementPropagationEngine;
     private readonly BoundaryPromotionEngine _boundaryPromotionEngine;
-    private readonly CompatibilityExecutionContextFactory _compatibilityAdapter;
 
     /// <summary>
-    /// 初始化标记规则引擎的新实例。
+    /// 鍒濆鍖栨爣璁拌鍒欏紩鎿庣殑鏂板疄渚嬨€?
     /// </summary>
-    /// <param name="registry">标记规则注册表。</param>
+    /// <param name="registry">鏍囪瑙勫垯娉ㄥ唽琛ㄣ€?/param>
     public MarkingRuleEngine(
         MarkingRuleRegistry registry,
         StatementPropagationEngine? statementPropagationEngine = null,
-        BoundaryPromotionEngine? boundaryPromotionEngine = null,
-        CompatibilityExecutionContextFactory? compatibilityAdapter = null)
+        BoundaryPromotionEngine? boundaryPromotionEngine = null)
     {
         _registry = registry;
         _statementPropagationEngine = statementPropagationEngine ?? new StatementPropagationEngine(registry);
         _boundaryPromotionEngine = boundaryPromotionEngine ?? new BoundaryPromotionEngine(registry);
-        _compatibilityAdapter = compatibilityAdapter ?? new CompatibilityExecutionContextFactory();
     }
 
-    /// <summary>
-    /// 执行分析视图的标记规则。
-    /// </summary>
-    /// <param name="analysisView">分析视图。</param>
-    /// <returns>标记决策集合。</returns>
-    public IReadOnlyList<MarkDecision> Execute(AnalysisResultModel analysisView)
-    {
-        return ExecuteCore(
-            _compatibilityAdapter.CreateContext(analysisView),
-            _compatibilityAdapter.CreateExecutionContext("AnalysisResultModel compatibility execution"),
-            includeMethodRules: false);
-    }
+    public IReadOnlyList<MarkDecision> Execute(AnalysisEngineResult analysisResult) =>
+        Execute(
+            analysisResult.Snapshot,
+            analysisResult.Services,
+            new RuleExecutionContext(
+                "MarkingRuleEngine",
+                null,
+                StatementScopeMode.MinimalBlock,
+                CancellationToken.None,
+                "AnalysisEngineResult execution"));
 
     public IReadOnlyList<MarkDecision> Execute(
         AnalysisExecutionSnapshot snapshot,
@@ -786,15 +792,20 @@ public sealed class MarkingRuleEngine
     }
 
     /// <summary>
-    /// 执行分析上下文的标记规则。
+    /// 鎵ц鍒嗘瀽涓婁笅鏂囩殑鏍囪瑙勫垯銆?
     /// </summary>
-    /// <param name="context">分析上下文。</param>
-    /// <returns>标记决策集合。</returns>
+    /// <param name="context">鍒嗘瀽涓婁笅鏂囥€?/param>
+    /// <returns>鏍囪鍐崇瓥闆嗗悎銆?/returns>
     public IReadOnlyList<MarkDecision> Execute(AnalysisContext context)
     {
         return ExecuteCore(
             context,
-            _compatibilityAdapter.CreateExecutionContext("AnalysisContext compatibility execution"),
+            new RuleExecutionContext(
+                "MarkingRuleEngine",
+                null,
+                StatementScopeMode.MinimalBlock,
+                CancellationToken.None,
+                "AnalysisContext execution"),
             includeMethodRules: true);
     }
 
@@ -885,6 +896,14 @@ public sealed class MarkingRuleEngine
                 }
             }
 
+            foreach (var target in context.View.Targets.Where(target => target.Target.TargetKind is TargetKind.Field or TargetKind.Property))
+            {
+                foreach (var rule in _registry.MemberTargetRules)
+                {
+                    finalDecisions.AddRange(rule.Evaluate(context, target));
+                }
+            }
+
             foreach (var target in context.View.Targets.Where(target => target.Target.TargetKind == TargetKind.Class))
             {
                 foreach (var rule in _registry.ClassRules)
@@ -906,15 +925,15 @@ public sealed class MarkingRuleEngine
 }
 
 /// <summary>
-/// 默认值格式化器。
+/// 榛樿鍊兼牸寮忓寲鍣ㄣ€?
 /// </summary>
 internal static class DefaultValueFormatter
 {
     /// <summary>
-    /// 格式化默认值。
+    /// 鏍煎紡鍖栭粯璁ゅ€笺€?
     /// </summary>
-    /// <param name="returnTypeDisplay">返回类型显示名称。</param>
-    /// <returns>格式化后的默认值字符串。</returns>
+    /// <param name="returnTypeDisplay">杩斿洖绫诲瀷鏄剧ず鍚嶇О銆?/param>
+    /// <returns>鏍煎紡鍖栧悗鐨勯粯璁ゅ€煎瓧绗︿覆銆?/returns>
     public static string Format(string returnTypeDisplay) =>
         returnTypeDisplay switch
         {
@@ -938,3 +957,4 @@ internal static class DefaultValueFormatter
                returnTypeDisplay.Contains('<', StringComparison.Ordinal);
     }
 }
+

@@ -1,4 +1,4 @@
-using System.Collections.Immutable;
+﻿using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -8,17 +8,17 @@ namespace TerrariaTools.Dome.Rewrite.Roslyn;
 using TerrariaTools.Dome.Core;
 
 /// <summary>
-/// Roslyn 重写执行器。
+/// Roslyn 閲嶅啓鎵ц鍣ㄣ€?
 /// </summary>
-public sealed class RoslynRewriteExecutor
+public sealed class RoslynRewriteExecutor : IRewriteExecutor
 {
     /// <summary>
-    /// 异步执行重写计划。
+    /// 寮傛鎵ц閲嶅啓璁″垝銆?
     /// </summary>
-    /// <param name="source">源代码。</param>
-    /// <param name="plan">审计计划。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>重写执行结果。</returns>
+    /// <param name="source">婧愪唬鐮併€?/param>
+    /// <param name="plan">瀹¤璁″垝銆?/param>
+    /// <param name="cancellationToken">鍙栨秷浠ょ墝銆?/param>
+    /// <returns>閲嶅啓鎵ц缁撴灉銆?/returns>
     public Task<RewriteExecutionResult> ExecuteAsync(string source, AuditPlan plan, CancellationToken cancellationToken)
     {
         var tree = CSharpSyntaxTree.ParseText(source);
@@ -36,12 +36,12 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 异步执行带语义上下文的重写计划。
+    /// 寮傛鎵ц甯﹁涔変笂涓嬫枃鐨勯噸鍐欒鍒掋€?
     /// </summary>
-    /// <param name="documentContext">重写文档上下文。</param>
-    /// <param name="plan">审计计划。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>重写执行结果。</returns>
+    /// <param name="documentContext">閲嶅啓鏂囨。涓婁笅鏂囥€?/param>
+    /// <param name="plan">瀹¤璁″垝銆?/param>
+    /// <param name="cancellationToken">鍙栨秷浠ょ墝銆?/param>
+    /// <returns>閲嶅啓鎵ц缁撴灉銆?/returns>
     public Task<RewriteExecutionResult> ExecuteAsync(RewriteExecutionDocumentContext documentContext, AuditPlan plan, CancellationToken cancellationToken)
     {
         if (plan.Conflicts.Count > 0)
@@ -88,7 +88,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 将计划变更绑定到当前语法树节点。
+    /// 灏嗚鍒掑彉鏇寸粦瀹氬埌褰撳墠璇硶鏍戣妭鐐广€?
     /// </summary>
     private static RewriteBindingResult BindPlan(
         RewriteExecutionDocumentContext documentContext,
@@ -110,11 +110,11 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 查找目标节点。
+    /// 鏌ユ壘鐩爣鑺傜偣銆?
     /// </summary>
-    /// <param name="root">语法根节点。</param>
-    /// <param name="target">计划目标。</param>
-    /// <returns>目标解析结果。</returns>
+    /// <param name="root">璇硶鏍硅妭鐐广€?/param>
+    /// <param name="target">璁″垝鐩爣銆?/param>
+    /// <returns>鐩爣瑙ｆ瀽缁撴灉銆?/returns>
     private static TargetResolutionResult FindTargetNode(
         SyntaxNode root,
         SemanticModel? semanticModel,
@@ -202,6 +202,28 @@ public sealed class RoslynRewriteExecutor
             return TargetResolutionResult.Success(methodTextMatch);
         }
 
+        if (target.TargetKind == TargetKind.Field)
+        {
+            var fieldCandidates = root.DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+                .Where(variable => string.Equals(variable.Identifier.ValueText, GetMemberName(target.MemberId.Value), StringComparison.Ordinal))
+                .Cast<SyntaxNode>()
+                .ToArray();
+
+            return ResolveMemberCandidate(target, fieldCandidates, "field");
+        }
+
+        if (target.TargetKind == TargetKind.Property)
+        {
+            var propertyCandidates = root.DescendantNodes()
+                .OfType<PropertyDeclarationSyntax>()
+                .Where(property => string.Equals(property.Identifier.ValueText, GetMemberName(target.MemberId.Value), StringComparison.Ordinal))
+                .Cast<SyntaxNode>()
+                .ToArray();
+
+            return ResolveMemberCandidate(target, propertyCandidates, "property");
+        }
+
         var memberCandidates = root.DescendantNodes()
             .OfType<StatementSyntax>()
             .Where(statement => MemberMatches(statement, target.MemberId.Value))
@@ -233,7 +255,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 使用稳定解析键解析目标节点。
+    /// 浣跨敤绋冲畾瑙ｆ瀽閿В鏋愮洰鏍囪妭鐐广€?
     /// </summary>
     private static TargetResolutionResult TryResolveByResolutionKey(
         SyntaxNode root,
@@ -261,11 +283,11 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 检查语句是否匹配成员 ID。
+    /// 妫€鏌ヨ鍙ユ槸鍚﹀尮閰嶆垚鍛?ID銆?
     /// </summary>
-    /// <param name="statement">语句语法节点。</param>
-    /// <param name="memberId">成员 ID。</param>
-    /// <returns>如果匹配则返回 true，否则返回 false。</returns>
+    /// <param name="statement">璇彞璇硶鑺傜偣銆?/param>
+    /// <param name="memberId">鎴愬憳 ID銆?/param>
+    /// <returns>濡傛灉鍖归厤鍒欒繑鍥?true锛屽惁鍒欒繑鍥?false銆?/returns>
     private static bool MemberMatches(StatementSyntax statement, string memberId)
     {
         var method = statement.Ancestors().OfType<BaseMethodDeclarationSyntax>().FirstOrDefault();
@@ -286,11 +308,11 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 检查方法是否匹配成员 ID。
+    /// 妫€鏌ユ柟娉曟槸鍚﹀尮閰嶆垚鍛?ID銆?
     /// </summary>
-    /// <param name="method">方法声明语法节点。</param>
-    /// <param name="memberId">成员 ID。</param>
-    /// <returns>如果匹配则返回 true，否则返回 false。</returns>
+    /// <param name="method">鏂规硶澹版槑璇硶鑺傜偣銆?/param>
+    /// <param name="memberId">鎴愬憳 ID銆?/param>
+    /// <returns>濡傛灉鍖归厤鍒欒繑鍥?true锛屽惁鍒欒繑鍥?false銆?/returns>
     private static bool MemberMatches(MethodDeclarationSyntax method, string memberId, SemanticModel? semanticModel)
     {
         if (semanticModel?.GetDeclaredSymbol(method) is IMethodSymbol symbol)
@@ -319,10 +341,10 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 为方法匹配创建语义上下文。
+    /// 涓烘柟娉曞尮閰嶅垱寤鸿涔変笂涓嬫枃銆?
     /// </summary>
-    /// <param name="root">当前语法根节点。</param>
-    /// <returns>方法匹配上下文。</returns>
+    /// <param name="root">褰撳墠璇硶鏍硅妭鐐广€?/param>
+    /// <returns>鏂规硶鍖归厤涓婁笅鏂囥€?/returns>
     private static MethodSemanticMatchContext TryCreateMethodSemanticMatchContext(SyntaxNode root)
     {
         var syntaxTree = root.SyntaxTree;
@@ -349,11 +371,11 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 将语义匹配得到的方法节点解析回当前根节点中的对应节点。
+    /// 灏嗚涔夊尮閰嶅緱鍒扮殑鏂规硶鑺傜偣瑙ｆ瀽鍥炲綋鍓嶆牴鑺傜偣涓殑瀵瑰簲鑺傜偣銆?
     /// </summary>
-    /// <param name="currentRoot">当前根节点。</param>
-    /// <param name="matchedMethod">匹配到的方法节点。</param>
-    /// <returns>当前根节点中的对应方法节点。</returns>
+    /// <param name="currentRoot">褰撳墠鏍硅妭鐐广€?/param>
+    /// <param name="matchedMethod">鍖归厤鍒扮殑鏂规硶鑺傜偣銆?/param>
+    /// <returns>褰撳墠鏍硅妭鐐逛腑鐨勫搴旀柟娉曡妭鐐广€?/returns>
     private static MethodDeclarationSyntax? ResolveMethodCandidate(SyntaxNode currentRoot, MethodDeclarationSyntax matchedMethod)
     {
         if (ReferenceEquals(currentRoot.SyntaxTree, matchedMethod.SyntaxTree))
@@ -370,7 +392,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 根据稳定解析键解析当前根节点中的目标节点。
+    /// 鏍规嵁绋冲畾瑙ｆ瀽閿В鏋愬綋鍓嶆牴鑺傜偣涓殑鐩爣鑺傜偣銆?
     /// </summary>
     private static SyntaxNode? ResolveNodeByResolutionKey(SyntaxNode root, PlanTarget target)
     {
@@ -382,6 +404,16 @@ public sealed class RoslynRewriteExecutor
                 .FirstOrDefault(statement =>
                     statement.SpanStart == resolutionKey.SpanStart &&
                     statement.Span.Length == resolutionKey.SpanLength),
+            TargetKind.Field => root.DescendantNodes()
+                .OfType<VariableDeclaratorSyntax>()
+                .FirstOrDefault(variable =>
+                    variable.SpanStart == resolutionKey.SpanStart &&
+                    variable.Span.Length == resolutionKey.SpanLength),
+            TargetKind.Property => root.DescendantNodes()
+                .OfType<PropertyDeclarationSyntax>()
+                .FirstOrDefault(property =>
+                    property.SpanStart == resolutionKey.SpanStart &&
+                    property.Span.Length == resolutionKey.SpanLength),
             TargetKind.Class => root.DescendantNodes()
                 .OfType<ClassDeclarationSyntax>()
                 .FirstOrDefault(@class =>
@@ -396,7 +428,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 枚举方法类目标对应的声明节点。
+    /// 鏋氫妇鏂规硶绫荤洰鏍囧搴旂殑澹版槑鑺傜偣銆?
     /// </summary>
     private static IEnumerable<SyntaxNode> EnumerateMethodLikeDeclarations(SyntaxNode root, MemberKind memberKind)
     {
@@ -427,7 +459,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 使用原始语义上下文校验稳定解析键对应的语义标识。
+    /// 浣跨敤鍘熷璇箟涓婁笅鏂囨牎楠岀ǔ瀹氳В鏋愰敭瀵瑰簲鐨勮涔夋爣璇嗐€?
     /// </summary>
     private static bool SemanticIdentityMatches(SyntaxNode root, SemanticModel? semanticModel, PlanTarget target, SyntaxNode resolvedNode)
     {
@@ -457,7 +489,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 获取目标节点的声明符号。
+    /// 鑾峰彇鐩爣鑺傜偣鐨勫０鏄庣鍙枫€?
     /// </summary>
     private static ISymbol? TryGetDeclaredSymbol(SyntaxNode node, SemanticModel semanticModel, PlanTarget target)
     {
@@ -468,12 +500,57 @@ public sealed class RoslynRewriteExecutor
             AccessorDeclarationSyntax accessor => semanticModel.GetDeclaredSymbol(accessor),
             ClassDeclarationSyntax @class => semanticModel.GetDeclaredSymbol(@class),
             PropertyDeclarationSyntax property when target.MemberKind == MemberKind.Accessor => ResolveAccessorSymbol(property, semanticModel, target.MemberId.Value),
+            VariableDeclaratorSyntax variable when variable.Parent?.Parent is FieldDeclarationSyntax => semanticModel.GetDeclaredSymbol(variable),
+            PropertyDeclarationSyntax property => semanticModel.GetDeclaredSymbol(property),
             _ => null
         };
     }
 
+    private static TargetResolutionResult ResolveMemberCandidate(PlanTarget target, IReadOnlyList<SyntaxNode> candidates, string label)
+    {
+        if (candidates.Count == 0)
+        {
+            return TargetResolutionResult.Failure($"Target '{target.TargetKey}' could not be resolved during rewrite because the {label} '{target.MemberId.Value}' was not found.");
+        }
+
+        var spanCandidates = candidates
+            .Where(node => node.SpanStart == target.SpanStart && node.Span.Length == target.SpanLength)
+            .ToArray();
+
+        if (spanCandidates.Length == 0)
+        {
+            return TargetResolutionResult.Failure($"Target '{target.TargetKey}' could not be resolved during rewrite because the span did not match the {label} '{target.MemberId.Value}'.");
+        }
+
+        if (spanCandidates.Length == 1)
+        {
+            return TargetResolutionResult.Success(spanCandidates[0]);
+        }
+
+        var textMatch = spanCandidates.FirstOrDefault(node => string.Equals(node.ToString().Trim(), target.DisplayText, StringComparison.Ordinal));
+        if (textMatch == null)
+        {
+            return TargetResolutionResult.Failure($"Target '{target.TargetKey}' could not be resolved during rewrite because the {label} text did not match '{target.DisplayText}'.");
+        }
+
+        return TargetResolutionResult.Success(textMatch);
+    }
+
+    private static string GetMemberName(string memberId)
+    {
+        var parameterStart = memberId.IndexOf('(');
+        var end = parameterStart >= 0 ? parameterStart : memberId.Length;
+        var lastDot = memberId.LastIndexOf('.', end - 1, end);
+        if (lastDot < 0 || lastDot + 1 >= end)
+        {
+            return memberId;
+        }
+
+        return memberId.Substring(lastDot + 1, end - lastDot - 1);
+    }
+
     /// <summary>
-    /// 解析属性目标对应的访问器符号。
+    /// 瑙ｆ瀽灞炴€х洰鏍囧搴旂殑璁块棶鍣ㄧ鍙枫€?
     /// </summary>
     private static ISymbol? ResolveAccessorSymbol(PropertyDeclarationSyntax property, SemanticModel semanticModel, string memberId)
     {
@@ -492,7 +569,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 判断符号是否包含未解析类型。
+    /// 鍒ゆ柇绗﹀彿鏄惁鍖呭惈鏈В鏋愮被鍨嬨€?
     /// </summary>
     private static bool ContainsUnresolvedTypes(ISymbol symbol)
     {
@@ -507,7 +584,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 判断类型符号是否未解析。
+    /// 鍒ゆ柇绫诲瀷绗﹀彿鏄惁鏈В鏋愩€?
     /// </summary>
     private static bool HasErrorType(ITypeSymbol? typeSymbol)
     {
@@ -540,9 +617,9 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 获取 rewrite 解析所需的元数据引用。
+    /// 鑾峰彇 rewrite 瑙ｆ瀽鎵€闇€鐨勫厓鏁版嵁寮曠敤銆?
     /// </summary>
-    /// <returns>元数据引用集合。</returns>
+    /// <returns>鍏冩暟鎹紩鐢ㄩ泦鍚堛€?/returns>
     private static IReadOnlyList<MetadataReference> GetRewriteMetadataReferences()
     {
         var trustedPlatformAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
@@ -559,10 +636,10 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 构建方法成员 ID。
+    /// 鏋勫缓鏂规硶鎴愬憳 ID銆?
     /// </summary>
-    /// <param name="symbol">方法符号。</param>
-    /// <returns>成员 ID 字符串。</returns>
+    /// <param name="symbol">鏂规硶绗﹀彿銆?/param>
+    /// <returns>鎴愬憳 ID 瀛楃涓层€?/returns>
     private static string BuildMethodMemberId(IMethodSymbol symbol)
     {
         return symbol.MethodKind switch
@@ -575,7 +652,7 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 构建声明符号成员 ID。
+    /// 鏋勫缓澹版槑绗﹀彿鎴愬憳 ID銆?
     /// </summary>
     private static string BuildMemberId(ISymbol symbol)
     {
@@ -588,20 +665,20 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 构建语义类型名。
+    /// 鏋勫缓璇箟绫诲瀷鍚嶃€?
     /// </summary>
-    /// <param name="typeSymbol">类型符号。</param>
-    /// <returns>类型名字符串。</returns>
+    /// <param name="typeSymbol">绫诲瀷绗﹀彿銆?/param>
+    /// <returns>绫诲瀷鍚嶅瓧绗︿覆銆?/returns>
     private static string BuildSemanticTypeName(INamedTypeSymbol? typeSymbol)
     {
         return typeSymbol?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? "Unknown";
     }
 
     /// <summary>
-    /// 构建语义参数列表字符串。
+    /// 鏋勫缓璇箟鍙傛暟鍒楄〃瀛楃涓层€?
     /// </summary>
-    /// <param name="parameters">参数符号集合。</param>
-    /// <returns>参数列表字符串。</returns>
+    /// <param name="parameters">鍙傛暟绗﹀彿闆嗗悎銆?/param>
+    /// <returns>鍙傛暟鍒楄〃瀛楃涓层€?/returns>
     private static string BuildSemanticParameterList(ImmutableArray<IParameterSymbol> parameters)
     {
         return string.Join(", ", parameters.Select(parameter =>
@@ -609,21 +686,21 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 检查类是否匹配类 ID。
+    /// 妫€鏌ョ被鏄惁鍖归厤绫?ID銆?
     /// </summary>
-    /// <param name="classDeclaration">类声明语法节点。</param>
-    /// <param name="classId">类 ID。</param>
-    /// <returns>如果匹配则返回 true，否则返回 false。</returns>
+    /// <param name="classDeclaration">绫诲０鏄庤娉曡妭鐐广€?/param>
+    /// <param name="classId">绫?ID銆?/param>
+    /// <returns>濡傛灉鍖归厤鍒欒繑鍥?true锛屽惁鍒欒繑鍥?false銆?/returns>
     private static bool ClassMatches(ClassDeclarationSyntax classDeclaration, string classId)
     {
         return string.Equals(classId, GetContainingTypeName(classDeclaration), StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// 获取包含类型名称。
+    /// 鑾峰彇鍖呭惈绫诲瀷鍚嶇О銆?
     /// </summary>
-    /// <param name="member">成员声明语法节点。</param>
-    /// <returns>包含类型名称。</returns>
+    /// <param name="member">鎴愬憳澹版槑璇硶鑺傜偣銆?/param>
+    /// <returns>鍖呭惈绫诲瀷鍚嶇О銆?/returns>
     private static string GetContainingTypeName(MemberDeclarationSyntax member)
     {
         if (member is TypeDeclarationSyntax typeDeclaration)
@@ -641,30 +718,30 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 构建参数列表字符串。
+    /// 鏋勫缓鍙傛暟鍒楄〃瀛楃涓层€?
     /// </summary>
-    /// <param name="parameterList">参数列表语法节点。</param>
-    /// <returns>参数列表字符串。</returns>
+    /// <param name="parameterList">鍙傛暟鍒楄〃璇硶鑺傜偣銆?/param>
+    /// <returns>鍙傛暟鍒楄〃瀛楃涓层€?/returns>
     private static string BuildParameterList(ParameterListSyntax parameterList)
     {
         return string.Join(", ", parameterList.Parameters.Select(parameter => parameter.Type?.ToString() ?? "object"));
     }
 
     /// <summary>
-    /// 规范化参数列表语法节点。
+    /// 瑙勮寖鍖栧弬鏁板垪琛ㄨ娉曡妭鐐广€?
     /// </summary>
-    /// <param name="parameterList">参数列表语法节点。</param>
-    /// <returns>规范化后的参数列表字符串。</returns>
+    /// <param name="parameterList">鍙傛暟鍒楄〃璇硶鑺傜偣銆?/param>
+    /// <returns>瑙勮寖鍖栧悗鐨勫弬鏁板垪琛ㄥ瓧绗︿覆銆?/returns>
     private static string NormalizeParameterList(ParameterListSyntax parameterList)
     {
         return string.Join(",", parameterList.Parameters.Select(parameter => NormalizeTypeSyntax(parameter.Type)));
     }
 
     /// <summary>
-    /// 规范化参数列表字符串。
+    /// 瑙勮寖鍖栧弬鏁板垪琛ㄥ瓧绗︿覆銆?
     /// </summary>
-    /// <param name="parameterList">参数列表字符串。</param>
-    /// <returns>规范化后的参数列表字符串。</returns>
+    /// <param name="parameterList">鍙傛暟鍒楄〃瀛楃涓层€?/param>
+    /// <returns>瑙勮寖鍖栧悗鐨勫弬鏁板垪琛ㄥ瓧绗︿覆銆?/returns>
     private static string NormalizeParameterList(string parameterList)
     {
         if (string.IsNullOrWhiteSpace(parameterList))
@@ -676,10 +753,10 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 拆分参数列表字符串。
+    /// 鎷嗗垎鍙傛暟鍒楄〃瀛楃涓层€?
     /// </summary>
-    /// <param name="parameterList">参数列表字符串。</param>
-    /// <returns>参数类型字符串序列。</returns>
+    /// <param name="parameterList">鍙傛暟鍒楄〃瀛楃涓层€?/param>
+    /// <returns>鍙傛暟绫诲瀷瀛楃涓插簭鍒椼€?/returns>
     private static IReadOnlyList<string> SplitParameterList(string parameterList)
     {
         var parts = new List<string>();
@@ -713,10 +790,10 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 规范化类型名称字符串。
+    /// 瑙勮寖鍖栫被鍨嬪悕绉板瓧绗︿覆銆?
     /// </summary>
-    /// <param name="typeName">类型名称字符串。</param>
-    /// <returns>规范化后的类型名称。</returns>
+    /// <param name="typeName">绫诲瀷鍚嶇О瀛楃涓层€?/param>
+    /// <returns>瑙勮寖鍖栧悗鐨勭被鍨嬪悕绉般€?/returns>
     private static string NormalizeTypeName(string typeName)
     {
         var parsedType = SyntaxFactory.ParseTypeName(typeName.Replace("global::", string.Empty, StringComparison.Ordinal));
@@ -724,10 +801,10 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 规范化类型语法节点。
+    /// 瑙勮寖鍖栫被鍨嬭娉曡妭鐐广€?
     /// </summary>
-    /// <param name="typeSyntax">类型语法节点。</param>
-    /// <returns>规范化后的类型名称。</returns>
+    /// <param name="typeSyntax">绫诲瀷璇硶鑺傜偣銆?/param>
+    /// <returns>瑙勮寖鍖栧悗鐨勭被鍨嬪悕绉般€?/returns>
     private static string NormalizeTypeSyntax(TypeSyntax? typeSyntax)
     {
         return typeSyntax switch
@@ -748,11 +825,11 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 注释掉语句。
+    /// 娉ㄩ噴鎺夎鍙ャ€?
     /// </summary>
-    /// <param name="statement">语句语法节点。</param>
-    /// <param name="change">计划更改。</param>
-    /// <returns>注释后的语句语法节点。</returns>
+    /// <param name="statement">璇彞璇硶鑺傜偣銆?/param>
+    /// <param name="change">璁″垝鏇存敼銆?/param>
+    /// <returns>娉ㄩ噴鍚庣殑璇彞璇硶鑺傜偣銆?/returns>
     private static StatementSyntax CommentOut(StatementSyntax statement, PlannedChange change)
     {
         return SyntaxFactory.EmptyStatement()
@@ -762,11 +839,11 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 使用默认值替换语句。
+    /// 浣跨敤榛樿鍊兼浛鎹㈣鍙ャ€?
     /// </summary>
-    /// <param name="statement">语句语法节点。</param>
-    /// <param name="change">计划更改。</param>
-    /// <returns>替换后的语句语法节点。</returns>
+    /// <param name="statement">璇彞璇硶鑺傜偣銆?/param>
+    /// <param name="change">璁″垝鏇存敼銆?/param>
+    /// <returns>鏇挎崲鍚庣殑璇彞璇硶鑺傜偣銆?/returns>
     private static StatementSyntax ReplaceWithDefault(StatementSyntax statement, PlannedChange change)
     {
         if (statement is not ExpressionStatementSyntax expressionStatement ||
@@ -781,11 +858,11 @@ public sealed class RoslynRewriteExecutor
     }
 
     /// <summary>
-    /// 添加返回语句。
+    /// 娣诲姞杩斿洖璇彞銆?
     /// </summary>
-    /// <param name="statement">语句语法节点。</param>
-    /// <param name="change">计划更改。</param>
-    /// <returns>添加返回语句后的语句语法节点。</returns>
+    /// <param name="statement">璇彞璇硶鑺傜偣銆?/param>
+    /// <param name="change">璁″垝鏇存敼銆?/param>
+    /// <returns>娣诲姞杩斿洖璇彞鍚庣殑璇彞璇硶鑺傜偣銆?/returns>
     private static StatementSyntax AddReturn(StatementSyntax statement, PlannedChange change)
     {
         var payload = change.Action.Payload;
@@ -796,74 +873,35 @@ public sealed class RoslynRewriteExecutor
             .WithTriviaFrom(statement);
     }
 
+    private static MethodDeclarationSyntax AddReturn(MethodDeclarationSyntax method, PlannedChange change)
+    {
+        var payload = change.Action.Payload;
+        var returnStatement = string.IsNullOrWhiteSpace(payload)
+            ? "return;"
+            : $"return {payload};";
+        var statement = SyntaxFactory.ParseStatement(returnStatement);
+        var body = method.Body ?? SyntaxFactory.Block();
+        return method.WithBody(body.AddStatements(statement)).WithExpressionBody(null).WithSemicolonToken(default);
+    }
+
     /// <summary>
-    /// 应用更改。
+    /// 搴旂敤鏇存敼銆?
     /// </summary>
-    /// <param name="root">语法根节点。</param>
-    /// <param name="node">目标节点。</param>
-    /// <param name="change">计划更改。</param>
-    /// <returns>更改应用结果。</returns>
+    /// <param name="root">璇硶鏍硅妭鐐广€?/param>
+    /// <param name="node">鐩爣鑺傜偣銆?/param>
+    /// <param name="change">璁″垝鏇存敼銆?/param>
+    /// <returns>鏇存敼搴旂敤缁撴灉銆?/returns>
     private static ApplyChangeResult ApplyChange(SyntaxNode root, SyntaxNode node, PlannedChange change)
     {
-        if (change.Target.TargetKind == TargetKind.Class)
-        {
-            if (node is not ClassDeclarationSyntax)
-            {
-                return ApplyChangeResult.Failure($"Action '{change.Action.Kind}' is unsupported for target '{change.Target.TargetKey}' because the target is not a class.");
-            }
-
-            try
-            {
-                var updatedRoot = change.Action.Kind switch
-                {
-                    PlanActionKind.Delete => root.RemoveNode(node, SyntaxRemoveOptions.KeepNoTrivia)
-                                                 ?? throw new InvalidOperationException($"Action '{PlanActionKind.Delete}' invalidated target '{change.Target.TargetKey}'."),
-                    _ => throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for class target '{change.Target.TargetKey}'.")
-                };
-
-                return ApplyChangeResult.Success(updatedRoot);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
-            {
-                return ApplyChangeResult.Failure(ex.Message);
-            }
-        }
-
-        if (change.Target.TargetKind == TargetKind.Method)
-        {
-            try
-            {
-                var updatedRoot = change.Action.Kind switch
-                    {
-                        PlanActionKind.Delete => root.RemoveNode(node, SyntaxRemoveOptions.KeepNoTrivia)
-                                                     ?? throw new InvalidOperationException($"Action '{PlanActionKind.Delete}' invalidated target '{change.Target.TargetKey}'."),
-                    PlanActionKind.AddReturn when node is MethodDeclarationSyntax methodNode => root.ReplaceNode(node, AddReturn(methodNode, change)),
-                    _ => throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for method target '{change.Target.TargetKey}'.")
-                };
-
-                return ApplyChangeResult.Success(updatedRoot);
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
-            {
-                return ApplyChangeResult.Failure(ex.Message);
-            }
-        }
-
-        if (node is not StatementSyntax statementNode)
-        {
-            return ApplyChangeResult.Failure($"Action '{change.Action.Kind}' is unsupported for target '{change.Target.TargetKey}' because the target is not a statement.");
-        }
-
         try
         {
-            var updatedRoot = change.Action.Kind switch
+            var updatedRoot = change.Target.TargetKind switch
             {
-                PlanActionKind.Delete => root.RemoveNode(node, SyntaxRemoveOptions.KeepNoTrivia)
-                                             ?? throw new InvalidOperationException($"Action '{PlanActionKind.Delete}' invalidated target '{change.Target.TargetKey}'."),
-                PlanActionKind.CommentOut => root.ReplaceNode(node, CommentOut(statementNode, change)),
-                PlanActionKind.ReplaceWithDefault => root.ReplaceNode(node, ReplaceWithDefault(statementNode, change)),
-                PlanActionKind.AddReturn => root.ReplaceNode(node, AddReturn(statementNode, change)),
-                _ => throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for target '{change.Target.TargetKey}'.")
+                TargetKind.Class => ApplyClassChange(root, node, change),
+                TargetKind.Method => ApplyMethodChange(root, node, change),
+                TargetKind.Field => ApplyFieldChange(root, node, change),
+                TargetKind.Property => ApplyPropertyChange(root, node, change),
+                _ => ApplyStatementChange(root, node, change)
             };
 
             return ApplyChangeResult.Success(updatedRoot);
@@ -874,69 +912,189 @@ public sealed class RoslynRewriteExecutor
         }
     }
 
-    /// <summary>
-    /// 为方法添加返回语句。
-    /// </summary>
-    /// <param name="method">方法声明语法节点。</param>
-    /// <param name="change">计划更改。</param>
-    /// <returns>添加返回语句后的方法声明语法节点。</returns>
-    private static MethodDeclarationSyntax AddReturn(MethodDeclarationSyntax method, PlannedChange change)
+    private static SyntaxNode ApplyClassChange(SyntaxNode root, SyntaxNode node, PlannedChange change)
     {
-        if (method.Body == null)
+        if (node is not ClassDeclarationSyntax classNode)
         {
-            throw new InvalidOperationException($"Action '{PlanActionKind.AddReturn}' is unsupported for target '{change.Target.TargetKey}' because the method has no block body.");
+            throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for target '{change.Target.TargetKey}' because the target is not a class.");
         }
 
-        if (method.Body.Statements.Count > 0)
+        return change.Action.Kind switch
         {
-            throw new InvalidOperationException($"Action '{PlanActionKind.AddReturn}' is unsupported for target '{change.Target.TargetKey}' because the method body is not empty.");
-        }
-
-        var payload = change.Action.Payload;
-        var returnStatement = string.IsNullOrWhiteSpace(payload)
-            ? "return;"
-            : $"return {payload};";
-        return method.WithBody(
-            method.Body.WithStatements(
-                SyntaxFactory.SingletonList<StatementSyntax>(SyntaxFactory.ParseStatement(returnStatement))));
+            PlanActionKind.Delete => root.RemoveNode(node, SyntaxRemoveOptions.KeepNoTrivia)
+                                     ?? throw new InvalidOperationException($"Action '{PlanActionKind.Delete}' invalidated target '{change.Target.TargetKey}'."),
+            PlanActionKind.ReorderPublicMethods => root.ReplaceNode(node, ReorderPublicMethods(classNode)),
+            _ => throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for class target '{change.Target.TargetKey}'.")
+        };
     }
 
+    private static SyntaxNode ApplyMethodChange(SyntaxNode root, SyntaxNode node, PlannedChange change)
+    {
+        return change.Action.Kind switch
+        {
+            PlanActionKind.Delete => root.RemoveNode(node, SyntaxRemoveOptions.KeepNoTrivia)
+                                     ?? throw new InvalidOperationException($"Action '{PlanActionKind.Delete}' invalidated target '{change.Target.TargetKey}'."),
+            PlanActionKind.AddReturn when node is MethodDeclarationSyntax methodNode => root.ReplaceNode(node, AddReturn(methodNode, change)),
+            PlanActionKind.ChangeVisibilityToPrivate when node is MethodDeclarationSyntax methodNode => root.ReplaceNode(node, ChangeVisibilityToPrivate(methodNode)),
+            _ => throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for method target '{change.Target.TargetKey}'.")
+        };
+    }
+
+    private static SyntaxNode ApplyFieldChange(SyntaxNode root, SyntaxNode node, PlannedChange change)
+    {
+        if (change.Action.Kind != PlanActionKind.Delete || node is not VariableDeclaratorSyntax variable)
+        {
+            throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for field target '{change.Target.TargetKey}'.");
+        }
+
+        if (variable.Parent is not VariableDeclarationSyntax declaration || declaration.Parent is not FieldDeclarationSyntax fieldDeclaration)
+        {
+            throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for field target '{change.Target.TargetKey}' because the target is not a field declarator.");
+        }
+
+        if (declaration.Variables.Count == 1)
+        {
+            return root.RemoveNode(fieldDeclaration, SyntaxRemoveOptions.KeepNoTrivia)
+                   ?? throw new InvalidOperationException($"Action '{PlanActionKind.Delete}' invalidated target '{change.Target.TargetKey}'.");
+        }
+
+        return root.ReplaceNode(declaration, declaration.WithVariables(declaration.Variables.Remove(variable)));
+    }
+
+    private static SyntaxNode ApplyPropertyChange(SyntaxNode root, SyntaxNode node, PlannedChange change)
+    {
+        if (change.Action.Kind != PlanActionKind.Delete || node is not PropertyDeclarationSyntax)
+        {
+            throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for property target '{change.Target.TargetKey}'.");
+        }
+
+        return root.RemoveNode(node, SyntaxRemoveOptions.KeepNoTrivia)
+               ?? throw new InvalidOperationException($"Action '{PlanActionKind.Delete}' invalidated target '{change.Target.TargetKey}'.");
+    }
+
+    private static SyntaxNode ApplyStatementChange(SyntaxNode root, SyntaxNode node, PlannedChange change)
+    {
+        if (node is not StatementSyntax statementNode)
+        {
+            throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for target '{change.Target.TargetKey}' because the target is not a statement.");
+        }
+
+        return change.Action.Kind switch
+        {
+            PlanActionKind.Delete => root.RemoveNode(node, SyntaxRemoveOptions.KeepNoTrivia)
+                                     ?? throw new InvalidOperationException($"Action '{PlanActionKind.Delete}' invalidated target '{change.Target.TargetKey}'."),
+            PlanActionKind.CommentOut => root.ReplaceNode(node, CommentOut(statementNode, change)),
+            PlanActionKind.ReplaceWithDefault => root.ReplaceNode(node, ReplaceWithDefault(statementNode, change)),
+            PlanActionKind.AddReturn => root.ReplaceNode(node, AddReturn(statementNode, change)),
+            _ => throw new InvalidOperationException($"Action '{change.Action.Kind}' is unsupported for target '{change.Target.TargetKey}'.")
+        };
+    }
+
+    private static MethodDeclarationSyntax ChangeVisibilityToPrivate(MethodDeclarationSyntax method)
+    {
+        var rewrittenModifiers = new List<SyntaxToken>(method.Modifiers.Count);
+        var replacedAccessModifier = false;
+
+        foreach (var modifier in method.Modifiers)
+        {
+            if (modifier.IsKind(SyntaxKind.PublicKeyword) ||
+                modifier.IsKind(SyntaxKind.PrivateKeyword) ||
+                modifier.IsKind(SyntaxKind.ProtectedKeyword) ||
+                modifier.IsKind(SyntaxKind.InternalKeyword))
+            {
+                if (replacedAccessModifier)
+                {
+                    continue;
+                }
+
+                rewrittenModifiers.Add(
+                    SyntaxFactory.Token(
+                        modifier.LeadingTrivia,
+                        SyntaxKind.PrivateKeyword,
+                        SyntaxFactory.TriviaList(SyntaxFactory.Space)));
+                replacedAccessModifier = true;
+                continue;
+            }
+
+            rewrittenModifiers.Add(modifier);
+        }
+
+        if (!replacedAccessModifier)
+        {
+            rewrittenModifiers.Insert(
+                0,
+                SyntaxFactory.Token(
+                    method.GetLeadingTrivia(),
+                    SyntaxKind.PrivateKeyword,
+                    SyntaxFactory.TriviaList(SyntaxFactory.Space)));
+        }
+
+        return method.WithModifiers(SyntaxFactory.TokenList(rewrittenModifiers));
+    }
+
+    private static ClassDeclarationSyntax ReorderPublicMethods(ClassDeclarationSyntax classNode)
+    {
+        var ordinaryMethods = classNode.Members.OfType<MethodDeclarationSyntax>().Where(static method => !method.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.StaticKeyword))).ToArray();
+        if (ordinaryMethods.Length < 2)
+        {
+            return classNode;
+        }
+
+        var orderedMethods = ordinaryMethods
+            .Where(IsPublicMethod)
+            .OrderBy(static method => method.Identifier.ValueText, StringComparer.Ordinal)
+            .ThenBy(static method => method.ParameterList.Parameters.Count)
+            .Concat(ordinaryMethods.Where(static method => !IsPublicMethod(method)))
+            .ToArray();
+
+        var originalMethods = new HashSet<MethodDeclarationSyntax>(ordinaryMethods, ReferenceEqualityComparer.Instance);
+        var queue = new Queue<MethodDeclarationSyntax>(orderedMethods);
+        var rewrittenMembers = classNode.Members.Select(member => member is MethodDeclarationSyntax method && originalMethods.Contains(method) ? (MemberDeclarationSyntax)queue.Dequeue() : member);
+        return classNode.WithMembers(SyntaxFactory.List(rewrittenMembers));
+    }
+
+    private static bool IsPublicMethod(MethodDeclarationSyntax method)
+        => method.Modifiers.Any(static modifier => modifier.IsKind(SyntaxKind.PublicKeyword));
+
+    private static int GetActionPriority(PlanActionKind kind)
+        => kind == PlanActionKind.ReorderPublicMethods ? 1 : 0;
+
     /// <summary>
-    /// 目标解析结果记录。
+    /// 鐩爣瑙ｆ瀽缁撴灉璁板綍銆?
     /// </summary>
     private sealed record TargetResolutionResult(bool IsSuccess, SyntaxNode? Node, string Message)
     {
         /// <summary>
-        /// 创建成功结果。
+        /// 鍒涘缓鎴愬姛缁撴灉銆?
         /// </summary>
         public static TargetResolutionResult Success(SyntaxNode node) => new(true, node, string.Empty);
 
         /// <summary>
-        /// 创建失败结果。
+        /// 鍒涘缓澶辫触缁撴灉銆?
         /// </summary>
         public static TargetResolutionResult Failure(string message) => new(false, null, message);
     }
 
     /// <summary>
-    /// 方法语义匹配上下文。
+    /// 鏂规硶璇箟鍖归厤涓婁笅鏂囥€?
     /// </summary>
     private sealed record MethodSemanticMatchContext(SyntaxNode Root, SemanticModel? SemanticModel);
 
     /// <summary>
-    /// 绑定后的重写计划。
+    /// 缁戝畾鍚庣殑閲嶅啓璁″垝銆?
     /// </summary>
     private sealed record BoundRewritePlan(
         IReadOnlyList<BoundPlannedChange> Changes);
 
     /// <summary>
-    /// 绑定后的单条计划变更。
+    /// 缁戝畾鍚庣殑鍗曟潯璁″垝鍙樻洿銆?
     /// </summary>
     private sealed record BoundPlannedChange(
         PlannedChange Change,
         SyntaxNode OriginalNode);
 
     /// <summary>
-    /// 重写绑定结果记录。
+    /// 閲嶅啓缁戝畾缁撴灉璁板綍銆?
     /// </summary>
     private sealed record RewriteBindingResult(
         bool IsSuccess,
@@ -944,29 +1102,31 @@ public sealed class RoslynRewriteExecutor
         string Message)
     {
         /// <summary>
-        /// 创建成功结果。
+        /// 鍒涘缓鎴愬姛缁撴灉銆?
         /// </summary>
         public static RewriteBindingResult Success(BoundRewritePlan plan) => new(true, plan, string.Empty);
 
         /// <summary>
-        /// 创建失败结果。
+        /// 鍒涘缓澶辫触缁撴灉銆?
         /// </summary>
         public static RewriteBindingResult Failure(string message) => new(false, null, message);
     }
 
     /// <summary>
-    /// 更改应用结果记录。
+    /// 鏇存敼搴旂敤缁撴灉璁板綍銆?
     /// </summary>
     private sealed record ApplyChangeResult(bool IsSuccess, SyntaxNode? Root, string Message)
     {
         /// <summary>
-        /// 创建成功结果。
+        /// 鍒涘缓鎴愬姛缁撴灉銆?
         /// </summary>
         public static ApplyChangeResult Success(SyntaxNode root) => new(true, root, string.Empty);
 
         /// <summary>
-        /// 创建失败结果。
+        /// 鍒涘缓澶辫触缁撴灉銆?
         /// </summary>
         public static ApplyChangeResult Failure(string message) => new(false, null, message);
     }
 }
+
+

@@ -5,39 +5,39 @@ using System.Diagnostics;
 using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Plan;
-using TerrariaTools.Dome.Reporting;
-using TerrariaTools.Dome.Rewrite.Roslyn;
 using TerrariaTools.Dome.Rules;
 
-/// <summary>
-/// Dome 应用流程编排入口。
-/// </summary>
-public sealed class DomeApplication
+public interface IDomeApplicationRunner
+{
+    Task<RunResult> RunAsync(RunRequest request, CancellationToken cancellationToken);
+}
+
+public sealed class DomeApplication : IDomeApplicationRunner
 {
     private readonly IWorkspaceLoader _workspaceLoader;
-    private readonly RoslynAnalysisEngine _analysisEngine;
-    private readonly FunctionImpactAnalyzer _functionImpactAnalyzer;
-    private readonly ReferenceZeroPredictionAnalyzer _referenceZeroPredictionAnalyzer;
+    private readonly IAnalysisEngine _analysisEngine;
+    private readonly IFunctionImpactAnalyzer _functionImpactAnalyzer;
+    private readonly IReferenceZeroPredictionAnalyzer _referenceZeroPredictionAnalyzer;
     private readonly MarkingRuleEngine _markingRuleEngine;
-    private readonly RoslynRewriteExecutor _rewriteExecutor;
+    private readonly IRewriteExecutor _rewriteExecutor;
     private readonly RunReportBuilder _runReportBuilder;
     private readonly ArtifactPlanBuilder _artifactPlanBuilder;
-    private readonly JsonArtifactWriter _artifactWriter;
+    private readonly IRewriteOutputStore _rewriteOutputStore;
+    private readonly IArtifactEmissionService _artifactEmissionService;
     private readonly IDomeProgressReporter _progressReporter;
 
-    /// <summary>
-    /// 初始化 Dome 应用实例。
-    /// </summary>
     public DomeApplication(
         IWorkspaceLoader workspaceLoader,
-        RoslynAnalysisEngine analysisEngine,
-        FunctionImpactAnalyzer functionImpactAnalyzer,
-        ReferenceZeroPredictionAnalyzer referenceZeroPredictionAnalyzer,
+        IAnalysisEngine analysisEngine,
+        IFunctionImpactAnalyzer functionImpactAnalyzer,
+        IReferenceZeroPredictionAnalyzer referenceZeroPredictionAnalyzer,
         MarkingRuleEngine markingRuleEngine,
-        RoslynRewriteExecutor rewriteExecutor,
+        IRewriteExecutor rewriteExecutor,
         RunReportBuilder runReportBuilder,
         ArtifactPlanBuilder artifactPlanBuilder,
-        JsonArtifactWriter artifactWriter,
+        IArtifactWriter artifactWriter,
+        IRewriteOutputStore? rewriteOutputStore = null,
+        IArtifactEmissionService? artifactEmissionService = null,
         IDomeProgressReporter? progressReporter = null)
     {
         _workspaceLoader = workspaceLoader;
@@ -48,61 +48,40 @@ public sealed class DomeApplication
         _rewriteExecutor = rewriteExecutor;
         _runReportBuilder = runReportBuilder;
         _artifactPlanBuilder = artifactPlanBuilder;
-        _artifactWriter = artifactWriter;
+        _rewriteOutputStore = rewriteOutputStore ?? new FileSystemRewriteOutputStore();
+        _artifactEmissionService = artifactEmissionService ?? new ArtifactEmissionService(artifactWriter);
         _progressReporter = progressReporter ?? NullDomeProgressReporter.Instance;
     }
 
-    /// <summary>
-    /// 执行完整运行流程。
-    /// </summary>
-    /// <param name="request">运行请求。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>运行结果。</returns>
     public async Task<RunResult> RunAsync(RunRequest request, CancellationToken cancellationToken)
     {
         var runStopwatch = Stopwatch.StartNew();
-        _progressReporter.Report($"[dome] 开始加载工作区：{request.InputPath}");
+        _progressReporter.Report($"[dome] Starting workspace load: {request.InputPath}");
         var loadResult = await _workspaceLoader.LoadAsync(request.InputPath, request.WorkspaceLoadOptions, cancellationToken);
-        _progressReporter.Report($"[dome] 工作区加载完成：共 {loadResult.Documents.Count} 个 C# 文档，模式 {loadResult.LoadMode}，耗时 {FormatElapsed(runStopwatch.Elapsed)}。");
+        _progressReporter.Report($"[dome] Workspace load completed with {loadResult.Documents.Count} C# documents in {FormatElapsed(runStopwatch.Elapsed)}.");
         if (!loadResult.IsSuccess || loadResult.Documents.Count == 0)
         {
             var message = loadResult.Diagnostics.FirstOrDefault()?.Message ?? "No C# input files were found.";
             var artifactPlan = _artifactPlanBuilder.BuildWorkspaceLoadFailure();
             var loadFailureReport = _runReportBuilder.BuildWorkspaceLoadFailure(loadResult, message, artifactPlan.GeneratedArtifacts);
-            await WriteArtifactsAsync(request.OutputPath, artifactPlan, null, loadFailureReport, null, cancellationToken);
+            await _artifactEmissionService.EmitAsync(request.OutputPath, artifactPlan, null, loadFailureReport, null, cancellationToken);
             return RunResult.Failure(FailureCode.WorkspaceLoadFailed, request.OutputPath, message);
         }
 
-        RoslynAnalysisResult analysisResult;
+        AnalysisEngineResult analysisResult;
         try
         {
-            var analysisStopwatch = Stopwatch.StartNew();
-            _progressReporter.Report("[dome] 开始执行 Roslyn 分析...");
-            analysisResult = await _analysisEngine.AnalyzeAsync(
-                loadResult.AnalysisInput ?? new SourceOnlyAnalysisInput(request.InputPath, loadResult.Documents),
-                cancellationToken);
-            _progressReporter.Report($"[dome] Roslyn 分析完成：生成 {analysisResult.View.Targets.Count} 个目标，耗时 {FormatElapsed(analysisStopwatch.Elapsed)}。");
-            _progressReporter.Report(
-                $"[dome] Roslyn 分析拆分：文档 {analysisResult.PerformanceSummary.DocumentCount} 个，" +
-                $"语法索引 {FormatElapsed(analysisResult.PerformanceSummary.SyntaxIndexTime)}，" +
-                $"类型图 {FormatElapsed(analysisResult.PerformanceSummary.TypeGraphTime)}，" +
-                $"函数节点 {FormatElapsed(analysisResult.PerformanceSummary.FunctionNodeTime)}，" +
-                $"类型体依赖 {FormatElapsed(analysisResult.PerformanceSummary.TypeBodyGraphTime)}，" +
-                $"目标分析 {FormatElapsed(analysisResult.PerformanceSummary.TargetAnalysisTime)}，" +
-                $"函数事实 {FormatElapsed(analysisResult.PerformanceSummary.FunctionFactsTime)}，" +
-                $"结果汇总 {FormatElapsed(analysisResult.PerformanceSummary.MergeTime)}。");
+            analysisResult = await AnalyzeWorkspaceAsync(loadResult, request, cancellationToken);
         }
         catch (Exception ex)
         {
             var artifactPlan = _artifactPlanBuilder.BuildAnalysisFailure();
             var report = _runReportBuilder.BuildAnalysisFailure(loadResult, ex.Message, artifactPlan.GeneratedArtifacts);
-            await WriteArtifactsAsync(request.OutputPath, artifactPlan, null, report, null, cancellationToken);
+            await _artifactEmissionService.EmitAsync(request.OutputPath, artifactPlan, null, report, null, cancellationToken);
             return RunResult.Failure(FailureCode.AnalysisFailed, request.OutputPath, ex.Message);
         }
 
-        var analysisContext = _analysisEngine.CreateContext(analysisResult);
-        var analysisSnapshot = analysisContext.Snapshot;
-        var analysisServices = analysisContext.Services;
+        var analyzedWorkspace = CreateAnalyzedWorkspace(analysisResult);
         FunctionImpactSet? functionImpactSet = null;
 
         if (request.Mode == RunMode.AnalyzeOnly)
@@ -111,52 +90,21 @@ public sealed class DomeApplication
             var analyzeReport = _runReportBuilder.BuildAnalyzeOnlySuccess(
                 analysisResult.View,
                 loadResult,
-                artifactPlan.GeneratedArtifacts);
-            await WriteArtifactsAsync(request.OutputPath, artifactPlan, null, analyzeReport, analysisResult.View, cancellationToken);
+                artifactPlan.GeneratedArtifacts,
+                analyzedWorkspace.AdvancedAnalysisSummary);
+            await _artifactEmissionService.EmitAsync(request.OutputPath, artifactPlan, null, analyzeReport, analysisResult.View, cancellationToken);
             return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
         }
 
-        var markingStopwatch = Stopwatch.StartNew();
-        _progressReporter.Report("[dome] 开始执行规则标记与引用归零预测...");
-        var initialDecisions = _markingRuleEngine.Execute(
-            analysisSnapshot,
-            analysisServices,
-            new RuleExecutionContext(
-                "DomeApplication",
-                null,
-                StatementScopeMode.MinimalBlock,
-                cancellationToken,
-                "Primary marking pass"));
-        var predictedDecisions = _referenceZeroPredictionAnalyzer.Predict(
-            analysisSnapshot,
-            analysisServices,
-            new RuleExecutionContext(
-                "DomeApplication",
-                null,
-                StatementScopeMode.MinimalBlock,
-                cancellationToken,
-                "Reference-zero prediction pass"),
-            initialDecisions);
-        var decisions = initialDecisions
-            .Concat(predictedDecisions)
-            .ToArray();
-        _progressReporter.Report($"[dome] 规则标记完成：直接决策 {initialDecisions.Count} 条，预测决策 {predictedDecisions.Count} 条，合计 {decisions.Length} 条，耗时 {FormatElapsed(markingStopwatch.Elapsed)}。");
-
-        var planStopwatch = Stopwatch.StartNew();
-        _progressReporter.Report("[dome] 开始编译审计计划...");
-        var planResult = AuditPlanCompiler.Compile(
-            new PlanMetadata("dome", "1", request.InputPath, request.OutputPath, request.Mode),
-            decisions);
-        _progressReporter.Report($"[dome] 审计计划编译完成：成功={planResult.IsSuccess}，变更数={(planResult.Plan?.Changes.Count ?? 0)}，冲突数={planResult.Conflicts.Count}，耗时 {FormatElapsed(planStopwatch.Elapsed)}。");
+        var decisionSet = BuildMarkingDecisions(analyzedWorkspace, cancellationToken);
+        var planResult = CompilePlan(request, decisionSet.AllDecisions);
 
         if (planResult.Plan != null)
         {
             functionImpactSet = _functionImpactAnalyzer.Analyze(
                 planResult.Plan,
-                analysisServices,
-                FunctionGraphRequests.WholeProjectCalls(
-                    "DomeApplication",
-                    "Whole-project impact summary"));
+                analyzedWorkspace.Context.Services,
+                FunctionGraphRequests.WholeProjectCalls("DomeApplication", "Whole-project impact summary"));
         }
 
         if (!planResult.IsSuccess || planResult.Plan == null)
@@ -168,10 +116,11 @@ public sealed class DomeApplication
                 planResult,
                 new PlanCoverageSummary(0, 0, Array.Empty<string>()),
                 functionImpactSet,
-                initialDecisions,
-                predictedDecisions,
-                artifactPlan.GeneratedArtifacts);
-            await WriteArtifactsAsync(request.OutputPath, artifactPlan, null, report, null, cancellationToken);
+                decisionSet.InitialDecisions,
+                decisionSet.PredictedDecisions,
+                artifactPlan.GeneratedArtifacts,
+                analyzedWorkspace.AdvancedAnalysisSummary);
+            await _artifactEmissionService.EmitAsync(request.OutputPath, artifactPlan, null, report, null, cancellationToken);
             return RunResult.Failure(FailureCode.PlanCompileFailed, request.OutputPath, planResult.Message);
         }
 
@@ -181,25 +130,127 @@ public sealed class DomeApplication
             var planReport = _runReportBuilder.BuildPlanOnlySuccess(
                 analysisResult.View,
                 loadResult,
-                decisions,
+                decisionSet.AllDecisions,
                 planResult.Plan,
                 functionImpactSet,
-                artifactPlan.GeneratedArtifacts);
-            await WriteArtifactsAsync(request.OutputPath, artifactPlan, planResult.Plan, planReport, null, cancellationToken);
+                artifactPlan.GeneratedArtifacts,
+                analyzedWorkspace.AdvancedAnalysisSummary);
+            await _artifactEmissionService.EmitAsync(request.OutputPath, artifactPlan, planResult.Plan, planReport, null, cancellationToken);
             return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
         }
 
+        var rewriteOutcome = await RewriteDocumentsAsync(request, analysisResult, planResult.Plan, cancellationToken);
+        if (rewriteOutcome.FailureMessage != null)
+        {
+            var artifactPlan = _artifactPlanBuilder.BuildRewriteFailure(rewriteOutcome.RewrittenDocuments);
+            var report = _runReportBuilder.BuildRewriteFailure(
+                analysisResult.View,
+                loadResult,
+                planResult.Plan,
+                rewriteOutcome.RewrittenDocuments.Count,
+                new PlanCoverageSummary(0, 0, Array.Empty<string>()),
+                functionImpactSet,
+                decisionSet.InitialDecisions,
+                decisionSet.PredictedDecisions,
+                rewriteOutcome.FailureMessage,
+                artifactPlan.GeneratedArtifacts,
+                analyzedWorkspace.AdvancedAnalysisSummary);
+            await _artifactEmissionService.EmitAsync(request.OutputPath, artifactPlan, planResult.Plan, report, null, cancellationToken);
+            return RunResult.Failure(FailureCode.RewriteFailed, request.OutputPath, rewriteOutcome.FailureMessage);
+        }
+
+        var successArtifactPlan = _artifactPlanBuilder.BuildStandardSuccess(rewriteOutcome.RewrittenDocuments);
+        var finalReport = _runReportBuilder.BuildStandardSuccess(
+            analysisResult.View,
+            loadResult,
+            decisionSet.AllDecisions,
+            planResult.Plan,
+            rewriteOutcome.RewrittenDocuments.Count,
+            functionImpactSet,
+            successArtifactPlan.GeneratedArtifacts,
+            analyzedWorkspace.AdvancedAnalysisSummary);
+        await _artifactEmissionService.EmitAsync(request.OutputPath, successArtifactPlan, planResult.Plan, finalReport, null, cancellationToken);
+        _progressReporter.Report($"[dome] Run completed with {rewriteOutcome.RewrittenDocuments.Count} rewritten documents in {FormatElapsed(runStopwatch.Elapsed)}.");
+        return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
+    }
+
+    private async Task<AnalysisEngineResult> AnalyzeWorkspaceAsync(
+        WorkspaceLoadResult loadResult,
+        RunRequest request,
+        CancellationToken cancellationToken)
+    {
+        var analysisStopwatch = Stopwatch.StartNew();
+        _progressReporter.Report("[dome] Starting Roslyn analysis...");
+        var analysisResult = await _analysisEngine.AnalyzeAsync(
+            loadResult.AnalysisInput ?? new SourceOnlyAnalysisInput(request.InputPath, loadResult.Documents),
+            cancellationToken);
+        _progressReporter.Report($"[dome] Analysis completed with {analysisResult.View.Targets.Count} targets in {FormatElapsed(analysisStopwatch.Elapsed)}.");
+        return analysisResult;
+    }
+
+    private static AnalyzedWorkspace CreateAnalyzedWorkspace(AnalysisEngineResult analysisResult)
+    {
+        var context = analysisResult.CreateContext();
+        return new AnalyzedWorkspace(context, context.AdvancedAnalysis.BuildSummary());
+    }
+
+    private DecisionSet BuildMarkingDecisions(AnalyzedWorkspace analyzedWorkspace, CancellationToken cancellationToken)
+    {
+        var markingStopwatch = Stopwatch.StartNew();
+        _progressReporter.Report("[dome] Building marking decisions...");
+        var initialDecisions = _markingRuleEngine.Execute(
+            analyzedWorkspace.Context.Snapshot,
+            analyzedWorkspace.Context.Services,
+            new RuleExecutionContext(
+                "DomeApplication",
+                null,
+                StatementScopeMode.MinimalBlock,
+                cancellationToken,
+                "Primary marking pass"));
+        var predictedDecisions = _referenceZeroPredictionAnalyzer.Predict(
+            analyzedWorkspace.Context.Snapshot,
+            analyzedWorkspace.Context.Services,
+            new RuleExecutionContext(
+                "DomeApplication",
+                null,
+                StatementScopeMode.MinimalBlock,
+                cancellationToken,
+                "Reference-zero prediction pass"),
+            initialDecisions);
+        var allDecisions = initialDecisions.Concat(predictedDecisions).ToArray();
+        _progressReporter.Report($"[dome] Built {initialDecisions.Count} initial and {predictedDecisions.Count} predicted decisions in {FormatElapsed(markingStopwatch.Elapsed)}.");
+        return new DecisionSet(initialDecisions, predictedDecisions, allDecisions);
+    }
+
+    private PlanCompilationResult CompilePlan(RunRequest request, IReadOnlyList<MarkDecision> decisions)
+    {
+        var planStopwatch = Stopwatch.StartNew();
+        _progressReporter.Report("[dome] Compiling audit plan...");
+        var planResult = AuditPlanCompiler.Compile(
+            new PlanMetadata("dome", "1", request.InputPath, request.OutputPath, request.Mode),
+            decisions);
+        _progressReporter.Report($"[dome] Audit plan compiled: success={planResult.IsSuccess}, changes={(planResult.Plan?.Changes.Count ?? 0)}, conflicts={planResult.Conflicts.Count}, elapsed={FormatElapsed(planStopwatch.Elapsed)}.");
+        return planResult;
+    }
+
+    private async Task<RewriteOutcome> RewriteDocumentsAsync(
+        RunRequest request,
+        AnalysisEngineResult analysisResult,
+        AuditPlan plan,
+        CancellationToken cancellationToken)
+    {
         var rewriteStopwatch = Stopwatch.StartNew();
-        _progressReporter.Report($"[dome] 开始重写源码：共 {analysisResult.Documents.Count} 个文档。");
+        _progressReporter.Report($"[dome] Starting rewrite for {analysisResult.Documents.Count} documents...");
         var rewrittenDocuments = new ConcurrentBag<string>();
         var rewriteInputs = analysisResult.Documents
             .Select(document => new DocumentRewriteInput(
                 document,
                 new AuditPlan(
-                    planResult.Plan.Metadata,
-                    planResult.Plan.Changes.Where(change => change.Target.DocumentPath == document.Document.RelativePath).ToArray(),
-                    planResult.Plan.Conflicts)))
+                    plan.Metadata,
+                    plan.Changes.Where(change => change.Target.DocumentPath == document.Document.RelativePath).ToArray(),
+                    plan.Conflicts)))
             .ToArray();
+
         var completedCount = 0;
         string? rewriteFailureMessage = null;
         await Parallel.ForEachAsync(
@@ -225,97 +276,53 @@ public sealed class DomeApplication
                     return;
                 }
 
-                var outputPath = Path.Combine(request.OutputPath, "rewritten", rewriteInput.Document.Document.RelativePath);
-                Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-                await File.WriteAllTextAsync(outputPath, rewriteResult.RewrittenSource, token);
+                try
+                {
+                    await _rewriteOutputStore.SaveAsync(request.OutputPath, rewriteInput.Document.Document.RelativePath, rewriteResult.RewrittenSource, token);
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.CompareExchange(
+                        ref rewriteFailureMessage,
+                        ex.Message,
+                        null);
+                    return;
+                }
+
                 rewrittenDocuments.Add(Path.Combine("rewritten", rewriteInput.Document.Document.RelativePath));
 
                 var completed = Interlocked.Increment(ref completedCount);
                 if (completed == rewriteInputs.Length || completed % 100 == 0)
                 {
-                    _progressReporter.Report($"[dome] 源码重写进度：{completed}/{rewriteInputs.Length}，当前耗时 {FormatElapsed(rewriteStopwatch.Elapsed)}。");
+                    _progressReporter.Report($"[dome] Rewrite progress {completed}/{rewriteInputs.Length} after {FormatElapsed(rewriteStopwatch.Elapsed)}.");
                 }
             });
 
-        if (rewriteFailureMessage != null)
-        {
-            var rewrittenDocumentList = rewrittenDocuments
-                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            var artifactPlan = _artifactPlanBuilder.BuildRewriteFailure(rewrittenDocumentList);
-            var report = _runReportBuilder.BuildRewriteFailure(
-                analysisResult.View,
-                loadResult,
-                planResult.Plan,
-                rewrittenDocumentList.Length,
-                new PlanCoverageSummary(0, 0, Array.Empty<string>()),
-                functionImpactSet,
-                initialDecisions,
-                predictedDecisions,
-                rewriteFailureMessage,
-                artifactPlan.GeneratedArtifacts);
-            await WriteArtifactsAsync(request.OutputPath, artifactPlan, planResult.Plan, report, null, cancellationToken);
-            return RunResult.Failure(FailureCode.RewriteFailed, request.OutputPath, rewriteFailureMessage);
-        }
-
-        var rewrittenDocumentListForSuccess = rewrittenDocuments
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var successArtifactPlan = _artifactPlanBuilder.BuildStandardSuccess(rewrittenDocumentListForSuccess);
-        var finalReport = _runReportBuilder.BuildStandardSuccess(
-            analysisResult.View,
-            loadResult,
-            decisions,
-            planResult.Plan,
-            rewrittenDocumentListForSuccess.Length,
-            functionImpactSet,
-            successArtifactPlan.GeneratedArtifacts);
-        await WriteArtifactsAsync(request.OutputPath, successArtifactPlan, planResult.Plan, finalReport, null, cancellationToken);
-        _progressReporter.Report($"[dome] 运行完成：共改写 {rewrittenDocumentListForSuccess.Length} 个文档，总耗时 {FormatElapsed(runStopwatch.Elapsed)}。");
-        return RunResult.Success(request.OutputPath, Path.Combine(request.OutputPath, "report.json"));
+        return new RewriteOutcome(
+            rewrittenDocuments.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).ToArray(),
+            rewriteFailureMessage);
     }
 
-    /// <summary>
-    /// 文档改写输入。
-    /// </summary>
     private sealed record DocumentRewriteInput(
-        RoslynAnalysisDocument Document,
+        AnalysisDocumentContext Document,
         AuditPlan Plan);
 
-    /// <summary>
-    /// 格式化耗时文本。
-    /// </summary>
+    private sealed record AnalyzedWorkspace(
+        AnalysisContext Context,
+        AdvancedAnalysisSummary AdvancedAnalysisSummary);
+
+    private sealed record DecisionSet(
+        IReadOnlyList<MarkDecision> InitialDecisions,
+        IReadOnlyList<MarkDecision> PredictedDecisions,
+        IReadOnlyList<MarkDecision> AllDecisions);
+
+    private sealed record RewriteOutcome(
+        IReadOnlyList<string> RewrittenDocuments,
+        string? FailureMessage);
+
     private static string FormatElapsed(TimeSpan elapsed) =>
         elapsed.TotalSeconds >= 1
-            ? $"{elapsed.TotalSeconds:F1} 秒"
-            : $"{elapsed.TotalMilliseconds:F0} 毫秒";
+            ? $"{elapsed.TotalSeconds:F1} s"
+            : $"{elapsed.TotalMilliseconds:F0} ms";
 
-    /// <summary>
-    /// 写入分析、计划与报告产物。
-    /// </summary>
-    private async Task WriteArtifactsAsync(
-        string outputPath,
-        ArtifactPlan artifactPlan,
-        AuditPlan? plan,
-        RunReport report,
-        AnalysisResultModel? analysisView,
-        CancellationToken cancellationToken)
-    {
-        Directory.CreateDirectory(outputPath);
-
-        if (artifactPlan.WriteAnalysis && analysisView != null)
-        {
-            await _artifactWriter.WriteAnalysisAsync(Path.Combine(outputPath, "analysis.json"), analysisView, cancellationToken);
-        }
-
-        if (artifactPlan.WritePlan && plan != null)
-        {
-            await _artifactWriter.WritePlanAsync(Path.Combine(outputPath, "audit-plan.json"), plan, cancellationToken);
-        }
-
-        if (artifactPlan.WriteReport)
-        {
-            await _artifactWriter.WriteReportAsync(Path.Combine(outputPath, "report.json"), report, cancellationToken);
-        }
-    }
 }

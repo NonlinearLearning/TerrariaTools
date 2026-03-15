@@ -1,47 +1,47 @@
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 
 namespace TerrariaTools.Dome.Core;
 
 /// <summary>
-/// 运行模式枚举。
+/// 杩愯妯″紡鏋氫妇銆?
 /// </summary>
 public enum RunMode
 {
     /// <summary>
-    /// 标准模式，执行完整流程。
+    /// 鏍囧噯妯″紡锛屾墽琛屽畬鏁存祦绋嬨€?
     /// </summary>
     Standard,
     /// <summary>
-    /// 仅分析模式。
+    /// 浠呭垎鏋愭ā寮忋€?
     /// </summary>
     AnalyzeOnly,
     /// <summary>
-    /// 仅规划模式。
+    /// 浠呰鍒掓ā寮忋€?
     /// </summary>
     PlanOnly
 }
 
 /// <summary>
-/// 工作区加载偏好枚举。
+/// 宸ヤ綔鍖哄姞杞藉亸濂芥灇涓俱€?
 /// </summary>
 public enum WorkspaceLoaderPreference
 {
     /// <summary>
-    /// 自动选择。
+    /// 鑷姩閫夋嫨銆?
     /// </summary>
     Auto,
     /// <summary>
-    /// 优先使用 CodeAnalysis。
+    /// 浼樺厛浣跨敤 CodeAnalysis銆?
     /// </summary>
     CodeAnalysisFirst,
     /// <summary>
-    /// 仅使用源码扫描。
+    /// 浠呬娇鐢ㄦ簮鐮佹壂鎻忋€?
     /// </summary>
     SourceOnly
 }
 
 /// <summary>
-/// 工作区加载模式枚举。
+/// 宸ヤ綔鍖哄姞杞芥ā寮忔灇涓俱€?
 /// </summary>
 public enum WorkspaceLoadMode
 {
@@ -51,7 +51,7 @@ public enum WorkspaceLoadMode
 }
 
 /// <summary>
-/// 工作区加载诊断级别。
+/// 宸ヤ綔鍖哄姞杞借瘖鏂骇鍒€?
 /// </summary>
 public enum WorkspaceLoadDiagnosticSeverity
 {
@@ -61,156 +61,164 @@ public enum WorkspaceLoadDiagnosticSeverity
 }
 
 /// <summary>
-/// 失败代码枚举。
+/// 澶辫触浠ｇ爜鏋氫妇銆?
 /// </summary>
 public enum FailureCode
 {
     /// <summary>
-    /// 无失败。
+    /// 鏃犲け璐ャ€?
     /// </summary>
     None,
     /// <summary>
-    /// 工作区加载失败。
+    /// 宸ヤ綔鍖哄姞杞藉け璐ャ€?
     /// </summary>
     WorkspaceLoadFailed,
     /// <summary>
-    /// 分析失败。
+    /// 鍒嗘瀽澶辫触銆?
     /// </summary>
     AnalysisFailed,
     /// <summary>
-    /// 计划编译失败。
+    /// 璁″垝缂栬瘧澶辫触銆?
     /// </summary>
     PlanCompileFailed,
     /// <summary>
-    /// 重写失败。
+    /// 閲嶅啓澶辫触銆?
     /// </summary>
     RewriteFailed,
     /// <summary>
-    /// 构建失败。
+    /// 鏋勫缓澶辫触銆?
     /// </summary>
     BuildFailed,
     /// <summary>
-    /// 报告生成失败。
+    /// 鎶ュ憡鐢熸垚澶辫触銆?
     /// </summary>
     ReportFailed
 }
 
 /// <summary>
-/// 成员类型枚举。
+/// 鎴愬憳绫诲瀷鏋氫妇銆?
 /// </summary>
 public enum MemberKind
 {
     /// <summary>
-    /// 未知类型。
+    /// 鏈煡绫诲瀷銆?
     /// </summary>
     Unknown,
     /// <summary>
-    /// 类。
+    /// 绫汇€?
     /// </summary>
     Class,
     /// <summary>
-    /// 字段。
+    /// 瀛楁銆?
     /// </summary>
     Field,
     /// <summary>
-    /// 方法。
+    /// 鏂规硶銆?
     /// </summary>
     Method,
     /// <summary>
-    /// 构造函数。
+    /// 鏋勯€犲嚱鏁般€?
     /// </summary>
     Constructor,
     /// <summary>
-    /// 属性。
+    /// 灞炴€с€?
     /// </summary>
     Property,
     /// <summary>
-    /// 访问器。
+    /// 璁块棶鍣ㄣ€?
     /// </summary>
     Accessor
 }
 
 /// <summary>
-/// 目标类型枚举。
+/// 鐩爣绫诲瀷鏋氫妇銆?
 /// </summary>
 public enum TargetKind
 {
     /// <summary>
-    /// 语句。
+    /// 璇彞銆?
     /// </summary>
     Statement,
     /// <summary>
-    /// 方法。
+    /// 鏂规硶銆?
     /// </summary>
     Method,
     /// <summary>
-    /// 类。
+    /// Internal field target.
+    /// </summary>
+    Field,
+    /// <summary>
+    /// Internal property target.
+    /// </summary>
+    Property,
+    /// <summary>
+    /// 绫汇€?
     /// </summary>
     Class
 }
 
 /// <summary>
-/// 语句类型引用枚举。
-/// 用于区分控制流语句（If, While, For, Return）和其他语句，
-/// 以便在规则引擎中应用特定的分析逻辑（如 DirectiveSeedRule 和 ExpressionProjectionRule）。
+/// 璇彞绫诲瀷寮曠敤鏋氫妇銆?
+/// 鐢ㄤ簬鍖哄垎鎺у埗娴佽鍙ワ紙If, While, For, Return锛夊拰鍏朵粬璇彞锛?
+/// 浠ヤ究鍦ㄨ鍒欏紩鎿庝腑搴旂敤鐗瑰畾鐨勫垎鏋愰€昏緫锛堝 DirectiveSeedRule 鍜?ExpressionProjectionRule锛夈€?
 /// </summary>
 public enum StatementKindRef
 {
     /// <summary>
-    /// 未知类型。
+    /// 鏈煡绫诲瀷銆?
     /// </summary>
     Unknown,
     /// <summary>
-    /// 初始化器。
+    /// 鍒濆鍖栧櫒銆?
     /// </summary>
     Initializer,
     /// <summary>
-    /// 声明。
+    /// 澹版槑銆?
     /// </summary>
     Declaration,
     /// <summary>
-    /// 赋值。
+    /// 璧嬪€笺€?
     /// </summary>
     Assignment,
     /// <summary>
-    /// If 语句。
+    /// If 璇彞銆?
     /// </summary>
     If,
     /// <summary>
-    /// While 循环。
+    /// While 寰幆銆?
     /// </summary>
     While,
     /// <summary>
-    /// For 循环。
+    /// For 寰幆銆?
     /// </summary>
     For,
     /// <summary>
-    /// 返回语句。
+    /// 杩斿洖璇彞銆?
     /// </summary>
     Return,
     /// <summary>
-    /// 对象初始化器赋值。
+    /// 瀵硅薄鍒濆鍖栧櫒璧嬪€笺€?
     /// </summary>
     ObjectInitializerAssignment
 }
 
 /// <summary>
-/// 语句分析作用域模式。
+/// 璇彞鍒嗘瀽浣滅敤鍩熸ā寮忋€?
 /// </summary>
 public enum StatementScopeMode
 {
     /// <summary>
-    /// 最小块范围。
+    /// 鏈€灏忓潡鑼冨洿銆?
     /// </summary>
     MinimalBlock,
     /// <summary>
-    /// 穿透父级块范围。
+    /// 绌块€忕埗绾у潡鑼冨洿銆?
     /// </summary>
     ParentBlockPiercing
 }
 
 /// <summary>
-/// StatementGraph 物化状态。
+/// StatementGraph 鐗╁寲鐘舵€併€?
 /// </summary>
 public enum StatementGraphMaterialization
 {
@@ -220,7 +228,7 @@ public enum StatementGraphMaterialization
 }
 
 /// <summary>
-/// FunctionGraph 物化状态。
+/// FunctionGraph 鐗╁寲鐘舵€併€?
 /// </summary>
 public enum FunctionGraphMaterialization
 {
@@ -230,7 +238,7 @@ public enum FunctionGraphMaterialization
 }
 
 /// <summary>
-/// 边界提升类型。
+/// 杈圭晫鎻愬崌绫诲瀷銆?
 /// </summary>
 public enum BoundaryKind
 {
@@ -238,107 +246,136 @@ public enum BoundaryKind
 }
 
 /// <summary>
-/// 语句分析作用域选项。
+/// 璇彞鍒嗘瀽浣滅敤鍩熼€夐」銆?
 /// </summary>
 public sealed record ScopeAnalysisOptions(
     StatementScopeMode StatementScopeMode)
 {
     /// <summary>
-    /// 获取默认作用域分析选项。
+    /// 鑾峰彇榛樿浣滅敤鍩熷垎鏋愰€夐」銆?
     /// </summary>
     public static ScopeAnalysisOptions Default { get; } =
         new(StatementScopeMode.MinimalBlock);
 }
 
 /// <summary>
-/// 计划操作类型枚举。
-/// 添加返回语句时同时添加默认值
-/// 要忽略属性这种东西
+/// 璁″垝鎿嶄綔绫诲瀷鏋氫妇銆?
+/// 娣诲姞杩斿洖璇彞鏃跺悓鏃舵坊鍔犻粯璁ゅ€?
+/// 瑕佸拷鐣ュ睘鎬ц繖绉嶄笢瑗?
 /// </summary>
 public enum PlanActionKind
 {
     /// <summary>
-    /// 删除。
+    /// 鍒犻櫎銆?
     /// </summary>
     Delete,
     /// <summary>
-    /// 注释掉。
+    /// 娉ㄩ噴鎺夈€?
     /// </summary>
     CommentOut,
     /// <summary>
-    /// 替换为默认值。
+    /// 鏇挎崲涓洪粯璁ゅ€笺€?
     /// </summary>
     ReplaceWithDefault,
     /// <summary>
-    /// 添加返回语句。
+    /// 娣诲姞杩斿洖璇彞銆?
     /// </summary>
-    AddReturn
+    AddReturn,
+    /// <summary>
+    /// Convert method visibility to private.
+    /// </summary>
+    ChangeVisibilityToPrivate,
+    /// <summary>
+    /// Reorder public methods within a type.
+    /// </summary>
+    ReorderPublicMethods
+}
+
+public enum DecisionOrigin
+{
+    Rule,
+    Seed,
+    Projection,
+    Propagation,
+    BoundaryPromotion,
+    Prediction,
+    Cleanup
+}
+
+public enum DecisionCategory
+{
+    Delete,
+    CommentOut,
+    ReplaceWithDefault,
+    AddReturn,
+    VisibilityChange,
+    Reorder
 }
 
 /// <summary>
-/// 成员 ID 结构。
+/// 鎴愬憳 ID 缁撴瀯銆?
 /// </summary>
-/// <param name="Value">ID 值。</param>
+/// <param name="Value">ID 鍊笺€?/param>
 public readonly record struct MemberId(string Value)
 {
     /// <summary>
-    /// 返回 ID 的字符串表示。
+    /// 杩斿洖 ID 鐨勫瓧绗︿覆琛ㄧず銆?
     /// </summary>
     public override string ToString() => Value;
 }
 
 /// <summary>
-/// 工作区加载选项。
+/// 宸ヤ綔鍖哄姞杞介€夐」銆?
 /// </summary>
-/// <param name="PreferredLoader">首选加载器。</param>
-/// <param name="AllowFallbackToSourceOnly">是否允许回退到源码扫描。</param>
+/// <param name="PreferredLoader">棣栭€夊姞杞藉櫒銆?/param>
+/// <param name="AllowFallbackToSourceOnly">鏄惁鍏佽鍥為€€鍒版簮鐮佹壂鎻忋€?/param>
 public sealed record WorkspaceLoadOptions(
     WorkspaceLoaderPreference PreferredLoader,
     bool AllowFallbackToSourceOnly)
 {
     /// <summary>
-    /// 获取默认工作区加载选项。
+    /// 鑾峰彇榛樿宸ヤ綔鍖哄姞杞介€夐」銆?
     /// </summary>
     public static WorkspaceLoadOptions Default { get; } =
         new(WorkspaceLoaderPreference.Auto, true);
 }
 
 /// <summary>
-/// 工作区加载诊断。
+/// 宸ヤ綔鍖哄姞杞借瘖鏂€?
 /// </summary>
-/// <param name="Stage">诊断阶段。</param>
-/// <param name="Severity">诊断级别。</param>
-/// <param name="Message">诊断消息。</param>
+/// <param name="Stage">璇婃柇闃舵銆?/param>
+/// <param name="Severity">璇婃柇绾у埆銆?/param>
+/// <param name="Message">璇婃柇娑堟伅銆?/param>
 public sealed record WorkspaceLoadDiagnostic(
     string Stage,
     WorkspaceLoadDiagnosticSeverity Severity,
     string Message);
 
 /// <summary>
-/// 源码文档记录。
+/// 婧愮爜鏂囨。璁板綍銆?
 /// </summary>
-/// <param name="SourcePath">源码绝对路径。</param>
-/// <param name="RelativePath">相对路径。</param>
-/// <param name="SourceText">源码内容。</param>
+/// <param name="SourcePath">婧愮爜缁濆璺緞銆?/param>
+/// <param name="RelativePath">鐩稿璺緞銆?/param>
+/// <param name="SourceText">婧愮爜鍐呭銆?/param>
 public sealed record SourceDocument(
     string SourcePath,
     string RelativePath,
     string SourceText);
 
 /// <summary>
-/// 分析输入抽象。
+/// 鍒嗘瀽杈撳叆鎶借薄銆?
 /// </summary>
 public abstract record AnalysisInput(string RootPath);
 
 /// <summary>
-/// 纯源码分析输入。
+/// 绾簮鐮佸垎鏋愯緭鍏ャ€?
 /// </summary>
 public sealed record SourceOnlyAnalysisInput(
     string RootPath,
     IReadOnlyList<SourceDocument> Documents) : AnalysisInput(RootPath);
 
 /// <summary>
-/// Workspace 文档上下文。
+/// Workspace 鏂囨。涓婁笅鏂囥€?
 /// </summary>
 public sealed record WorkspaceAnalysisDocumentContext(
     Document Document,
@@ -348,7 +385,7 @@ public sealed record WorkspaceAnalysisDocumentContext(
     SyntaxNode Root);
 
 /// <summary>
-/// Workspace 分析输入。
+/// Workspace 鍒嗘瀽杈撳叆銆?
 /// </summary>
 public sealed record WorkspaceAnalysisContextInput(
     Solution Solution,
@@ -357,20 +394,36 @@ public sealed record WorkspaceAnalysisContextInput(
     IReadOnlyList<WorkspaceAnalysisDocumentContext> Documents) : AnalysisInput(RootPath);
 
 /// <summary>
-/// Rewrite 文档上下文。
+/// Rewrite 鏂囨。涓婁笅鏂囥€?
 /// </summary>
 public sealed record RewriteExecutionDocumentContext(
     SourceDocument Document,
     SyntaxNode Root,
     SemanticModel? SemanticModel);
 
+public sealed record AnalysisDocumentContext(
+    SourceDocument Document,
+    SyntaxNode Root,
+    SemanticModel SemanticModel,
+    IReadOnlyList<AnalysisTarget> Targets);
+
+public sealed record AnalysisPerformanceSummary(
+    int DocumentCount,
+    TimeSpan SyntaxIndexTime,
+    TimeSpan TypeGraphTime,
+    TimeSpan FunctionNodeTime,
+    TimeSpan TypeBodyGraphTime,
+    TimeSpan TargetAnalysisTime,
+    TimeSpan FunctionFactsTime,
+    TimeSpan MergeTime);
+
 /// <summary>
-/// 运行请求记录。
+/// 杩愯璇锋眰璁板綍銆?
 /// </summary>
-/// <param name="InputPath">输入路径。</param>
-/// <param name="OutputPath">输出路径。</param>
-/// <param name="RuleSet">规则集。</param>
-/// <param name="Mode">运行模式。</param>
+/// <param name="InputPath">杈撳叆璺緞銆?/param>
+/// <param name="OutputPath">杈撳嚭璺緞銆?/param>
+/// <param name="RuleSet">瑙勫垯闆嗐€?/param>
+/// <param name="Mode">杩愯妯″紡銆?/param>
 public sealed record RunRequest(
     string InputPath,
     string OutputPath,
@@ -379,7 +432,7 @@ public sealed record RunRequest(
     WorkspaceLoadOptions WorkspaceLoadOptions)
 {
     /// <summary>
-    /// 使用默认工作区加载选项初始化运行请求。
+    /// 浣跨敤榛樿宸ヤ綔鍖哄姞杞介€夐」鍒濆鍖栬繍琛岃姹傘€?
     /// </summary>
     public RunRequest(string inputPath, string outputPath, IReadOnlyList<string> ruleSet, RunMode mode)
         : this(inputPath, outputPath, ruleSet, mode, WorkspaceLoadOptions.Default)
@@ -388,16 +441,24 @@ public sealed record RunRequest(
 }
 
 /// <summary>
-/// TR 专用运行请求记录。
+/// TR 涓撶敤杩愯璇锋眰璁板綍銆?
 /// </summary>
-/// <param name="SolutionPath">TR 解决方案路径。</param>
-/// <param name="OutputRootPath">运行时输出根目录。</param>
+/// <param name="SolutionPath">TR 瑙ｅ喅鏂规璺緞銆?/param>
+/// <param name="OutputRootPath">杩愯鏃惰緭鍑烘牴鐩綍銆?/param>
 public sealed record TerrariaRuntimeRunRequest(
     string SolutionPath,
     string OutputRootPath);
 
 /// <summary>
-/// TR 运行时目录布局。
+/// TR shadow extraction request.
+/// </summary>
+public sealed record TerrariaRuntimeShadowExtractionRequest(
+    string SolutionPath,
+    string OutputRootPath,
+    string SeedMemberName);
+
+/// <summary>
+/// TR 杩愯鏃剁洰褰曞竷灞€銆?
 /// </summary>
 public sealed record TerrariaRuntimeLayout(
     string SolutionPath,
@@ -409,10 +470,10 @@ public sealed record TerrariaRuntimeLayout(
     string WorkspaceSolutionPath)
 {
     /// <summary>
-    /// 由 TR 运行请求创建目录布局。
+    /// 鐢?TR 杩愯璇锋眰鍒涘缓鐩綍甯冨眬銆?
     /// </summary>
-    /// <param name="request">TR 运行请求。</param>
-    /// <returns>运行时目录布局。</returns>
+    /// <param name="request">TR 杩愯璇锋眰銆?/param>
+    /// <returns>杩愯鏃剁洰褰曞竷灞€銆?/returns>
     public static TerrariaRuntimeLayout Create(TerrariaRuntimeRunRequest request)
     {
         var sourceRootPath = Path.GetDirectoryName(request.SolutionPath)
@@ -434,7 +495,39 @@ public sealed record TerrariaRuntimeLayout(
 }
 
 /// <summary>
-/// TR 外部进程执行结果。
+/// TR shadow extraction layout.
+/// </summary>
+public sealed record TerrariaRuntimeShadowLayout(
+    string SolutionPath,
+    string SourceRootPath,
+    string OutputRootPath,
+    string WorkspacePath,
+    string ArtifactsPath,
+    string DependencyEnvironmentPath,
+    string WorkspaceSolutionPath)
+{
+    public static TerrariaRuntimeShadowLayout Create(TerrariaRuntimeShadowExtractionRequest request)
+    {
+        var sourceRootPath = Path.GetDirectoryName(request.SolutionPath)
+            ?? throw new InvalidOperationException("TR solution path must have a parent directory.");
+        var solutionFileName = Path.GetFileName(request.SolutionPath);
+        var workspacePath = Path.Combine(request.OutputRootPath, "workspace");
+        var artifactsPath = Path.Combine(request.OutputRootPath, "artifacts");
+        var dependencyEnvironmentPath = Path.Combine(request.OutputRootPath, "dependency-env");
+        var workspaceSolutionPath = Path.Combine(workspacePath, solutionFileName);
+        return new TerrariaRuntimeShadowLayout(
+            request.SolutionPath,
+            sourceRootPath,
+            request.OutputRootPath,
+            workspacePath,
+            artifactsPath,
+            dependencyEnvironmentPath,
+            workspaceSolutionPath);
+    }
+}
+
+/// <summary>
+/// TR 澶栭儴杩涚▼鎵ц缁撴灉銆?
 /// </summary>
 public sealed record TerrariaRuntimeProcessResult(
     int ExitCode,
@@ -442,7 +535,33 @@ public sealed record TerrariaRuntimeProcessResult(
     string StandardError);
 
 /// <summary>
-/// TR 构建摘要。
+/// TR shadow extraction report.
+/// </summary>
+public sealed record TerrariaRuntimeShadowExtractionReport(
+    string SeedMemberName,
+    string SeedMemberId,
+    IReadOnlyList<string> IncludedDocuments,
+    IReadOnlyList<string> ReachableMethods,
+    AdvancedAnalysisSummary AdvancedAnalysisSummary,
+    int RewrittenDocuments,
+    TerrariaRuntimeShadowRewriteSummary RewriteSummary)
+{
+    public TerrariaRuntimeBuildSummary? TrBuildSummary { get; init; }
+}
+
+/// <summary>
+/// TR shadow rewrite summary.
+/// </summary>
+public sealed record TerrariaRuntimeShadowRewriteSummary(
+    int PreservedMembers,
+    int DefaultedMembers,
+    int EmptiedMembers,
+    IReadOnlyList<string> SamplePreservedMembers,
+    IReadOnlyList<string> SampleDefaultedMembers,
+    IReadOnlyList<string> SampleEmptiedMembers);
+
+/// <summary>
+/// TR 鏋勫缓鎽樿銆?
 /// </summary>
 public sealed record TerrariaRuntimeBuildSummary(
     bool BuildSucceeded,
@@ -455,13 +574,13 @@ public sealed record TerrariaRuntimeBuildSummary(
     string StandardError);
 
 /// <summary>
-/// 运行结果记录。
+/// 杩愯缁撴灉璁板綍銆?
 /// </summary>
-/// <param name="IsSuccess">是否成功。</param>
-/// <param name="FailureCode">失败代码。</param>
-/// <param name="OutputPath">输出路径。</param>
-/// <param name="ReportPath">报告路径。</param>
-/// <param name="Message">消息。</param>
+/// <param name="IsSuccess">鏄惁鎴愬姛銆?/param>
+/// <param name="FailureCode">澶辫触浠ｇ爜銆?/param>
+/// <param name="OutputPath">杈撳嚭璺緞銆?/param>
+/// <param name="ReportPath">鎶ュ憡璺緞銆?/param>
+/// <param name="Message">娑堟伅銆?/param>
 public sealed record RunResult(
     bool IsSuccess,
     FailureCode FailureCode,
@@ -470,26 +589,26 @@ public sealed record RunResult(
     string? Message)
 {
     /// <summary>
-    /// 创建成功结果。
+    /// 鍒涘缓鎴愬姛缁撴灉銆?
     /// </summary>
     public static RunResult Success(string outputPath, string? reportPath) =>
         new(true, FailureCode.None, outputPath, reportPath, null);
 
     /// <summary>
-    /// 创建失败结果。
+    /// 鍒涘缓澶辫触缁撴灉銆?
     /// </summary>
     public static RunResult Failure(FailureCode code, string outputPath, string? message) =>
         new(false, code, outputPath, null, message);
 }
 
 /// <summary>
-/// 计划元数据记录。
+/// 璁″垝鍏冩暟鎹褰曘€?
 /// </summary>
-/// <param name="ToolName">工具名称。</param>
-/// <param name="PlanVersion">计划版本。</param>
-/// <param name="InputPath">输入路径。</param>
-/// <param name="OutputPath">输出路径。</param>
-/// <param name="RunMode">运行模式。</param>
+/// <param name="ToolName">宸ュ叿鍚嶇О銆?/param>
+/// <param name="PlanVersion">璁″垝鐗堟湰銆?/param>
+/// <param name="InputPath">杈撳叆璺緞銆?/param>
+/// <param name="OutputPath">杈撳嚭璺緞銆?/param>
+/// <param name="RunMode">杩愯妯″紡銆?/param>
 public sealed record PlanMetadata(
     string ToolName,
     string PlanVersion,
@@ -498,21 +617,21 @@ public sealed record PlanMetadata(
     RunMode RunMode)
 {
     /// <summary>
-    /// 生成时间（UTC）。
+    /// 鐢熸垚鏃堕棿锛圲TC锛夈€?
     /// </summary>
     public DateTimeOffset GeneratedAtUtc { get; init; } = DateTimeOffset.UtcNow;
 }
 
 /// <summary>
-/// 计划目标记录。
+/// 璁″垝鐩爣璁板綍銆?
 /// </summary>
-/// <param name="DocumentPath">文档路径。</param>
-/// <param name="MemberId">成员 ID。</param>
-/// <param name="MemberKind">成员类型。</param>
-/// <param name="TargetKind">目标类型。</param>
-/// <param name="SpanStart">跨度起始位置。</param>
-/// <param name="SpanLength">跨度长度。</param>
-/// <param name="DisplayText">显示文本。</param>
+/// <param name="DocumentPath">鏂囨。璺緞銆?/param>
+/// <param name="MemberId">鎴愬憳 ID銆?/param>
+/// <param name="MemberKind">鎴愬憳绫诲瀷銆?/param>
+/// <param name="TargetKind">鐩爣绫诲瀷銆?/param>
+/// <param name="SpanStart">璺ㄥ害璧峰浣嶇疆銆?/param>
+/// <param name="SpanLength">璺ㄥ害闀垮害銆?/param>
+/// <param name="DisplayText">鏄剧ず鏂囨湰銆?/param>
 public sealed record PlanTarget(
     string DocumentPath,
     MemberId MemberId,
@@ -524,7 +643,7 @@ public sealed record PlanTarget(
     TargetResolutionKey? ResolutionKey = null)
 {
     /// <summary>
-    /// 目标唯一键。
+    /// 鐩爣鍞竴閿€?
     /// </summary>
     public string TargetKey => $"{DocumentPath}|{MemberId.Value}|{TargetKind}|{SpanStart}|{SpanLength}";
 
@@ -536,24 +655,24 @@ public sealed record TargetResolutionKey(
     int SpanLength);
 
 /// <summary>
-/// 计划操作记录。
+/// 璁″垝鎿嶄綔璁板綍銆?
 /// </summary>
-/// <param name="Kind">操作类型。</param>
-/// <param name="Payload">负载数据。</param>
+/// <param name="Kind">鎿嶄綔绫诲瀷銆?/param>
+/// <param name="Payload">璐熻浇鏁版嵁銆?/param>
 public sealed record PlanAction(
     PlanActionKind Kind,
     string? Payload = null);
 
 /// <summary>
-/// 计划原因记录。
+/// 璁″垝鍘熷洜璁板綍銆?
 /// </summary>
-/// <param name="RuleId">规则 ID。</param>
-/// <param name="ReasonText">原因文本。</param>
-/// <param name="SourceTargetKey">源目标键。</param>
-/// <param name="SourceTargetDisplayText">源目标显示文本。</param>
-/// <param name="RelatedSymbolKeys">相关符号键。</param>
-/// <param name="RelatedSymbolNames">相关符号名称。</param>
-/// <param name="Severity">严重程度。</param>
+/// <param name="RuleId">瑙勫垯 ID銆?/param>
+/// <param name="ReasonText">鍘熷洜鏂囨湰銆?/param>
+/// <param name="SourceTargetKey">婧愮洰鏍囬敭銆?/param>
+/// <param name="SourceTargetDisplayText">婧愮洰鏍囨樉绀烘枃鏈€?/param>
+/// <param name="RelatedSymbolKeys">鐩稿叧绗﹀彿閿€?/param>
+/// <param name="RelatedSymbolNames">鐩稿叧绗﹀彿鍚嶇О銆?/param>
+/// <param name="Severity">涓ラ噸绋嬪害銆?/param>
 public sealed record PlanReason(
     string RuleId,
     string ReasonText,
@@ -564,27 +683,29 @@ public sealed record PlanReason(
     string? Severity = null,
     string? SourceMemberId = null,
     BoundaryKind? BoundaryKind = null,
-    IReadOnlyList<string>? TriggeredSymbolKeys = null);
+    IReadOnlyList<string>? TriggeredSymbolKeys = null,
+    DecisionOrigin Origin = DecisionOrigin.Rule,
+    DecisionCategory Category = DecisionCategory.Delete);
 
 /// <summary>
-/// 传播证据记录。
+/// 浼犳挱璇佹嵁璁板綍銆?
 /// </summary>
-/// <param name="RelatedSymbolKeys">相关符号键列表。</param>
-/// <param name="RelatedSymbolNames">相关符号名称列表。</param>
+/// <param name="RelatedSymbolKeys">鐩稿叧绗﹀彿閿垪琛ㄣ€?/param>
+/// <param name="RelatedSymbolNames">鐩稿叧绗﹀彿鍚嶇О鍒楄〃銆?/param>
 public sealed record PropagationEvidence(
     IReadOnlyList<string> RelatedSymbolKeys,
     IReadOnlyList<string> RelatedSymbolNames);
 
 /// <summary>
-/// 传播跳跃记录。
+/// 浼犳挱璺宠穬璁板綍銆?
 /// </summary>
-/// <param name="FromTargetKey">起始目标键。</param>
-/// <param name="FromTargetDisplayText">起始目标显示文本。</param>
-/// <param name="ToTargetKey">目标目标键。</param>
-/// <param name="ToTargetDisplayText">目标目标显示文本。</param>
-/// <param name="RuleId">规则 ID。</param>
-/// <param name="ActionKind">操作类型。</param>
-/// <param name="Evidence">证据。</param>
+/// <param name="FromTargetKey">璧峰鐩爣閿€?/param>
+/// <param name="FromTargetDisplayText">璧峰鐩爣鏄剧ず鏂囨湰銆?/param>
+/// <param name="ToTargetKey">鐩爣鐩爣閿€?/param>
+/// <param name="ToTargetDisplayText">鐩爣鐩爣鏄剧ず鏂囨湰銆?/param>
+/// <param name="RuleId">瑙勫垯 ID銆?/param>
+/// <param name="ActionKind">鎿嶄綔绫诲瀷銆?/param>
+/// <param name="Evidence">璇佹嵁銆?/param>
 public sealed record PropagationHop(
     string FromTargetKey,
     string FromTargetDisplayText,
@@ -595,23 +716,23 @@ public sealed record PropagationHop(
     PropagationEvidence Evidence);
 
 /// <summary>
-/// 传播链记录。
+/// 浼犳挱閾捐褰曘€?
 /// </summary>
-/// <param name="RootTargetKey">根目标键。</param>
-/// <param name="RootTargetDisplayText">根目标显示文本。</param>
-/// <param name="Hops">跳跃列表。</param>
+/// <param name="RootTargetKey">鏍圭洰鏍囬敭銆?/param>
+/// <param name="RootTargetDisplayText">鏍圭洰鏍囨樉绀烘枃鏈€?/param>
+/// <param name="Hops">璺宠穬鍒楄〃銆?/param>
 public sealed record PropagationChain(
     string RootTargetKey,
     string RootTargetDisplayText,
     IReadOnlyList<PropagationHop> Hops);
 
 /// <summary>
-/// 标记决策记录。
+/// 鏍囪鍐崇瓥璁板綍銆?
 /// </summary>
-/// <param name="Target">计划目标。</param>
-/// <param name="Action">计划操作。</param>
-/// <param name="Reason">计划原因。</param>
-/// <param name="Chain">传播链。</param>
+/// <param name="Target">璁″垝鐩爣銆?/param>
+/// <param name="Action">璁″垝鎿嶄綔銆?/param>
+/// <param name="Reason">璁″垝鍘熷洜銆?/param>
+/// <param name="Chain">浼犳挱閾俱€?/param>
 public sealed record MarkDecision(
     PlanTarget Target,
     PlanAction Action,
@@ -619,7 +740,7 @@ public sealed record MarkDecision(
     PropagationChain? Chain = null)
 {
     /// <summary>
-    /// 为目标创建标记决策。
+    /// 涓虹洰鏍囧垱寤烘爣璁板喅绛栥€?
     /// </summary>
     public static MarkDecision ForTarget(
         PlanTarget target,
@@ -635,6 +756,8 @@ public sealed record MarkDecision(
         string? sourceMemberId = null,
         BoundaryKind? boundaryKind = null,
         IReadOnlyList<string>? triggeredSymbolKeys = null,
+        DecisionOrigin origin = DecisionOrigin.Rule,
+        DecisionCategory? category = null,
         PropagationChain? chain = null) =>
         new(
             target,
@@ -649,18 +772,32 @@ public sealed record MarkDecision(
                 severity,
                 sourceMemberId,
                 boundaryKind,
-                triggeredSymbolKeys ?? Array.Empty<string>()),
+                triggeredSymbolKeys ?? Array.Empty<string>(),
+                origin,
+                category ?? ToDecisionCategory(actionKind)),
             chain);
+
+    private static DecisionCategory ToDecisionCategory(PlanActionKind actionKind) =>
+        actionKind switch
+        {
+            PlanActionKind.Delete => DecisionCategory.Delete,
+            PlanActionKind.CommentOut => DecisionCategory.CommentOut,
+            PlanActionKind.ReplaceWithDefault => DecisionCategory.ReplaceWithDefault,
+            PlanActionKind.AddReturn => DecisionCategory.AddReturn,
+            PlanActionKind.ChangeVisibilityToPrivate => DecisionCategory.VisibilityChange,
+            PlanActionKind.ReorderPublicMethods => DecisionCategory.Reorder,
+            _ => throw new ArgumentOutOfRangeException(nameof(actionKind), actionKind, null)
+        };
 }
 
 /// <summary>
-/// 计划变更记录。
+/// 璁″垝鍙樻洿璁板綍銆?
 /// </summary>
-/// <param name="ExecutionOrder">执行顺序。</param>
-/// <param name="Target">计划目标。</param>
-/// <param name="Action">计划操作。</param>
-/// <param name="Reason">计划原因。</param>
-/// <param name="Chain">传播链。</param>
+/// <param name="ExecutionOrder">鎵ц椤哄簭銆?/param>
+/// <param name="Target">璁″垝鐩爣銆?/param>
+/// <param name="Action">璁″垝鎿嶄綔銆?/param>
+/// <param name="Reason">璁″垝鍘熷洜銆?/param>
+/// <param name="Chain">浼犳挱閾俱€?/param>
 public sealed record PlannedChange(
     int ExecutionOrder,
     PlanTarget Target,
@@ -669,12 +806,12 @@ public sealed record PlannedChange(
     PropagationChain? Chain = null);
 
 /// <summary>
-/// 计划冲突记录。
+/// 璁″垝鍐茬獊璁板綍銆?
 /// </summary>
-/// <param name="ConflictCode">冲突代码。</param>
-/// <param name="Target">计划目标。</param>
-/// <param name="ActionKinds">操作类型列表。</param>
-/// <param name="Reason">原因。</param>
+/// <param name="ConflictCode">鍐茬獊浠ｇ爜銆?/param>
+/// <param name="Target">璁″垝鐩爣銆?/param>
+/// <param name="ActionKinds">鎿嶄綔绫诲瀷鍒楄〃銆?/param>
+/// <param name="Reason">鍘熷洜銆?/param>
 public sealed record PlanConflict(
     string ConflictCode,
     PlanTarget Target,
@@ -682,129 +819,129 @@ public sealed record PlanConflict(
     string Reason);
 
 /// <summary>
-/// 审计计划记录。
+/// 瀹¤璁″垝璁板綍銆?
 /// </summary>
-/// <param name="Metadata">计划元数据。</param>
-/// <param name="Changes">计划变更列表。</param>
-/// <param name="Conflicts">计划冲突列表。</param>
+/// <param name="Metadata">璁″垝鍏冩暟鎹€?/param>
+/// <param name="Changes">璁″垝鍙樻洿鍒楄〃銆?/param>
+/// <param name="Conflicts">璁″垝鍐茬獊鍒楄〃銆?/param>
 public sealed record AuditPlan(
     PlanMetadata Metadata,
     IReadOnlyList<PlannedChange> Changes,
     IReadOnlyList<PlanConflict> Conflicts);
 
 /// <summary>
-/// 类型依赖类型枚举。
-/// 描述类型之间的静态依赖关系，如继承、实现、字段类型等。
+/// 绫诲瀷渚濊禆绫诲瀷鏋氫妇銆?
+/// 鎻忚堪绫诲瀷涔嬮棿鐨勯潤鎬佷緷璧栧叧绯伙紝濡傜户鎵裤€佸疄鐜般€佸瓧娈电被鍨嬬瓑銆?
 /// </summary>
 public enum TypeDependencyKind
 {
     /// <summary>
-    /// 继承。
+    /// 缁ф壙銆?
     /// </summary>
     Inherits,
     /// <summary>
-    /// 实现。
+    /// 瀹炵幇銆?
     /// </summary>
     Implements,
     /// <summary>
-    /// 字段类型。
+    /// 瀛楁绫诲瀷銆?
     /// </summary>
     FieldType,
     /// <summary>
-    /// 属性类型。
+    /// 灞炴€х被鍨嬨€?
     /// </summary>
     PropertyType,
     /// <summary>
-    /// 参数类型。
+    /// 鍙傛暟绫诲瀷銆?
     /// </summary>
     ParameterType,
     /// <summary>
-    /// 返回类型。
+    /// 杩斿洖绫诲瀷銆?
     /// </summary>
     ReturnType,
     /// <summary>
-    /// 对象创建。
+    /// 瀵硅薄鍒涘缓銆?
     /// </summary>
     ObjectCreation,
     /// <summary>
-    /// 静态成员访问。
+    /// 闈欐€佹垚鍛樿闂€?
     /// </summary>
     StaticMemberAccess,
     /// <summary>
-    /// 成员体引用。
+    /// 鎴愬憳浣撳紩鐢ㄣ€?
     /// </summary>
     MemberBodyReference
 }
 
 /// <summary>
-/// 函数依赖类型枚举。
-/// 描述函数之间的动态依赖关系。
-/// 注意：目前 FunctionGraphProvider 主要支持 Calls 类型。
-/// 其他类型（Creates, ReadsMember, WritesMember 等）在分析阶段有生成逻辑，
-/// 但可能未被完全持久化或在视图中利用。
+/// 鍑芥暟渚濊禆绫诲瀷鏋氫妇銆?
+/// 鎻忚堪鍑芥暟涔嬮棿鐨勫姩鎬佷緷璧栧叧绯汇€?
+/// 娉ㄦ剰锛氱洰鍓?FunctionGraphProvider 涓昏鏀寔 Calls 绫诲瀷銆?
+/// 鍏朵粬绫诲瀷锛圕reates, ReadsMember, WritesMember 绛夛級鍦ㄥ垎鏋愰樁娈垫湁鐢熸垚閫昏緫锛?
+/// 浣嗗彲鑳芥湭琚畬鍏ㄦ寔涔呭寲鎴栧湪瑙嗗浘涓埄鐢ㄣ€?
 /// </summary>
 public enum FunctionDependencyKind
 {
     /// <summary>
-    /// 调用。
+    /// 璋冪敤銆?
     /// </summary>
     Calls,
     /// <summary>
-    /// 创建。
+    /// 鍒涘缓銆?
     /// </summary>
     Creates,
     /// <summary>
-    /// 读取成员。
+    /// 璇诲彇鎴愬憳銆?
     /// </summary>
     ReadsMember,
     /// <summary>
-    /// 写入成员。
+    /// 鍐欏叆鎴愬憳銆?
     /// </summary>
     WritesMember,
     /// <summary>
-    /// 使用属性访问器。
+    /// 浣跨敤灞炴€ц闂櫒銆?
     /// </summary>
     UsesPropertyAccessor
 }
 
 /// <summary>
-/// 语句依赖类型枚举。
+/// 璇彞渚濊禆绫诲瀷鏋氫妇銆?
 /// </summary>
 public enum StatementDependencyKind
 {
     /// <summary>
-    /// 定义。
+    /// 瀹氫箟銆?
     /// </summary>
     Defines,
     /// <summary>
-    /// 使用。
+    /// 浣跨敤銆?
     /// </summary>
     Uses,
     /// <summary>
-    /// 先于。
+    /// 鍏堜簬銆?
     /// </summary>
     Precedes
 }
 
 /// <summary>
-/// 类型节点引用记录。
+/// 绫诲瀷鑺傜偣寮曠敤璁板綍銆?
 /// </summary>
-/// <param name="TypeId">类型 ID。</param>
-/// <param name="DisplayName">显示名称。</param>
-/// <param name="DocumentPath">文档路径。</param>
+/// <param name="TypeId">绫诲瀷 ID銆?/param>
+/// <param name="DisplayName">鏄剧ず鍚嶇О銆?/param>
+/// <param name="DocumentPath">鏂囨。璺緞銆?/param>
 public sealed record TypeNodeRef(
     string TypeId,
     string DisplayName,
     string DocumentPath);
 
 /// <summary>
-/// 类型依赖边记录。
+/// 绫诲瀷渚濊禆杈硅褰曘€?
 /// </summary>
-/// <param name="SourceTypeId">源类型 ID。</param>
-/// <param name="TargetTypeId">目标类型 ID。</param>
-/// <param name="Kind">依赖类型。</param>
-/// <param name="MemberId">成员 ID。</param>
-/// <param name="SymbolKey">符号键。</param>
+/// <param name="SourceTypeId">婧愮被鍨?ID銆?/param>
+/// <param name="TargetTypeId">鐩爣绫诲瀷 ID銆?/param>
+/// <param name="Kind">渚濊禆绫诲瀷銆?/param>
+/// <param name="MemberId">鎴愬憳 ID銆?/param>
+/// <param name="SymbolKey">绗﹀彿閿€?/param>
 public sealed record TypeDependencyEdge(
     string SourceTypeId,
     string TargetTypeId,
@@ -813,29 +950,29 @@ public sealed record TypeDependencyEdge(
     string? SymbolKey = null);
 
 /// <summary>
-/// 类型依赖图记录。
+/// 绫诲瀷渚濊禆鍥捐褰曘€?
 /// </summary>
-/// <param name="Nodes">节点列表。</param>
-/// <param name="Edges">边列表。</param>
+/// <param name="Nodes">鑺傜偣鍒楄〃銆?/param>
+/// <param name="Edges">杈瑰垪琛ㄣ€?/param>
 public sealed record TypeDependencyGraph(
     IReadOnlyList<TypeNodeRef> Nodes,
     IReadOnlyList<TypeDependencyEdge> Edges);
 
 /// <summary>
-/// 函数节点引用记录。
+/// 鍑芥暟鑺傜偣寮曠敤璁板綍銆?
 /// </summary>
-/// <param name="MemberId">成员 ID。</param>
-/// <param name="MemberKind">成员类型。</param>
-/// <param name="DeclaringTypeId">声明类型 ID。</param>
-/// <param name="DisplayName">显示名称。</param>
-/// <param name="DocumentPath">文档路径。</param>
-/// <param name="SpanStart">跨度起始位置。</param>
-/// <param name="SpanLength">跨度长度。</param>
-/// <param name="IsPrivate">是否私有。</param>
-/// <param name="ReturnsVoid">是否返回 Void。</param>
-/// <param name="HasBody">是否有方法体。</param>
-/// <param name="HasStatements">是否有语句。</param>
-/// <param name="ReturnTypeDisplay">返回类型显示文本。</param>
+/// <param name="MemberId">鎴愬憳 ID銆?/param>
+/// <param name="MemberKind">鎴愬憳绫诲瀷銆?/param>
+/// <param name="DeclaringTypeId">澹版槑绫诲瀷 ID銆?/param>
+/// <param name="DisplayName">鏄剧ず鍚嶇О銆?/param>
+/// <param name="DocumentPath">鏂囨。璺緞銆?/param>
+/// <param name="SpanStart">璺ㄥ害璧峰浣嶇疆銆?/param>
+/// <param name="SpanLength">璺ㄥ害闀垮害銆?/param>
+/// <param name="IsPrivate">鏄惁绉佹湁銆?/param>
+/// <param name="ReturnsVoid">鏄惁杩斿洖 Void銆?/param>
+/// <param name="HasBody">鏄惁鏈夋柟娉曚綋銆?/param>
+/// <param name="HasStatements">鏄惁鏈夎鍙ャ€?/param>
+/// <param name="ReturnTypeDisplay">杩斿洖绫诲瀷鏄剧ず鏂囨湰銆?/param>
 public sealed record FunctionNodeRef(
     MemberId MemberId,
     MemberKind MemberKind,
@@ -851,12 +988,12 @@ public sealed record FunctionNodeRef(
     string ReturnTypeDisplay);
 
 /// <summary>
-/// 函数依赖边记录。
+/// 鍑芥暟渚濊禆杈硅褰曘€?
 /// </summary>
-/// <param name="SourceMemberId">源成员 ID。</param>
-/// <param name="TargetMemberId">目标成员 ID。</param>
-/// <param name="Kind">依赖类型。</param>
-/// <param name="SymbolKey">符号键。</param>
+/// <param name="SourceMemberId">婧愭垚鍛?ID銆?/param>
+/// <param name="TargetMemberId">鐩爣鎴愬憳 ID銆?/param>
+/// <param name="Kind">渚濊禆绫诲瀷銆?/param>
+/// <param name="SymbolKey">绗﹀彿閿€?/param>
 public sealed record FunctionDependencyEdge(
     MemberId SourceMemberId,
     MemberId TargetMemberId,
@@ -864,16 +1001,16 @@ public sealed record FunctionDependencyEdge(
     string? SymbolKey = null);
 
 /// <summary>
-/// 函数依赖图记录。
+/// 鍑芥暟渚濊禆鍥捐褰曘€?
 /// </summary>
-/// <param name="Nodes">节点列表。</param>
-/// <param name="Edges">边列表。</param>
+/// <param name="Nodes">鑺傜偣鍒楄〃銆?/param>
+/// <param name="Edges">杈瑰垪琛ㄣ€?/param>
 public sealed record FunctionDependencyGraph(
     IReadOnlyList<FunctionNodeRef> Nodes,
     IReadOnlyList<FunctionDependencyEdge> Edges);
 
 /// <summary>
-/// 函数删除影响范围集合。
+/// 鍑芥暟鍒犻櫎褰卞搷鑼冨洿闆嗗悎銆?
 /// </summary>
 public sealed record FunctionImpactSet(
     IReadOnlyList<string> DeletedFunctionIds,
@@ -883,12 +1020,12 @@ public sealed record FunctionImpactSet(
     IReadOnlyList<FunctionDependencyKind> EdgeKinds);
 
 /// <summary>
-/// 语句依赖边记录。
+/// 璇彞渚濊禆杈硅褰曘€?
 /// </summary>
-/// <param name="SourceTargetKey">源目标键。</param>
-/// <param name="TargetTargetKey">目标目标键。</param>
-/// <param name="Kind">依赖类型。</param>
-/// <param name="SymbolKey">符号键。</param>
+/// <param name="SourceTargetKey">婧愮洰鏍囬敭銆?/param>
+/// <param name="TargetTargetKey">鐩爣鐩爣閿€?/param>
+/// <param name="Kind">渚濊禆绫诲瀷銆?/param>
+/// <param name="SymbolKey">绗﹀彿閿€?/param>
 public sealed record StatementDependencyEdge(
     string SourceTargetKey,
     string TargetTargetKey,
@@ -896,23 +1033,23 @@ public sealed record StatementDependencyEdge(
     string? SymbolKey = null);
 
 /// <summary>
-/// 语句依赖图记录。
+/// 璇彞渚濊禆鍥捐褰曘€?
 /// </summary>
-/// <param name="Nodes">节点列表。</param>
-/// <param name="Edges">边列表。</param>
+/// <param name="Nodes">鑺傜偣鍒楄〃銆?/param>
+/// <param name="Edges">杈瑰垪琛ㄣ€?/param>
 public sealed record StatementDependencyGraph(
     IReadOnlyList<string> Nodes,
     IReadOnlyList<StatementDependencyEdge> Edges);
 
 /// <summary>
-/// 函数索引。
+/// 鍑芥暟绱㈠紩銆?
 /// </summary>
 public sealed record FunctionIndex(
     IReadOnlyDictionary<string, FunctionNodeRef> NodesByMemberId,
     IReadOnlyDictionary<string, IReadOnlyList<string>> MemberIdsByDocumentPath)
 {
     /// <summary>
-    /// 空函数索引实例。
+    /// 绌哄嚱鏁扮储寮曞疄渚嬨€?
     /// </summary>
     public static FunctionIndex Empty { get; } = new(
         new Dictionary<string, FunctionNodeRef>(StringComparer.Ordinal),
@@ -920,14 +1057,14 @@ public sealed record FunctionIndex(
 }
 
 /// <summary>
-/// 函数事实记录。
+/// 鍑芥暟浜嬪疄璁板綍銆?
 /// </summary>
 public sealed record FunctionFact(
     FunctionNodeRef Node,
     IReadOnlyList<MemberId> CalledMemberIds);
 
 /// <summary>
-/// 函数事实索引。
+/// 鍑芥暟浜嬪疄绱㈠紩銆?
 /// </summary>
 public sealed record FunctionFactsIndex(
     IReadOnlyDictionary<string, FunctionFact> FactsByMemberId,
@@ -935,7 +1072,7 @@ public sealed record FunctionFactsIndex(
     IReadOnlyDictionary<string, IReadOnlyList<MemberId>> IncomingCallersByMemberId)
 {
     /// <summary>
-    /// 空函数事实索引实例。
+    /// 绌哄嚱鏁颁簨瀹炵储寮曞疄渚嬨€?
     /// </summary>
     public static FunctionFactsIndex Empty { get; } = new(
         new Dictionary<string, FunctionFact>(StringComparer.Ordinal),
@@ -944,7 +1081,7 @@ public sealed record FunctionFactsIndex(
 }
 
 /// <summary>
-/// 函数图范围。
+/// 鍑芥暟鍥捐寖鍥淬€?
 /// </summary>
 public enum FunctionGraphScope
 {
@@ -953,7 +1090,7 @@ public enum FunctionGraphScope
 }
 
 /// <summary>
-/// 函数图快照。
+/// 鍑芥暟鍥惧揩鐓с€?
 /// </summary>
 public sealed record FunctionGraphSnapshot(
     FunctionGraphScope Scope,
@@ -962,7 +1099,7 @@ public sealed record FunctionGraphSnapshot(
     FunctionDependencyGraph Graph);
 
 /// <summary>
-/// 函数图请求。
+/// 鍑芥暟鍥捐姹傘€?
 /// </summary>
 public sealed record FunctionGraphRequest(
     FunctionGraphScope Scope,
@@ -973,12 +1110,12 @@ public sealed record FunctionGraphRequest(
     string Reason);
 
 /// <summary>
-/// 当前分析阶段可用的函数图请求工厂。
+/// 褰撳墠鍒嗘瀽闃舵鍙敤鐨勫嚱鏁板浘璇锋眰宸ュ巶銆?
 /// </summary>
 public static class FunctionGraphRequests
 {
     /// <summary>
-    /// 创建全项目调用图请求。
+    /// 鍒涘缓鍏ㄩ」鐩皟鐢ㄥ浘璇锋眰銆?
     /// </summary>
     public static FunctionGraphRequest WholeProjectCalls(string requester, string reason) =>
         new(
@@ -990,7 +1127,7 @@ public static class FunctionGraphRequests
             reason);
 
     /// <summary>
-    /// 创建扩展成员调用图请求。
+    /// 鍒涘缓鎵╁睍鎴愬憳璋冪敤鍥捐姹傘€?
     /// </summary>
     public static FunctionGraphRequest ExpandedMembersCalls(
         IReadOnlyList<MemberId> rootMemberIds,
@@ -1006,23 +1143,23 @@ public static class FunctionGraphRequests
 }
 
 /// <summary>
-/// 函数图提供器。
+/// 鍑芥暟鍥炬彁渚涘櫒銆?
 /// </summary>
 public interface IFunctionGraphProvider
 {
     /// <summary>
-    /// 获取函数图快照。
+    /// 鑾峰彇鍑芥暟鍥惧揩鐓с€?
     /// </summary>
     FunctionGraphSnapshot GetSnapshot(FunctionGraphRequest request);
 
     /// <summary>
-    /// 获取全项目函数图快照。
+    /// 鑾峰彇鍏ㄩ」鐩嚱鏁板浘蹇収銆?
     /// </summary>
     FunctionGraphSnapshot GetWholeProjectSnapshot() =>
         GetSnapshot(FunctionGraphRequests.WholeProjectCalls("IFunctionGraphProvider", "Whole-project function graph snapshot"));
 
     /// <summary>
-    /// 获取扩展成员函数图快照。
+    /// 鑾峰彇鎵╁睍鎴愬憳鍑芥暟鍥惧揩鐓с€?
     /// </summary>
     FunctionGraphSnapshot GetExpandedMembersSnapshot(IReadOnlyList<MemberId> rootMemberIds, int depth = 1)
     {
@@ -1039,7 +1176,270 @@ public interface IFunctionGraphProvider
 }
 
 /// <summary>
-/// 语句事实记录。
+/// 绗﹀彿渚濊禆鑺傜偣绫诲瀷銆?/// </summary>
+public enum SymbolDependencyNodeKind
+{
+    Unknown,
+    Type,
+    Method,
+    Property,
+    Field,
+    Event
+}
+
+/// <summary>
+/// 绗﹀彿渚濊禆杈圭被鍨嬨€?/// </summary>
+public enum SymbolDependencyEdgeKind
+{
+    ContainsType,
+    BaseType,
+    InterfaceImplementation,
+    ReturnType,
+    ParameterType,
+    FieldType,
+    PropertyType,
+    EventType,
+    Override,
+    ExplicitInterfaceImplementation,
+    ConstructorInitializer,
+    Invocation,
+    ObjectCreation,
+    InitializerReference,
+    MemberReference,
+    Conversion,
+    CollectionInitializer
+}
+
+/// <summary>
+/// 绗﹀彿渚濊禆鑺傜偣銆?/// </summary>
+public sealed record SymbolDependencyNode(
+    string SymbolId,
+    SymbolDependencyNodeKind Kind,
+    string DisplayName,
+    string? DocumentPath);
+
+/// <summary>
+/// 绗﹀彿渚濊禆杈广€?/// </summary>
+public sealed record SymbolDependencyEdge(
+    string SourceSymbolId,
+    string TargetSymbolId,
+    SymbolDependencyEdgeKind Kind);
+
+/// <summary>
+/// 绗﹀彿渚濊禆鍥俱€?/// </summary>
+public sealed record SymbolDependencyGraph(
+    IReadOnlyList<SymbolDependencyNode> Nodes,
+    IReadOnlyList<SymbolDependencyEdge> Edges);
+
+/// <summary>
+/// 绗﹀彿渚濊禆鏌ヨ閫夐」銆?/// </summary>
+public sealed record SymbolDependencyQueryOptions(
+    int? MaxDepth = null,
+    IReadOnlyList<SymbolDependencyEdgeKind>? AllowedEdgeKinds = null,
+    IReadOnlyList<SymbolDependencyNodeKind>? AllowedNodeKinds = null,
+    bool IncludeRoots = true);
+
+/// <summary>
+/// 绗﹀彿渚濊禆璺緞銆?/// </summary>
+public sealed record SymbolDependencyPath(
+    IReadOnlyList<string> NodeIds,
+    IReadOnlyList<SymbolDependencyEdge> Edges);
+
+/// <summary>
+/// 绗﹀彿渚濊禆鍒囩墖缁撴灉銆?/// </summary>
+public sealed record SymbolDependencySlice(
+    SymbolDependencyGraph Graph,
+    IReadOnlyList<SymbolDependencyPath> Paths);
+
+/// <summary>
+/// 绗﹀彿渚濊禆鍥炬彁渚涘櫒銆?/// </summary>
+public interface ISymbolDependencyGraphProvider
+{
+    SymbolDependencyGraph GetWholeGraph();
+
+    SymbolDependencyGraph GetBackwardSlice(string symbolId);
+
+    SymbolDependencyGraph GetForwardSlice(IReadOnlyList<string> rootSymbolIds);
+
+    SymbolDependencyGraph GetBackwardSlice(string symbolId, SymbolDependencyQueryOptions options);
+
+    SymbolDependencyGraph GetForwardSlice(IReadOnlyList<string> rootSymbolIds, SymbolDependencyQueryOptions options);
+}
+
+/// <summary>
+/// 鏂规硶璋冪敤鏌ヨ鏈嶅姟銆?/// </summary>
+public interface IMethodCallQueryService
+{
+    IReadOnlyList<MemberId> GetCallees(MemberId memberId);
+
+    IReadOnlyList<MemberId> GetCallers(MemberId memberId);
+
+    IReadOnlyList<MemberId> GetReachableMethods(IReadOnlyList<MemberId> rootMemberIds);
+
+    FunctionDependencyGraph GetWholeGraph();
+
+    IReadOnlyList<MemberId> GetShortestPath(IReadOnlyList<MemberId> rootMemberIds, MemberId targetMemberId);
+
+    MethodReachabilityExplanation ExplainReachability(MemberId rootMemberId, MemberId targetMemberId);
+}
+
+/// <summary>
+/// 鏂规硶鍙揪鎬цВ閲娿€?/// </summary>
+public sealed record MethodReachabilityExplanation(
+    MemberId RootMemberId,
+    MemberId TargetMemberId,
+    bool IsReachable,
+    IReadOnlyList<MemberId> Path);
+
+/// <summary>
+/// 鏁版嵁娴佹憳瑕併€?/// </summary>
+public sealed record DataFlowSummary(
+    MemberId MemberId,
+    IReadOnlyList<string> DefinedSymbols,
+    IReadOnlyList<string> UsedSymbols,
+    IReadOnlyList<MemberId> InvokedMemberIds);
+
+/// <summary>
+/// 鏁版嵁娴佹憳瑕佹湇鍔°€?/// </summary>
+public interface IDataFlowSummaryService
+{
+    DataFlowSummary Analyze(MemberId memberId);
+}
+
+/// <summary>
+/// switch case 鎽樿銆?/// </summary>
+public sealed record SwitchCaseSummary(
+    string Label,
+    IReadOnlyList<string> ReferencedSymbols,
+    IReadOnlyList<MemberId> InvokedMemberIds);
+
+/// <summary>
+/// switch 娴佹憳瑕併€?/// </summary>
+public sealed record SwitchFlowSummary(
+    MemberId MemberId,
+    IReadOnlyList<SwitchCaseSummary> Cases);
+
+/// <summary>
+/// switch 娴佹憳瑕佹湇鍔°€?/// </summary>
+public interface ISwitchFlowSummaryService
+{
+    IReadOnlyList<SwitchFlowSummary> Analyze(MemberId memberId);
+}
+
+/// <summary>
+/// 璋冪敤閾炬棩蹇楁潯鐩€?/// </summary>
+public sealed record CallChainEntry(
+    string Timestamp,
+    string MethodName);
+
+/// <summary>
+/// 璋冪敤閾惧垎鏋愭憳瑕併€?/// </summary>
+public sealed record CallChainAnalysisSummary(
+    int TotalCalls,
+    IReadOnlyList<MemberId> MappedMemberIds,
+    IReadOnlyList<string> UnmappedMethods,
+    IReadOnlyList<MemberId> PotentialStaticOnlyMemberIds);
+
+/// <summary>
+/// 璋冪敤閾惧垎鏋愭湇鍔°€?/// </summary>
+public interface ICallChainAnalysisService
+{
+    IReadOnlyList<CallChainEntry> Parse(string logText);
+
+    CallChainAnalysisSummary Analyze(string logText);
+}
+
+/// <summary>
+/// 楂樺眰浠ｇ爜鍒嗘瀽姹囨€汇€?/// </summary>
+public sealed record AdvancedAnalysisSummary(
+    int MethodNodeCount,
+    int MethodEdgeCount,
+    IReadOnlyList<MemberId> MethodRoots,
+    IReadOnlyList<string> SymbolRoots,
+    int MethodSccCount,
+    int SymbolSccCount,
+    IReadOnlyList<IReadOnlyList<string>> LargestMethodComponents,
+    IReadOnlyList<IReadOnlyList<string>> LargestSymbolComponents,
+    IReadOnlyList<string> HighlyConnectedMethods,
+    IReadOnlyList<string> HighlyConnectedSymbols,
+    int InterfaceBridgeCount,
+    int OverrideBridgeCount,
+    int SymbolNodeCount,
+    int SymbolEdgeCount)
+{
+    public int MethodRootCount => MethodRoots.Count;
+
+    public int SymbolRootCount => SymbolRoots.Count;
+
+    public IReadOnlyList<MemberId> RootMethods => MethodRoots;
+
+    public IReadOnlyList<IReadOnlyList<string>> CyclicMethodComponents => LargestMethodComponents;
+}
+
+/// <summary>
+/// 楂樺眰浠ｇ爜鍒嗘瀽姹囨€绘湇鍔°€?/// </summary>
+public interface IAdvancedAnalysisSummaryService
+{
+    AdvancedAnalysisSummary BuildSummary();
+}
+
+/// <summary>
+/// Internal member-cleanup symbol metadata.
+/// </summary>
+public sealed record MemberCleanupSymbolInfo(
+    string SymbolId,
+    MemberKind MemberKind,
+    string DeclaringTypeId,
+    string DocumentPath,
+    string Name,
+    bool IsPublic,
+    bool IsPrivate,
+    bool IsStatic,
+    bool IsAbstract,
+    bool IsVirtual,
+    bool IsOverride,
+    bool IsExtern,
+    bool IsOrdinaryMethod,
+    bool IsPartialType,
+    bool IsNestedType,
+    bool IsInInterfaceType,
+    bool IsEntryPointLike);
+
+/// <summary>
+/// Internal member-cleanup type metadata.
+/// </summary>
+public sealed record MemberCleanupTypeInfo(
+    string TypeId,
+    string DocumentPath,
+    string Name,
+    bool IsPublic,
+    bool IsAbstract,
+    bool IsStatic,
+    bool IsPartial,
+    bool IsNested,
+    bool IsInterface,
+    bool IsInInheritanceChain);
+
+/// <summary>
+/// Internal member-cleanup query service.
+/// </summary>
+public interface IMemberCleanupQueryService
+{
+    MemberCleanupSymbolInfo? GetSymbolInfo(string symbolOrMemberId);
+
+    MemberCleanupTypeInfo? GetTypeInfo(string typeId);
+
+    bool HasAnyReferences(string symbolOrMemberId);
+
+    bool HasInternalMethodReferences(MemberId memberId);
+
+    bool HasExternalMethodReferences(MemberId memberId);
+
+    IReadOnlyList<MemberId> GetReorderablePublicMethods(string typeId);
+}
+
+/// <summary>
+/// 璇彞浜嬪疄璁板綍銆?
 /// </summary>
 public sealed record StatementFact(
     string TargetKey,
@@ -1055,20 +1455,20 @@ public sealed record StatementFact(
     int SpanLength);
 
 /// <summary>
-/// 语句事实索引。
+/// 璇彞浜嬪疄绱㈠紩銆?
 /// </summary>
 public sealed record StatementFactsIndex(
     IReadOnlyDictionary<string, IReadOnlyList<StatementFact>> FactsByMemberId)
 {
     /// <summary>
-    /// 空语句事实索引实例。
+    /// 绌鸿鍙ヤ簨瀹炵储寮曞疄渚嬨€?
     /// </summary>
     public static StatementFactsIndex Empty { get; } =
         new(new Dictionary<string, IReadOnlyList<StatementFact>>(StringComparer.Ordinal));
 }
 
 /// <summary>
-/// 局部语句依赖图快照。
+/// 灞€閮ㄨ鍙ヤ緷璧栧浘蹇収銆?
 /// </summary>
 public sealed record StatementGraphSnapshot(
     string SeedTargetKey,
@@ -1078,7 +1478,7 @@ public sealed record StatementGraphSnapshot(
     IReadOnlyList<StatementDependencyEdge> Edges);
 
 /// <summary>
-/// 语句级分析服务。
+/// 璇彞绾у垎鏋愭湇鍔°€?
 /// </summary>
 public interface IStatementAnalysisService
 {
@@ -1086,13 +1486,13 @@ public interface IStatementAnalysisService
 }
 
 /// <summary>
-/// 分析视图记录。
+/// 鍒嗘瀽瑙嗗浘璁板綍銆?
 /// </summary>
-/// <param name="Targets">分析目标列表。</param>
-/// <param name="Edges">分析边列表。</param>
-/// <param name="TypeGraph">类型依赖图。</param>
-/// <param name="FunctionGraph">函数依赖图。</param>
-/// <param name="StatementGraph">语句依赖图。</param>
+/// <param name="Targets">鍒嗘瀽鐩爣鍒楄〃銆?/param>
+/// <param name="Edges">鍒嗘瀽杈瑰垪琛ㄣ€?/param>
+/// <param name="TypeGraph">绫诲瀷渚濊禆鍥俱€?/param>
+/// <param name="FunctionGraph">鍑芥暟渚濊禆鍥俱€?/param>
+/// <param name="StatementGraph">璇彞渚濊禆鍥俱€?/param>
 public sealed record AnalysisResultModel(
     IReadOnlyList<AnalysisTarget> Targets,
     IReadOnlyList<AnalysisEdge> Edges,
@@ -1103,7 +1503,7 @@ public sealed record AnalysisResultModel(
     FunctionGraphMaterialization FunctionGraphMaterialization);
 
 /// <summary>
-/// 全局分析事实目录。
+/// 鍏ㄥ眬鍒嗘瀽浜嬪疄鐩綍銆?
 /// </summary>
 public sealed record AnalysisExecutionSnapshot(
     AnalysisResultModel View,
@@ -1111,17 +1511,84 @@ public sealed record AnalysisExecutionSnapshot(
     FunctionFactsIndex FunctionFacts,
     StatementFactsIndex StatementFacts);
 
+public sealed record AnalysisEngineResult(
+    AnalysisResultModel View,
+    IReadOnlyList<AnalysisDocumentContext> Documents,
+    AnalysisExecutionSnapshot Snapshot,
+    AnalysisServices Services,
+    AnalysisPerformanceSummary PerformanceSummary)
+{
+    public FunctionIndex FunctionIndex => Snapshot.FunctionIndex;
+
+    public FunctionFactsIndex FunctionFacts => Snapshot.FunctionFacts;
+
+    public AnalysisContext CreateContext() => AnalysisContext.Create(Snapshot, Services);
+}
+
+public interface IAnalysisEngine
+{
+    Task<AnalysisEngineResult> AnalyzeAsync(
+        IReadOnlyList<SourceDocument> documents,
+        CancellationToken cancellationToken);
+
+    Task<AnalysisEngineResult> AnalyzeAsync(
+        AnalysisInput input,
+        CancellationToken cancellationToken);
+}
+
+public interface IRewriteExecutor
+{
+    Task<RewriteExecutionResult> ExecuteAsync(RewriteExecutionDocumentContext documentContext, AuditPlan plan, CancellationToken cancellationToken);
+}
+
+public interface IArtifactWriter
+{
+    Task WritePlanAsync(string path, AuditPlan plan, CancellationToken cancellationToken);
+
+    Task WriteAnalysisAsync(string path, AnalysisResultModel view, CancellationToken cancellationToken);
+
+    Task WriteReportAsync(string path, RunReport report, CancellationToken cancellationToken);
+}
+
+public interface IFunctionImpactAnalyzer
+{
+    FunctionImpactSet Analyze(
+        AuditPlan plan,
+        AnalysisServices services,
+        FunctionGraphRequest request);
+
+    FunctionImpactSet Analyze(AuditPlan plan, FunctionGraphSnapshot snapshot);
+}
+
+public interface IReferenceZeroPredictionAnalyzer
+{
+    IReadOnlyList<MarkDecision> Predict(
+        AnalysisExecutionSnapshot snapshot,
+        AnalysisServices services,
+        RuleExecutionContext executionContext,
+        IReadOnlyList<MarkDecision> decisions);
+
+    IReadOnlyList<MarkDecision> Predict(AnalysisContext context, IReadOnlyList<MarkDecision> decisions);
+}
+
 /// <summary>
-/// 分析查询服务集合。
+/// 鍒嗘瀽鏌ヨ鏈嶅姟闆嗗悎銆?
 /// </summary>
 public sealed record AnalysisServices(
     IInheritanceQueryService Inheritance,
     IReferenceQueryService References,
     IStatementAnalysisService Statements,
-    IFunctionGraphProvider FunctionGraphs);
+    IFunctionGraphProvider FunctionGraphs,
+    ISymbolDependencyGraphProvider SymbolDependencies,
+    IMethodCallQueryService MethodCalls,
+    IDataFlowSummaryService DataFlow,
+    ISwitchFlowSummaryService SwitchFlows,
+    ICallChainAnalysisService CallChains,
+    IAdvancedAnalysisSummaryService AdvancedAnalysis,
+    IMemberCleanupQueryService MemberCleanup);
 
 /// <summary>
-/// 单次规则或预测执行上下文。
+/// 鍗曟瑙勫垯鎴栭娴嬫墽琛屼笂涓嬫枃銆?
 /// </summary>
 public sealed record RuleExecutionContext(
     string Requester,
@@ -1131,18 +1598,18 @@ public sealed record RuleExecutionContext(
     string? Reason = null);
 
 /// <summary>
-/// 分析目标记录。
+/// 鍒嗘瀽鐩爣璁板綍銆?
 /// </summary>
-/// <param name="Target">计划目标。</param>
-/// <param name="IsHighRisk">是否高风险。</param>
-/// <param name="Directives">指令列表。</param>
-/// <param name="DefinesSymbols">定义符号列表。</param>
-/// <param name="UsesSymbols">使用符号列表。</param>
-/// <param name="StatementKind">语句类型。</param>
-/// <param name="IsSanitizingAssignment">是否为净化赋值。</param>
-/// <param name="IsObjectInitializerAssignment">是否为对象初始化器赋值。</param>
-/// <param name="HasMarkedExpressionSeed">是否有标记的表达式种子。</param>
-/// <param name="MarkedExpressionKinds">标记的表达式类型。</param>
+/// <param name="Target">璁″垝鐩爣銆?/param>
+/// <param name="IsHighRisk">鏄惁楂橀闄┿€?/param>
+/// <param name="Directives">鎸囦护鍒楄〃銆?/param>
+/// <param name="DefinesSymbols">瀹氫箟绗﹀彿鍒楄〃銆?/param>
+/// <param name="UsesSymbols">浣跨敤绗﹀彿鍒楄〃銆?/param>
+/// <param name="StatementKind">璇彞绫诲瀷銆?/param>
+/// <param name="IsSanitizingAssignment">鏄惁涓哄噣鍖栬祴鍊笺€?/param>
+/// <param name="IsObjectInitializerAssignment">鏄惁涓哄璞″垵濮嬪寲鍣ㄨ祴鍊笺€?/param>
+/// <param name="HasMarkedExpressionSeed">鏄惁鏈夋爣璁扮殑琛ㄨ揪寮忕瀛愩€?/param>
+/// <param name="MarkedExpressionKinds">鏍囪鐨勮〃杈惧紡绫诲瀷銆?/param>
 public sealed record AnalysisTarget(
     PlanTarget Target,
     bool IsHighRisk,
@@ -1160,60 +1627,60 @@ public sealed record AnalysisTarget(
     string? ParentScopeId);
 
 /// <summary>
-/// 分析边类型枚举。
+/// 鍒嗘瀽杈圭被鍨嬫灇涓俱€?
 /// </summary>
 public enum AnalysisEdgeKind
 {
     /// <summary>
-    /// 定义。
+    /// 瀹氫箟銆?
     /// </summary>
     Defines,
     /// <summary>
-    /// 使用。
+    /// 浣跨敤銆?
     /// </summary>
     Uses,
     /// <summary>
-    /// 先于。
+    /// 鍏堜簬銆?
     /// </summary>
     Precedes
 }
 
 /// <summary>
-/// 符号类型引用枚举。
+/// 绗﹀彿绫诲瀷寮曠敤鏋氫妇銆?
 /// </summary>
 public enum SymbolKindRef
 {
     /// <summary>
-    /// 未知。
+    /// 鏈煡銆?
     /// </summary>
     Unknown,
     /// <summary>
-    /// 局部变量。
+    /// 灞€閮ㄥ彉閲忋€?
     /// </summary>
     Local,
     /// <summary>
-    /// 参数。
+    /// 鍙傛暟銆?
     /// </summary>
     Parameter,
     /// <summary>
-    /// 字段。
+    /// 瀛楁銆?
     /// </summary>
     Field,
     /// <summary>
-    /// 属性。
+    /// 灞炴€с€?
     /// </summary>
     Property
 }
 
 /// <summary>
-/// 符号引用记录。
+/// 绗﹀彿寮曠敤璁板綍銆?
 /// </summary>
-/// <param name="SymbolKey">符号键。</param>
-/// <param name="DisplayName">显示名称。</param>
-/// <param name="SymbolKind">符号类型。</param>
-/// <param name="DeclaringMemberId">声明成员 ID。</param>
-/// <param name="DeclarationSpanStart">声明跨度起始位置。</param>
-/// <param name="DeclarationSpanLength">声明跨度长度。</param>
+/// <param name="SymbolKey">绗﹀彿閿€?/param>
+/// <param name="DisplayName">鏄剧ず鍚嶇О銆?/param>
+/// <param name="SymbolKind">绗﹀彿绫诲瀷銆?/param>
+/// <param name="DeclaringMemberId">澹版槑鎴愬憳 ID銆?/param>
+/// <param name="DeclarationSpanStart">澹版槑璺ㄥ害璧峰浣嶇疆銆?/param>
+/// <param name="DeclarationSpanLength">澹版槑璺ㄥ害闀垮害銆?/param>
 public sealed record SymbolRef(
     string SymbolKey,
     string DisplayName,
@@ -1223,12 +1690,12 @@ public sealed record SymbolRef(
     int DeclarationSpanLength);
 
 /// <summary>
-/// 分析边记录。
+/// 鍒嗘瀽杈硅褰曘€?
 /// </summary>
-/// <param name="SourceTargetKey">源目标键。</param>
-/// <param name="TargetTargetKey">目标目标键。</param>
-/// <param name="Kind">边类型。</param>
-/// <param name="SymbolKey">符号键。</param>
+/// <param name="SourceTargetKey">婧愮洰鏍囬敭銆?/param>
+/// <param name="TargetTargetKey">鐩爣鐩爣閿€?/param>
+/// <param name="Kind">杈圭被鍨嬨€?/param>
+/// <param name="SymbolKey">绗﹀彿閿€?/param>
 public sealed record AnalysisEdge(
     string SourceTargetKey,
     string TargetTargetKey,
@@ -1236,50 +1703,50 @@ public sealed record AnalysisEdge(
     string? SymbolKey = null);
 
 /// <summary>
-/// 继承查询服务接口。
+/// 缁ф壙鏌ヨ鏈嶅姟鎺ュ彛銆?
 /// </summary>
 public interface IInheritanceQueryService
 {
     /// <summary>
-    /// 检查成员是否为重写成员。
+    /// 妫€鏌ユ垚鍛樻槸鍚︿负閲嶅啓鎴愬憳銆?
     /// </summary>
     bool IsOverrideMember(string memberId);
     /// <summary>
-    /// 检查成员是否实现接口成员。
+    /// 妫€鏌ユ垚鍛樻槸鍚﹀疄鐜版帴鍙ｆ垚鍛樸€?
     /// </summary>
     bool ImplementsInterfaceMember(string memberId);
     /// <summary>
-    /// 检查类型是否在继承链中。
+    /// 妫€鏌ョ被鍨嬫槸鍚﹀湪缁ф壙閾句腑銆?
     /// </summary>
     bool IsInInheritanceChain(string typeId);
 }
 
 /// <summary>
-/// 引用查询服务接口。
+/// 寮曠敤鏌ヨ鏈嶅姟鎺ュ彛銆?
 /// </summary>
 public interface IReferenceQueryService
 {
     /// <summary>
-    /// 检查符号或成员是否有引用。
+    /// 妫€鏌ョ鍙锋垨鎴愬憳鏄惁鏈夊紩鐢ㄣ€?
     /// </summary>
     bool HasReferences(string symbolOrMemberId);
     /// <summary>
-    /// 获取引用该符号的函数列表。
+    /// 鑾峰彇寮曠敤璇ョ鍙风殑鍑芥暟鍒楄〃銆?
     /// </summary>
     IReadOnlyList<MemberId> GetReferencingFunctions(string symbolOrMemberId);
     /// <summary>
-    /// 获取引用该符号的类型列表。
+    /// 鑾峰彇寮曠敤璇ョ鍙风殑绫诲瀷鍒楄〃銆?
     /// </summary>
     IReadOnlyList<string> GetReferencingTypes(string symbolOrMemberId);
 }
 
 /// <summary>
-/// 指令操作记录。
+/// 鎸囦护鎿嶄綔璁板綍銆?
 /// </summary>
-/// <param name="ActionKind">操作类型。</param>
-/// <param name="Payload">负载数据。</param>
-/// <param name="RuleId">规则 ID。</param>
-/// <param name="ReasonText">原因文本。</param>
+/// <param name="ActionKind">鎿嶄綔绫诲瀷銆?/param>
+/// <param name="Payload">璐熻浇鏁版嵁銆?/param>
+/// <param name="RuleId">瑙勫垯 ID銆?/param>
+/// <param name="ReasonText">鍘熷洜鏂囨湰銆?/param>
 public sealed record DirectiveAction(
     PlanActionKind ActionKind,
     string? Payload,
@@ -1287,14 +1754,14 @@ public sealed record DirectiveAction(
     string ReasonText);
 
 /// <summary>
-/// 工作区加载结果。
+/// 宸ヤ綔鍖哄姞杞界粨鏋溿€?
 /// </summary>
-/// <param name="IsSuccess">是否成功。</param>
-/// <param name="Documents">加载后的源码文档。</param>
-/// <param name="LoadMode">实际加载模式。</param>
-/// <param name="RequestedPrimaryLoader">请求的主加载器名称。</param>
-/// <param name="FallbackUsed">是否发生了回退。</param>
-/// <param name="Diagnostics">加载诊断。</param>
+/// <param name="IsSuccess">鏄惁鎴愬姛銆?/param>
+/// <param name="Documents">鍔犺浇鍚庣殑婧愮爜鏂囨。銆?/param>
+/// <param name="LoadMode">瀹為檯鍔犺浇妯″紡銆?/param>
+/// <param name="RequestedPrimaryLoader">璇锋眰鐨勪富鍔犺浇鍣ㄥ悕绉般€?/param>
+/// <param name="FallbackUsed">鏄惁鍙戠敓浜嗗洖閫€銆?/param>
+/// <param name="Diagnostics">鍔犺浇璇婃柇銆?/param>
 public sealed record WorkspaceLoadResult(
     bool IsSuccess,
     AnalysisInput? AnalysisInput,
@@ -1305,7 +1772,7 @@ public sealed record WorkspaceLoadResult(
     IReadOnlyList<WorkspaceLoadDiagnostic> Diagnostics)
 {
     /// <summary>
-    /// 创建成功的工作区加载结果。
+    /// 鍒涘缓鎴愬姛鐨勫伐浣滃尯鍔犺浇缁撴灉銆?
     /// </summary>
     public static WorkspaceLoadResult Success(
         AnalysisInput analysisInput,
@@ -1323,7 +1790,7 @@ public sealed record WorkspaceLoadResult(
             diagnostics ?? Array.Empty<WorkspaceLoadDiagnostic>());
 
     /// <summary>
-    /// 基于源码文档创建成功的工作区加载结果。
+    /// 鍩轰簬婧愮爜鏂囨。鍒涘缓鎴愬姛鐨勫伐浣滃尯鍔犺浇缁撴灉銆?
     /// </summary>
     public static WorkspaceLoadResult Success(
         IReadOnlyList<SourceDocument> documents,
@@ -1341,7 +1808,7 @@ public sealed record WorkspaceLoadResult(
             diagnostics ?? Array.Empty<WorkspaceLoadDiagnostic>());
 
     /// <summary>
-    /// 创建失败的工作区加载结果。
+    /// 鍒涘缓澶辫触鐨勫伐浣滃尯鍔犺浇缁撴灉銆?
     /// </summary>
     public static WorkspaceLoadResult Failure(
         WorkspaceLoadMode loadMode,
@@ -1350,7 +1817,7 @@ public sealed record WorkspaceLoadResult(
         new(false, null, Array.Empty<SourceDocument>(), loadMode, requestedPrimaryLoader, false, diagnostics);
 
     /// <summary>
-    /// 从分析输入提取源码文档集合。
+    /// 浠庡垎鏋愯緭鍏ユ彁鍙栨簮鐮佹枃妗ｉ泦鍚堛€?
     /// </summary>
     private static IReadOnlyList<SourceDocument> ExtractDocuments(AnalysisInput analysisInput)
     {
@@ -1365,7 +1832,7 @@ public sealed record WorkspaceLoadResult(
     }
 
     /// <summary>
-    /// 解析源码文档集合对应的根路径。
+    /// 瑙ｆ瀽婧愮爜鏂囨。闆嗗悎瀵瑰簲鐨勬牴璺緞銆?
     /// </summary>
     private static string ResolveRootPath(IReadOnlyList<SourceDocument> documents)
     {
@@ -1384,13 +1851,13 @@ public sealed record WorkspaceLoadResult(
 }
 
 /// <summary>
-/// 计划编译结果记录。
+/// 璁″垝缂栬瘧缁撴灉璁板綍銆?
 /// </summary>
-/// <param name="IsSuccess">是否成功。</param>
-/// <param name="Plan">审计计划。</param>
-/// <param name="FailureCode">失败代码。</param>
-/// <param name="Conflicts">冲突列表。</param>
-/// <param name="Message">消息。</param>
+/// <param name="IsSuccess">鏄惁鎴愬姛銆?/param>
+/// <param name="Plan">瀹¤璁″垝銆?/param>
+/// <param name="FailureCode">澶辫触浠ｇ爜銆?/param>
+/// <param name="Conflicts">鍐茬獊鍒楄〃銆?/param>
+/// <param name="Message">娑堟伅銆?/param>
 public sealed record PlanCompilationResult(
     bool IsSuccess,
     AuditPlan? Plan,
@@ -1399,25 +1866,25 @@ public sealed record PlanCompilationResult(
     string? Message)
 {
     /// <summary>
-    /// 创建成功结果。
+    /// 鍒涘缓鎴愬姛缁撴灉銆?
     /// </summary>
     public static PlanCompilationResult Success(AuditPlan plan) =>
         new(true, plan, FailureCode.None, Array.Empty<PlanConflict>(), null);
 
     /// <summary>
-    /// 创建失败结果。
+    /// 鍒涘缓澶辫触缁撴灉銆?
     /// </summary>
     public static PlanCompilationResult Failure(string? message, IReadOnlyList<PlanConflict> conflicts) =>
         new(false, null, FailureCode.PlanCompileFailed, conflicts, message);
 }
 
 /// <summary>
-/// 重写执行结果记录。
+/// 閲嶅啓鎵ц缁撴灉璁板綍銆?
 /// </summary>
-/// <param name="IsSuccess">是否成功。</param>
-/// <param name="FailureCode">失败代码。</param>
-/// <param name="RewrittenSource">重写后的源代码。</param>
-/// <param name="Message">消息。</param>
+/// <param name="IsSuccess">鏄惁鎴愬姛銆?/param>
+/// <param name="FailureCode">澶辫触浠ｇ爜銆?/param>
+/// <param name="RewrittenSource">閲嶅啓鍚庣殑婧愪唬鐮併€?/param>
+/// <param name="Message">娑堟伅銆?/param>
 public sealed record RewriteExecutionResult(
     bool IsSuccess,
     FailureCode FailureCode,
@@ -1425,35 +1892,35 @@ public sealed record RewriteExecutionResult(
     string? Message)
 {
     /// <summary>
-    /// 创建成功结果。
+    /// 鍒涘缓鎴愬姛缁撴灉銆?
     /// </summary>
     public static RewriteExecutionResult Success(string rewrittenSource) =>
         new(true, FailureCode.None, rewrittenSource, null);
 
     /// <summary>
-    /// 创建失败结果。
+    /// 鍒涘缓澶辫触缁撴灉銆?
     /// </summary>
     public static RewriteExecutionResult Failure(string? message) =>
         new(false, FailureCode.RewriteFailed, null, message);
 }
 
 /// <summary>
-/// 失败摘要记录。
+/// 澶辫触鎽樿璁板綍銆?
 /// </summary>
-/// <param name="FailureCode">失败代码。</param>
-/// <param name="Message">消息。</param>
+/// <param name="FailureCode">澶辫触浠ｇ爜銆?/param>
+/// <param name="Message">娑堟伅銆?/param>
 public sealed record FailureSummary(
     FailureCode FailureCode,
     string Message);
 
 /// <summary>
-/// 冲突摘要记录。
+/// 鍐茬獊鎽樿璁板綍銆?
 /// </summary>
-/// <param name="ConflictCode">冲突代码。</param>
-/// <param name="TargetKey">目标键。</param>
-/// <param name="TargetDisplayText">目标显示文本。</param>
-/// <param name="ActionKinds">操作类型列表。</param>
-/// <param name="Reason">原因。</param>
+/// <param name="ConflictCode">鍐茬獊浠ｇ爜銆?/param>
+/// <param name="TargetKey">鐩爣閿€?/param>
+/// <param name="TargetDisplayText">鐩爣鏄剧ず鏂囨湰銆?/param>
+/// <param name="ActionKinds">鎿嶄綔绫诲瀷鍒楄〃銆?/param>
+/// <param name="Reason">鍘熷洜銆?/param>
 public sealed record ConflictSummary(
     string ConflictCode,
     string TargetKey,
@@ -1462,27 +1929,27 @@ public sealed record ConflictSummary(
     string Reason);
 
 /// <summary>
-/// 风险摘要记录。
+/// 椋庨櫓鎽樿璁板綍銆?
 /// </summary>
-/// <param name="SkippedHighRiskTargetCount">跳过的高风险目标数量。</param>
-/// <param name="SampleTargetDisplayTexts">示例目标显示文本列表。</param>
+/// <param name="SkippedHighRiskTargetCount">璺宠繃鐨勯珮椋庨櫓鐩爣鏁伴噺銆?/param>
+/// <param name="SampleTargetDisplayTexts">绀轰緥鐩爣鏄剧ず鏂囨湰鍒楄〃銆?/param>
 public sealed record RiskSummary(
     int SkippedHighRiskTargetCount,
     IReadOnlyList<string> SampleTargetDisplayTexts);
 
 /// <summary>
-/// 计划覆盖率摘要记录。
+/// 璁″垝瑕嗙洊鐜囨憳瑕佽褰曘€?
 /// </summary>
-/// <param name="CoveredMethodCount">覆盖的方法数量。</param>
-/// <param name="CoveredStatementCount">覆盖的语句数量。</param>
-/// <param name="SampleCoveredTargetDisplayTexts">示例覆盖目标显示文本列表。</param>
+/// <param name="CoveredMethodCount">瑕嗙洊鐨勬柟娉曟暟閲忋€?/param>
+/// <param name="CoveredStatementCount">瑕嗙洊鐨勮鍙ユ暟閲忋€?/param>
+/// <param name="SampleCoveredTargetDisplayTexts">绀轰緥瑕嗙洊鐩爣鏄剧ず鏂囨湰鍒楄〃銆?/param>
 public sealed record PlanCoverageSummary(
     int CoveredMethodCount,
     int CoveredStatementCount,
     IReadOnlyList<string> SampleCoveredTargetDisplayTexts);
 
 /// <summary>
-/// 函数删除影响摘要。
+/// 鍑芥暟鍒犻櫎褰卞搷鎽樿銆?
 /// </summary>
 public sealed record FunctionImpactSummary(
     int DeletedFunctionCount,
@@ -1494,14 +1961,14 @@ public sealed record FunctionImpactSummary(
     IReadOnlyList<string> SampleAffectedDocumentPaths);
 
 /// <summary>
-/// 引用归零预测摘要。
+/// 寮曠敤褰掗浂棰勬祴鎽樿銆?
 /// </summary>
 public sealed record ReferenceZeroPredictionSummary(
     int PredictedMethodDeleteCount,
     IReadOnlyList<string> SamplePredictedMethodIds);
 
 /// <summary>
-/// 边界提升摘要。
+/// 杈圭晫鎻愬崌鎽樿銆?
 /// </summary>
 public sealed record BoundaryPromotionSummary(
     BoundaryKind BoundaryKind,
@@ -1509,20 +1976,20 @@ public sealed record BoundaryPromotionSummary(
     IReadOnlyList<string> SamplePromotedMethodIds);
 
 /// <summary>
-/// 运行报告记录。
+/// 杩愯鎶ュ憡璁板綍銆?
 /// </summary>
-/// <param name="IsSuccess">是否成功。</param>
-/// <param name="FailureCode">失败代码。</param>
-/// <param name="AnalysisTargets">分析目标数量。</param>
-/// <param name="PlannedChanges">计划变更数量。</param>
-/// <param name="Conflicts">冲突数量。</param>
-/// <param name="RewrittenDocuments">重写文档数量。</param>
-/// <param name="GeneratedArtifacts">生成的制品列表。</param>
-/// <param name="FailureSummary">失败摘要。</param>
-/// <param name="ConflictSummaries">冲突摘要列表。</param>
-/// <param name="RiskSummary">风险摘要。</param>
-/// <param name="PlanCoverageSummary">计划覆盖率摘要。</param>
-/// <param name="Message">消息。</param>
+/// <param name="IsSuccess">鏄惁鎴愬姛銆?/param>
+/// <param name="FailureCode">澶辫触浠ｇ爜銆?/param>
+/// <param name="AnalysisTargets">鍒嗘瀽鐩爣鏁伴噺銆?/param>
+/// <param name="PlannedChanges">璁″垝鍙樻洿鏁伴噺銆?/param>
+/// <param name="Conflicts">鍐茬獊鏁伴噺銆?/param>
+/// <param name="RewrittenDocuments">閲嶅啓鏂囨。鏁伴噺銆?/param>
+/// <param name="GeneratedArtifacts">鐢熸垚鐨勫埗鍝佸垪琛ㄣ€?/param>
+/// <param name="FailureSummary">澶辫触鎽樿銆?/param>
+/// <param name="ConflictSummaries">鍐茬獊鎽樿鍒楄〃銆?/param>
+/// <param name="RiskSummary">椋庨櫓鎽樿銆?/param>
+/// <param name="PlanCoverageSummary">璁″垝瑕嗙洊鐜囨憳瑕併€?/param>
+/// <param name="Message">娑堟伅銆?/param>
 public sealed record RunReport(
     bool IsSuccess,
     FailureCode FailureCode,
@@ -1537,14 +2004,17 @@ public sealed record RunReport(
     PlanCoverageSummary PlanCoverageSummary,
     FunctionImpactSummary? FunctionImpactSummary,
     BoundaryPromotionSummary? BoundaryPromotionSummary,
-    ReferenceZeroPredictionSummary? ReferenceZeroPredictionSummary,
-    WorkspaceLoadMode WorkspaceLoadMode,
-    bool WorkspaceFallbackUsed,
-    IReadOnlyList<WorkspaceLoadDiagnostic> WorkspaceDiagnostics,
-    string? Message)
+      ReferenceZeroPredictionSummary? ReferenceZeroPredictionSummary,
+      WorkspaceLoadMode WorkspaceLoadMode,
+      bool WorkspaceFallbackUsed,
+      IReadOnlyList<WorkspaceLoadDiagnostic> WorkspaceDiagnostics,
+      string? Message)
 {
     /// <summary>
-    /// TR 构建摘要信息。
-    /// </summary>
+    /// 楂樺眰鍒嗘瀽鎽樿銆?    /// </summary>
+    public AdvancedAnalysisSummary? AdvancedAnalysisSummary { get; init; }
+
+    /// <summary>
+    /// TR 鏋勫缓鎽樿淇℃伅銆?    /// </summary>
     public TerrariaRuntimeBuildSummary? TrBuildSummary { get; init; }
 }

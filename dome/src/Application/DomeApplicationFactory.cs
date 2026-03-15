@@ -50,10 +50,30 @@ public static class DomeApplicationFactory
                 new RunReportBuilder(),
                 new ArtifactPlanBuilder(),
                 new JsonArtifactWriter(),
-                progressReporter),
+                progressReporter: progressReporter),
             new TerrariaRuntimeEnvironmentBuilder(),
             new TerrariaRuntimeBuildExecutor(),
-            new JsonArtifactWriter(),
+            new JsonRunReportStore(new JsonArtifactWriter()),
+            progressReporter,
+            new TerrariaRuntimeLayoutFactory());
+    }
+
+    public static TerrariaRuntimeShadowExtractionApplication CreateDefaultTerrariaRuntimeShadowExtractionApplication()
+    {
+        var progressReporter = new ConsoleTerrariaRuntimeProgressReporter();
+        return new TerrariaRuntimeShadowExtractionApplication(
+            new ShadowExtractionInputResolver(
+                new WorkspaceLoadCoordinator(
+                    new CodeAnalysisWorkspaceLoader(),
+                    new SourceOnlyLoader())),
+            new ShadowExtractionAnalysisStage(new RoslynAnalysisEngine()),
+            new ShadowClosurePlanner(),
+            new ShadowWorkspaceWriter(
+                new TerrariaRuntimeShadowProjectBuilder(),
+                new TerrariaRuntimeShadowSourceRewriter()),
+            new TerrariaRuntimeBuildExecutor(),
+            new ShadowExtractionReportBuilder(),
+            new JsonShadowExtractionReportStore(new JsonArtifactWriter()),
             progressReporter);
     }
 }

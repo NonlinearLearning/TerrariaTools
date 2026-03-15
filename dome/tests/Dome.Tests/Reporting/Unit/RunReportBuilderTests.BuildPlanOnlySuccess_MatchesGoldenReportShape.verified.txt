@@ -1,0 +1,19 @@
+{
+  BoundaryPromotionSummary: {
+    PromotedMethodDeleteCount: 1,
+    SamplePromotedMethodIds: [
+      Sample.Player.Run()
+    ]
+  },
+  GeneratedArtifacts: [
+    audit-plan.json,
+    report.json
+  ],
+  IsSuccess: true,
+  PlanCoverageSummary: {},
+  PlannedChanges: 1,
+  ReferenceZeroPredictionSummary: {},
+  RiskSummary: {},
+  WorkspaceFallbackUsed: false,
+  WorkspaceLoadMode: SourceOnly
+}

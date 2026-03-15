@@ -8,7 +8,7 @@ using TerrariaTools.Dome.Core;
 /// <summary>
 /// JSON 构件写入器。
 /// </summary>
-public sealed class JsonArtifactWriter
+public sealed class JsonArtifactWriter : IArtifactWriter
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -53,5 +53,11 @@ public sealed class JsonArtifactWriter
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(report, JsonOptions), cancellationToken);
+    }
+
+    public async Task WriteJsonAsync<T>(string path, T value, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(value, JsonOptions), cancellationToken);
     }
 }

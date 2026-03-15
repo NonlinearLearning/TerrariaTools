@@ -5,7 +5,7 @@ using TerrariaTools.Dome.Core;
 /// <summary>
 /// 计划期引用归零预测分析器。
 /// </summary>
-public sealed class ReferenceZeroPredictionAnalyzer
+public sealed class ReferenceZeroPredictionAnalyzer : IReferenceZeroPredictionAnalyzer
 {
     /// <summary>
     /// 根据当前计划预测将变为零引用的方法。
@@ -105,7 +105,8 @@ public sealed class ReferenceZeroPredictionAnalyzer
                 "reference-zero-prediction",
                 "All call references are scheduled for deletion in the current plan.",
                 sourceTargetKey: sourceDecision.Target.TargetKey,
-                sourceTargetDisplayText: sourceDecision.Target.DisplayText));
+                sourceTargetDisplayText: sourceDecision.Target.DisplayText,
+                origin: DecisionOrigin.Prediction));
         }
 
         return predicted;

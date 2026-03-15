@@ -1,75 +1,48 @@
 # Dome Project Documentation Tasks
 
-This file tracks the progress of adding or translating documentation comments for functions in the project.
-
-## Completed Tasks
-
-- [x] `src\Analysis\Roslyn\ReferenceZeroPredictionAnalyzer.cs`
-    - `Predict` (Overload 1)
-    - `Predict` (Overload 2)
-- [x] `src\Analysis\Roslyn\FunctionImpactAnalyzer.cs`
-    - `Analyze` (Overload 1)
-- [x] `src\Analysis\Roslyn\WorkspaceLoaders.cs`
-    - `IWorkspaceLoader.LoadAsync`
-    - `CodeAnalysisWorkspaceLoader` (Class)
-    - `CodeAnalysisWorkspaceLoader.LoadAsync`
-    - `CodeAnalysisWorkspaceLoader.EnsureMsBuildRegistered`
-    - `CodeAnalysisWorkspaceLoader.BuildResultFromSolutionAsync`
-    - `CodeAnalysisWorkspaceLoader.BuildResultFromProjectAsync`
-    - `CodeAnalysisWorkspaceLoader.BuildDocumentContextsAsync`
-    - `WorkspaceLoadCoordinator` (Class)
-    - `WorkspaceLoadCoordinator.LoadAsync`
-    - `WorkspaceLoadCoordinator.GetSourceOnlyRoot`
-- [x] `src\Analysis\Roslyn\AnalysisContext.cs`
-    - `AnalysisContext` (Class - Translate to Chinese)
-    - `Snapshot`
-    - `Services`
-    - `View`
-    - `Inheritance`
-    - `References`
-    - `FunctionIndex`
-    - `FunctionFacts`
-    - `StatementFacts`
-    - `Statements`
-    - `FunctionGraphs`
-    - `Create`
-- [x] `src\Analysis\Roslyn\SourceWorkspaceLoader.cs`
-    - `SourceWorkspaceLoader` (Class)
-    - `LoadAsync`
-    - `LoadFromRootAsync`
-    - `LoadInternalAsync`
-- [x] `src\Analysis\Roslyn\FunctionGraphProvider.cs`
-- [x] `src\Analysis\Roslyn\StatementAnalysisService.cs`
-- [x] `src\Analysis\Roslyn\RoslynAnalysisEngine.cs`
-- [x] `src\Core\Models.cs`
-- [x] `src\Application\DomeApplication.cs`
-- [x] `src\Rules\MarkingRuleEngine.cs`
-- [x] `src\Application\DomeApplicationFactory.cs`
-- [x] `src\Cli\DomeCliParser.cs`
-- [x] `src\Rewrite\Roslyn\RoslynRewriteExecutor.cs`
-- [x] `src\Reporting\JsonArtifactWriter.cs`
-- [x] `src\Plan\AuditPlanCompiler.cs`
-- [x] `src\Cli\Program.cs`
-- [x] `src\Analysis\Roslyn\SymbolRefProjector.cs`
-- [x] `src\Analysis\Roslyn\QueryServices.cs`
-- [x] `src\Analysis\Roslyn\MetadataTypeIdBuilder.cs`
-- [x] `src\Analysis\Roslyn\MetadataMemberIdBuilder.cs`
-- [x] `src\Analysis\Roslyn\DirectiveReader.cs`
+This file tracks files containing methods with missing comments, non-Chinese comments, or garbled comments.
 
 ## Pending Tasks
 
-- [x] `src\Analysis\Roslyn\RoslynAnalysisEngine.cs`
-- [x] `src\Analysis\Roslyn\WorkspaceLoaders.cs`
-- [x] `src\Application\ArtifactPlanBuilder.cs`
-- [x] `src\Application\DomeApplication.cs`
-- [x] `src\Application\DomeApplicationFactory.cs`
-- [x] `src\Application\RunReportBuilder.cs`
-- [x] `src\Application\TerrariaRuntimeApplication.cs`
-- [x] `src\Application\TerrariaRuntimeBuildExecutor.cs`
-- [x] `src\Application\TerrariaRuntimeEnvironmentBuilder.cs`
-- [x] `src\Core\Models.cs`
-- [x] `src\Rewrite\Roslyn\RoslynRewriteExecutor.cs`
-- [x] `src\Rules\BoundaryPromotionEngine.cs`
-- [x] `src\Rules\CompatibilityExecutionContextFactory.cs`
+- [ ] `src\Analysis\Roslyn\InternalAnalysisServices.cs`
+- [ ] `src\Analysis\Roslyn\QueryServices.cs`
+- [ ] `src\Analysis\Roslyn\RoslynAnalysisEngine.cs`
+- [ ] `src\Analysis\Roslyn\WorkspaceLoaders.cs`
+- [ ] `src\Application\ArtifactPlanBuilder.cs`
+- [ ] `src\Application\DomeApplication.cs`
+- [ ] `src\Application\TerrariaRuntimeSeams.cs`
+- [ ] `src\Application\TerrariaRuntimeShadowExtractionStages.cs`
+- [ ] `src\Application\TerrariaRuntimeShadowSourceRewriter.cs`
+- [ ] `src\Core\AnalysisContext.cs`
+- [ ] `src\Core\Models.cs`
+- [ ] `src\Rewrite\Roslyn\RoslynRewriteExecutor.cs`
 - [ ] `src\Rules\MarkingRuleEngine.cs`
-- [x] `src\Rules\StatementPropagationEngine.cs`
+- [ ] `src\Rules\StatementPropagationEngine.cs`
+- [ ] `tests\Dome.Tests\Analysis\Integration\AnalysisGraphTests.cs`
+- [ ] `tests\Dome.Tests\Analysis\Integration\FunctionImpactAnalyzerTests.cs`
+- [ ] `tests\Dome.Tests\Analysis\Integration\InternalAnalysisServicesTests.cs`
+- [ ] `tests\Dome.Tests\Analysis\Unit\MemberIdBuilderTests.cs`
+- [ ] `tests\Dome.Tests\Application\Integration\DomeApplicationTests.cs`
+- [ ] `tests\Dome.Tests\Application\Integration\TerrariaRuntimeApplicationTests.cs`
+- [ ] `tests\Dome.Tests\Application\Unit\DomeApplicationOrchestrationTests.cs`
+- [ ] `tests\Dome.Tests\Application\Unit\DomeApplicationSemanticTests.cs`
+- [ ] `tests\Dome.Tests\Application\Unit\TerrariaRuntimeApplicationOrchestrationTests.cs`
+- [ ] `tests\Dome.Tests\Application\Unit\TerrariaRuntimeShadowExtractionApplicationOrchestrationTests.cs`
+- [ ] `tests\Dome.Tests\DomeTesting\TestBuilders\TestAnalysisContextBuilder.cs`
+- [ ] `tests\Dome.Tests\Rewrite\Unit\RewriteExecutorTests.cs`
+- [ ] `tests\Dome.Tests\Rules\Slice\MarkingRuleEngineTests.cs`
+- [ ] `tests\Dome.Tests\Rules\Unit\BoundaryPromotionEngineUnitTests.cs`
+- [x] `tests\TerrariaTools.Testing\TestBuilders\MarkDecisionBuilder.cs`
+- [ ] `tests\TerrariaTools.Testing\TestBuilders\PlanTargetBuilder.cs`
+- [ ] `tests\TerrariaTools.Testing\TestBuilders\RunRequestBuilder.cs`
+- [ ] `tests\TerrariaTools.Testing\TestBuilders\RuntimeLayoutBuilder.cs`
+- [ ] `tests\TerrariaTools.Testing\TestBuilders\SourceDocumentBuilder.cs`
+- [ ] `tests\TerrariaTools.Testing\TestBuilders\TestWorkspaceBuilder.cs`
+- [ ] `tests\TerrariaTools.Testing\TestDoubles\FakeAnalysisEngine.cs`
+- [ ] `tests\TerrariaTools.Testing\TestFixtures\ApplicationOutputFixture.cs`
+- [ ] `tests\TerrariaTools.Testing\TestFixtures\TemporaryDirectoryFixture.cs`
+
+## Completed Tasks
+
+- [x] `src\Application\TerrariaRuntimeSeams.cs`
+- [x] `tests\TerrariaTools.Testing\TestBuilders\MarkDecisionBuilder.cs`

@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -8,91 +8,45 @@ namespace TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
 
 /// <summary>
-/// Roslyn分析文档记录，包含源文档、语法根、语义模型和分析目标。
+/// 鍑芥暟浜嬪疄绉嶅瓙锛岃褰曞嚱鏁颁笌鍏惰皟鐢ㄦ垚鍛橀泦鍚堛€?
 /// </summary>
-/// <param name="Document">源文档。</param>
-/// <param name="Root">编译单元语法根。</param>
-/// <param name="SemanticModel">语义模型。</param>
-/// <param name="Targets">分析目标列表。</param>
-public sealed record RoslynAnalysisDocument(
-    SourceDocument Document,
-    CompilationUnitSyntax Root,
-    SemanticModel SemanticModel,
-    IReadOnlyList<AnalysisTarget> Targets);
-
-/// <summary>
-/// Roslyn分析结果记录，包含分析视图和文档列表。
-/// </summary>
-/// <param name="View">分析视图。</param>
-/// <param name="Documents">Roslyn分析文档列表。</param>
-public sealed record RoslynAnalysisResult(
-    AnalysisResultModel View,
-    IReadOnlyList<RoslynAnalysisDocument> Documents,
-    FunctionIndex FunctionIndex,
-    FunctionFactsIndex FunctionFacts,
-    AnalysisPerformanceSummary PerformanceSummary);
-
-/// <summary>
-/// 函数事实种子，记录函数与其调用成员集合。
-/// </summary>
-/// <param name="MemberId">函数成员标识。</param>
-/// <param name="CalledMemberIds">被调用成员标识集合。</param>
+/// <param name="MemberId">鍑芥暟鎴愬憳鏍囪瘑銆?/param>
+/// <param name="CalledMemberIds">琚皟鐢ㄦ垚鍛樻爣璇嗛泦鍚堛€?/param>
 internal sealed record FunctionFactSeed(
     MemberId MemberId,
     IReadOnlyList<MemberId> CalledMemberIds);
 
 /// <summary>
-/// 数据流事实，包含定义集合、使用集合与净化赋值标记。
+/// 鏁版嵁娴佷簨瀹烇紝鍖呭惈瀹氫箟闆嗗悎銆佷娇鐢ㄩ泦鍚堜笌鍑€鍖栬祴鍊兼爣璁般€?
 /// </summary>
-/// <param name="DefinesSymbols">定义的符号集合。</param>
-/// <param name="UsesSymbols">使用的符号集合。</param>
-/// <param name="IsSanitizingAssignment">是否为净化赋值。</param>
+/// <param name="DefinesSymbols">瀹氫箟鐨勭鍙烽泦鍚堛€?/param>
+/// <param name="UsesSymbols">浣跨敤鐨勭鍙烽泦鍚堛€?/param>
+/// <param name="IsSanitizingAssignment">鏄惁涓哄噣鍖栬祴鍊笺€?/param>
 internal sealed record DataflowFacts(
     IReadOnlyList<SymbolRef> DefinesSymbols,
     IReadOnlyList<SymbolRef> UsesSymbols,
     bool IsSanitizingAssignment);
 
 /// <summary>
-/// 语句检查结果，包含数据流、调用成员与表达式标记信息。
+/// 璇彞妫€鏌ョ粨鏋滐紝鍖呭惈鏁版嵁娴併€佽皟鐢ㄦ垚鍛樹笌琛ㄨ揪寮忔爣璁颁俊鎭€?
 /// </summary>
-/// <param name="DataflowFacts">数据流事实。</param>
-/// <param name="InvokedMemberIds">直接调用的成员标识集合。</param>
-/// <param name="MarkedExpressionKinds">命中的表达式语法种类集合。</param>
+/// <param name="DataflowFacts">鏁版嵁娴佷簨瀹炪€?/param>
+/// <param name="InvokedMemberIds">鐩存帴璋冪敤鐨勬垚鍛樻爣璇嗛泦鍚堛€?/param>
+/// <param name="MarkedExpressionKinds">鍛戒腑鐨勮〃杈惧紡璇硶绉嶇被闆嗗悎銆?/param>
 internal sealed record StatementInspectionResult(
     DataflowFacts DataflowFacts,
     IReadOnlyList<MemberId> InvokedMemberIds,
     IReadOnlyList<string> MarkedExpressionKinds);
 
 /// <summary>
-/// 分析性能摘要，统计关键阶段耗时。
+/// 鍗曟枃妗ｅ垎鏋愯€楁椂鏄庣粏锛圱icks锛夈€?
 /// </summary>
-/// <param name="DocumentCount">文档数量。</param>
-/// <param name="SyntaxIndexTime">语法索引阶段耗时。</param>
-/// <param name="TypeGraphTime">类型图构建阶段耗时。</param>
-/// <param name="FunctionNodeTime">函数节点注册阶段耗时。</param>
-/// <param name="TypeBodyGraphTime">类型体依赖分析阶段耗时。</param>
-/// <param name="TargetAnalysisTime">目标分析阶段耗时。</param>
-/// <param name="FunctionFactsTime">函数事实生成阶段耗时。</param>
-/// <param name="MergeTime">结果合并阶段耗时。</param>
-public sealed record AnalysisPerformanceSummary(
-    int DocumentCount,
-    TimeSpan SyntaxIndexTime,
-    TimeSpan TypeGraphTime,
-    TimeSpan FunctionNodeTime,
-    TimeSpan TypeBodyGraphTime,
-    TimeSpan TargetAnalysisTime,
-    TimeSpan FunctionFactsTime,
-    TimeSpan MergeTime);
-
-/// <summary>
-/// 单文档分析耗时明细（Ticks）。
-/// </summary>
-/// <param name="SyntaxIndexTicks">语法索引阶段耗时。</param>
-/// <param name="TypeGraphTicks">类型图构建阶段耗时。</param>
-/// <param name="FunctionNodeTicks">函数节点注册阶段耗时。</param>
-/// <param name="TypeBodyGraphTicks">类型体依赖分析阶段耗时。</param>
-/// <param name="TargetAnalysisTicks">目标分析阶段耗时。</param>
-/// <param name="FunctionFactsTicks">函数事实生成阶段耗时。</param>
+/// <param name="SyntaxIndexTicks">璇硶绱㈠紩闃舵鑰楁椂銆?/param>
+/// <param name="TypeGraphTicks">绫诲瀷鍥炬瀯寤洪樁娈佃€楁椂銆?/param>
+/// <param name="FunctionNodeTicks">鍑芥暟鑺傜偣娉ㄥ唽闃舵鑰楁椂銆?/param>
+/// <param name="TypeBodyGraphTicks">绫诲瀷浣撲緷璧栧垎鏋愰樁娈佃€楁椂銆?/param>
+/// <param name="TargetAnalysisTicks">鐩爣鍒嗘瀽闃舵鑰楁椂銆?/param>
+/// <param name="FunctionFactsTicks">鍑芥暟浜嬪疄鐢熸垚闃舵鑰楁椂銆?/param>
 internal sealed record DocumentAnalysisTimings(
     long SyntaxIndexTicks,
     long TypeGraphTicks,
@@ -102,18 +56,18 @@ internal sealed record DocumentAnalysisTimings(
     long FunctionFactsTicks);
 
 /// <summary>
-/// 文档语法索引，缓存常用语法节点集合以降低重复遍历成本。
+/// 鏂囨。璇硶绱㈠紩锛岀紦瀛樺父鐢ㄨ娉曡妭鐐归泦鍚堜互闄嶄綆閲嶅閬嶅巻鎴愭湰銆?
 /// </summary>
-/// <param name="BaseTypes">基础类型声明集合。</param>
-/// <param name="Fields">字段声明集合。</param>
-/// <param name="PropertiesWithInitializer">带初始化器的属性声明集合。</param>
-/// <param name="PropertiesWithExpressionBody">表达式体属性声明集合。</param>
-/// <param name="Classes">类声明集合。</param>
-/// <param name="Methods">方法声明集合。</param>
-/// <param name="Constructors">构造函数声明集合。</param>
-/// <param name="Accessors">访问器声明集合。</param>
-/// <param name="Operators">运算符声明集合。</param>
-/// <param name="ConversionOperators">转换运算符声明集合。</param>
+/// <param name="BaseTypes">鍩虹绫诲瀷澹版槑闆嗗悎銆?/param>
+/// <param name="Fields">瀛楁澹版槑闆嗗悎銆?/param>
+/// <param name="PropertiesWithInitializer">甯﹀垵濮嬪寲鍣ㄧ殑灞炴€у０鏄庨泦鍚堛€?/param>
+/// <param name="PropertiesWithExpressionBody">琛ㄨ揪寮忎綋灞炴€у０鏄庨泦鍚堛€?/param>
+/// <param name="Classes">绫诲０鏄庨泦鍚堛€?/param>
+/// <param name="Methods">鏂规硶澹版槑闆嗗悎銆?/param>
+/// <param name="Constructors">鏋勯€犲嚱鏁板０鏄庨泦鍚堛€?/param>
+/// <param name="Accessors">璁块棶鍣ㄥ０鏄庨泦鍚堛€?/param>
+/// <param name="Operators">杩愮畻绗﹀０鏄庨泦鍚堛€?/param>
+/// <param name="ConversionOperators">杞崲杩愮畻绗﹀０鏄庨泦鍚堛€?/param>
 internal sealed record DocumentSyntaxIndex(
     IReadOnlyList<BaseTypeDeclarationSyntax> BaseTypes,
     IReadOnlyList<FieldDeclarationSyntax> Fields,
@@ -127,18 +81,18 @@ internal sealed record DocumentSyntaxIndex(
     IReadOnlyList<ConversionOperatorDeclarationSyntax> ConversionOperators);
 
 /// <summary>
-/// 单文档分析打包结果，包含产物与性能数据。
+/// 鍗曟枃妗ｅ垎鏋愭墦鍖呯粨鏋滐紝鍖呭惈浜х墿涓庢€ц兘鏁版嵁銆?
 /// </summary>
-/// <param name="Document">源文档。</param>
-/// <param name="Root">编译单元语法根。</param>
-/// <param name="SemanticModel">语义模型。</param>
-/// <param name="Targets">分析目标集合。</param>
-/// <param name="AnalysisEdges">分析边集合。</param>
-/// <param name="TypeNodes">类型节点集合。</param>
-/// <param name="TypeEdges">类型依赖边集合。</param>
-/// <param name="FunctionNodes">函数节点集合。</param>
-/// <param name="FunctionFacts">函数事实集合。</param>
-/// <param name="Timings">文档分析耗时明细。</param>
+/// <param name="Document">婧愭枃妗ｃ€?/param>
+/// <param name="Root">缂栬瘧鍗曞厓璇硶鏍广€?/param>
+/// <param name="SemanticModel">璇箟妯″瀷銆?/param>
+/// <param name="Targets">鍒嗘瀽鐩爣闆嗗悎銆?/param>
+/// <param name="AnalysisEdges">鍒嗘瀽杈归泦鍚堛€?/param>
+/// <param name="TypeNodes">绫诲瀷鑺傜偣闆嗗悎銆?/param>
+/// <param name="TypeEdges">绫诲瀷渚濊禆杈归泦鍚堛€?/param>
+/// <param name="FunctionNodes">鍑芥暟鑺傜偣闆嗗悎銆?/param>
+/// <param name="FunctionFacts">鍑芥暟浜嬪疄闆嗗悎銆?/param>
+/// <param name="Timings">鏂囨。鍒嗘瀽鑰楁椂鏄庣粏銆?/param>
 internal sealed record DocumentAnalysisBundle(
     SourceDocument Document,
     CompilationUnitSyntax Root,
@@ -152,7 +106,7 @@ internal sealed record DocumentAnalysisBundle(
     DocumentAnalysisTimings Timings);
 
 /// <summary>
-/// 文档级符号缓存，复用成员标识与类型标识计算结果。
+/// 鏂囨。绾х鍙风紦瀛橈紝澶嶇敤鎴愬憳鏍囪瘑涓庣被鍨嬫爣璇嗚绠楃粨鏋溿€?
 /// </summary>
 internal sealed class DocumentSymbolCache
 {
@@ -160,10 +114,10 @@ internal sealed class DocumentSymbolCache
     private readonly Dictionary<ITypeSymbol, string> _typeIds = new(SymbolEqualityComparer.Default);
 
     /// <summary>
-    /// 获取成员标识，并在首次访问时写入缓存。
+    /// 鑾峰彇鎴愬憳鏍囪瘑锛屽苟鍦ㄩ娆¤闂椂鍐欏叆缂撳瓨銆?
     /// </summary>
-    /// <param name="symbol">成员符号。</param>
-    /// <returns>成员标识。</returns>
+    /// <param name="symbol">鎴愬憳绗﹀彿銆?/param>
+    /// <returns>鎴愬憳鏍囪瘑銆?/returns>
     public MemberId GetMemberId(ISymbol symbol)
     {
         if (!_memberIds.TryGetValue(symbol, out var memberId))
@@ -176,10 +130,10 @@ internal sealed class DocumentSymbolCache
     }
 
     /// <summary>
-    /// 获取类型标识，并在首次访问时写入缓存。
+    /// 鑾峰彇绫诲瀷鏍囪瘑锛屽苟鍦ㄩ娆¤闂椂鍐欏叆缂撳瓨銆?
     /// </summary>
-    /// <param name="symbol">类型符号。</param>
-    /// <returns>类型标识。</returns>
+    /// <param name="symbol">绫诲瀷绗﹀彿銆?/param>
+    /// <returns>绫诲瀷鏍囪瘑銆?/returns>
     public string GetTypeId(ITypeSymbol? symbol)
     {
         if (symbol == null)
@@ -198,12 +152,12 @@ internal sealed class DocumentSymbolCache
 }
 
 /// <summary>
-/// Roslyn分析引擎，负责协调文档的解析、编译和依赖分析。
-/// 类依赖图是读取sln项目就进行全部分析，函数依赖分析需要支持性能更好的动态文件范围分析和全sln项目分析
-/// 而语句分析初版需要支持最小作用域分析,然后支持引用关系穿透,即跨越作用域但此阶段不会跨越函数作用域和类作用域
-/// 下一阶段是支持域分析穿透支持到函数和类成员属性.下阶段更为复杂需要支持多作用跨越和不同作用域的混合分析
+/// Roslyn鍒嗘瀽寮曟搸锛岃礋璐ｅ崗璋冩枃妗ｇ殑瑙ｆ瀽銆佺紪璇戝拰渚濊禆鍒嗘瀽銆?
+/// 绫讳緷璧栧浘鏄鍙杝ln椤圭洰灏辫繘琛屽叏閮ㄥ垎鏋愶紝鍑芥暟渚濊禆鍒嗘瀽闇€瑕佹敮鎸佹€ц兘鏇村ソ鐨勫姩鎬佹枃浠惰寖鍥村垎鏋愬拰鍏╯ln椤圭洰鍒嗘瀽
+/// 鑰岃鍙ュ垎鏋愬垵鐗堥渶瑕佹敮鎸佹渶灏忎綔鐢ㄥ煙鍒嗘瀽,鐒跺悗鏀寔寮曠敤鍏崇郴绌块€?鍗宠法瓒婁綔鐢ㄥ煙浣嗘闃舵涓嶄細璺ㄨ秺鍑芥暟浣滅敤鍩熷拰绫讳綔鐢ㄥ煙
+/// 涓嬩竴闃舵鏄敮鎸佸煙鍒嗘瀽绌块€忔敮鎸佸埌鍑芥暟鍜岀被鎴愬憳灞炴€?涓嬮樁娈垫洿涓哄鏉傞渶瑕佹敮鎸佸浣滅敤璺ㄨ秺鍜屼笉鍚屼綔鐢ㄥ煙鐨勬贩鍚堝垎鏋?
 /// </summary>
-public sealed class RoslynAnalysisEngine
+public sealed class RoslynAnalysisEngine : IAnalysisEngine
 {
     private static readonly string[] KnownPersistentOwnerTypeMarkers =
     [
@@ -213,12 +167,12 @@ public sealed class RoslynAnalysisEngine
     ];
 
     /// <summary>
-    /// 异步执行分析。
+    /// 寮傛鎵ц鍒嗘瀽銆?
     /// </summary>
-    /// <param name="documents">源文档列表。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>Roslyn分析结果。</returns>
-    public Task<RoslynAnalysisResult> AnalyzeAsync(
+    /// <param name="documents">婧愭枃妗ｅ垪琛ㄣ€?/param>
+    /// <param name="cancellationToken">鍙栨秷浠ょ墝銆?/param>
+    /// <returns>Roslyn鍒嗘瀽缁撴灉銆?/returns>
+    public Task<AnalysisEngineResult> AnalyzeAsync(
         IReadOnlyList<SourceDocument> documents,
         CancellationToken cancellationToken)
     {
@@ -230,12 +184,12 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 按输入类型选择分析入口。
+    /// 鎸夎緭鍏ョ被鍨嬮€夋嫨鍒嗘瀽鍏ュ彛銆?
     /// </summary>
-    /// <param name="input">分析输入。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>Roslyn分析结果。</returns>
-    public async Task<RoslynAnalysisResult> AnalyzeAsync(
+    /// <param name="input">鍒嗘瀽杈撳叆銆?/param>
+    /// <param name="cancellationToken">鍙栨秷浠ょ墝銆?/param>
+    /// <returns>Roslyn鍒嗘瀽缁撴灉銆?/returns>
+    public async Task<AnalysisEngineResult> AnalyzeAsync(
         AnalysisInput input,
         CancellationToken cancellationToken)
     {
@@ -248,9 +202,9 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 仅分析源码模式。
+    /// 浠呭垎鏋愭簮鐮佹ā寮忋€?
     /// </summary>
-    private async Task<RoslynAnalysisResult> AnalyzeSourceOnlyAsync(
+    private async Task<AnalysisEngineResult> AnalyzeSourceOnlyAsync(
         SourceOnlyAnalysisInput input,
         CancellationToken cancellationToken)
     {
@@ -271,7 +225,7 @@ public sealed class RoslynAnalysisEngine
                     cancellationToken)));
 
         var mergeStart = Stopwatch.GetTimestamp();
-        var analyzedDocuments = new List<RoslynAnalysisDocument>(bundles.Length);
+        var analyzedDocuments = new List<AnalysisDocumentContext>(bundles.Length);
         var allTargets = new List<AnalysisTarget>();
         var allEdges = new List<AnalysisEdge>();
         var typeNodes = new Dictionary<string, TypeNodeRef>(StringComparer.Ordinal);
@@ -280,7 +234,7 @@ public sealed class RoslynAnalysisEngine
 
         foreach (var bundle in bundles)
         {
-            analyzedDocuments.Add(new RoslynAnalysisDocument(bundle.Document, bundle.Root, bundle.SemanticModel, bundle.Targets));
+            analyzedDocuments.Add(new AnalysisDocumentContext(bundle.Document, bundle.Root, bundle.SemanticModel, bundle.Targets));
             allTargets.AddRange(bundle.Targets);
             allEdges.AddRange(bundle.AnalysisEdges);
 
@@ -300,8 +254,8 @@ public sealed class RoslynAnalysisEngine
             }
         }
 
-        //抽象写法
-        //语句级分析不能使用sln项目级的全量分析
+        //鎶借薄鍐欐硶
+        //璇彞绾у垎鏋愪笉鑳戒娇鐢╯ln椤圭洰绾х殑鍏ㄩ噺鍒嗘瀽
         var functionIndex = BuildFunctionIndex(functionNodes.Values);
         var functionFacts = BuildFunctionFactsIndex(functionNodes.Values, bundles);
         var mergeElapsed = Stopwatch.GetElapsedTime(mergeStart);
@@ -319,13 +273,19 @@ public sealed class RoslynAnalysisEngine
             StatementGraphMaterialization.SnapshotOnly,
             FunctionGraphMaterialization.None);
 
-        return new RoslynAnalysisResult(view, analyzedDocuments, functionIndex, functionFacts, SummarizePerformance(bundles, mergeElapsed));
+        var snapshot = new AnalysisExecutionSnapshot(
+            view,
+            functionIndex,
+            functionFacts,
+            BuildStatementFactsIndex(view.Targets));
+        var services = BuildAnalysisServices(analyzedDocuments, snapshot);
+        return new AnalysisEngineResult(view, analyzedDocuments, snapshot, services, SummarizePerformance(bundles, mergeElapsed));
     }
 
     /// <summary>
-    /// 分析工作区模式。
+    /// 鍒嗘瀽宸ヤ綔鍖烘ā寮忋€?
     /// </summary>
-    private async Task<RoslynAnalysisResult> AnalyzeWorkspaceAsync(
+    private async Task<AnalysisEngineResult> AnalyzeWorkspaceAsync(
         WorkspaceAnalysisContextInput input,
         CancellationToken cancellationToken)
     {
@@ -340,7 +300,7 @@ public sealed class RoslynAnalysisEngine
             }));
 
         var mergeStart = Stopwatch.GetTimestamp();
-        var analyzedDocuments = new List<RoslynAnalysisDocument>(bundles.Length);
+        var analyzedDocuments = new List<AnalysisDocumentContext>(bundles.Length);
         var allTargets = new List<AnalysisTarget>();
         var allEdges = new List<AnalysisEdge>();
         var typeNodes = new Dictionary<string, TypeNodeRef>(StringComparer.Ordinal);
@@ -349,7 +309,7 @@ public sealed class RoslynAnalysisEngine
 
         foreach (var bundle in bundles)
         {
-            analyzedDocuments.Add(new RoslynAnalysisDocument(bundle.Document, bundle.Root, bundle.SemanticModel, bundle.Targets));
+            analyzedDocuments.Add(new AnalysisDocumentContext(bundle.Document, bundle.Root, bundle.SemanticModel, bundle.Targets));
             allTargets.AddRange(bundle.Targets);
             allEdges.AddRange(bundle.AnalysisEdges);
 
@@ -386,17 +346,23 @@ public sealed class RoslynAnalysisEngine
             StatementGraphMaterialization.SnapshotOnly,
             FunctionGraphMaterialization.None);
 
-        return new RoslynAnalysisResult(view, analyzedDocuments, functionIndex, functionFacts, SummarizePerformance(bundles, mergeElapsed));
+        var snapshot = new AnalysisExecutionSnapshot(
+            view,
+            functionIndex,
+            functionFacts,
+            BuildStatementFactsIndex(view.Targets));
+        var services = BuildAnalysisServices(analyzedDocuments, snapshot);
+        return new AnalysisEngineResult(view, analyzedDocuments, snapshot, services, SummarizePerformance(bundles, mergeElapsed));
     }
 
     /// <summary>
-    /// 分析单个文档并汇总中间产物。
+    /// 鍒嗘瀽鍗曚釜鏂囨。骞舵眹鎬讳腑闂翠骇鐗┿€?
     /// </summary>
-    /// <param name="sourceDocument">源文档。</param>
-    /// <param name="root">编译单元语法根。</param>
-    /// <param name="semanticModel">语义模型。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>文档分析打包结果。</returns>
+    /// <param name="sourceDocument">婧愭枃妗ｃ€?/param>
+    /// <param name="root">缂栬瘧鍗曞厓璇硶鏍广€?/param>
+    /// <param name="semanticModel">璇箟妯″瀷銆?/param>
+    /// <param name="cancellationToken">鍙栨秷浠ょ墝銆?/param>
+    /// <returns>鏂囨。鍒嗘瀽鎵撳寘缁撴灉銆?/returns>
     private static DocumentAnalysisBundle AnalyzeDocumentBundle(
         SourceDocument sourceDocument,
         CompilationUnitSyntax root,
@@ -450,11 +416,11 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 汇总文档分析耗时并生成性能摘要。
+    /// 姹囨€绘枃妗ｅ垎鏋愯€楁椂骞剁敓鎴愭€ц兘鎽樿銆?
     /// </summary>
-    /// <param name="bundles">文档分析打包结果集合。</param>
-    /// <param name="mergeTime">合并阶段耗时。</param>
-    /// <returns>性能摘要。</returns>
+    /// <param name="bundles">鏂囨。鍒嗘瀽鎵撳寘缁撴灉闆嗗悎銆?/param>
+    /// <param name="mergeTime">鍚堝苟闃舵鑰楁椂銆?/param>
+    /// <returns>鎬ц兘鎽樿銆?/returns>
     private static AnalysisPerformanceSummary SummarizePerformance(
         IReadOnlyList<DocumentAnalysisBundle> bundles,
         TimeSpan mergeTime)
@@ -488,48 +454,17 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 根据分析结果创建分析上下文。
-    /// 上下文需要根据文件数量以及作用范围来维护上下文,要么就是不变上下放弃维护
-    /// 需要确定上下文需要传递什么数据和大小
+    /// 鏍规嵁鍒嗘瀽缁撴灉鍒涘缓鍒嗘瀽涓婁笅鏂囥€?
+    /// 涓婁笅鏂囬渶瑕佹牴鎹枃浠舵暟閲忎互鍙婁綔鐢ㄨ寖鍥存潵缁存姢涓婁笅鏂?瑕佷箞灏辨槸涓嶅彉涓婁笅鏀惧純缁存姢
+    /// 闇€瑕佺‘瀹氫笂涓嬫枃闇€瑕佷紶閫掍粈涔堟暟鎹拰澶у皬
     /// </summary>
-    /// <param name="result">Roslyn分析结果。</param>
-    /// <returns>分析上下文。</returns>
-    public AnalysisExecutionSnapshot CreateSnapshot(RoslynAnalysisResult result)
-    {
-        return new AnalysisExecutionSnapshot(
-            result.View,
-            result.FunctionIndex,
-            result.FunctionFacts,
-            BuildStatementFactsIndex(result.View.Targets));
-    }
-
+    /// <param name="result">Roslyn鍒嗘瀽缁撴灉銆?/param>
+    /// <returns>鍒嗘瀽涓婁笅鏂囥€?/returns>
     /// <summary>
-    /// 创建分析服务。
-    /// </summary>
-    /// <param name="result">Roslyn分析结果。</param>
-    /// <returns>分析服务。</returns>
-    public AnalysisServices CreateServices(RoslynAnalysisResult result)
-    {
-        return CreateContext(result).Services;
-    }
-
-    /// <summary>
-    /// 创建分析上下文。
-    /// </summary>
-    /// <param name="result">Roslyn分析结果。</param>
-    /// <returns>分析上下文。</returns>
-    public AnalysisContext CreateContext(RoslynAnalysisResult result)
-    {
-        var snapshot = CreateSnapshot(result);
-        var services = BuildAnalysisServices(result.Documents, snapshot);
-        return AnalysisContext.Create(snapshot, services);
-    }
-
-    /// <summary>
-    /// 核心创建分析服务逻辑。
+    /// 鏍稿績鍒涘缓鍒嗘瀽鏈嶅姟閫昏緫銆?
     /// </summary>
     private static AnalysisServices BuildAnalysisServices(
-        IReadOnlyList<RoslynAnalysisDocument> documents,
+        IReadOnlyList<AnalysisDocumentContext> documents,
         AnalysisExecutionSnapshot snapshot)
     {
         var overrideMembers = new HashSet<string>(StringComparer.Ordinal);
@@ -642,7 +577,7 @@ public sealed class RoslynAnalysisEngine
                 memberToFunctions,
                 memberToTypes);
             RegisterInitializerMethodReferences(
-                document.Root,
+                (CompilationUnitSyntax)document.Root,
                 document.SemanticModel,
                 memberToFunctions,
                 memberToTypes);
@@ -686,21 +621,46 @@ public sealed class RoslynAnalysisEngine
                 typeToFunctions,
                 typeToTypes,
                 static accessor => GetBodyOrExpression(accessor));
-            RegisterPersistentInitializerTypeReferences(document.Root, document.SemanticModel, typeToFunctions, typeToTypes);
+            RegisterPersistentInitializerTypeReferences((CompilationUnitSyntax)document.Root, document.SemanticModel, typeToFunctions, typeToTypes);
         }
 
+        var symbolDependencies = new SymbolDependencyGraphProvider(documents);
+        var methodCalls = new MethodCallQueryService(snapshot.FunctionFacts);
+        var advancedAnalysis = new AdvancedAnalysisSummaryService(methodCalls, symbolDependencies);
+        var inheritance = new InheritanceQueryService(overrideMembers, interfaceMembers, inheritanceTypes);
+        var references = new ReferenceQueryService(memberToFunctions, memberToTypes, typeToFunctions, typeToTypes);
+        var memberCleanup = new MemberCleanupQueryService(
+            documents,
+            snapshot.FunctionIndex,
+            references,
+            inheritance,
+            symbolDependencies);
+
         return new AnalysisServices(
-            new InheritanceQueryService(overrideMembers, interfaceMembers, inheritanceTypes),
-            new ReferenceQueryService(memberToFunctions, memberToTypes, typeToFunctions, typeToTypes),
+            inheritance,
+            references,
             new StatementAnalysisService(snapshot.StatementFacts),
-            new FunctionGraphProvider(snapshot.FunctionIndex, snapshot.FunctionFacts));
+            new FunctionGraphProvider(snapshot.FunctionIndex, snapshot.FunctionFacts),
+            symbolDependencies,
+            methodCalls,
+            new DataFlowSummaryService(documents),
+            new SwitchFlowSummaryService(documents),
+            new CallChainAnalysisService(snapshot.FunctionIndex, methodCalls),
+            advancedAnalysis,
+            memberCleanup);
     }
 
+    public AnalysisExecutionSnapshot CreateSnapshot(AnalysisEngineResult result) => result.Snapshot;
+
+    public AnalysisServices CreateServices(AnalysisEngineResult result) => result.Services;
+
+    public AnalysisContext CreateContext(AnalysisEngineResult result) => result.CreateContext();
+
     /// <summary>
-    /// 判断类型依赖边是否属于持久引用。
+    /// 鍒ゆ柇绫诲瀷渚濊禆杈规槸鍚﹀睘浜庢寔涔呭紩鐢ㄣ€?
     /// </summary>
-    /// <param name="kind">类型依赖种类。</param>
-    /// <returns>若属于持久引用则为 <see langword="true"/>。</returns>
+    /// <param name="kind">绫诲瀷渚濊禆绉嶇被銆?/param>
+    /// <returns>鑻ュ睘浜庢寔涔呭紩鐢ㄥ垯涓?<see langword="true"/>銆?/returns>
     private static bool IsPersistentTypeReference(TypeDependencyKind kind) =>
         kind is TypeDependencyKind.Inherits
             or TypeDependencyKind.Implements
@@ -711,25 +671,25 @@ public sealed class RoslynAnalysisEngine
             or TypeDependencyKind.StaticMemberAccess;
 
     /// <summary>
-    /// 判断是否为嵌套类型体引用。
+    /// 鍒ゆ柇鏄惁涓哄祵濂楃被鍨嬩綋寮曠敤銆?
     /// </summary>
-    /// <param name="edge">类型依赖边。</param>
-    /// <returns>若为嵌套类型体引用则为 <see langword="true"/>。</returns>
+    /// <param name="edge">绫诲瀷渚濊禆杈广€?/param>
+    /// <returns>鑻ヤ负宓屽绫诲瀷浣撳紩鐢ㄥ垯涓?<see langword="true"/>銆?/returns>
     private static bool IsNestedTypeBodyReference(TypeDependencyEdge edge) =>
         edge.Kind is TypeDependencyKind.ObjectCreation or TypeDependencyKind.MemberBodyReference &&
         IsNestedTypeReference(edge.SourceTypeId, edge.TargetTypeId);
 
     /// <summary>
-    /// 判断目标类型是否为源类型的嵌套类型。
+    /// 鍒ゆ柇鐩爣绫诲瀷鏄惁涓烘簮绫诲瀷鐨勫祵濂楃被鍨嬨€?
     /// </summary>
-    /// <param name="sourceTypeId">源类型标识。</param>
-    /// <param name="targetTypeId">目标类型标识。</param>
-    /// <returns>若为嵌套关系则为 <see langword="true"/>。</returns>
+    /// <param name="sourceTypeId">婧愮被鍨嬫爣璇嗐€?/param>
+    /// <param name="targetTypeId">鐩爣绫诲瀷鏍囪瘑銆?/param>
+    /// <returns>鑻ヤ负宓屽鍏崇郴鍒欎负 <see langword="true"/>銆?/returns>
     private static bool IsNestedTypeReference(string sourceTypeId, string targetTypeId) =>
         targetTypeId.StartsWith(sourceTypeId + ".", StringComparison.Ordinal);
 
     /// <summary>
-    /// 注册方法组引用到成员和类型反向索引。
+    /// 娉ㄥ唽鏂规硶缁勫紩鐢ㄥ埌鎴愬憳鍜岀被鍨嬪弽鍚戠储寮曘€?
     /// </summary>
     private static void RegisterMethodGroupReferences<TDeclaration>(
         IEnumerable<TDeclaration> declarations,
@@ -757,7 +717,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册表达式体属性中的方法组引用。
+    /// 娉ㄥ唽琛ㄨ揪寮忎綋灞炴€т腑鐨勬柟娉曠粍寮曠敤銆?
     /// </summary>
     private static void RegisterPropertyMethodGroupReferences(
         IEnumerable<PropertyDeclarationSyntax> properties,
@@ -783,7 +743,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册字段与属性初始化器中的方法引用。
+    /// 娉ㄥ唽瀛楁涓庡睘鎬у垵濮嬪寲鍣ㄤ腑鐨勬柟娉曞紩鐢ㄣ€?
     /// </summary>
     private static void RegisterInitializerMethodReferences(
         CompilationUnitSyntax root,
@@ -828,7 +788,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 收集初始化器中的被引用方法标识集合。
+    /// 鏀堕泦鍒濆鍖栧櫒涓殑琚紩鐢ㄦ柟娉曟爣璇嗛泦鍚堛€?
     /// </summary>
     private static IReadOnlyList<MemberId> CollectInitializerReferencedMethodIds(
         SyntaxNode initializerValue,
@@ -853,7 +813,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册持久类型引用到类型反向索引。
+    /// 娉ㄥ唽鎸佷箙绫诲瀷寮曠敤鍒扮被鍨嬪弽鍚戠储寮曘€?
     /// </summary>
     private static void RegisterPersistentTypeReferences<TDeclaration>(
         IEnumerable<TDeclaration> declarations,
@@ -881,7 +841,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册持久化字段初始化器中的类型引用。
+    /// 娉ㄥ唽鎸佷箙鍖栧瓧娈靛垵濮嬪寲鍣ㄤ腑鐨勭被鍨嬪紩鐢ㄣ€?
     /// </summary>
     private static void RegisterPersistentInitializerTypeReferences(
         CompilationUnitSyntax root,
@@ -917,7 +877,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 构建函数索引。
+    /// 鏋勫缓鍑芥暟绱㈠紩銆?
     /// </summary>
     private static FunctionIndex BuildFunctionIndex(IEnumerable<FunctionNodeRef> nodes)
     {
@@ -936,7 +896,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 构建函数事实索引。
+    /// 鏋勫缓鍑芥暟浜嬪疄绱㈠紩銆?
     /// </summary>
     private static FunctionFactsIndex BuildFunctionFactsIndex(
         IEnumerable<FunctionNodeRef> nodes,
@@ -992,7 +952,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 为文档创建函数事实。
+    /// 涓烘枃妗ｅ垱寤哄嚱鏁颁簨瀹炪€?
     /// </summary>
     private static IReadOnlyList<FunctionFactSeed> CreateFunctionFacts(
         DocumentSyntaxIndex syntaxIndex,
@@ -1089,7 +1049,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册引用关系。
+    /// 娉ㄥ唽寮曠敤鍏崇郴銆?
     /// </summary>
     private static void RegisterReference<TValue>(
         IDictionary<string, HashSet<TValue>> map,
@@ -1107,7 +1067,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 构建语句依赖图。
+    /// 鏋勫缓璇彞渚濊禆鍥俱€?
     /// </summary>
     private static StatementFactsIndex BuildStatementFactsIndex(IReadOnlyList<AnalysisTarget> targets)
     {
@@ -1138,7 +1098,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 分析单个文档，提取分析目标。
+    /// 鍒嗘瀽鍗曚釜鏂囨。锛屾彁鍙栧垎鏋愮洰鏍囥€?
     /// </summary>
     private static IReadOnlyList<AnalysisTarget> AnalyzeDocument(
         SourceDocument document,
@@ -1180,6 +1140,31 @@ public sealed class RoslynAnalysisEngine
             var currentTarget = CreateInitializerTarget(document, property, property.Initializer!, memberSymbol, memberId, IsHighRiskMember(memberSymbol), model, MemberKind.Property, symbolCache);
             targets.Add(currentTarget);
             AddTargetEdges(currentTarget, ResolvePreviousTarget(previousTargetsByScope, currentTarget), edges);
+        }
+
+        foreach (var field in syntaxIndex.Fields)
+        {
+            foreach (var variable in field.Declaration.Variables)
+            {
+                var memberSymbol = model.GetDeclaredSymbol(variable);
+                if (memberSymbol == null)
+                {
+                    continue;
+                }
+
+                targets.Add(CreateFieldTarget(document, field, variable, memberSymbol, symbolCache));
+            }
+        }
+
+        foreach (var property in syntaxIndex.PropertiesWithInitializer)
+        {
+            var memberSymbol = model.GetDeclaredSymbol(property);
+            if (memberSymbol == null)
+            {
+                continue;
+            }
+
+            targets.Add(CreatePropertyTarget(document, property, memberSymbol, symbolCache));
         }
 
         foreach (var classDeclaration in syntaxIndex.Classes)
@@ -1287,8 +1272,73 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 创建类目标。
+    /// 鍒涘缓绫荤洰鏍囥€?
     /// </summary>
+    private static AnalysisTarget CreateFieldTarget(
+        SourceDocument document,
+        FieldDeclarationSyntax declaration,
+        VariableDeclaratorSyntax variable,
+        ISymbol fieldSymbol,
+        DocumentSymbolCache symbolCache)
+    {
+        var memberId = symbolCache.GetMemberId(fieldSymbol);
+        return new AnalysisTarget(
+            new PlanTarget(
+                document.RelativePath,
+                memberId,
+                MemberKind.Field,
+                TargetKind.Field,
+                variable.SpanStart,
+                variable.Span.Length,
+                GetDisplayText(document, variable.SpanStart, variable.Span.Length),
+                new TargetResolutionKey(variable.SpanStart, variable.Span.Length)),
+            fieldSymbol.DeclaredAccessibility != Accessibility.Private || fieldSymbol.IsStatic,
+            Array.Empty<DirectiveAction>(),
+            Array.Empty<SymbolRef>(),
+            Array.Empty<SymbolRef>(),
+            Array.Empty<MemberId>(),
+            StatementKindRef.Unknown,
+            false,
+            false,
+            false,
+            Array.Empty<string>(),
+            StatementScopeMode.MinimalBlock,
+            null,
+            null);
+    }
+
+    private static AnalysisTarget CreatePropertyTarget(
+        SourceDocument document,
+        PropertyDeclarationSyntax property,
+        ISymbol propertySymbol,
+        DocumentSymbolCache symbolCache)
+    {
+        var memberId = symbolCache.GetMemberId(propertySymbol);
+        return new AnalysisTarget(
+            new PlanTarget(
+                document.RelativePath,
+                memberId,
+                MemberKind.Property,
+                TargetKind.Property,
+                property.SpanStart,
+                property.Span.Length,
+                GetDisplayText(document, property.SpanStart, property.Span.Length),
+                new TargetResolutionKey(property.SpanStart, property.Span.Length)),
+            propertySymbol.DeclaredAccessibility != Accessibility.Private || IsHighRiskMember(propertySymbol),
+            Array.Empty<DirectiveAction>(),
+            Array.Empty<SymbolRef>(),
+            Array.Empty<SymbolRef>(),
+            Array.Empty<MemberId>(),
+            StatementKindRef.Unknown,
+            false,
+            false,
+            false,
+            Array.Empty<string>(),
+            StatementScopeMode.MinimalBlock,
+            null,
+            null);
+    }
+
     private static AnalysisTarget CreateClassTarget(
         SourceDocument document,
         ClassDeclarationSyntax classDeclaration,
@@ -1324,7 +1374,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 解析前一个目标，用于建立执行顺序。
+    /// 瑙ｆ瀽鍓嶄竴涓洰鏍囷紝鐢ㄤ簬寤虹珛鎵ц椤哄簭銆?
     /// </summary>
     private static AnalysisTarget? ResolvePreviousTarget(
         IDictionary<string, AnalysisTarget> previousTargetsByScope,
@@ -1346,7 +1396,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册类型图文档。
+    /// 娉ㄥ唽绫诲瀷鍥炬枃妗ｃ€?
     /// </summary>
     private static void RegisterTypeGraphDocuments(
         SourceDocument document,
@@ -1408,7 +1458,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册声明类型依赖边。
+    /// 娉ㄥ唽澹版槑绫诲瀷渚濊禆杈广€?
     /// </summary>
     private static void RegisterDeclaredTypeDependency(
         string sourceTypeId,
@@ -1425,7 +1475,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 枚举引用类型及其嵌套类型参数。
+    /// 鏋氫妇寮曠敤绫诲瀷鍙婂叾宓屽绫诲瀷鍙傛暟銆?
     /// </summary>
     private static IEnumerable<ITypeSymbol> EnumerateReferencedTypeSymbols(ITypeSymbol typeSymbol)
     {
@@ -1460,7 +1510,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册函数节点。
+    /// 娉ㄥ唽鍑芥暟鑺傜偣銆?
     /// </summary>
     private static void RegisterFunctionNodes(
         SourceDocument document,
@@ -1502,7 +1552,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册类型体中的依赖边。
+    /// 娉ㄥ唽绫诲瀷浣撲腑鐨勪緷璧栬竟銆?
     /// </summary>
     private static void RegisterTypeBodyGraphs(
         DocumentSyntaxIndex syntaxIndex,
@@ -1589,7 +1639,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 创建文档语法索引。
+    /// 鍒涘缓鏂囨。璇硶绱㈠紩銆?
     /// </summary>
     private static DocumentSyntaxIndex CreateSyntaxIndex(CompilationUnitSyntax root)
     {
@@ -1661,7 +1711,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册单个函数节点。
+    /// 娉ㄥ唽鍗曚釜鍑芥暟鑺傜偣銆?
     /// </summary>
     private static void RegisterFunctionNode(
         ISymbol? symbol,
@@ -1717,7 +1767,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册函数体和类型体的依赖图。
+    /// 娉ㄥ唽鍑芥暟浣撳拰绫诲瀷浣撶殑渚濊禆鍥俱€?
     /// </summary>
     private static void RegisterBodyGraphs(
         CompilationUnitSyntax root,
@@ -1785,7 +1835,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册函数体依赖。
+    /// 娉ㄥ唽鍑芥暟浣撲緷璧栥€?
     /// </summary>
     private static void RegisterFunctionBodyDependencies(
         ISymbol currentMember,
@@ -1836,7 +1886,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册成员引用。
+    /// 娉ㄥ唽鎴愬憳寮曠敤銆?
     /// </summary>
     private static void RegisterMemberReference(
         IdentifierNameSyntax identifier,
@@ -1876,7 +1926,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册类型引用边。
+    /// 娉ㄥ唽绫诲瀷寮曠敤杈广€?
     /// </summary>
     private static void RegisterTypeReferenceEdge(
         string currentTypeId,
@@ -1895,7 +1945,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 注册类型体依赖。
+    /// 娉ㄥ唽绫诲瀷浣撲緷璧栥€?
     /// </summary>
     private static void RegisterTypeBodyDependencies(
         INamedTypeSymbol containingType,
@@ -1928,7 +1978,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 获取基础方法声明的函数体或表达式体节点。
+    /// 鑾峰彇鍩虹鏂规硶澹版槑鐨勫嚱鏁颁綋鎴栬〃杈惧紡浣撹妭鐐广€?
     /// </summary>
     private static SyntaxNode? GetBodyOrExpression(BaseMethodDeclarationSyntax declaration)
     {
@@ -1943,7 +1993,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 获取构造函数用于引用分析的作用域节点。
+    /// 鑾峰彇鏋勯€犲嚱鏁扮敤浜庡紩鐢ㄥ垎鏋愮殑浣滅敤鍩熻妭鐐广€?
     /// </summary>
     private static SyntaxNode? GetReferenceScope(ConstructorDeclarationSyntax declaration) =>
         declaration.Initializer != null
@@ -1951,19 +2001,19 @@ public sealed class RoslynAnalysisEngine
             : GetBodyOrExpression(declaration);
 
     /// <summary>
-    /// 获取访问器的函数体或表达式体节点。
+    /// 鑾峰彇璁块棶鍣ㄧ殑鍑芥暟浣撴垨琛ㄨ揪寮忎綋鑺傜偣銆?
     /// </summary>
     private static SyntaxNode? GetBodyOrExpression(AccessorDeclarationSyntax accessor) =>
         (SyntaxNode?)accessor.Body ?? accessor.ExpressionBody?.Expression;
 
     /// <summary>
-    /// 获取属性表达式体节点。
+    /// 鑾峰彇灞炴€ц〃杈惧紡浣撹妭鐐广€?
     /// </summary>
     private static SyntaxNode? GetBodyOrExpression(PropertyDeclarationSyntax property) =>
         property.ExpressionBody?.Expression;
 
     /// <summary>
-    /// 收集节点中的调用成员标识集合。
+    /// 鏀堕泦鑺傜偣涓殑璋冪敤鎴愬憳鏍囪瘑闆嗗悎銆?
     /// </summary>
     private static IReadOnlyList<MemberId> CollectCalledMemberIds(SyntaxNode? bodyOrExpression, SemanticModel model, DocumentSymbolCache symbolCache)
     {
@@ -1983,7 +2033,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 收集节点中的方法引用标识集合。
+    /// 鏀堕泦鑺傜偣涓殑鏂规硶寮曠敤鏍囪瘑闆嗗悎銆?
     /// </summary>
     private static IReadOnlyList<MemberId> CollectReferencedMethodIds(SyntaxNode? bodyOrExpression, SemanticModel model)
     {
@@ -2014,7 +2064,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 规范化引用方法符号以便稳定建模。
+    /// 瑙勮寖鍖栧紩鐢ㄦ柟娉曠鍙蜂互渚跨ǔ瀹氬缓妯°€?
     /// </summary>
     private static ISymbol? NormalizeReferencedMethodSymbol(ISymbol? symbol)
     {
@@ -2034,7 +2084,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 收集持久引用语义下的类型标识集合。
+    /// 鏀堕泦鎸佷箙寮曠敤璇箟涓嬬殑绫诲瀷鏍囪瘑闆嗗悎銆?
     /// </summary>
     private static IReadOnlyList<string> CollectPersistentReferencedTypeIds(SyntaxNode? bodyOrExpression, SemanticModel model)
     {
@@ -2100,7 +2150,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 收集节点中新建对象的类型标识集合。
+    /// 鏀堕泦鑺傜偣涓柊寤哄璞＄殑绫诲瀷鏍囪瘑闆嗗悎銆?
     /// </summary>
     private static IReadOnlyList<string> CollectCreatedTypeIds(SyntaxNode node, SemanticModel model)
     {
@@ -2115,7 +2165,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 判断索引器访问是否来自管理器或解析器对象。
+    /// 鍒ゆ柇绱㈠紩鍣ㄨ闂槸鍚︽潵鑷鐞嗗櫒鎴栬В鏋愬櫒瀵硅薄銆?
     /// </summary>
     private static bool IsKnownManagerOrResolverIndexer(ElementAccessExpressionSyntax elementAccess, SemanticModel model)
     {
@@ -2130,7 +2180,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 判断表达式是否为静态实例访问模式。
+    /// 鍒ゆ柇琛ㄨ揪寮忔槸鍚︿负闈欐€佸疄渚嬭闂ā寮忋€?
     /// </summary>
     private static bool IsStaticInstanceAccess(ExpressionSyntax expression)
     {
@@ -2146,20 +2196,20 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 判断名称是否符合已知持久拥有者类型特征。
+    /// 鍒ゆ柇鍚嶇О鏄惁绗﹀悎宸茬煡鎸佷箙鎷ユ湁鑰呯被鍨嬬壒寰併€?
     /// </summary>
     private static bool LooksLikeKnownPersistentOwnerType(string? name) =>
         !string.IsNullOrWhiteSpace(name) &&
         KnownPersistentOwnerTypeMarkers.Any(marker => name.Contains(marker, StringComparison.Ordinal));
 
     /// <summary>
-    /// 判断类型是否符合持久拥有者特征。
+    /// 鍒ゆ柇绫诲瀷鏄惁绗﹀悎鎸佷箙鎷ユ湁鑰呯壒寰併€?
     /// </summary>
     private static bool LooksLikePersistentOwner(INamedTypeSymbol typeSymbol) =>
         LooksLikeKnownPersistentOwnerType(typeSymbol.Name);
 
     /// <summary>
-    /// 判断字段是否符合已知持久字段特征。
+    /// 鍒ゆ柇瀛楁鏄惁绗﹀悎宸茬煡鎸佷箙瀛楁鐗瑰緛銆?
     /// </summary>
     private static bool LooksLikeKnownPersistentField(IFieldSymbol fieldSymbol) =>
         fieldSymbol.IsStatic &&
@@ -2169,7 +2219,7 @@ public sealed class RoslynAnalysisEngine
         namedType.IsGenericType;
 
     /// <summary>
-    /// 判断类型是否为规则节点类型。
+    /// 鍒ゆ柇绫诲瀷鏄惁涓鸿鍒欒妭鐐圭被鍨嬨€?
     /// </summary>
     private static bool IsKnownRuleNodeType(ITypeSymbol typeSymbol)
     {
@@ -2183,7 +2233,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 枚举语句块中的语句。
+    /// 鏋氫妇璇彞鍧椾腑鐨勮鍙ャ€?
     /// </summary>
     private static IEnumerable<StatementSyntax> EnumerateStatements(BlockSyntax? body)
     {
@@ -2204,7 +2254,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 创建初始化器目标。
+    /// 鍒涘缓鍒濆鍖栧櫒鐩爣銆?
     /// </summary>
     private static AnalysisTarget CreateInitializerTarget(
         SourceDocument document,
@@ -2245,7 +2295,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 创建语句目标。
+    /// 鍒涘缓璇彞鐩爣銆?
     /// </summary>
     private static AnalysisTarget CreateStatementTarget(
         SourceDocument document,
@@ -2289,7 +2339,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 获取目标片段显示文本。
+    /// 鑾峰彇鐩爣鐗囨鏄剧ず鏂囨湰銆?
     /// </summary>
     private static string GetDisplayText(SourceDocument document, int spanStart, int spanLength)
     {
@@ -2302,7 +2352,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 计算语句的最小作用域与父块穿透信息。
+    /// 璁＄畻璇彞鐨勬渶灏忎綔鐢ㄥ煙涓庣埗鍧楃┛閫忎俊鎭€?
     /// </summary>
     private static (StatementScopeMode ScopeMode, string ScopeId, string? ParentScopeId) GetScopeInfo(
         StatementSyntax statement,
@@ -2332,19 +2382,19 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 为无块语句创建回退作用域标识。
+    /// 涓烘棤鍧楄鍙ュ垱寤哄洖閫€浣滅敤鍩熸爣璇嗐€?
     /// </summary>
     private static string CreateFallbackScopeId(StatementSyntax statement) =>
         $"fallback|{statement.SyntaxTree.FilePath}|{statement.SpanStart}|{statement.Span.Length}";
 
     /// <summary>
-    /// 创建块作用域标识。
+    /// 鍒涘缓鍧椾綔鐢ㄥ煙鏍囪瘑銆?
     /// </summary>
     private static string CreateScopeId(BlockSyntax block) =>
         $"block|{block.SyntaxTree.FilePath}|{block.SpanStart}|{block.Span.Length}";
 
     /// <summary>
-    /// 获取当前块所属的最近父块。
+    /// 鑾峰彇褰撳墠鍧楁墍灞炵殑鏈€杩戠埗鍧椼€?
     /// </summary>
     private static BlockSyntax? GetParentBlock(BlockSyntax block)
     {
@@ -2368,7 +2418,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 获取定义的符号。
+    /// 鑾峰彇瀹氫箟鐨勭鍙枫€?
     /// </summary>
     private static StatementInspectionResult AnalyzeStatementInspection(
         SyntaxNode node,
@@ -2454,7 +2504,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 记录命中的表达式语法种类。
+    /// 璁板綍鍛戒腑鐨勮〃杈惧紡璇硶绉嶇被銆?
     /// </summary>
     private static void AddMarkedExpressionKind(ISet<string> markedExpressionKinds, ExpressionSyntax expression)
     {
@@ -2476,7 +2526,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 尝试提取赋值或初始化右侧表达式。
+    /// 灏濊瘯鎻愬彇璧嬪€兼垨鍒濆鍖栧彸渚ц〃杈惧紡銆?
     /// </summary>
     private static ExpressionSyntax? TryGetRightSideExpression(SyntaxNode node)
     {
@@ -2490,7 +2540,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 尝试提取节点中的直接调用表达式。
+    /// 灏濊瘯鎻愬彇鑺傜偣涓殑鐩存帴璋冪敤琛ㄨ揪寮忋€?
     /// </summary>
     private static InvocationExpressionSyntax? TryGetDirectInvocation(SyntaxNode node)
     {
@@ -2503,7 +2553,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 获取节点定义的符号集合。
+    /// 鑾峰彇鑺傜偣瀹氫箟鐨勭鍙烽泦鍚堛€?
     /// </summary>
     private static IReadOnlyList<SymbolRef> GetDefinedSymbols(
         SyntaxNode node,
@@ -2547,7 +2597,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 获取使用的符号。
+    /// 鑾峰彇浣跨敤鐨勭鍙枫€?
     /// </summary>
     private static IReadOnlyList<SymbolRef> GetUsedSymbols(
         SyntaxNode node,
@@ -2574,7 +2624,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 分类语句类型。
+    /// 鍒嗙被璇彞绫诲瀷銆?
     /// </summary>
     private static StatementKindRef ClassifyStatementKind(StatementSyntax statement)
     {
@@ -2596,7 +2646,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 检查是否为对象初始化赋值。
+    /// 妫€鏌ユ槸鍚︿负瀵硅薄鍒濆鍖栬祴鍊笺€?
     /// </summary>
     private static bool IsObjectInitializerAssignment(StatementSyntax statement)
     {
@@ -2610,7 +2660,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 检查是否应跟踪数据流符号。
+    /// 妫€鏌ユ槸鍚﹀簲璺熻釜鏁版嵁娴佺鍙枫€?
     /// </summary>
     private static bool ShouldTrackDataflowSymbol(ISymbol? symbol)
     {
@@ -2624,7 +2674,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 添加分析目标的边。
+    /// 娣诲姞鍒嗘瀽鐩爣鐨勮竟銆?
     /// </summary>
     private static void AddTargetEdges(
         AnalysisTarget currentTarget,
@@ -2648,7 +2698,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 检查标识符是否为写入目标。
+    /// 妫€鏌ユ爣璇嗙鏄惁涓哄啓鍏ョ洰鏍囥€?
     /// </summary>
     private static bool IsWriteTargetIdentifier(IdentifierNameSyntax node)
     {
@@ -2669,7 +2719,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 检查成员是否为高风险成员（如虚方法、抽象方法或接口实现）。
+    /// 妫€鏌ユ垚鍛樻槸鍚︿负楂橀闄╂垚鍛橈紙濡傝櫄鏂规硶銆佹娊璞℃柟娉曟垨鎺ュ彛瀹炵幇锛夈€?
     /// </summary>
     private static bool IsHighRiskMember(ISymbol memberSymbol)
     {
@@ -2699,7 +2749,7 @@ public sealed class RoslynAnalysisEngine
     }
 
     /// <summary>
-    /// 检查方法是否匹配实现。
+    /// 妫€鏌ユ柟娉曟槸鍚﹀尮閰嶅疄鐜般€?
     /// </summary>
     private static bool IsMethodImplementationMatch(IMethodSymbol method, ISymbol? implementation)
     {
@@ -2722,3 +2772,5 @@ public sealed class RoslynAnalysisEngine
         return false;
     }
 }
+
+

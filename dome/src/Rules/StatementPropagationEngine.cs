@@ -1,6 +1,5 @@
 namespace TerrariaTools.Dome.Rules;
 
-using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
 
 /// <summary>
@@ -102,6 +101,7 @@ public sealed class StatementPropagationEngine
                         propagation.SourceDecision.Target.DisplayText,
                         evidence.RelatedSymbolKeys,
                         evidence.RelatedSymbolNames,
+                        origin: DecisionOrigin.Propagation,
                         chain: AppendPropagationChain(propagation.SourceDecision, target.Target, evidence));
                     emitted.Add(propagatedDecision);
                     propagated.Add(propagatedDecision);

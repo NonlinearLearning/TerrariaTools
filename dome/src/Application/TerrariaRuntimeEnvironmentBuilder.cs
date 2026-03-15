@@ -6,7 +6,7 @@ using System.Xml.Linq;
 /// <summary>
 /// Terraria Runtime 环境构建器。
 /// </summary>
-public sealed class TerrariaRuntimeEnvironmentBuilder
+public sealed class TerrariaRuntimeEnvironmentBuilder : ITerrariaRuntimeWorkspacePreparer
 {
     private static readonly string[] IgnoredDirectoryNames =
     [
@@ -22,6 +22,13 @@ public sealed class TerrariaRuntimeEnvironmentBuilder
     /// <param name="progressReporter">进度上报器。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务对象。</returns>
+    public Task EnsureOutputDirectoriesAsync(TerrariaRuntimeLayout layout, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(layout.OutputRootPath);
+        Directory.CreateDirectory(layout.ArtifactsPath);
+        return Task.CompletedTask;
+    }
+
     public Task RefreshDependencyEnvironmentAsync(TerrariaRuntimeLayout layout, ITerrariaRuntimeProgressReporter progressReporter, CancellationToken cancellationToken)
     {
         progressReporter.Report("[tr-run] 开始刷新依赖环境目录...");

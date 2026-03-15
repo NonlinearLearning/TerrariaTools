@@ -1,0 +1,20 @@
+namespace Sample;
+
+public class Player
+{
+
+    public void Alpha()
+    {
+    }
+
+    private void Helper()
+    {
+    }
+    public void Zebra()
+    {
+    }
+
+    private void Hidden()
+    {
+    }
+}

@@ -1,6 +1,5 @@
 namespace TerrariaTools.Dome.Rules;
 
-using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
 
 /// <summary>

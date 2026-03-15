@@ -36,7 +36,7 @@ public static class AuditPlanCompiler
             }
 
             var preferred = items
-                .OrderBy(item => item.Reason.RuleId == "dataflow-propagation" ? 1 : 0)
+                .OrderBy(item => item.Reason.Origin == DecisionOrigin.Propagation ? 1 : 0)
                 .ThenBy(item => item.Reason.SourceTargetKey is null ? 0 : 1)
                 .First();
 

@@ -4,7 +4,7 @@ using TerrariaTools.Dome.Cli;
 
 // 解析命令行参数
 var parseResult = await DomeCliParser.ParseAsync(args, CancellationToken.None);
-if (!parseResult.IsSuccess || (parseResult.Request == null && parseResult.TerrariaRuntimeRunRequest == null))
+if (!parseResult.IsSuccess || (parseResult.Request == null && parseResult.TerrariaRuntimeRunRequest == null && parseResult.TerrariaRuntimeShadowExtractionRequest == null))
 {
     Console.Error.WriteLine(parseResult.ErrorMessage ?? DomeCliParser.UsageText);
     return 1;
@@ -14,6 +14,10 @@ RunResult result;
 if (parseResult.TerrariaRuntimeRunRequest != null)
 {
     result = await DomeApplicationFactory.CreateDefaultTerrariaRuntimeApplication().RunAsync(parseResult.TerrariaRuntimeRunRequest, CancellationToken.None);
+}
+else if (parseResult.TerrariaRuntimeShadowExtractionRequest != null)
+{
+    result = await DomeApplicationFactory.CreateDefaultTerrariaRuntimeShadowExtractionApplication().RunAsync(parseResult.TerrariaRuntimeShadowExtractionRequest, CancellationToken.None);
 }
 else
 {

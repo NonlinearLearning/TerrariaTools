@@ -2,7 +2,6 @@ namespace TerrariaTools.Dome.Application;
 
 using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Plan;
-using TerrariaTools.Dome.Rules;
 
 /// <summary>
 /// 运行报告构建器。
@@ -73,7 +72,8 @@ public sealed class RunReportBuilder
     public RunReport BuildAnalyzeOnlySuccess(
         AnalysisResultModel view,
         WorkspaceLoadResult loadResult,
-        IReadOnlyList<string> generatedArtifacts)
+        IReadOnlyList<string> generatedArtifacts,
+        AdvancedAnalysisSummary? advancedAnalysisSummary = null)
     {
         return new RunReport(
             true,
@@ -93,7 +93,10 @@ public sealed class RunReportBuilder
             loadResult.LoadMode,
             loadResult.FallbackUsed,
             loadResult.Diagnostics,
-            null);
+            null)
+        {
+            AdvancedAnalysisSummary = advancedAnalysisSummary
+        };
     }
 
     /// <summary>
@@ -107,7 +110,8 @@ public sealed class RunReportBuilder
         FunctionImpactSet? functionImpactSet,
         IReadOnlyList<MarkDecision> initialDecisions,
         IReadOnlyList<MarkDecision> predictedDecisions,
-        IReadOnlyList<string> generatedArtifacts)
+        IReadOnlyList<string> generatedArtifacts,
+        AdvancedAnalysisSummary? advancedAnalysisSummary = null)
     {
         return new RunReport(
             false,
@@ -127,7 +131,10 @@ public sealed class RunReportBuilder
             loadResult.LoadMode,
             loadResult.FallbackUsed,
             loadResult.Diagnostics,
-            planResult.Message);
+            planResult.Message)
+        {
+            AdvancedAnalysisSummary = advancedAnalysisSummary
+        };
     }
 
     /// <summary>
@@ -139,7 +146,8 @@ public sealed class RunReportBuilder
         IReadOnlyList<MarkDecision> decisions,
         AuditPlan plan,
         FunctionImpactSet? functionImpactSet,
-        IReadOnlyList<string> generatedArtifacts)
+        IReadOnlyList<string> generatedArtifacts,
+        AdvancedAnalysisSummary? advancedAnalysisSummary = null)
     {
         return new RunReport(
             true,
@@ -159,7 +167,10 @@ public sealed class RunReportBuilder
             loadResult.LoadMode,
             loadResult.FallbackUsed,
             loadResult.Diagnostics,
-            null);
+            null)
+        {
+            AdvancedAnalysisSummary = advancedAnalysisSummary
+        };
     }
 
     /// <summary>
@@ -175,7 +186,8 @@ public sealed class RunReportBuilder
         IReadOnlyList<MarkDecision> initialDecisions,
         IReadOnlyList<MarkDecision> predictedDecisions,
         string? message,
-        IReadOnlyList<string> generatedArtifacts)
+        IReadOnlyList<string> generatedArtifacts,
+        AdvancedAnalysisSummary? advancedAnalysisSummary = null)
     {
         return new RunReport(
             false,
@@ -195,7 +207,10 @@ public sealed class RunReportBuilder
             loadResult.LoadMode,
             loadResult.FallbackUsed,
             loadResult.Diagnostics,
-            message);
+            message)
+        {
+            AdvancedAnalysisSummary = advancedAnalysisSummary
+        };
     }
 
     /// <summary>
@@ -208,7 +223,8 @@ public sealed class RunReportBuilder
         AuditPlan plan,
         int rewrittenDocumentCount,
         FunctionImpactSet? functionImpactSet,
-        IReadOnlyList<string> generatedArtifacts)
+        IReadOnlyList<string> generatedArtifacts,
+        AdvancedAnalysisSummary? advancedAnalysisSummary = null)
     {
         return new RunReport(
             true,
@@ -228,7 +244,10 @@ public sealed class RunReportBuilder
             loadResult.LoadMode,
             loadResult.FallbackUsed,
             loadResult.Diagnostics,
-            null);
+            null)
+        {
+            AdvancedAnalysisSummary = advancedAnalysisSummary
+        };
     }
 
     /// <summary>
@@ -280,6 +299,8 @@ public sealed class RunReportBuilder
             .Where(decision => !plannedTargetKeys.Contains(decision.Target.TargetKey))
             .Where(decision => decision.Target.TargetKind is TargetKind.Method or TargetKind.Statement)
             .Where(decision => classDeleteIds.Any(classId => IsCoveredByClassDelete(decision.Target, classId)))
+            .GroupBy(decision => decision.Target.TargetKey, StringComparer.Ordinal)
+            .Select(group => group.First())
             .ToArray();
 
         return new PlanCoverageSummary(
@@ -318,7 +339,7 @@ public sealed class RunReportBuilder
         IReadOnlyList<MarkDecision> decisions)
     {
         var predictedMethods = decisions
-            .Where(decision => decision.Reason.RuleId == "reference-zero-prediction")
+            .Where(decision => decision.Reason.Origin == DecisionOrigin.Prediction)
             .Select(decision => decision.Target.MemberId.Value)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)
@@ -336,7 +357,7 @@ public sealed class RunReportBuilder
         IReadOnlyList<MarkDecision> decisions)
     {
         var promotedMethods = decisions
-            .Where(decision => decision.Reason.RuleId == "boundary-promotion")
+            .Where(decision => decision.Reason.Origin == DecisionOrigin.BoundaryPromotion)
             .Select(decision => decision.Target.MemberId.Value)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(id => id, StringComparer.Ordinal)

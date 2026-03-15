@@ -5,7 +5,7 @@ using TerrariaTools.Dome.Core;
 /// <summary>
 /// 函数删除影响分析器。
 /// </summary>
-public sealed class FunctionImpactAnalyzer
+public sealed class FunctionImpactAnalyzer : IFunctionImpactAnalyzer
 {
     /// <summary>
     /// 分析函数删除对其他函数的影响。
