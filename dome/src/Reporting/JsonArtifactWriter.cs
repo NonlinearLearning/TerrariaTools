@@ -36,7 +36,7 @@ public sealed class JsonArtifactWriter
     /// <param name="view">分析视图。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>异步任务。</returns>
-    public async Task WriteAnalysisAsync(string path, AnalysisView view, CancellationToken cancellationToken)
+    public async Task WriteAnalysisAsync(string path, AnalysisResultModel view, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(view, JsonOptions), cancellationToken);

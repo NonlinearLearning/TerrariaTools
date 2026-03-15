@@ -16,7 +16,7 @@ public sealed class ReferenceZeroPredictionAnalyzer
     /// <param name="decisions">当前已有的标记决策。</param>
     /// <returns>预测的标记决策列表。</returns>
     public IReadOnlyList<MarkDecision> Predict(
-        AnalysisSnapshot snapshot,
+        AnalysisExecutionSnapshot snapshot,
         AnalysisServices services,
         RuleExecutionContext executionContext,
         IReadOnlyList<MarkDecision> decisions)
@@ -99,7 +99,8 @@ public sealed class ReferenceZeroPredictionAnalyzer
                     TargetKind.Method,
                     functionNode.SpanStart,
                     functionNode.SpanLength,
-                    functionNode.DisplayName),
+                    functionNode.DisplayName,
+                    new TargetResolutionKey(functionNode.SpanStart, functionNode.SpanLength)),
                 PlanActionKind.Delete,
                 "reference-zero-prediction",
                 "All call references are scheduled for deletion in the current plan.",

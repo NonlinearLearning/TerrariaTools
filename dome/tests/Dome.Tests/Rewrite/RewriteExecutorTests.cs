@@ -1,6 +1,9 @@
 using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Rewrite.Roslyn;
 using Xunit;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace TerrariaTools.Dome.Tests.Rewrite;
 
@@ -267,6 +270,218 @@ public class RewriteExecutorTests
     }
 
     /// <summary>
+    /// 测试异步执行方法在成员 ID 使用元数据参数类型时仍能解析并删除泛型方法。
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_DeletesGenericMethodWhenMemberIdUsesMetadataParameterTypes()
+    {
+        var source = """
+            using System.Collections.Generic;
+
+            namespace Sample;
+
+            public sealed class LocalizedText
+            {
+            }
+
+            public class ChatCommandProcessor
+            {
+                private static bool ParseCommandPrefix<T>(string text, Dictionary<LocalizedText, T> commands, out string remainder, out T value)
+                {
+                    remainder = text;
+                    value = default!;
+                    return false;
+                }
+            }
+            """;
+
+        var context = CreateRewriteContext("Sample.cs", source);
+        var methodDeclaration = Assert.Single(((CompilationUnitSyntax)context.Root).DescendantNodes().OfType<MethodDeclarationSyntax>());
+        var methodText = methodDeclaration.ToString().Trim();
+
+        var plan = new AuditPlan(
+            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+            new[]
+            {
+                new PlannedChange(
+                    0,
+                    new PlanTarget(
+                        "Sample.cs",
+                        new MemberId("Sample.ChatCommandProcessor.ParseCommandPrefix(string, System.Collections.Generic.Dictionary<Sample.LocalizedText, T>, string, T)"),
+                        MemberKind.Method,
+                        TargetKind.Method,
+                        methodDeclaration.SpanStart,
+                        methodDeclaration.Span.Length,
+                        methodText,
+                        new TargetResolutionKey(
+                            methodDeclaration.SpanStart,
+                            methodDeclaration.Span.Length)),
+                    new PlanAction(PlanActionKind.Delete),
+                    new PlanReason("function-mark", "generic method delete"))
+            },
+            Array.Empty<PlanConflict>());
+
+        var executor = new RoslynRewriteExecutor();
+        var result = await executor.ExecuteAsync(context, plan, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain("ParseCommandPrefix<T>", result.RewrittenSource);
+    }
+
+    /// <summary>
+    /// 测试异步执行方法在外部类型无法语义解析时仍能按规范化参数签名删除泛型方法。
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_DeletesGenericMethodWhenExternalParameterTypesAreUnresolved()
+    {
+        var source = """
+            using System.Collections.Generic;
+            using Sample.Localization;
+
+            namespace Sample;
+
+            public class ChatCommandProcessor
+            {
+                private static bool ParseCommandPrefix<T>(string text, Dictionary<LocalizedText, T> commands, out string remainder, out T value)
+                {
+                    remainder = text;
+                    value = default!;
+                    return false;
+                }
+            }
+            """;
+
+        var context = CreateRewriteContext("Sample.cs", source);
+        var methodDeclaration = Assert.Single(((CompilationUnitSyntax)context.Root).DescendantNodes().OfType<MethodDeclarationSyntax>());
+        var methodText = methodDeclaration.ToString().Trim();
+
+        var plan = new AuditPlan(
+            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+            new[]
+            {
+                new PlannedChange(
+                    0,
+                    new PlanTarget(
+                        "Sample.cs",
+                        new MemberId("Sample.ChatCommandProcessor.ParseCommandPrefix(string, System.Collections.Generic.Dictionary<Sample.Localization.LocalizedText, T>, string, T)"),
+                        MemberKind.Method,
+                        TargetKind.Method,
+                        methodDeclaration.SpanStart,
+                        methodDeclaration.Span.Length,
+                        methodText,
+                        new TargetResolutionKey(
+                            methodDeclaration.SpanStart,
+                            methodDeclaration.Span.Length)),
+                    new PlanAction(PlanActionKind.Delete),
+                    new PlanReason("function-mark", "generic unresolved method delete"))
+            },
+            Array.Empty<PlanConflict>());
+
+        var executor = new RoslynRewriteExecutor();
+        var result = await executor.ExecuteAsync(context, plan, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain("ParseCommandPrefix<T>", result.RewrittenSource);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DeletesExpressionBodiedPropertyWhenTargetKindIsMethod()
+    {
+        var source = """
+            namespace Sample;
+
+            public class Player
+            {
+                private int Value => 42;
+            }
+            """;
+
+        var context = CreateRewriteContext("Sample.cs", source);
+        var property = Assert.Single(((CompilationUnitSyntax)context.Root).DescendantNodes().OfType<PropertyDeclarationSyntax>());
+        var propertyText = property.ToString().Trim();
+        var plan = new AuditPlan(
+            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+            new[]
+            {
+                new PlannedChange(
+                    0,
+                    new PlanTarget(
+                        "Sample.cs",
+                        new MemberId("Sample.Player.Value.get"),
+                        MemberKind.Accessor,
+                        TargetKind.Method,
+                        property.SpanStart,
+                        property.Span.Length,
+                        propertyText,
+                        new TargetResolutionKey(property.SpanStart, property.Span.Length)),
+                    new PlanAction(PlanActionKind.Delete),
+                    new PlanReason("function-mark", "property getter delete"))
+            },
+            Array.Empty<PlanConflict>());
+
+        var executor = new RoslynRewriteExecutor();
+        var result = await executor.ExecuteAsync(context, plan, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain("private int Value => 42;", result.RewrittenSource);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DeletesAccessorDeclarationWhenTargetKindIsMethod()
+    {
+        var source = """
+            namespace Sample;
+
+            public class Player
+            {
+                private int _value;
+
+                public int Value
+                {
+                    get
+                    {
+                        return _value;
+                    }
+                    set
+                    {
+                        _value = value;
+                    }
+                }
+            }
+            """;
+
+        var context = CreateRewriteContext("Sample.cs", source);
+        var accessor = Assert.Single(((CompilationUnitSyntax)context.Root).DescendantNodes().OfType<AccessorDeclarationSyntax>().Where(accessor => accessor.Keyword.Text == "get"));
+        var accessorText = accessor.ToString().Trim();
+        var plan = new AuditPlan(
+            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+            new[]
+            {
+                new PlannedChange(
+                    0,
+                    new PlanTarget(
+                        "Sample.cs",
+                        new MemberId("Sample.Player.Value.get"),
+                        MemberKind.Accessor,
+                        TargetKind.Method,
+                        accessor.SpanStart,
+                        accessor.Span.Length,
+                        accessorText,
+                        new TargetResolutionKey(accessor.SpanStart, accessor.Span.Length)),
+                    new PlanAction(PlanActionKind.Delete),
+                    new PlanReason("function-mark", "accessor delete"))
+            },
+            Array.Empty<PlanConflict>());
+
+        var executor = new RoslynRewriteExecutor();
+        var result = await executor.ExecuteAsync(context, plan, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain("get", result.RewrittenSource);
+        Assert.Contains("set", result.RewrittenSource);
+    }
+
+    /// <summary>
     /// 测试异步执行方法在目标类型为方法时向空方法体添加返回。
     /// </summary>
     [Fact]
@@ -350,5 +565,133 @@ public class RewriteExecutorTests
 
         Assert.True(result.IsSuccess);
         Assert.DoesNotContain("private class CacheEntry", result.RewrittenSource);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DeletesWholeClassWhenClassTargetUsesResolutionKey()
+    {
+        var source = """
+            namespace Sample;
+
+            public class Player
+            {
+                private class CacheEntry
+                {
+                    public int Value { get; set; }
+                }
+            }
+            """;
+
+        var context = CreateRewriteContext("Sample.cs", source);
+        var classDeclaration = Assert.Single(((CompilationUnitSyntax)context.Root).DescendantNodes().OfType<ClassDeclarationSyntax>().Where(@class => @class.Identifier.Text == "CacheEntry"));
+        var classText = classDeclaration.ToString().Trim();
+
+        var plan = new AuditPlan(
+            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+            new[]
+            {
+                new PlannedChange(
+                    0,
+                    new PlanTarget(
+                        "Sample.cs",
+                        new MemberId("Sample.Player.CacheEntry"),
+                        MemberKind.Class,
+                        TargetKind.Class,
+                        classDeclaration.SpanStart,
+                        classDeclaration.Span.Length,
+                        classText,
+                        new TargetResolutionKey(classDeclaration.SpanStart, classDeclaration.Span.Length)),
+                    new PlanAction(PlanActionKind.Delete),
+                    new PlanReason("class-mark", "class delete"))
+            },
+            Array.Empty<PlanConflict>());
+
+        var executor = new RoslynRewriteExecutor();
+        var result = await executor.ExecuteAsync(context, plan, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.DoesNotContain("private class CacheEntry", result.RewrittenSource);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DeletesLaterClassAfterEarlierStatementDeletionUsingTrackedNodes()
+    {
+        var source = """
+            namespace Sample;
+
+            public class Player
+            {
+                public void Alpha()
+                {
+                    int count = 1;
+                }
+
+                private class CacheEntry
+                {
+                    public int Value { get; set; }
+                }
+            }
+            """;
+
+        var context = CreateRewriteContext("Sample.cs", source);
+        var root = (CompilationUnitSyntax)context.Root;
+        var classDeclaration = Assert.Single(root.DescendantNodes().OfType<ClassDeclarationSyntax>().Where(@class => @class.Identifier.Text == "CacheEntry"));
+        var statement = Assert.Single(root.DescendantNodes().OfType<LocalDeclarationStatementSyntax>());
+
+        var plan = new AuditPlan(
+            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+            new[]
+            {
+                new PlannedChange(
+                    0,
+                    new PlanTarget(
+                        "Sample.cs",
+                        new MemberId("Sample.Player.Alpha()"),
+                        MemberKind.Method,
+                        TargetKind.Statement,
+                        statement.SpanStart,
+                        statement.Span.Length,
+                        statement.ToString().Trim(),
+                        new TargetResolutionKey(statement.SpanStart, statement.Span.Length)),
+                    new PlanAction(PlanActionKind.Delete),
+                    new PlanReason("dome:delete", "delete inner statement")),
+                new PlannedChange(
+                    1,
+                    new PlanTarget(
+                        "Sample.cs",
+                        new MemberId("Sample.Player.CacheEntry"),
+                        MemberKind.Class,
+                        TargetKind.Class,
+                        classDeclaration.SpanStart,
+                        classDeclaration.Span.Length,
+                        classDeclaration.ToString().Trim(),
+                        new TargetResolutionKey(classDeclaration.SpanStart, classDeclaration.Span.Length)),
+                    new PlanAction(PlanActionKind.Delete),
+                    new PlanReason("class-mark", "delete outer class"))
+            },
+            Array.Empty<PlanConflict>());
+
+        var executor = new RoslynRewriteExecutor();
+        var result = await executor.ExecuteAsync(context, plan, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.RewrittenSource);
+        Assert.DoesNotContain("int count = 1;", result.RewrittenSource);
+        Assert.DoesNotContain("private class CacheEntry", result.RewrittenSource);
+    }
+
+    private static RewriteExecutionDocumentContext CreateRewriteContext(string relativePath, string source)
+    {
+        var tree = CSharpSyntaxTree.ParseText(source, path: relativePath);
+        var root = tree.GetCompilationUnitRoot();
+        var compilation = CSharpCompilation.Create(
+            "RewriteExecutorTests",
+            new[] { tree },
+            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+
+        return new RewriteExecutionDocumentContext(
+            new SourceDocument(relativePath, relativePath, source),
+            root,
+            compilation.GetSemanticModel(tree));
     }
 }

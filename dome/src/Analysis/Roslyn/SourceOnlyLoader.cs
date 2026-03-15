@@ -6,7 +6,7 @@ using TerrariaTools.Dome.Core;
 /// 基于源码文件的工作区加载器。
 /// 仅加载 .cs 文件内容，不进行编译或语义分析。
 /// </summary>
-public sealed class SourceWorkspaceLoader : IWorkspaceLoader
+public sealed class SourceOnlyLoader : IWorkspaceLoader
 {
     /// <inheritdoc />
     public Task<WorkspaceLoadResult> LoadAsync(string inputPath, WorkspaceLoadOptions options, CancellationToken cancellationToken)

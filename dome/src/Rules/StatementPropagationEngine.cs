@@ -3,15 +3,30 @@ namespace TerrariaTools.Dome.Rules;
 using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
 
+/// <summary>
+/// 语句级传播引擎。
+/// </summary>
 public sealed class StatementPropagationEngine
 {
     private readonly MarkingRuleRegistry _registry;
 
+    /// <summary>
+    /// 初始化语句级传播引擎。
+    /// </summary>
+    /// <param name="registry">规则注册表。</param>
     public StatementPropagationEngine(MarkingRuleRegistry registry)
     {
         _registry = registry;
     }
 
+    /// <summary>
+    /// 基于种子决策在语句依赖图中执行传播。
+    /// </summary>
+    /// <param name="context">分析上下文。</param>
+    /// <param name="executionContext">规则执行上下文。</param>
+    /// <param name="seedTarget">当前种子目标。</param>
+    /// <param name="seedDecisionsByTarget">按目标分组的种子决策。</param>
+    /// <returns>传播产生的决策集合。</returns>
     public IReadOnlyList<MarkDecision> Propagate(
         AnalysisContext context,
         RuleExecutionContext executionContext,
@@ -110,9 +125,21 @@ public sealed class StatementPropagationEngine
         return propagated;
     }
 
+    /// <summary>
+    /// 判断目标是否命中保护规则。
+    /// </summary>
+    /// <param name="target">分析目标。</param>
+    /// <returns>是否受保护。</returns>
     private bool IsProtected(AnalysisTarget target) =>
         _registry.ProtectionRules.Any(rule => rule.Blocks(target));
 
+    /// <summary>
+    /// 解析实际使用的语句作用域模式。
+    /// </summary>
+    /// <param name="context">分析上下文。</param>
+    /// <param name="executionContext">规则执行上下文。</param>
+    /// <param name="seedTarget">种子目标。</param>
+    /// <returns>语句作用域模式。</returns>
     private StatementScopeMode ResolveScopeMode(
         AnalysisContext context,
         RuleExecutionContext executionContext,
@@ -135,6 +162,13 @@ public sealed class StatementPropagationEngine
         return StatementScopeMode.MinimalBlock;
     }
 
+    /// <summary>
+    /// 追加传播链路节点。
+    /// </summary>
+    /// <param name="sourceDecision">源决策。</param>
+    /// <param name="target">目标计划项。</param>
+    /// <param name="evidence">传播证据。</param>
+    /// <returns>新的传播链。</returns>
     private static PropagationChain AppendPropagationChain(
         MarkDecision sourceDecision,
         PlanTarget target,

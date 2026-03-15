@@ -58,4 +58,18 @@ This file tracks the progress of adding or translating documentation comments fo
 
 ## Pending Tasks
 
-(None)
+- [x] `src\Analysis\Roslyn\RoslynAnalysisEngine.cs`
+- [x] `src\Analysis\Roslyn\WorkspaceLoaders.cs`
+- [x] `src\Application\ArtifactPlanBuilder.cs`
+- [x] `src\Application\DomeApplication.cs`
+- [x] `src\Application\DomeApplicationFactory.cs`
+- [x] `src\Application\RunReportBuilder.cs`
+- [x] `src\Application\TerrariaRuntimeApplication.cs`
+- [x] `src\Application\TerrariaRuntimeBuildExecutor.cs`
+- [x] `src\Application\TerrariaRuntimeEnvironmentBuilder.cs`
+- [x] `src\Core\Models.cs`
+- [x] `src\Rewrite\Roslyn\RoslynRewriteExecutor.cs`
+- [x] `src\Rules\BoundaryPromotionEngine.cs`
+- [x] `src\Rules\CompatibilityExecutionContextFactory.cs`
+- [ ] `src\Rules\MarkingRuleEngine.cs`
+- [x] `src\Rules\StatementPropagationEngine.cs`

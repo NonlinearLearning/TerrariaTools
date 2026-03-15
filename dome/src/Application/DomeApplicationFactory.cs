@@ -19,7 +19,7 @@ public static class DomeApplicationFactory
         return new DomeApplication(
             new WorkspaceLoadCoordinator(
                 new CodeAnalysisWorkspaceLoader(),
-                new SourceWorkspaceLoader()),
+                new SourceOnlyLoader()),
             new RoslynAnalysisEngine(),
             new FunctionImpactAnalyzer(),
             new ReferenceZeroPredictionAnalyzer(),
@@ -28,5 +28,32 @@ public static class DomeApplicationFactory
             new RunReportBuilder(),
             new ArtifactPlanBuilder(),
             new JsonArtifactWriter());
+    }
+
+    /// <summary>
+    /// 创建默认的 Terraria Runtime 应用实例。
+    /// </summary>
+    /// <returns>配置了 TR 运行时组件的应用实例。</returns>
+    public static TerrariaRuntimeApplication CreateDefaultTerrariaRuntimeApplication()
+    {
+        var progressReporter = new ConsoleTerrariaRuntimeProgressReporter();
+        return new TerrariaRuntimeApplication(
+            new DomeApplication(
+                new WorkspaceLoadCoordinator(
+                    new CodeAnalysisWorkspaceLoader(),
+                    new SourceOnlyLoader()),
+                new RoslynAnalysisEngine(),
+                new FunctionImpactAnalyzer(),
+                new ReferenceZeroPredictionAnalyzer(),
+                new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()),
+                new RoslynRewriteExecutor(),
+                new RunReportBuilder(),
+                new ArtifactPlanBuilder(),
+                new JsonArtifactWriter(),
+                progressReporter),
+            new TerrariaRuntimeEnvironmentBuilder(),
+            new TerrariaRuntimeBuildExecutor(),
+            new JsonArtifactWriter(),
+            progressReporter);
     }
 }

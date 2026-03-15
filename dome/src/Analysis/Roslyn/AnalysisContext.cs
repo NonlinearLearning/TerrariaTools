@@ -7,7 +7,7 @@ using TerrariaTools.Dome.Core;
 /// </summary>
 public sealed class AnalysisContext
 {
-    private AnalysisContext(AnalysisSnapshot snapshot, AnalysisServices services)
+    private AnalysisContext(AnalysisExecutionSnapshot snapshot, AnalysisServices services)
     {
         Snapshot = snapshot;
         Services = services;
@@ -16,7 +16,7 @@ public sealed class AnalysisContext
     /// <summary>
     /// 分析快照。
     /// </summary>
-    public AnalysisSnapshot Snapshot { get; }
+    public AnalysisExecutionSnapshot Snapshot { get; }
 
     /// <summary>
     /// 分析服务集合。
@@ -26,7 +26,7 @@ public sealed class AnalysisContext
     /// <summary>
     /// 分析视图。
     /// </summary>
-    public AnalysisView View => Snapshot.View;
+    public AnalysisResultModel View => Snapshot.View;
 
     /// <summary>
     /// 继承关系查询服务。
@@ -69,6 +69,6 @@ public sealed class AnalysisContext
     /// <param name="snapshot">分析快照。</param>
     /// <param name="services">分析服务。</param>
     /// <returns>分析上下文实例。</returns>
-    public static AnalysisContext Create(AnalysisSnapshot snapshot, AnalysisServices services) =>
+    public static AnalysisContext Create(AnalysisExecutionSnapshot snapshot, AnalysisServices services) =>
         new(snapshot, services);
 }

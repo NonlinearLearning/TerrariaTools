@@ -4,14 +4,21 @@ using TerrariaTools.Dome.Cli;
 
 // 解析命令行参数
 var parseResult = await DomeCliParser.ParseAsync(args, CancellationToken.None);
-if (!parseResult.IsSuccess || parseResult.Request == null)
+if (!parseResult.IsSuccess || (parseResult.Request == null && parseResult.TerrariaRuntimeRunRequest == null))
 {
     Console.Error.WriteLine(parseResult.ErrorMessage ?? DomeCliParser.UsageText);
     return 1;
 }
 
-// 创建并运行应用程序
-var result = await DomeApplicationFactory.CreateDefault().RunAsync(parseResult.Request, CancellationToken.None);
+RunResult result;
+if (parseResult.TerrariaRuntimeRunRequest != null)
+{
+    result = await DomeApplicationFactory.CreateDefaultTerrariaRuntimeApplication().RunAsync(parseResult.TerrariaRuntimeRunRequest, CancellationToken.None);
+}
+else
+{
+    result = await DomeApplicationFactory.CreateDefault().RunAsync(parseResult.Request!, CancellationToken.None);
+}
 if (!result.IsSuccess)
 {
     Console.Error.WriteLine(result.Message ?? result.FailureCode.ToString());
@@ -35,6 +42,7 @@ static int MapExitCode(FailureCode failureCode)
         FailureCode.PlanCompileFailed => 4,
         FailureCode.RewriteFailed => 5,
         FailureCode.ReportFailed => 6,
+        FailureCode.BuildFailed => 7,
         _ => 1
     };
 }

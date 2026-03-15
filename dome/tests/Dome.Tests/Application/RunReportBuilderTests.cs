@@ -10,7 +10,7 @@ public sealed class RunReportBuilderTests
     public void BuildAnalyzeOnlySuccess_ProjectsRiskSummaryAndArtifacts()
     {
         var builder = new RunReportBuilder();
-        var view = new AnalysisView(
+        var view = new AnalysisResultModel(
             new[]
             {
                 new AnalysisTarget(
@@ -56,7 +56,7 @@ public sealed class RunReportBuilderTests
     public void BuildPlanOnlySuccess_ProjectsCoverageAndPredictionSummaries()
     {
         var builder = new RunReportBuilder();
-        var view = new AnalysisView(
+        var view = new AnalysisResultModel(
             Array.Empty<AnalysisTarget>(),
             Array.Empty<AnalysisEdge>(),
             new TypeDependencyGraph(Array.Empty<TypeNodeRef>(), Array.Empty<TypeDependencyEdge>()),

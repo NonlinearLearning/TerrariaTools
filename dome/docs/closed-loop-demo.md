@@ -209,3 +209,136 @@ dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\expression-loop 
    - 证明纯 `dome:delete` statement direct hit 会真的删代码
 2. `expression-loop`
    - 证明 `expression-mark` 和后续 `dataflow-propagation` 也会真的落到 rewrite 结果上
+
+## 8. sanitization 闭环
+
+第三个样本证明 `sanitization` 会截断传播：
+
+- [Player.cs](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\samples\sanitization-loop\Player.cs)
+
+核心代码如下：
+
+```csharp
+public int Update()
+{
+    // dome:delete
+    int count = 1;
+    int next = count;
+    next = 0;
+    int final = next;
+    return final;
+}
+```
+
+对应命令：
+
+```powershell
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\sanitization-loop .\.tmp\sanitization-loop-demo\plan
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\sanitization-loop .\.tmp\sanitization-loop-demo\run
+```
+
+这组样本的预期结果固定为：
+
+- `audit-plan.json` 只有两条 change
+  - `dome:delete` 命中 `int count = 1;`
+  - `dataflow-propagation` 命中 `int next = count;`
+- `int final = next;` 不应进入 `Changes`
+- `rewritten\Player.cs` 里：
+  - `int count = 1;` 消失
+  - `int next = count;` 消失
+  - `next = 0;` 保留
+  - `int final = next;` 保留
+
+这条闭环证明的是：
+
+- taint 会先传播
+- 但 `IsSanitizingAssignment == true` 的语句会把后续传播截断
+
+## 9. protection boundary 闭环
+
+第四个样本证明对象初始化器 protection 会作为传播边界：
+
+- [Player.cs](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\samples\protection-loop\Player.cs)
+
+核心代码如下：
+
+```csharp
+public int Update(int seed)
+{
+    // dome:delete
+    int count = seed;
+    var item = new Item { Value = count };
+    int next = count;
+    return next;
+}
+```
+
+对应命令：
+
+```powershell
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\protection-loop .\.tmp\protection-loop-demo\plan
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\protection-loop .\.tmp\protection-loop-demo\run
+```
+
+这组样本的预期结果固定为：
+
+- `audit-plan.json` 只有一条 change
+  - `expression-mark` 命中 `int count = seed;`
+- 以下语句都不应进入 `Changes`
+  - `var item = new Item { Value = count };`
+  - `int next = count;`
+- `rewritten\Player.cs` 里：
+  - `int count = seed;` 消失
+  - initializer 保留
+  - `int next = count;` 保留
+  - `return next;` 保留
+
+这条闭环证明的是：
+
+- `ObjectInitializerProtectionRule` 不只是保护当前语句
+- 它还会切断 taint，阻止后续 propagation
+
+## 10. boundary promotion 闭环
+
+第五个样本证明 direct statement delete 会触发 `boundary-promotion`：
+
+- [Player.cs](D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\samples\promotion-loop\Player.cs)
+
+核心代码如下：
+
+```csharp
+public void Update(int value)
+{
+    int copy = value;
+
+    // dome:delete
+    Run(copy);
+}
+
+private void Run(int value)
+{
+    Consume(value);
+}
+```
+
+对应命令：
+
+```powershell
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\promotion-loop .\.tmp\promotion-loop-demo\plan
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\promotion-loop .\.tmp\promotion-loop-demo\run
+```
+
+这组样本的预期结果固定为：
+
+- `audit-plan.json` 至少出现两条关键 change
+  - `expression-mark` 命中 `Run(copy);`
+  - `boundary-promotion` 命中 `Sample.Player.Run(int)`
+- `boundary-promotion` 的 target 必须是 `Method`
+- `rewritten\Player.cs` 里：
+  - `Run(copy);` 消失
+  - `private void Run(int value)` 消失
+
+这条闭环证明的是：
+
+- 当前 promotion 只消费 direct statement delete
+- promotion 结果会落成真实 method 删除，而不只是报告里的推断

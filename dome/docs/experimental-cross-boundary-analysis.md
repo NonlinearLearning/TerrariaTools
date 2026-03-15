@@ -50,7 +50,7 @@
 - 通用的多跳跨函数传播
 - 面向 `Creates` / `ReadsMember` / `WritesMember` 的跨边界扩张
 - 默认全量函数图传播
-- 基于 `AnalysisView.StatementGraph` 的全局 statement 图传播
+- 基于 `AnalysisResultModel.StatementGraph` 的全局 statement 图传播
 
 ## 3. 与惰性函数图设计的关系
 

@@ -4,8 +4,14 @@ using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Plan;
 using TerrariaTools.Dome.Rules;
 
+/// <summary>
+/// 运行报告构建器。
+/// </summary>
 public sealed class RunReportBuilder
 {
+    /// <summary>
+    /// 构建工作区加载失败报告。
+    /// </summary>
     public RunReport BuildWorkspaceLoadFailure(
         WorkspaceLoadResult loadResult,
         string message,
@@ -32,6 +38,9 @@ public sealed class RunReportBuilder
             message);
     }
 
+    /// <summary>
+    /// 构建分析失败报告。
+    /// </summary>
     public RunReport BuildAnalysisFailure(
         WorkspaceLoadResult loadResult,
         string message,
@@ -58,8 +67,11 @@ public sealed class RunReportBuilder
             message);
     }
 
+    /// <summary>
+    /// 构建仅分析成功报告。
+    /// </summary>
     public RunReport BuildAnalyzeOnlySuccess(
-        AnalysisView view,
+        AnalysisResultModel view,
         WorkspaceLoadResult loadResult,
         IReadOnlyList<string> generatedArtifacts)
     {
@@ -84,8 +96,11 @@ public sealed class RunReportBuilder
             null);
     }
 
+    /// <summary>
+    /// 构建计划编译失败报告。
+    /// </summary>
     public RunReport BuildPlanCompileFailure(
-        AnalysisView view,
+        AnalysisResultModel view,
         WorkspaceLoadResult loadResult,
         PlanCompilationResult planResult,
         PlanCoverageSummary coverageSummary,
@@ -115,8 +130,11 @@ public sealed class RunReportBuilder
             planResult.Message);
     }
 
+    /// <summary>
+    /// 构建仅计划成功报告。
+    /// </summary>
     public RunReport BuildPlanOnlySuccess(
-        AnalysisView view,
+        AnalysisResultModel view,
         WorkspaceLoadResult loadResult,
         IReadOnlyList<MarkDecision> decisions,
         AuditPlan plan,
@@ -144,8 +162,11 @@ public sealed class RunReportBuilder
             null);
     }
 
+    /// <summary>
+    /// 构建重写失败报告。
+    /// </summary>
     public RunReport BuildRewriteFailure(
-        AnalysisView view,
+        AnalysisResultModel view,
         WorkspaceLoadResult loadResult,
         AuditPlan documentPlan,
         int rewrittenDocumentCount,
@@ -177,8 +198,11 @@ public sealed class RunReportBuilder
             message);
     }
 
+    /// <summary>
+    /// 构建标准成功报告。
+    /// </summary>
     public RunReport BuildStandardSuccess(
-        AnalysisView view,
+        AnalysisResultModel view,
         WorkspaceLoadResult loadResult,
         IReadOnlyList<MarkDecision> decisions,
         AuditPlan plan,
@@ -207,6 +231,9 @@ public sealed class RunReportBuilder
             null);
     }
 
+    /// <summary>
+    /// 构建冲突摘要列表。
+    /// </summary>
     private static IReadOnlyList<ConflictSummary> BuildConflictSummaries(IReadOnlyList<PlanConflict> conflicts)
     {
         return conflicts
@@ -219,7 +246,10 @@ public sealed class RunReportBuilder
             .ToArray();
     }
 
-    private static RiskSummary BuildRiskSummary(AnalysisView view)
+    /// <summary>
+    /// 构建风险摘要。
+    /// </summary>
+    private static RiskSummary BuildRiskSummary(AnalysisResultModel view)
     {
         var skippedHighRiskTargets = view.Targets
             .Where(target => target.IsHighRisk && target.Directives.Count > 0)
@@ -232,6 +262,9 @@ public sealed class RunReportBuilder
             skippedHighRiskTargets.Take(5).ToArray());
     }
 
+    /// <summary>
+    /// 构建计划覆盖率摘要。
+    /// </summary>
     private static PlanCoverageSummary BuildPlanCoverageSummary(
         IReadOnlyList<MarkDecision> decisions,
         AuditPlan plan)
@@ -258,6 +291,9 @@ public sealed class RunReportBuilder
                 .ToArray());
     }
 
+    /// <summary>
+    /// 构建函数影响摘要。
+    /// </summary>
     private static FunctionImpactSummary? BuildFunctionImpactSummary(FunctionImpactSet? impactSet)
     {
         if (impactSet == null || impactSet.DeletedFunctionIds.Count == 0)
@@ -275,6 +311,9 @@ public sealed class RunReportBuilder
             impactSet.AffectedDocumentPaths.Take(5).ToArray());
     }
 
+    /// <summary>
+    /// 构建引用归零预测摘要。
+    /// </summary>
     private static ReferenceZeroPredictionSummary BuildReferenceZeroPredictionSummary(
         IReadOnlyList<MarkDecision> decisions)
     {
@@ -290,6 +329,9 @@ public sealed class RunReportBuilder
             predictedMethods.Take(5).ToArray());
     }
 
+    /// <summary>
+    /// 构建边界提升摘要。
+    /// </summary>
     private static BoundaryPromotionSummary BuildBoundaryPromotionSummary(
         IReadOnlyList<MarkDecision> decisions)
     {
@@ -306,6 +348,9 @@ public sealed class RunReportBuilder
             promotedMethods.Take(5).ToArray());
     }
 
+    /// <summary>
+    /// 判断目标是否被类删除覆盖。
+    /// </summary>
     private static bool IsCoveredByClassDelete(PlanTarget target, string classDeleteId)
     {
         var separator = classDeleteId.IndexOf('|');

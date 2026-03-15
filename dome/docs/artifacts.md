@@ -11,7 +11,7 @@
 
 | 产物 | 生成时机 | 直接写入者 | 上游来源 | 主要用途 |
 | --- | --- | --- | --- | --- |
-| `analysis.json` | `AnalyzeOnly` | `JsonArtifactWriter.WriteAnalysisAsync` | `AnalysisView` | 导出分析结果，供人工检查或外部工具消费 |
+| `analysis.json` | `AnalyzeOnly` | `JsonArtifactWriter.WriteAnalysisAsync` | `AnalysisResultModel` | 导出分析结果，供人工检查或外部工具消费 |
 | `audit-plan.json` | `PlanOnly`、`Standard` | `JsonArtifactWriter.WritePlanAsync` | `AuditPlan` | 导出计划变更、顺序与冲突 |
 | `report.json` | 所有模式 | `JsonArtifactWriter.WriteReportAsync` | `RunReport` | 总结本次运行状态、产物、风险与失败信息 |
 | `rewritten/**` | `Standard` | `DomeApplication` + `RoslynRewriteExecutor` | `AuditPlan` + 原源码 | 输出重写后的 C# 文件 |
@@ -26,7 +26,7 @@
 
 ## 3. `analysis.json`
 
-`analysis.json` 是 `AnalysisView` 的直接序列化结果。它由 Analysis 层提供数据，Reporting 层落盘。
+`analysis.json` 是 `AnalysisResultModel` 的直接序列化结果。它由 Analysis 层提供数据，Reporting 层落盘。
 
 ### 3.1 主要内容
 
@@ -194,7 +194,7 @@
 
 ```mermaid
 flowchart LR
-    ANALYSIS["AnalysisView"] --> A["analysis.json"]
+    ANALYSIS["AnalysisResultModel"] --> A["analysis.json"]
     DECISIONS["MarkDecision[]"] --> PLAN["AuditPlan"]
     PLAN --> P["audit-plan.json"]
     PLAN --> REWRITE["RoslynRewriteExecutor"]

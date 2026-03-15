@@ -22,7 +22,7 @@ sequenceDiagram
 
     User->>Program: dome run|analyze|plan ...
     Program->>Parser: ParseAsync(args)
-    Parser-->>Program: DomeCliParseResult
+    Parser-->>Program: DomeCliCommandParseResult
     Program->>Factory: CreateDefault()
     Factory-->>Program: DomeApplication
     Program->>App: RunAsync(request)
@@ -63,7 +63,7 @@ sequenceDiagram
 
 - `WorkspaceLoadCoordinator`
   - `CodeAnalysisWorkspaceLoader`
-  - `SourceWorkspaceLoader`
+  - `SourceOnlyLoader`
 - `RoslynAnalysisEngine`
 - `FunctionImpactAnalyzer`
 - `ReferenceZeroPredictionAnalyzer`
@@ -81,16 +81,16 @@ sequenceDiagram
 
 `WorkspaceLoadCoordinator` 的分发规则是：
 
-- 如果显式要求 `SourceOnly`，直接走 `SourceWorkspaceLoader`。
-- 如果输入是目录或单个 `.cs` 文件，也直接走 `SourceWorkspaceLoader`。
+- 如果显式要求 `SourceOnly`，直接走 `SourceOnlyLoader`。
+- 如果输入是目录或单个 `.cs` 文件，也直接走 `SourceOnlyLoader`。
 - 如果输入是 `.sln` / `.csproj`，优先走 `CodeAnalysisWorkspaceLoader`。
-- 若 `CodeAnalysis` 失败且允许回退，再回退到 `SourceWorkspaceLoader`。
+- 若 `CodeAnalysis` 失败且允许回退，再回退到 `SourceOnlyLoader`。
 
 ### 3.2 两种加载结果
 
 #### SourceOnly
 
-`SourceWorkspaceLoader` 会把文件读取成 `SourceDocument[]`，再封装成：
+`SourceOnlyLoader` 会把文件读取成 `SourceDocument[]`，再封装成：
 
 - `SourceOnlyAnalysisInput`
 
@@ -104,14 +104,14 @@ sequenceDiagram
 
 `CodeAnalysisWorkspaceLoader` 用 `MSBuildWorkspace` 打开 `.sln` 或 `.csproj`，并为每个 C# 文档构造：
 
-- `WorkspaceDocumentContext`
+- `WorkspaceAnalysisDocumentContext`
   - `Document`
   - `SourceDocument`
   - `Compilation`
   - `SemanticModel`
   - `Root`
 
-再统一封装成 `WorkspaceAnalysisInput`。
+再统一封装成 `WorkspaceAnalysisContextInput`。
 
 这样做的核心意义是：
 
@@ -126,14 +126,14 @@ sequenceDiagram
 
 当前分析引擎主要产出四类结果：
 
-- `AnalysisView`
+- `AnalysisResultModel`
 - `RoslynAnalysisDocument[]`
 - `FunctionIndex`
 - `FunctionFactsIndex`
 
 其中：
 
-- `AnalysisView` 面向 artifact 输出和规则输入。
+- `AnalysisResultModel` 面向 artifact 输出和规则输入。
 - `RoslynAnalysisDocument` 保存文档、语法树、`SemanticModel` 和目标列表，供后续上下文构建与改写定位使用。
 - `FunctionIndex` / `FunctionFactsIndex` 面向函数级查询和快照构建。
 
@@ -159,7 +159,7 @@ sequenceDiagram
 
 ### 4.3 当前函数图策略
 
-当前版本默认不在 `AnalysisView` 中放全量函数图，而是分两层：
+当前版本默认不在 `AnalysisResultModel` 中放全量函数图，而是分两层：
 
 - 全项目轻量索引：
   - `FunctionIndex`
@@ -170,15 +170,15 @@ sequenceDiagram
 
 因此：
 
-- `AnalysisView.FunctionGraphMaterialization = None`
-- `AnalysisView.StatementGraphMaterialization = SnapshotOnly`
+- `AnalysisResultModel.FunctionGraphMaterialization = None`
+- `AnalysisResultModel.StatementGraphMaterialization = SnapshotOnly`
 
 ### 4.4 snapshot / services 阶段
 
-`RoslynAnalysisEngine` 当前会先围绕单一 `AnalysisSnapshot` 组装正式模型：
+`RoslynAnalysisEngine` 当前会先围绕单一 `AnalysisExecutionSnapshot` 组装正式模型：
 
-- `AnalysisSnapshot`
-  - `AnalysisView`
+- `AnalysisExecutionSnapshot`
+  - `AnalysisResultModel`
   - `FunctionIndex`
   - `FunctionFactsIndex`
   - `StatementFactsIndex`

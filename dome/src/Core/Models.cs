@@ -86,6 +86,10 @@ public enum FailureCode
     /// </summary>
     RewriteFailed,
     /// <summary>
+    /// 构建失败。
+    /// </summary>
+    BuildFailed,
+    /// <summary>
     /// 报告生成失败。
     /// </summary>
     ReportFailed
@@ -239,6 +243,9 @@ public enum BoundaryKind
 public sealed record ScopeAnalysisOptions(
     StatementScopeMode StatementScopeMode)
 {
+    /// <summary>
+    /// 获取默认作用域分析选项。
+    /// </summary>
     public static ScopeAnalysisOptions Default { get; } =
         new(StatementScopeMode.MinimalBlock);
 }
@@ -289,6 +296,9 @@ public sealed record WorkspaceLoadOptions(
     WorkspaceLoaderPreference PreferredLoader,
     bool AllowFallbackToSourceOnly)
 {
+    /// <summary>
+    /// 获取默认工作区加载选项。
+    /// </summary>
     public static WorkspaceLoadOptions Default { get; } =
         new(WorkspaceLoaderPreference.Auto, true);
 }
@@ -330,7 +340,7 @@ public sealed record SourceOnlyAnalysisInput(
 /// <summary>
 /// Workspace 文档上下文。
 /// </summary>
-public sealed record WorkspaceDocumentContext(
+public sealed record WorkspaceAnalysisDocumentContext(
     Document Document,
     SourceDocument SourceDocument,
     Compilation Compilation,
@@ -340,11 +350,19 @@ public sealed record WorkspaceDocumentContext(
 /// <summary>
 /// Workspace 分析输入。
 /// </summary>
-public sealed record WorkspaceAnalysisInput(
+public sealed record WorkspaceAnalysisContextInput(
     Solution Solution,
     Project? Project,
     string RootPath,
-    IReadOnlyList<WorkspaceDocumentContext> Documents) : AnalysisInput(RootPath);
+    IReadOnlyList<WorkspaceAnalysisDocumentContext> Documents) : AnalysisInput(RootPath);
+
+/// <summary>
+/// Rewrite 文档上下文。
+/// </summary>
+public sealed record RewriteExecutionDocumentContext(
+    SourceDocument Document,
+    SyntaxNode Root,
+    SemanticModel? SemanticModel);
 
 /// <summary>
 /// 运行请求记录。
@@ -360,11 +378,81 @@ public sealed record RunRequest(
     RunMode Mode,
     WorkspaceLoadOptions WorkspaceLoadOptions)
 {
+    /// <summary>
+    /// 使用默认工作区加载选项初始化运行请求。
+    /// </summary>
     public RunRequest(string inputPath, string outputPath, IReadOnlyList<string> ruleSet, RunMode mode)
         : this(inputPath, outputPath, ruleSet, mode, WorkspaceLoadOptions.Default)
     {
     }
 }
+
+/// <summary>
+/// TR 专用运行请求记录。
+/// </summary>
+/// <param name="SolutionPath">TR 解决方案路径。</param>
+/// <param name="OutputRootPath">运行时输出根目录。</param>
+public sealed record TerrariaRuntimeRunRequest(
+    string SolutionPath,
+    string OutputRootPath);
+
+/// <summary>
+/// TR 运行时目录布局。
+/// </summary>
+public sealed record TerrariaRuntimeLayout(
+    string SolutionPath,
+    string SourceRootPath,
+    string OutputRootPath,
+    string DependencyEnvironmentPath,
+    string WorkspacePath,
+    string ArtifactsPath,
+    string WorkspaceSolutionPath)
+{
+    /// <summary>
+    /// 由 TR 运行请求创建目录布局。
+    /// </summary>
+    /// <param name="request">TR 运行请求。</param>
+    /// <returns>运行时目录布局。</returns>
+    public static TerrariaRuntimeLayout Create(TerrariaRuntimeRunRequest request)
+    {
+        var sourceRootPath = Path.GetDirectoryName(request.SolutionPath)
+            ?? throw new InvalidOperationException("TR solution path must have a parent directory.");
+        var solutionFileName = Path.GetFileName(request.SolutionPath);
+        var dependencyEnvironmentPath = Path.Combine(request.OutputRootPath, "dependency-env");
+        var workspacePath = Path.Combine(request.OutputRootPath, "workspace");
+        var artifactsPath = Path.Combine(request.OutputRootPath, "artifacts");
+        var workspaceSolutionPath = Path.Combine(workspacePath, solutionFileName);
+        return new TerrariaRuntimeLayout(
+            request.SolutionPath,
+            sourceRootPath,
+            request.OutputRootPath,
+            dependencyEnvironmentPath,
+            workspacePath,
+            artifactsPath,
+            workspaceSolutionPath);
+    }
+}
+
+/// <summary>
+/// TR 外部进程执行结果。
+/// </summary>
+public sealed record TerrariaRuntimeProcessResult(
+    int ExitCode,
+    string StandardOutput,
+    string StandardError);
+
+/// <summary>
+/// TR 构建摘要。
+/// </summary>
+public sealed record TerrariaRuntimeBuildSummary(
+    bool BuildSucceeded,
+    int BuildExitCode,
+    string BuildCommand,
+    string RuntimeWorkspacePath,
+    string DependencyEnvironmentPath,
+    string SolutionPath,
+    string StandardOutput,
+    string StandardError);
 
 /// <summary>
 /// 运行结果记录。
@@ -432,13 +520,20 @@ public sealed record PlanTarget(
     TargetKind TargetKind,
     int SpanStart,
     int SpanLength,
-    string DisplayText)
+    string DisplayText,
+    TargetResolutionKey? ResolutionKey = null)
 {
     /// <summary>
     /// 目标唯一键。
     /// </summary>
     public string TargetKey => $"{DocumentPath}|{MemberId.Value}|{TargetKind}|{SpanStart}|{SpanLength}";
+
+    public TargetResolutionKey EffectiveResolutionKey => ResolutionKey ?? new(SpanStart, SpanLength);
 }
+
+public sealed record TargetResolutionKey(
+    int SpanStart,
+    int SpanLength);
 
 /// <summary>
 /// 计划操作记录。
@@ -816,6 +911,9 @@ public sealed record FunctionIndex(
     IReadOnlyDictionary<string, FunctionNodeRef> NodesByMemberId,
     IReadOnlyDictionary<string, IReadOnlyList<string>> MemberIdsByDocumentPath)
 {
+    /// <summary>
+    /// 空函数索引实例。
+    /// </summary>
     public static FunctionIndex Empty { get; } = new(
         new Dictionary<string, FunctionNodeRef>(StringComparer.Ordinal),
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
@@ -836,6 +934,9 @@ public sealed record FunctionFactsIndex(
     IReadOnlyDictionary<string, IReadOnlyList<string>> MemberIdsByDocumentPath,
     IReadOnlyDictionary<string, IReadOnlyList<MemberId>> IncomingCallersByMemberId)
 {
+    /// <summary>
+    /// 空函数事实索引实例。
+    /// </summary>
     public static FunctionFactsIndex Empty { get; } = new(
         new Dictionary<string, FunctionFact>(StringComparer.Ordinal),
         new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal),
@@ -872,10 +973,13 @@ public sealed record FunctionGraphRequest(
     string Reason);
 
 /// <summary>
-/// Supported function graph request factories for the current analysis stage.
+/// 当前分析阶段可用的函数图请求工厂。
 /// </summary>
 public static class FunctionGraphRequests
 {
+    /// <summary>
+    /// 创建全项目调用图请求。
+    /// </summary>
     public static FunctionGraphRequest WholeProjectCalls(string requester, string reason) =>
         new(
             FunctionGraphScope.WholeProject,
@@ -885,6 +989,9 @@ public static class FunctionGraphRequests
             requester,
             reason);
 
+    /// <summary>
+    /// 创建扩展成员调用图请求。
+    /// </summary>
     public static FunctionGraphRequest ExpandedMembersCalls(
         IReadOnlyList<MemberId> rootMemberIds,
         string requester,
@@ -903,11 +1010,20 @@ public static class FunctionGraphRequests
 /// </summary>
 public interface IFunctionGraphProvider
 {
+    /// <summary>
+    /// 获取函数图快照。
+    /// </summary>
     FunctionGraphSnapshot GetSnapshot(FunctionGraphRequest request);
 
+    /// <summary>
+    /// 获取全项目函数图快照。
+    /// </summary>
     FunctionGraphSnapshot GetWholeProjectSnapshot() =>
         GetSnapshot(FunctionGraphRequests.WholeProjectCalls("IFunctionGraphProvider", "Whole-project function graph snapshot"));
 
+    /// <summary>
+    /// 获取扩展成员函数图快照。
+    /// </summary>
     FunctionGraphSnapshot GetExpandedMembersSnapshot(IReadOnlyList<MemberId> rootMemberIds, int depth = 1)
     {
         if (depth != 1)
@@ -944,6 +1060,9 @@ public sealed record StatementFact(
 public sealed record StatementFactsIndex(
     IReadOnlyDictionary<string, IReadOnlyList<StatementFact>> FactsByMemberId)
 {
+    /// <summary>
+    /// 空语句事实索引实例。
+    /// </summary>
     public static StatementFactsIndex Empty { get; } =
         new(new Dictionary<string, IReadOnlyList<StatementFact>>(StringComparer.Ordinal));
 }
@@ -974,7 +1093,7 @@ public interface IStatementAnalysisService
 /// <param name="TypeGraph">类型依赖图。</param>
 /// <param name="FunctionGraph">函数依赖图。</param>
 /// <param name="StatementGraph">语句依赖图。</param>
-public sealed record AnalysisView(
+public sealed record AnalysisResultModel(
     IReadOnlyList<AnalysisTarget> Targets,
     IReadOnlyList<AnalysisEdge> Edges,
     TypeDependencyGraph TypeGraph,
@@ -986,8 +1105,8 @@ public sealed record AnalysisView(
 /// <summary>
 /// 全局分析事实目录。
 /// </summary>
-public sealed record AnalysisSnapshot(
-    AnalysisView View,
+public sealed record AnalysisExecutionSnapshot(
+    AnalysisResultModel View,
     FunctionIndex FunctionIndex,
     FunctionFactsIndex FunctionFacts,
     StatementFactsIndex StatementFacts);
@@ -1173,7 +1292,7 @@ public sealed record DirectiveAction(
 /// <param name="IsSuccess">是否成功。</param>
 /// <param name="Documents">加载后的源码文档。</param>
 /// <param name="LoadMode">实际加载模式。</param>
-/// <param name="PrimaryLoader">主加载器名称。</param>
+/// <param name="RequestedPrimaryLoader">请求的主加载器名称。</param>
 /// <param name="FallbackUsed">是否发生了回退。</param>
 /// <param name="Diagnostics">加载诊断。</param>
 public sealed record WorkspaceLoadResult(
@@ -1181,14 +1300,17 @@ public sealed record WorkspaceLoadResult(
     AnalysisInput? AnalysisInput,
     IReadOnlyList<SourceDocument> Documents,
     WorkspaceLoadMode LoadMode,
-    string PrimaryLoader,
+    string RequestedPrimaryLoader,
     bool FallbackUsed,
     IReadOnlyList<WorkspaceLoadDiagnostic> Diagnostics)
 {
+    /// <summary>
+    /// 创建成功的工作区加载结果。
+    /// </summary>
     public static WorkspaceLoadResult Success(
         AnalysisInput analysisInput,
         WorkspaceLoadMode loadMode,
-        string primaryLoader,
+        string requestedPrimaryLoader,
         bool fallbackUsed = false,
         IReadOnlyList<WorkspaceLoadDiagnostic>? diagnostics = null) =>
         new(
@@ -1196,14 +1318,17 @@ public sealed record WorkspaceLoadResult(
             analysisInput,
             ExtractDocuments(analysisInput),
             loadMode,
-            primaryLoader,
+            requestedPrimaryLoader,
             fallbackUsed,
             diagnostics ?? Array.Empty<WorkspaceLoadDiagnostic>());
 
+    /// <summary>
+    /// 基于源码文档创建成功的工作区加载结果。
+    /// </summary>
     public static WorkspaceLoadResult Success(
         IReadOnlyList<SourceDocument> documents,
         WorkspaceLoadMode loadMode,
-        string primaryLoader,
+        string requestedPrimaryLoader,
         bool fallbackUsed = false,
         IReadOnlyList<WorkspaceLoadDiagnostic>? diagnostics = null) =>
         new(
@@ -1211,28 +1336,37 @@ public sealed record WorkspaceLoadResult(
             new SourceOnlyAnalysisInput(ResolveRootPath(documents), documents),
             documents,
             loadMode,
-            primaryLoader,
+            requestedPrimaryLoader,
             fallbackUsed,
             diagnostics ?? Array.Empty<WorkspaceLoadDiagnostic>());
 
+    /// <summary>
+    /// 创建失败的工作区加载结果。
+    /// </summary>
     public static WorkspaceLoadResult Failure(
         WorkspaceLoadMode loadMode,
-        string primaryLoader,
+        string requestedPrimaryLoader,
         IReadOnlyList<WorkspaceLoadDiagnostic> diagnostics) =>
-        new(false, null, Array.Empty<SourceDocument>(), loadMode, primaryLoader, false, diagnostics);
+        new(false, null, Array.Empty<SourceDocument>(), loadMode, requestedPrimaryLoader, false, diagnostics);
 
+    /// <summary>
+    /// 从分析输入提取源码文档集合。
+    /// </summary>
     private static IReadOnlyList<SourceDocument> ExtractDocuments(AnalysisInput analysisInput)
     {
         return analysisInput switch
         {
             SourceOnlyAnalysisInput sourceOnly => sourceOnly.Documents,
-            WorkspaceAnalysisInput workspace => workspace.Documents
+            WorkspaceAnalysisContextInput workspace => workspace.Documents
                 .Select(document => document.SourceDocument)
                 .ToArray(),
             _ => Array.Empty<SourceDocument>()
         };
     }
 
+    /// <summary>
+    /// 解析源码文档集合对应的根路径。
+    /// </summary>
     private static string ResolveRootPath(IReadOnlyList<SourceDocument> documents)
     {
         if (documents.Count == 0)
@@ -1407,4 +1541,10 @@ public sealed record RunReport(
     WorkspaceLoadMode WorkspaceLoadMode,
     bool WorkspaceFallbackUsed,
     IReadOnlyList<WorkspaceLoadDiagnostic> WorkspaceDiagnostics,
-    string? Message);
+    string? Message)
+{
+    /// <summary>
+    /// TR 构建摘要信息。
+    /// </summary>
+    public TerrariaRuntimeBuildSummary? TrBuildSummary { get; init; }
+}

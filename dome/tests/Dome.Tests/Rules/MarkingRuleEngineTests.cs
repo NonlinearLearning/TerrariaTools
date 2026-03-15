@@ -1055,6 +1055,354 @@ public class MarkingRuleEngineTests
             decision.Target.MemberId.Value == "Sample.Player.CacheEntry");
     }
 
+    [Fact]
+    public async Task Execute_DoesNotDeleteNestedClassReferencedOnlyFromMethodBody()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public void Update()
+                        {
+                            var beam = new DrillBeam();
+                            beam.Fire();
+                        }
+
+                        private class DrillBeam
+                        {
+                            public void Fire()
+                            {
+                            }
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.Player.DrillBeam");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteNestedClassReferencedThroughGenericFieldType()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    using System.Collections.Generic;
+
+                    namespace Sample;
+
+                    public class Film
+                    {
+                        private readonly List<Sequence> _sequences = new();
+
+                        private class Sequence
+                        {
+                            public int Duration { get; set; }
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Class &&
+            decision.Target.MemberId.Value == "Sample.Film.Sequence");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteGenericHelperMethodCalledFromSameType()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Player
+                    {
+                        public bool Update(string text)
+                        {
+                            return Parse(text, out var value);
+                        }
+
+                        private static bool Parse<T>(string text, out T value)
+                        {
+                            value = default!;
+                            return !string.IsNullOrEmpty(text);
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Player.Parse(string, T)");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteHelperMethodCalledFromStaticFieldInitializer()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Profiles
+                    {
+                        private static readonly object[] Entries =
+                        {
+                            Build("Guide"),
+                        };
+
+                        private static object Build(string key)
+                        {
+                            return key;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Profiles.Build(string)");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteHelperMethodReferencedAsMethodGroupInStaticFieldInitializer()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class ParticlePool<T>
+                    {
+                        public ParticlePool(int count, System.Func<T> factory)
+                        {
+                        }
+                    }
+
+                    public sealed class Particle
+                    {
+                    }
+
+                    public class Profiles
+                    {
+                        private static readonly ParticlePool<Particle> Pool = new(16, GetNewParticle);
+
+                        private static Particle GetNewParticle()
+                        {
+                            return new Particle();
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Profiles.GetNewParticle()");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteHelperMethodCalledFromImplicitOperator()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class WeightedRandom<T>
+                    {
+                        public static implicit operator T(WeightedRandom<T> random)
+                        {
+                            return random.Get();
+                        }
+
+                        private T Get()
+                        {
+                            return default!;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.WeightedRandom<T>.Get()");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeletePrivateMainEntrypoint()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public static class Program
+                    {
+                        private static void Main(string[] args)
+                        {
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Program.Main(string[])");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeleteHelperMethodCalledFromConstructorInitializer()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public class Base
+                    {
+                        protected Base(int value)
+                        {
+                        }
+                    }
+
+                    public sealed class Demo : Base
+                    {
+                        public Demo(string name) : base(GetWeight(name))
+                        {
+                        }
+
+                        private static int GetWeight(string name)
+                        {
+                            return name.Length;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Demo.GetWeight(string)");
+    }
+
+    [Fact]
+    public async Task Execute_DoesNotDeletePrivateExtensionMethodCalledWithReducedSyntax()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new[]
+            {
+                new SourceDocument(
+                    "Sample.cs",
+                    "Sample.cs",
+                    """
+                    namespace Sample;
+
+                    public sealed class Tile
+                    {
+                    }
+
+                    public static class Minecart
+                    {
+                        public static int Read(Tile tile)
+                        {
+                            return tile.FrontTrack();
+                        }
+
+                        private static int FrontTrack(this Tile tile)
+                        {
+                            return 1;
+                        }
+                    }
+                    """)
+            },
+            CancellationToken.None);
+
+        var context = engine.CreateContext(analysis);
+        var decisions = new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()).Execute(context);
+
+        Assert.DoesNotContain(decisions, decision =>
+            decision.Target.TargetKind == TargetKind.Method &&
+            decision.Target.MemberId.Value == "Sample.Minecart.FrontTrack(Sample.Tile)");
+    }
+
     // Rule family: IExpressionProjectionRule
     // Direct behavior: expression-bearing statements with a directive project the expression match to the containing statement.
     // Propagation: the projected statement decision acts as a direct decision and may propagate to downstream use/def targets.

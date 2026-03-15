@@ -44,6 +44,12 @@ dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples .\out
 dotnet run --project .\src\Cli\Dome.Cli.csproj -- --config .\dome.config.json
 ```
 
+运行固定 TR 运行时流程：
+
+```powershell
+dotnet run --project .\src\Cli\Dome.Cli.csproj -- tr-run
+```
+
 ## 最短闭环演示
 
 如果你要直接证明 `dome` 不只是“能出计划”，而是真的会删掉被标记的代码，先看这两组仓内样本：
@@ -85,6 +91,8 @@ dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\closed-loop .\.t
   输出 `analysis.json` 和 `report.json`。
 - `plan <input-path> <output-path>`
   输出 `audit-plan.json` 和 `report.json`。
+- `tr-run`
+  固定处理 `D:\lodes\TR\Backup\New1.27\1.45\TR\TerrariaServer.sln`，在 `.\.tmp\tr-runtime` 下生成 `dependency-env`、`workspace` 和 `artifacts`，并自动执行 `dotnet build --no-restore -m`。
 - `--config <path>`
   从 JSON 配置文件加载同样的输入参数。
 
@@ -163,6 +171,14 @@ v1.1 固化的规则能力：
 - `report.json`
 - `rewritten/**`
 
+`tr-run`
+
+- `dependency-env/**`
+- `workspace/**`
+- `artifacts\audit-plan.json`
+- `artifacts\report.json`
+- `artifacts\rewritten/**`
+
 稳定契约说明见 [architecture.md](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/architecture.md) 和 [artifacts.md](/D:/ProjectItem/SourceCode/Net/TerrariaTools/.worktrees/dda/dome/docs/artifacts.md)。
 
 ## 退出码
@@ -174,6 +190,7 @@ v1.1 固化的规则能力：
 - `4`：`PlanCompileFailed`
 - `5`：`RewriteFailed`
 - `6`：`ReportFailed`
+- `7`：`BuildFailed`
 
 ## 失败语义
 

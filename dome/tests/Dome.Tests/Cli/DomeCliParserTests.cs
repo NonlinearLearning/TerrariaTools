@@ -42,6 +42,23 @@ public class DomeCliParserTests
         Assert.False(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
     }
 
+    [Fact]
+    public async Task ParseAsync_ParsesTrRunCommand()
+    {
+        var result = await DomeCliParser.ParseAsync(new[] { "tr-run" }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Null(result.Request);
+        Assert.NotNull(result.TerrariaRuntimeRunRequest);
+        Assert.Equal(
+            @"D:\lodes\TR\Backup\New1.27\1.45\TR\TerrariaServer.sln",
+            result.TerrariaRuntimeRunRequest!.SolutionPath);
+        Assert.Equal(
+            @"D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\tr-runtime",
+            result.TerrariaRuntimeRunRequest.OutputRootPath);
+        Assert.Contains("tr-run", DomeCliParser.UsageText);
+    }
+
     /// <summary>
     /// 测试解析异步方法加载最小配置文件。
     /// </summary>

@@ -3,6 +3,7 @@ namespace TerrariaTools.Dome.Analysis.Roslyn;
 using Microsoft.Build.Locator;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Host.Mef;
 using Microsoft.CodeAnalysis.MSBuild;
 using TerrariaTools.Dome.Core;
 
@@ -28,6 +29,16 @@ public sealed class CodeAnalysisWorkspaceLoader : IWorkspaceLoader
 {
     private static int _locatorInitialized;
 
+    /// <summary>
+    /// 创建 MSBuild 工作区实例。
+    /// </summary>
+    /// <returns>MSBuild 工作区。</returns>
+    internal static MSBuildWorkspace CreateWorkspace()
+    {
+        var hostServices = MefHostServices.Create(MefHostServices.DefaultAssemblies);
+        return MSBuildWorkspace.Create(hostServices);
+    }
+
     /// <inheritdoc />
     public async Task<WorkspaceLoadResult> LoadAsync(string inputPath, WorkspaceLoadOptions options, CancellationToken cancellationToken)
     {
@@ -35,13 +46,25 @@ public sealed class CodeAnalysisWorkspaceLoader : IWorkspaceLoader
         {
             EnsureMsBuildRegistered();
 
-            using var workspace = MSBuildWorkspace.Create();
+            var diagnostics = new List<WorkspaceLoadDiagnostic>();
+            using var workspace = CreateWorkspace();
+            workspace.WorkspaceFailed += (_, args) =>
+            {
+                diagnostics.Add(new WorkspaceLoadDiagnostic(
+                    "CodeAnalysisWorkspace",
+                    args.Diagnostic.Kind == WorkspaceDiagnosticKind.Failure
+                        ? WorkspaceLoadDiagnosticSeverity.Error
+                        : WorkspaceLoadDiagnosticSeverity.Warning,
+                    args.Diagnostic.Message));
+            };
+
             if (string.Equals(Path.GetExtension(inputPath), ".sln", StringComparison.OrdinalIgnoreCase))
             {
                 var solution = await workspace.OpenSolutionAsync(inputPath, cancellationToken: cancellationToken);
                 return await BuildResultFromSolutionAsync(
                     solution,
                     Path.GetDirectoryName(Path.GetFullPath(inputPath))!,
+                    diagnostics,
                     cancellationToken);
             }
 
@@ -51,6 +74,7 @@ public sealed class CodeAnalysisWorkspaceLoader : IWorkspaceLoader
                 return await BuildResultFromProjectAsync(
                     project,
                     Path.GetDirectoryName(Path.GetFullPath(inputPath))!,
+                    diagnostics,
                     cancellationToken);
             }
 
@@ -80,6 +104,9 @@ public sealed class CodeAnalysisWorkspaceLoader : IWorkspaceLoader
         }
     }
 
+    /// <summary>
+    /// 确保 MSBuildLocator 已完成注册。
+    /// </summary>
     private static void EnsureMsBuildRegistered()
     {
         if (Interlocked.Exchange(ref _locatorInitialized, 1) == 1)
@@ -101,79 +128,173 @@ public sealed class CodeAnalysisWorkspaceLoader : IWorkspaceLoader
         MSBuildLocator.RegisterInstance(instances.OrderByDescending(instance => instance.Version).First());
     }
 
+    /// <summary>
+    /// 基于解决方案构建工作区加载结果。
+    /// </summary>
     private static async Task<WorkspaceLoadResult> BuildResultFromSolutionAsync(
         Solution solution,
         string rootPath,
+        IReadOnlyList<WorkspaceLoadDiagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
-        var documents = new List<WorkspaceDocumentContext>();
+        var documents = new List<WorkspaceAnalysisDocumentContext>();
+        var solutionDiagnostics = new List<WorkspaceLoadDiagnostic>(diagnostics);
         foreach (var project in solution.Projects)
         {
-            documents.AddRange(await BuildDocumentContextsAsync(project, rootPath, cancellationToken));
+            var projectResult = await BuildProjectDocumentsAsync(project, rootPath, cancellationToken);
+            documents.AddRange(projectResult.Documents);
+            solutionDiagnostics.AddRange(projectResult.Diagnostics);
         }
 
         return WorkspaceLoadResult.Success(
-            new WorkspaceAnalysisInput(solution, null, rootPath, documents),
+            new WorkspaceAnalysisContextInput(solution, null, rootPath, documents),
             WorkspaceLoadMode.CodeAnalysis,
-            "CodeAnalysis");
+            "CodeAnalysis",
+            diagnostics: BuildDiagnostics(solutionDiagnostics, solution.FilePath, documents.Count));
     }
 
+    /// <summary>
+    /// 基于项目构建工作区加载结果。
+    /// </summary>
     private static async Task<WorkspaceLoadResult> BuildResultFromProjectAsync(
         Project project,
         string rootPath,
+        IReadOnlyList<WorkspaceLoadDiagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
-        var documents = await BuildDocumentContextsAsync(project, rootPath, cancellationToken);
+        var projectResult = await BuildProjectDocumentsAsync(project, rootPath, cancellationToken);
         return WorkspaceLoadResult.Success(
-            new WorkspaceAnalysisInput(project.Solution, project, rootPath, documents),
+            new WorkspaceAnalysisContextInput(project.Solution, project, rootPath, projectResult.Documents),
             WorkspaceLoadMode.CodeAnalysis,
-            "CodeAnalysis");
+            "CodeAnalysis",
+            diagnostics: BuildDiagnostics(diagnostics.Concat(projectResult.Diagnostics).ToArray(), project.FilePath, projectResult.Documents.Count));
     }
 
-    private static async Task<IReadOnlyList<WorkspaceDocumentContext>> BuildDocumentContextsAsync(
+    /// <summary>
+    /// 构建项目内文档上下文集合。
+    /// </summary>
+    private static async Task<ProjectDocumentLoadResult> BuildProjectDocumentsAsync(
         Project project,
         string rootPath,
         CancellationToken cancellationToken)
     {
+        var diagnostics = new List<WorkspaceLoadDiagnostic>();
+        if (!string.Equals(project.Language, LanguageNames.CSharp, StringComparison.Ordinal))
+        {
+            diagnostics.Add(new WorkspaceLoadDiagnostic(
+                "CodeAnalysisProject",
+                WorkspaceLoadDiagnosticSeverity.Info,
+                $"Project '{project.Name}' was skipped because its language is '{project.Language}', not C#."));
+            return new ProjectDocumentLoadResult(Array.Empty<WorkspaceAnalysisDocumentContext>(), diagnostics);
+        }
+
+        var projectPath = project.FilePath ?? project.Name;
+        var candidateDocuments = project.Documents
+            .Where(static d => string.Equals(Path.GetExtension(d.FilePath), ".cs", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var totalDocumentCount = project.Documents.Count();
+
+        if (candidateDocuments.Length == 0)
+        {
+            diagnostics.Add(new WorkspaceLoadDiagnostic(
+                "CodeAnalysisProject",
+                WorkspaceLoadDiagnosticSeverity.Warning,
+                $"Project '{project.Name}' ('{projectPath}') did not expose any .cs documents to CodeAnalysis. Total Roslyn documents: {totalDocumentCount}."));
+            return new ProjectDocumentLoadResult(Array.Empty<WorkspaceAnalysisDocumentContext>(), diagnostics);
+        }
+
         var compilation = await project.GetCompilationAsync(cancellationToken);
         if (compilation == null)
         {
-            return Array.Empty<WorkspaceDocumentContext>();
+            diagnostics.Add(new WorkspaceLoadDiagnostic(
+                "CodeAnalysisProject",
+                WorkspaceLoadDiagnosticSeverity.Warning,
+                $"Project '{project.Name}' ('{projectPath}') returned null compilation with {candidateDocuments.Length} candidate .cs documents and {totalDocumentCount} total Roslyn documents."));
+            return new ProjectDocumentLoadResult(Array.Empty<WorkspaceAnalysisDocumentContext>(), diagnostics);
         }
 
-        var documents = new List<WorkspaceDocumentContext>();
-        foreach (var document in project.Documents.Where(static d => string.Equals(Path.GetExtension(d.FilePath), ".cs", StringComparison.OrdinalIgnoreCase)))
+        var tasks = candidateDocuments
+            .Select(document => BuildDocumentContextAsync(document, compilation, rootPath, cancellationToken))
+            .ToArray();
+
+        var results = await Task.WhenAll(tasks);
+        var documents = results.Where(static context => context != null).Cast<WorkspaceAnalysisDocumentContext>().ToArray();
+        if (documents.Length != candidateDocuments.Length)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (document.FilePath == null)
-            {
-                continue;
-            }
-
-            var root = await document.GetSyntaxRootAsync(cancellationToken);
-            if (root?.SyntaxTree == null)
-            {
-                continue;
-            }
-
-            var sourceText = await document.GetTextAsync(cancellationToken);
-            var sourceDocument = new SourceDocument(
-                Path.GetFullPath(document.FilePath),
-                Path.GetRelativePath(rootPath, document.FilePath),
-                sourceText.ToString());
-            var semanticModel = compilation.GetSemanticModel(root.SyntaxTree);
-
-            documents.Add(new WorkspaceDocumentContext(
-                document,
-                sourceDocument,
-                compilation,
-                semanticModel,
-                (CompilationUnitSyntax)root));
+            diagnostics.Add(new WorkspaceLoadDiagnostic(
+                "CodeAnalysisProject",
+                WorkspaceLoadDiagnosticSeverity.Warning,
+                $"Project '{project.Name}' ('{projectPath}') produced {documents.Length} workspace documents from {candidateDocuments.Length} candidate .cs documents. Some documents were skipped because file path, syntax root, or semantic model prerequisites were unavailable."));
         }
 
-        return documents;
+        return new ProjectDocumentLoadResult(documents, diagnostics);
     }
+
+    /// <summary>
+    /// 构建工作区加载诊断列表。
+    /// </summary>
+    private static IReadOnlyList<WorkspaceLoadDiagnostic> BuildDiagnostics(
+        IReadOnlyList<WorkspaceLoadDiagnostic> diagnostics,
+        string? inputPath,
+        int documentCount)
+    {
+        if (documentCount > 0 || diagnostics.Count > 0)
+        {
+            return diagnostics;
+        }
+
+        return new[]
+        {
+            new WorkspaceLoadDiagnostic(
+                "CodeAnalysisLoad",
+                WorkspaceLoadDiagnosticSeverity.Warning,
+                $"CodeAnalysis opened '{inputPath ?? "<unknown>"}' but produced zero C# documents.")
+        };
+    }
+
+    /// <summary>
+    /// 构建单文档工作区上下文。
+    /// </summary>
+    private static async Task<WorkspaceAnalysisDocumentContext?> BuildDocumentContextAsync(
+        Document document,
+        Compilation compilation,
+        string rootPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (document.FilePath == null)
+        {
+            return null;
+        }
+
+        var root = await document.GetSyntaxRootAsync(cancellationToken);
+        if (root?.SyntaxTree == null)
+        {
+            return null;
+        }
+
+        var sourceText = await document.GetTextAsync(cancellationToken);
+        var sourceDocument = new SourceDocument(
+            Path.GetFullPath(document.FilePath),
+            Path.GetRelativePath(rootPath, document.FilePath),
+            sourceText.ToString());
+        var semanticModel = compilation.GetSemanticModel(root.SyntaxTree);
+
+        return new WorkspaceAnalysisDocumentContext(
+            document,
+            sourceDocument,
+            compilation,
+            semanticModel,
+            (CompilationUnitSyntax)root);
+    }
+
+    /// <summary>
+    /// 项目文档加载结果。
+    /// </summary>
+    private sealed record ProjectDocumentLoadResult(
+        IReadOnlyList<WorkspaceAnalysisDocumentContext> Documents,
+        IReadOnlyList<WorkspaceLoadDiagnostic> Diagnostics);
 }
 
 /// <summary>
@@ -185,6 +306,11 @@ public sealed class WorkspaceLoadCoordinator : IWorkspaceLoader
     private readonly IWorkspaceLoader _codeAnalysisLoader;
     private readonly IWorkspaceLoader _sourceOnlyLoader;
 
+    /// <summary>
+    /// 初始化工作区加载协调器。
+    /// </summary>
+    /// <param name="codeAnalysisLoader">CodeAnalysis 加载器。</param>
+    /// <param name="sourceOnlyLoader">SourceOnly 加载器。</param>
     public WorkspaceLoadCoordinator(IWorkspaceLoader codeAnalysisLoader, IWorkspaceLoader sourceOnlyLoader)
     {
         _codeAnalysisLoader = codeAnalysisLoader;
@@ -244,9 +370,25 @@ public sealed class WorkspaceLoadCoordinator : IWorkspaceLoader
             new WorkspaceLoadOptions(WorkspaceLoaderPreference.CodeAnalysisFirst, options.AllowFallbackToSourceOnly),
             cancellationToken);
 
-        if (codeAnalysisResult.IsSuccess)
+        if (codeAnalysisResult.IsSuccess && codeAnalysisResult.Documents.Count > 0)
         {
             return codeAnalysisResult;
+        }
+
+        if (codeAnalysisResult.IsSuccess && codeAnalysisResult.Documents.Count == 0 && !options.AllowFallbackToSourceOnly)
+        {
+            return WorkspaceLoadResult.Failure(
+                WorkspaceLoadMode.CodeAnalysis,
+                "CodeAnalysis",
+                codeAnalysisResult.Diagnostics.Count > 0
+                    ? codeAnalysisResult.Diagnostics
+                    : new[]
+                    {
+                        new WorkspaceLoadDiagnostic(
+                            "CodeAnalysisLoad",
+                            WorkspaceLoadDiagnosticSeverity.Error,
+                            $"CodeAnalysis loaded '{fullPath}' but did not produce any C# documents.")
+                    });
         }
 
         if (!options.AllowFallbackToSourceOnly)

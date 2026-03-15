@@ -16,7 +16,15 @@ internal static class DirectiveReader
     /// <returns>解析出的指令列表。</returns>
     public static IReadOnlyList<DirectiveAction> Read(StatementSyntax statement)
     {
-        var text = statement.GetLeadingTrivia().ToFullString();
+        var trivia = statement.GetLeadingTrivia();
+        if (trivia.Count == 0 || !trivia.Any(static item =>
+            item.RawKind == (int)Microsoft.CodeAnalysis.CSharp.SyntaxKind.SingleLineCommentTrivia ||
+            item.RawKind == (int)Microsoft.CodeAnalysis.CSharp.SyntaxKind.MultiLineCommentTrivia))
+        {
+            return Array.Empty<DirectiveAction>();
+        }
+
+        var text = trivia.ToFullString();
         var directives = new List<DirectiveAction>();
 
         AddDirective(directives, text, "dome:delete", PlanActionKind.Delete);

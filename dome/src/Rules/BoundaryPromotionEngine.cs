@@ -3,15 +3,29 @@ namespace TerrariaTools.Dome.Rules;
 using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Core;
 
+/// <summary>
+/// 边界提升引擎。
+/// </summary>
 public sealed class BoundaryPromotionEngine
 {
     private readonly MarkingRuleRegistry _registry;
 
+    /// <summary>
+    /// 初始化边界提升引擎。
+    /// </summary>
+    /// <param name="registry">规则注册表。</param>
     public BoundaryPromotionEngine(MarkingRuleRegistry registry)
     {
         _registry = registry;
     }
 
+    /// <summary>
+    /// 根据当前语句级决策执行边界提升。
+    /// </summary>
+    /// <param name="context">分析上下文。</param>
+    /// <param name="currentDecisions">当前标记决策。</param>
+    /// <param name="targetsByKey">按目标键索引的目标字典。</param>
+    /// <returns>提升产生的决策集合。</returns>
     public IReadOnlyList<MarkDecision> Promote(
         AnalysisContext context,
         IReadOnlyList<MarkDecision> currentDecisions,

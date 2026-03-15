@@ -396,13 +396,25 @@ public sealed class FunctionMarkingRule : IMethodRule
         var methodName = TryGetMethodName(functionNode.MemberId.Value);
         if (string.IsNullOrEmpty(methodName) || !KnownFrameworkEntrypointNames.Contains(methodName))
         {
-            return false;
+            return IsProgramEntrypoint(functionNode, methodName);
         }
 
         return context.View.TypeGraph.Edges.Any(edge =>
             string.Equals(edge.SourceTypeId, functionNode.DeclaringTypeId, StringComparison.Ordinal) &&
             edge.Kind is TypeDependencyKind.Inherits or TypeDependencyKind.Implements &&
             KnownFrameworkTypeMarkers.Any(marker => edge.TargetTypeId.Contains(marker, StringComparison.Ordinal)));
+    }
+
+    private static bool IsProgramEntrypoint(FunctionNodeRef functionNode, string methodName)
+    {
+        if (!string.Equals(methodName, "Main", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return functionNode.ReturnsVoid &&
+               (functionNode.MemberId.Value.EndsWith(".Main(string[])", StringComparison.Ordinal) ||
+                functionNode.MemberId.Value.EndsWith(".Main()", StringComparison.Ordinal));
     }
 
     private static string TryGetMethodName(string memberId)
@@ -552,7 +564,8 @@ public sealed class InvocationBoundaryPromotionRule : IBoundaryPromotionRule
                 TargetKind.Method,
                 functionNode.SpanStart,
                 functionNode.SpanLength,
-                functionNode.DisplayName),
+                functionNode.DisplayName,
+                new TargetResolutionKey(functionNode.SpanStart, functionNode.SpanLength)),
             PlanActionKind.Delete,
             "boundary-promotion",
             "Invocation delete crossed the statement boundary and was promoted to a method delete candidate.",
@@ -730,7 +743,7 @@ public sealed class MarkingRuleEngine
     private readonly MarkingRuleRegistry _registry;
     private readonly StatementPropagationEngine _statementPropagationEngine;
     private readonly BoundaryPromotionEngine _boundaryPromotionEngine;
-    private readonly RuleCompatibilityAdapter _compatibilityAdapter;
+    private readonly CompatibilityExecutionContextFactory _compatibilityAdapter;
 
     /// <summary>
     /// 初始化标记规则引擎的新实例。
@@ -740,12 +753,12 @@ public sealed class MarkingRuleEngine
         MarkingRuleRegistry registry,
         StatementPropagationEngine? statementPropagationEngine = null,
         BoundaryPromotionEngine? boundaryPromotionEngine = null,
-        RuleCompatibilityAdapter? compatibilityAdapter = null)
+        CompatibilityExecutionContextFactory? compatibilityAdapter = null)
     {
         _registry = registry;
         _statementPropagationEngine = statementPropagationEngine ?? new StatementPropagationEngine(registry);
         _boundaryPromotionEngine = boundaryPromotionEngine ?? new BoundaryPromotionEngine(registry);
-        _compatibilityAdapter = compatibilityAdapter ?? new RuleCompatibilityAdapter();
+        _compatibilityAdapter = compatibilityAdapter ?? new CompatibilityExecutionContextFactory();
     }
 
     /// <summary>
@@ -753,16 +766,16 @@ public sealed class MarkingRuleEngine
     /// </summary>
     /// <param name="analysisView">分析视图。</param>
     /// <returns>标记决策集合。</returns>
-    public IReadOnlyList<MarkDecision> Execute(AnalysisView analysisView)
+    public IReadOnlyList<MarkDecision> Execute(AnalysisResultModel analysisView)
     {
         return ExecuteCore(
             _compatibilityAdapter.CreateContext(analysisView),
-            _compatibilityAdapter.CreateExecutionContext("AnalysisView compatibility execution"),
+            _compatibilityAdapter.CreateExecutionContext("AnalysisResultModel compatibility execution"),
             includeMethodRules: false);
     }
 
     public IReadOnlyList<MarkDecision> Execute(
-        AnalysisSnapshot snapshot,
+        AnalysisExecutionSnapshot snapshot,
         AnalysisServices services,
         RuleExecutionContext executionContext)
     {

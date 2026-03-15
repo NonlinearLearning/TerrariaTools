@@ -20,7 +20,7 @@
 
 ### 输出
 
-- `DomeCliParseResult`
+- `DomeCliCommandParseResult`
   - 成功时包含 `RunRequest`
   - 失败时包含错误信息或帮助文本
 
@@ -28,10 +28,10 @@
 
 | API | 作用 | 输入 | 输出 |
 | --- | --- | --- | --- |
-| `DomeCliParser.ParseAsync` | 解析命令行或配置文件 | `string[] args` | `DomeCliParseResult` |
+| `DomeCliParser.ParseAsync` | 解析命令行或配置文件 | `string[] args` | `DomeCliCommandParseResult` |
 | `DomeCliParser.UsageText` | CLI 帮助文本 | 无 | `string` |
-| `DomeCliConfiguration` | 配置文件反序列化结构 | JSON | 配置对象 |
-| `DomeCliParseResult` | 解析结果封装 | 无 | `IsSuccess` / `Request` / `ErrorMessage` |
+| `DomeCliRunConfiguration` | 配置文件反序列化结构 | JSON | 配置对象 |
+| `DomeCliCommandParseResult` | 解析结果封装 | 无 | `IsSuccess` / `Request` / `ErrorMessage` |
 
 ## 4. 这层承担的职责
 
@@ -79,7 +79,7 @@ Cli 层不负责：
 
 - 加载源码或 workspace
 - 分析 C# 语义
-- 生成 `AnalysisView`
+- 生成 `AnalysisResultModel`
 - 执行规则
 - 编译计划
 - 重写源码

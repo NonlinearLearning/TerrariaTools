@@ -969,6 +969,218 @@ public class DomeApplicationTests
     }
 
     [Fact]
+    public async Task RunAsync_SanitizationLoop_StopsPropagationBeforeRewrite()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Player.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public sealed class Player
+                {
+                    public int Update()
+                    {
+                        // dome:delete
+                        int count = 1;
+                        int next = count;
+                        next = 0;
+                        int final = next;
+                        return final;
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            var rewritten = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.cs"));
+            using var plan = JsonDocument.Parse(planJson);
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            var changes = plan.RootElement.GetProperty("Changes").EnumerateArray().ToArray();
+            Assert.Equal(2, changes.Length);
+            Assert.Contains(changes, change =>
+                change.GetProperty("Reason").GetProperty("RuleId").GetString() == "dome:delete" &&
+                change.GetProperty("Target").GetProperty("DisplayText").GetString() == "int count = 1;");
+            Assert.Contains(changes, change =>
+                change.GetProperty("Reason").GetProperty("RuleId").GetString() == "dataflow-propagation" &&
+                change.GetProperty("Target").GetProperty("DisplayText").GetString() == "int next = count;");
+            Assert.DoesNotContain(changes, change =>
+                change.GetProperty("Target").GetProperty("DisplayText").GetString() == "int final = next;");
+            Assert.True(report.RootElement.GetProperty("IsSuccess").GetBoolean());
+            Assert.Equal(2, report.RootElement.GetProperty("PlannedChanges").GetInt32());
+            Assert.DoesNotContain("int count = 1;", rewritten);
+            Assert.DoesNotContain("int next = count;", rewritten);
+            Assert.Contains("next = 0;", rewritten);
+            Assert.Contains("int final = next;", rewritten);
+            Assert.Contains("return final;", rewritten);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_ProtectionLoop_StopsAtProtectedBoundary()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Player.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public sealed class Item
+                {
+                    public int Value { get; set; }
+                }
+
+                public sealed class Player
+                {
+                    public int Update(int seed)
+                    {
+                        // dome:delete
+                        int count = seed;
+                        var item = new Item { Value = count };
+                        int next = count;
+                        return next;
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            var rewritten = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.cs"));
+            using var plan = JsonDocument.Parse(planJson);
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            var changes = plan.RootElement.GetProperty("Changes").EnumerateArray().ToArray();
+            Assert.Single(changes);
+            Assert.Equal("expression-mark", changes[0].GetProperty("Reason").GetProperty("RuleId").GetString());
+            Assert.Equal("int count = seed;", changes[0].GetProperty("Target").GetProperty("DisplayText").GetString());
+            Assert.DoesNotContain(changes, change =>
+                change.GetProperty("Target").GetProperty("DisplayText").GetString() == "var item = new Item { Value = count };");
+            Assert.DoesNotContain(changes, change =>
+                change.GetProperty("Target").GetProperty("DisplayText").GetString() == "int next = count;");
+            Assert.True(report.RootElement.GetProperty("IsSuccess").GetBoolean());
+            Assert.Equal(1, report.RootElement.GetProperty("PlannedChanges").GetInt32());
+            Assert.DoesNotContain("int count = seed;", rewritten);
+            Assert.Contains("var item = new Item", rewritten);
+            Assert.Contains("Value = count", rewritten);
+            Assert.Contains("int next = count;", rewritten);
+            Assert.Contains("return next;", rewritten);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_PromotionLoop_PromotesDirectDeleteIntoMethodDelete()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var inputFile = Path.Combine(tempRoot, "Player.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public sealed class Player
+                {
+                    public void Update(int value)
+                    {
+                        int copy = value;
+
+                        // dome:delete
+                        Run(copy);
+                    }
+
+                    private void Run(int value)
+                    {
+                        Consume(value);
+                    }
+
+                    private static void Consume(int value)
+                    {
+                    }
+                }
+                """);
+
+            var app = DomeApplicationFactory.CreateDefault();
+            var result = await app.RunAsync(
+                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                CancellationToken.None);
+
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            var reportJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json"));
+            var rewritten = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.cs"));
+            using var plan = JsonDocument.Parse(planJson);
+            using var report = JsonDocument.Parse(reportJson);
+
+            Assert.True(result.IsSuccess);
+            var changes = plan.RootElement.GetProperty("Changes").EnumerateArray().ToArray();
+            Assert.Contains(changes, change =>
+                change.GetProperty("Reason").GetProperty("RuleId").GetString() == "expression-mark" &&
+                change.GetProperty("Target").GetProperty("DisplayText").GetString() == "Run(copy);");
+            Assert.Contains(changes, change =>
+                change.GetProperty("Reason").GetProperty("RuleId").GetString() == "boundary-promotion" &&
+                change.GetProperty("Target").GetProperty("TargetKind").GetString() == "Method" &&
+                change.GetProperty("Target").GetProperty("MemberId").GetProperty("Value").GetString() == "Sample.Player.Run(int)");
+            Assert.True(report.RootElement.GetProperty("IsSuccess").GetBoolean());
+            Assert.Equal(changes.Length, report.RootElement.GetProperty("PlannedChanges").GetInt32());
+            Assert.DoesNotContain("Run(copy);", rewritten);
+            Assert.DoesNotContain("private void Run(int value)", rewritten);
+            Assert.Contains("private static void Consume(int value)", rewritten);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public async Task RunAsync_WritesClassDeleteCoverageSummary()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));

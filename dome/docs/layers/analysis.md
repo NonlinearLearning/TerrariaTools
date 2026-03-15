@@ -4,7 +4,7 @@
 
 ## 1. 这一层做什么
 
-`src/Analysis/Roslyn` 负责把外部输入路径转换成语义化的分析结果，并进一步包装成规则可消费的 `AnalysisSnapshot`、`AnalysisServices` 与兼容 `AnalysisContext`。
+`src/Analysis/Roslyn` 负责把外部输入路径转换成语义化的分析结果，并进一步包装成规则可消费的 `AnalysisExecutionSnapshot`、`AnalysisServices` 与兼容 `AnalysisContext`。
 
 这是整个项目中最靠近 Roslyn 的层，主要回答两个问题：
 
@@ -19,7 +19,7 @@ Analysis 层当前可以按职责分成五组。
 
 - `IWorkspaceLoader`
 - `CodeAnalysisWorkspaceLoader`
-- `SourceWorkspaceLoader`
+- `SourceOnlyLoader`
 - `WorkspaceLoadCoordinator`
 
 负责把输入路径解析为 `AnalysisInput`。
@@ -37,7 +37,7 @@ Analysis 层当前可以按职责分成五组。
 ### 2.3 运行时查询服务
 
 - `AnalysisContext`
-- `AnalysisSnapshot`
+- `AnalysisExecutionSnapshot`
 - `AnalysisServices`
 - `QueryServices` 中的引用/继承查询实现
 - `StatementAnalysisService`
@@ -65,12 +65,12 @@ Analysis 层当前可以按职责分成五组。
 
 - `AnalysisInput`
   - `SourceOnlyAnalysisInput`
-  - `WorkspaceAnalysisInput`
+  - `WorkspaceAnalysisContextInput`
 
 ### 输出
 
 - `RoslynAnalysisResult`
-- `AnalysisView`
+- `AnalysisResultModel`
 - `AnalysisContext`
 - `WorkspaceLoadResult`
 
@@ -102,7 +102,7 @@ Analysis 层要把以下输入收口成统一分析入口：
 
 ### 5.2 建立正式分析视图
 
-`AnalysisView` 是 Analysis 层最重要的正式输出，包含：
+`AnalysisResultModel` 是 Analysis 层最重要的正式输出，包含：
 
 - `Targets`
 - `Edges`
@@ -113,9 +113,9 @@ Analysis 层要把以下输入收口成统一分析入口：
 
 ### 5.3 建立运行时上下文
 
-仅有 `AnalysisView` 还不够。当前正式模型被拆成两层：
+仅有 `AnalysisResultModel` 还不够。当前正式模型被拆成两层：
 
-- `AnalysisSnapshot`
+- `AnalysisExecutionSnapshot`
 - `AnalysisServices`
 
 其中查询服务层继续提供：
@@ -127,7 +127,7 @@ Analysis 层要把以下输入收口成统一分析入口：
 - `IFunctionGraphProvider`
 
 `AnalysisContext` 继续存在，但它只是这两层的兼容组合壳。
-`AnalysisServices` 的装配围绕同一个 `AnalysisSnapshot` 闭合，不应再与第二份平行 facts 混用。
+`AnalysisServices` 的装配围绕同一个 `AnalysisExecutionSnapshot` 闭合，不应再与第二份平行 facts 混用。
 
 ### 5.4 收口函数图成本
 
@@ -147,12 +147,12 @@ Analysis 层要把以下输入收口成统一分析入口：
 
 ### 5.5 保留 statement 图占位但不把它当正式全局图
 
-`AnalysisView.StatementGraph` 目前是兼容字段，正式入口是：
+`AnalysisResultModel.StatementGraph` 目前是兼容字段，正式入口是：
 
-- `AnalysisSnapshot.StatementFacts`
+- `AnalysisExecutionSnapshot.StatementFacts`
 - `AnalysisServices.Statements`
 
-因此文档和调用方都不应把 `AnalysisView.StatementGraph` 当成默认完整输入。
+因此文档和调用方都不应把 `AnalysisResultModel.StatementGraph` 当成默认完整输入。
 
 ## 6. 真实执行链路
 
@@ -166,7 +166,7 @@ Analysis 层要把以下输入收口成统一分析入口：
 
 - 使用 `MSBuildWorkspace`
 - 打开真实 solution/project
-- 为每个文档建立 `WorkspaceDocumentContext`，一次性固定 `Document`、`SourceDocument`、`Compilation`、`SemanticModel`、`Root`
+- 为每个文档建立 `WorkspaceAnalysisDocumentContext`，一次性固定 `Document`、`SourceDocument`、`Compilation`、`SemanticModel`、`Root`
 
 ### 6.3 `RoslynAnalysisEngine`
 
@@ -182,7 +182,7 @@ Analysis 层要把以下输入收口成统一分析入口：
 
 从静态结果派生并装配：
 
-- `AnalysisSnapshot`
+- `AnalysisExecutionSnapshot`
 - 继承查询
 - 引用查询
 - statement service
@@ -201,7 +201,7 @@ Analysis 层要把以下输入收口成统一分析入口：
 
 - `Rules`
 - `Application` 中的 impact / prediction 汇总
-- `Reporting` 间接消费 `AnalysisView`
+- `Reporting` 间接消费 `AnalysisResultModel`
 
 Analysis 层不直接做最终改写，也不直接决定计划动作。
 

@@ -11,7 +11,7 @@ namespace TerrariaTools.Dome.Cli;
 /// <param name="OutputPath">输出路径。</param>
 /// <param name="RuleSet">规则集列表。</param>
 /// <param name="LogLevel">日志级别。</param>
-public sealed record DomeCliConfiguration(
+public sealed record DomeCliRunConfiguration(
     string? Command,
     string? InputPath,
     string? OutputPath,
@@ -26,9 +26,10 @@ public sealed record DomeCliConfiguration(
 /// <param name="IsSuccess">是否解析成功。</param>
 /// <param name="Request">运行请求。</param>
 /// <param name="ErrorMessage">错误信息。</param>
-public sealed record DomeCliParseResult(
+public sealed record DomeCliCommandParseResult(
     bool IsSuccess,
     RunRequest? Request,
+    TerrariaRuntimeRunRequest? TerrariaRuntimeRunRequest,
     string? ErrorMessage);
 
 /// <summary>
@@ -44,8 +45,12 @@ public static class DomeCliParser
           dome run <input-path> <output-path>
           dome analyze <input-path> <output-path>
           dome plan <input-path> <output-path>
+          dome tr-run
           dome --config <config-path>
         """;
+
+    private const string TrSolutionPath = @"D:\lodes\TR\Backup\New1.27\1.45\TR\TerrariaServer.sln";
+    private const string TrOutputRootPath = @"D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\tr-runtime";
 
     /// <summary>
     /// 异步解析命令行参数。
@@ -53,11 +58,11 @@ public static class DomeCliParser
     /// <param name="args">命令行参数数组。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>解析结果。</returns>
-    public static async Task<DomeCliParseResult> ParseAsync(string[] args, CancellationToken cancellationToken)
+    public static async Task<DomeCliCommandParseResult> ParseAsync(string[] args, CancellationToken cancellationToken)
     {
         if (args.Length == 0)
         {
-            return new DomeCliParseResult(false, null, UsageText);
+            return new DomeCliCommandParseResult(false, null, null, UsageText);
         }
 
         if (args.Length == 2 && string.Equals(args[0], "--config", StringComparison.OrdinalIgnoreCase))
@@ -65,25 +70,35 @@ public static class DomeCliParser
             return await ParseConfigAsync(args[1], cancellationToken);
         }
 
+        if (args.Length == 1 && string.Equals(args[0], "tr-run", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DomeCliCommandParseResult(
+                true,
+                null,
+                new TerrariaRuntimeRunRequest(TrSolutionPath, TrOutputRootPath),
+                null);
+        }
+
         if (args.Length < 3)
         {
-            return new DomeCliParseResult(false, null, UsageText);
+            return new DomeCliCommandParseResult(false, null, null, UsageText);
         }
 
         if (!TryParseMode(args[0], out var mode))
         {
-            return new DomeCliParseResult(false, null, $"Unknown command '{args[0]}'.{Environment.NewLine}{UsageText}");
+            return new DomeCliCommandParseResult(false, null, null, $"Unknown command '{args[0]}'.{Environment.NewLine}{UsageText}");
         }
 
         var optionsResult = ParseWorkspaceLoadOptions(args.Skip(3).ToArray());
         if (!optionsResult.IsSuccess)
         {
-            return new DomeCliParseResult(false, null, optionsResult.ErrorMessage);
+            return new DomeCliCommandParseResult(false, null, null, optionsResult.ErrorMessage);
         }
 
-        return new DomeCliParseResult(
+        return new DomeCliCommandParseResult(
             true,
             new RunRequest(args[1], args[2], Array.Empty<string>(), mode, optionsResult.Options!),
+            null,
             null);
     }
 
@@ -93,33 +108,33 @@ public static class DomeCliParser
     /// <param name="configPath">配置文件路径。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>解析结果。</returns>
-    private static async Task<DomeCliParseResult> ParseConfigAsync(string configPath, CancellationToken cancellationToken)
+    private static async Task<DomeCliCommandParseResult> ParseConfigAsync(string configPath, CancellationToken cancellationToken)
     {
         if (!File.Exists(configPath))
         {
-            return new DomeCliParseResult(false, null, $"Config file '{configPath}' was not found.");
+            return new DomeCliCommandParseResult(false, null, null, $"Config file '{configPath}' was not found.");
         }
 
         var json = await File.ReadAllTextAsync(configPath, cancellationToken);
-        var config = JsonSerializer.Deserialize<DomeCliConfiguration>(json);
+        var config = JsonSerializer.Deserialize<DomeCliRunConfiguration>(json);
         if (config?.InputPath == null || config.OutputPath == null)
         {
-            return new DomeCliParseResult(false, null, "Config file must specify InputPath and OutputPath.");
+            return new DomeCliCommandParseResult(false, null, null, "Config file must specify InputPath and OutputPath.");
         }
 
         var command = config.Command ?? "run";
         if (!TryParseMode(command, out var mode))
         {
-            return new DomeCliParseResult(false, null, $"Unknown config command '{command}'.");
+            return new DomeCliCommandParseResult(false, null, null, $"Unknown config command '{command}'.");
         }
 
         if (!string.IsNullOrWhiteSpace(config.Loader) &&
             !TryParseLoaderPreference(config.Loader, out _))
         {
-            return new DomeCliParseResult(false, null, $"Unknown config loader '{config.Loader}'.");
+            return new DomeCliCommandParseResult(false, null, null, $"Unknown config loader '{config.Loader}'.");
         }
 
-        return new DomeCliParseResult(
+        return new DomeCliCommandParseResult(
             true,
             new RunRequest(
                 config.InputPath,
@@ -127,6 +142,7 @@ public static class DomeCliParser
                 config.RuleSet ?? Array.Empty<string>(),
                 mode,
                 BuildWorkspaceLoadOptions(config.Loader, config.AllowFallbackToSourceOnly)),
+            null,
             null);
     }
 

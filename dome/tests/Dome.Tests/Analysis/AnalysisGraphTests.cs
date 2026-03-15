@@ -80,6 +80,33 @@ public class AnalysisGraphTests
         Assert.Contains(view.TypeGraph.Edges, edge => edge.Kind == TypeDependencyKind.MemberBodyReference);
     }
 
+    [Fact]
+    public async Task AnalyzeAsync_DoesNotFailWhenStaticMemberAccessHasNoContainingType()
+    {
+        var engine = new RoslynAnalysisEngine();
+        var document = new SourceDocument(
+            "Sample.cs",
+            "Sample.cs",
+            """
+            using Collections = System.Collections.Generic;
+
+            namespace Sample;
+
+            public class Worker
+            {
+                public object Create()
+                {
+                    return Collections.EqualityComparer<int>.Default;
+                }
+            }
+            """);
+
+        var result = await engine.AnalyzeAsync(new[] { document }, CancellationToken.None);
+
+        Assert.NotEmpty(result.View.Targets);
+        Assert.Contains(result.View.TypeGraph.Nodes, node => node.TypeId == "Sample.Worker");
+    }
+
     /// <summary>
     /// 测试分析异步方法为方法级规则投影方法事实。
     /// </summary>
@@ -180,13 +207,13 @@ public class AnalysisGraphTests
         var engine = new RoslynAnalysisEngine();
 
         var result = await engine.AnalyzeAsync(
-            new WorkspaceAnalysisInput(
+            new WorkspaceAnalysisContextInput(
                 workspace.CurrentSolution,
                 project,
                 Path.GetTempPath(),
                 new[]
                 {
-                    new WorkspaceDocumentContext(
+                    new WorkspaceAnalysisDocumentContext(
                         document,
                         new SourceDocument(
                             "Sample.cs",
@@ -257,13 +284,13 @@ public class AnalysisGraphTests
 
         var engine = new RoslynAnalysisEngine();
         var result = await engine.AnalyzeAsync(
-            new WorkspaceAnalysisInput(
+            new WorkspaceAnalysisContextInput(
                 workspace.CurrentSolution,
                 changedProject,
                 Path.GetTempPath(),
                 new[]
                 {
-                    new WorkspaceDocumentContext(
+                    new WorkspaceAnalysisDocumentContext(
                         changedDocument,
                         new SourceDocument("Sample.cs", "Sample.cs", originalText),
                         compilation,

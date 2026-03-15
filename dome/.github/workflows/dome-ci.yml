@@ -5,19 +5,20 @@ on:
     branches:
       - main
       - master
-      - 'codex/**'
+      - "codex/**"
   pull_request:
 
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+
 jobs:
-  build-test-smoke:
+  build:
     runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
         working-directory: .
-    env:
-      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
-      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
 
     steps:
       - name: Checkout
@@ -26,11 +27,72 @@ jobs:
       - name: Setup .NET 10 preview
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: "10.0.x"
           include-prerelease: true
 
       - name: Show SDK
         run: dotnet --version
+
+      - name: Build CLI
+        run: dotnet build .\src\Cli\Dome.Cli.csproj -nologo
+
+  test-suites:
+    needs: build
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Analysis
+            filter: "FullyQualifiedName~AnalysisGraphTests|FullyQualifiedName~AnalysisQueryServiceTests|FullyQualifiedName~DataFlowAnalysisTests|FullyQualifiedName~FunctionImpactAnalyzerTests|FullyQualifiedName~MemberIdBuilderTests|FullyQualifiedName~ReferenceZeroPredictionAnalyzerTests|FullyQualifiedName~WorkspaceLoadCoordinatorTests"
+          - name: Application
+            filter: "FullyQualifiedName~ArtifactPlanBuilderTests|FullyQualifiedName~DomeApplicationTests|FullyQualifiedName~RunReportBuilderTests"
+          - name: Rules
+            filter: "FullyQualifiedName~BoundaryPromotionEngineTests|FullyQualifiedName~MarkingRuleEngineTests|FullyQualifiedName~StatementPropagationEngineTests"
+          - name: Plan
+            filter: "FullyQualifiedName~AuditPlanCompilerTests|FullyQualifiedName~AuditPlanDedupTests"
+          - name: Cli
+            filter: "FullyQualifiedName~DomeCliParserTests"
+          - name: Rewrite
+            filter: "FullyQualifiedName~RewriteExecutorTests"
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 preview
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          include-prerelease: true
+
+      - name: Build CLI
+        run: dotnet build .\src\Cli\Dome.Cli.csproj -nologo
+
+      - name: Run ${{ matrix.name }} tests
+        run: dotnet test .\tests\Dome.Tests\Dome.Tests.csproj --no-build --filter "${{ matrix.filter }}"
+
+  full-test-and-smoke:
+    needs: build
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 preview
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          include-prerelease: true
 
       - name: Build CLI
         run: dotnet build .\src\Cli\Dome.Cli.csproj -nologo
@@ -72,11 +134,11 @@ jobs:
           $plan = Get-Content -Raw -Encoding utf8 .\.tmp\ci\expression-loop\plan\audit-plan.json | ConvertFrom-Json
           if ($plan.Changes.Count -ne 2) { throw "expression-loop plan should contain exactly 2 changes." }
 
-          $expressionMark = $plan.Changes | Where-Object { $_.Reason.RuleId -eq 'expression-mark' }
+          $expressionMark = @($plan.Changes | Where-Object { $_.Reason.RuleId -eq 'expression-mark' })
           if ($expressionMark.Count -ne 1) { throw "expression-loop should contain exactly 1 expression-mark change." }
           if ($expressionMark[0].Target.DisplayText -ne 'bool allowed = Run(value) && (value > 0);') { throw "expression-loop expression-mark target mismatch." }
 
-          $propagation = $plan.Changes | Where-Object { $_.Reason.RuleId -eq 'dataflow-propagation' }
+          $propagation = @($plan.Changes | Where-Object { $_.Reason.RuleId -eq 'dataflow-propagation' })
           if ($propagation.Count -ne 1) { throw "expression-loop should contain exactly 1 dataflow-propagation change." }
           if ($propagation[0].Target.DisplayText -ne 'return allowed;') { throw "expression-loop propagated target mismatch." }
 
@@ -90,6 +152,70 @@ jobs:
           if ($rewritten -match 'return allowed;') { throw "expression-loop propagated return should be removed." }
           if ($rewritten -notmatch 'public bool Update\(int value\)') { throw "expression-loop method declaration should remain." }
 
+      - name: Smoke test sanitization-loop sample
+        run: |
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\sanitization-loop .\.tmp\ci\sanitization-loop\plan
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\sanitization-loop .\.tmp\ci\sanitization-loop\run
+
+      - name: Validate sanitization-loop artifacts
+        run: |
+          $plan = Get-Content -Raw -Encoding utf8 .\.tmp\ci\sanitization-loop\plan\audit-plan.json | ConvertFrom-Json
+          if ($plan.Changes.Count -ne 2) { throw "sanitization-loop plan should contain exactly 2 changes." }
+          if (-not ($plan.Changes | Where-Object { $_.Reason.RuleId -eq 'dome:delete' -and $_.Target.DisplayText -eq 'int count = 1;' })) { throw "sanitization-loop direct delete missing." }
+          if (-not ($plan.Changes | Where-Object { $_.Reason.RuleId -eq 'dataflow-propagation' -and $_.Target.DisplayText -eq 'int next = count;' })) { throw "sanitization-loop propagation missing." }
+          if ($plan.Changes | Where-Object { $_.Target.DisplayText -eq 'int final = next;' }) { throw "sanitization-loop should stop before int final = next;." }
+
+          $report = Get-Content -Raw -Encoding utf8 .\.tmp\ci\sanitization-loop\run\report.json | ConvertFrom-Json
+          if (-not $report.IsSuccess) { throw "sanitization-loop run should succeed." }
+          if ($report.PlannedChanges -ne 2) { throw "sanitization-loop PlannedChanges should be 2." }
+
+          $rewritten = Get-Content -Raw -Encoding utf8 .\.tmp\ci\sanitization-loop\run\rewritten\Player.cs
+          if ($rewritten -match 'int count = 1;') { throw "sanitization-loop seed statement should be removed." }
+          if ($rewritten -match 'int next = count;') { throw "sanitization-loop propagated statement should be removed." }
+          if ($rewritten -notmatch 'next = 0;') { throw "sanitization-loop sanitizing assignment should remain." }
+          if ($rewritten -notmatch 'int final = next;') { throw "sanitization-loop post-sanitize statement should remain." }
+
+      - name: Smoke test protection-loop sample
+        run: |
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\protection-loop .\.tmp\ci\protection-loop\plan
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\protection-loop .\.tmp\ci\protection-loop\run
+
+      - name: Validate protection-loop artifacts
+        run: |
+          $plan = Get-Content -Raw -Encoding utf8 .\.tmp\ci\protection-loop\plan\audit-plan.json | ConvertFrom-Json
+          if ($plan.Changes.Count -ne 1) { throw "protection-loop plan should contain exactly 1 change." }
+          if ($plan.Changes[0].Reason.RuleId -ne 'expression-mark') { throw "protection-loop should only contain the projected direct delete." }
+          if ($plan.Changes[0].Target.DisplayText -ne 'int count = seed;') { throw "protection-loop direct target mismatch." }
+
+          $report = Get-Content -Raw -Encoding utf8 .\.tmp\ci\protection-loop\run\report.json | ConvertFrom-Json
+          if (-not $report.IsSuccess) { throw "protection-loop run should succeed." }
+          if ($report.PlannedChanges -ne 1) { throw "protection-loop PlannedChanges should be 1." }
+
+          $rewritten = Get-Content -Raw -Encoding utf8 .\.tmp\ci\protection-loop\run\rewritten\Player.cs
+          if ($rewritten -match 'int count = seed;') { throw "protection-loop direct seed statement should be removed." }
+          if ($rewritten -notmatch 'var item = new Item') { throw "protection-loop initializer should remain." }
+          if ($rewritten -notmatch 'Value = count') { throw "protection-loop initializer value should remain." }
+          if ($rewritten -notmatch 'int next = count;') { throw "protection-loop downstream statement should remain." }
+          if ($rewritten -notmatch 'return next;') { throw "protection-loop return should remain." }
+
+      - name: Smoke test promotion-loop sample
+        run: |
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- plan .\samples\promotion-loop .\.tmp\ci\promotion-loop\plan
+          dotnet run --project .\src\Cli\Dome.Cli.csproj -- run .\samples\promotion-loop .\.tmp\ci\promotion-loop\run
+
+      - name: Validate promotion-loop artifacts
+        run: |
+          $plan = Get-Content -Raw -Encoding utf8 .\.tmp\ci\promotion-loop\plan\audit-plan.json | ConvertFrom-Json
+          if (-not ($plan.Changes | Where-Object { $_.Reason.RuleId -eq 'expression-mark' -and $_.Target.DisplayText -eq 'Run(copy);' })) { throw "promotion-loop direct delete missing." }
+          if (-not ($plan.Changes | Where-Object { $_.Reason.RuleId -eq 'boundary-promotion' -and $_.Target.TargetKind -eq 'Method' -and $_.Target.MemberId.Value -eq 'Sample.Player.Run(int)' })) { throw "promotion-loop boundary promotion missing." }
+
+          $report = Get-Content -Raw -Encoding utf8 .\.tmp\ci\promotion-loop\run\report.json | ConvertFrom-Json
+          if (-not $report.IsSuccess) { throw "promotion-loop run should succeed." }
+
+          $rewritten = Get-Content -Raw -Encoding utf8 .\.tmp\ci\promotion-loop\run\rewritten\Player.cs
+          if ($rewritten -match 'Run\(copy\);') { throw "promotion-loop invocation should be removed." }
+          if ($rewritten -match 'private void Run\(int value\)') { throw "promotion-loop promoted method should be removed." }
+
       - name: Upload smoke artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,3 +224,6 @@ jobs:
           path: |
             .tmp/ci/closed-loop/**
             .tmp/ci/expression-loop/**
+            .tmp/ci/sanitization-loop/**
+            .tmp/ci/protection-loop/**
+            .tmp/ci/promotion-loop/**

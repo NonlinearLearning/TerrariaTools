@@ -17,7 +17,7 @@ Core 层的目标是：
 Core 本身没有运行期“输入输出文件”，它输出的是可复用的类型系统：
 
 - 输入侧模型：`RunRequest`、`AnalysisInput`
-- 分析侧模型：`AnalysisView`、`AnalysisTarget`
+- 分析侧模型：`AnalysisResultModel`、`AnalysisTarget`
 - 规则侧模型：`MarkDecision`
 - 计划侧模型：`AuditPlan`、`PlanConflict`
 - 输出侧模型：`RunReport`
@@ -28,9 +28,9 @@ Core 本身没有运行期“输入输出文件”，它输出的是可复用的
 | --- | --- | --- |
 | `RunRequest` | 表示一次 CLI/Application 运行请求 | `Cli`、`Application` |
 | `RunResult` | 表示一次运行的最终成败 | `Application`、`Cli` |
-| `AnalysisInput` / `SourceOnlyAnalysisInput` / `WorkspaceAnalysisInput` | 统一分析输入抽象 | `WorkspaceLoader`、`RoslynAnalysisEngine` |
+| `AnalysisInput` / `SourceOnlyAnalysisInput` / `WorkspaceAnalysisContextInput` | 统一分析输入抽象 | `WorkspaceLoader`、`RoslynAnalysisEngine` |
 | `WorkspaceLoadResult` | 表示输入加载结果与诊断 | `Analysis`、`Application` |
-| `AnalysisView` | 静态分析的正式输出视图 | `Analysis`、`Rules`、`Reporting` |
+| `AnalysisResultModel` | 静态分析的正式输出视图 | `Analysis`、`Rules`、`Reporting` |
 | `FunctionIndex` / `FunctionFactsIndex` | 函数索引与函数事实 | `Analysis`、`Rules`、`Application` |
 | `IFunctionGraphProvider` | 惰性函数图快照入口 | `Analysis`、`Application` |
 | `IStatementAnalysisService` | 局部 statement snapshot 分析入口 | `Analysis`、`Rules` |
@@ -46,7 +46,7 @@ Core 本身没有运行期“输入输出文件”，它输出的是可复用的
 通过共享模型把流程切成清晰阶段：
 
 - 入口：`RunRequest`
-- 分析：`AnalysisView`
+- 分析：`AnalysisResultModel`
 - 决策：`MarkDecision`
 - 计划：`AuditPlan`
 - 落地与汇报：`RunReport`
