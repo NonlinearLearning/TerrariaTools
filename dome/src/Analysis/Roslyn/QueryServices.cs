@@ -98,17 +98,20 @@ internal sealed class ReferenceQueryService : IReferenceQueryService
     /// <returns>引用函数列表。</returns>
     public IReadOnlyList<MemberId> GetReferencingFunctions(string symbolOrMemberId)
     {
+        var results = new HashSet<MemberId>();
         if (_memberToFunctions.TryGetValue(symbolOrMemberId, out var memberFunctions))
         {
-            return memberFunctions.OrderBy(item => item.Value, StringComparer.Ordinal).ToArray();
+            results.UnionWith(memberFunctions);
         }
 
         if (_typeToFunctions.TryGetValue(symbolOrMemberId, out var typeFunctions))
         {
-            return typeFunctions.OrderBy(item => item.Value, StringComparer.Ordinal).ToArray();
+            results.UnionWith(typeFunctions);
         }
 
-        return Array.Empty<MemberId>();
+        return results.Count == 0
+            ? Array.Empty<MemberId>()
+            : results.OrderBy(item => item.Value, StringComparer.Ordinal).ToArray();
     }
 
     /// <summary>
@@ -118,16 +121,19 @@ internal sealed class ReferenceQueryService : IReferenceQueryService
     /// <returns>引用类型列表。</returns>
     public IReadOnlyList<string> GetReferencingTypes(string symbolOrMemberId)
     {
+        var results = new HashSet<string>(StringComparer.Ordinal);
         if (_memberToTypes.TryGetValue(symbolOrMemberId, out var memberTypes))
         {
-            return memberTypes.OrderBy(item => item, StringComparer.Ordinal).ToArray();
+            results.UnionWith(memberTypes);
         }
 
         if (_typeToTypes.TryGetValue(symbolOrMemberId, out var typeTypes))
         {
-            return typeTypes.OrderBy(item => item, StringComparer.Ordinal).ToArray();
+            results.UnionWith(typeTypes);
         }
 
-        return Array.Empty<string>();
+        return results.Count == 0
+            ? Array.Empty<string>()
+            : results.OrderBy(item => item, StringComparer.Ordinal).ToArray();
     }
 }
