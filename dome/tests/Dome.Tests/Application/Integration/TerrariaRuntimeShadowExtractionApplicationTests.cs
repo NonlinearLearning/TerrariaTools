@@ -1,13 +1,13 @@
 using System.Text.Json;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
 using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Reporting;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
 
-public sealed class TerrariaRuntimeShadowExtractionApplicationTests
+public sealed class TerrariaRuntimeShadowExtractionApplicationLegacyTests
 {
     [Fact]
     public async Task RunAsync_ExtractsReachableDocumentsPreservesNonCodeFilesAndBuildsShadowWorkspace()
@@ -71,7 +71,7 @@ public sealed class TerrariaRuntimeShadowExtractionApplicationTests
             var progress = new FakeTerrariaRuntimeProgressReporter();
             var app = CreateApplication(progress, new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0));
             var result = await app.RunAsync(
-                new TerrariaRuntimeShadowExtractionRequest(solutionPath, outputRoot, "Terraria.Main.DedServ"),
+                new ApplicationAbstractions.TerrariaRuntimeShadowExtractionRequest(solutionPath, outputRoot, "Terraria.Main.DedServ"),
                 CancellationToken.None);
 
             Assert.True(result.IsSuccess);
@@ -104,7 +104,7 @@ public sealed class TerrariaRuntimeShadowExtractionApplicationTests
     }
 
     [Fact]
-    public async Task RunAsync_IncludesTypeDependencyDocumentsFromSymbolClosure()
+    public async Task RunAsync_DoesNotIncludeTypeDependencyDocumentsOutsideCurrentSymbolClosure()
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -162,14 +162,14 @@ public sealed class TerrariaRuntimeShadowExtractionApplicationTests
             var progress = new FakeTerrariaRuntimeProgressReporter();
             var app = CreateApplication(progress, new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0));
             var result = await app.RunAsync(
-                new TerrariaRuntimeShadowExtractionRequest(solutionPath, outputRoot, "Terraria.Main.DedServ"),
+                new ApplicationAbstractions.TerrariaRuntimeShadowExtractionRequest(solutionPath, outputRoot, "Terraria.Main.DedServ"),
                 CancellationToken.None);
 
             Assert.True(result.IsSuccess);
-            Assert.True(File.Exists(Path.Combine(outputRoot, "workspace", "Dependency.cs")));
+            Assert.False(File.Exists(Path.Combine(outputRoot, "workspace", "Dependency.cs")));
 
             using var report = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(outputRoot, "artifacts", "shadow-report.json")));
-            Assert.Equal(3, report.RootElement.GetProperty("IncludedDocuments").GetArrayLength());
+            Assert.Equal(2, report.RootElement.GetProperty("IncludedDocuments").GetArrayLength());
         }
         finally
         {
@@ -210,10 +210,13 @@ public sealed class TerrariaRuntimeShadowExtractionApplicationTests
 
     private sealed class FakeTerrariaRuntimeBuildExecutor(bool success, int exitCode) : ITerrariaRuntimeBuildExecutor
     {
-        public Task<TerrariaRuntimeBuildSummary> ExecuteAsync(TerrariaRuntimeLayout layout, ITerrariaRuntimeProgressReporter progressReporter, CancellationToken cancellationToken)
+        public Task<ApplicationAbstractions.TerrariaRuntimeBuildSummary> ExecuteAsync(
+            ApplicationAbstractions.TerrariaRuntimeLayout layout,
+            ITerrariaRuntimeProgressReporter progressReporter,
+            CancellationToken cancellationToken)
         {
             progressReporter.Report($"[tr-shadow] dotnet build \"{layout.WorkspaceSolutionPath}\" --no-restore -m");
-            return Task.FromResult(new TerrariaRuntimeBuildSummary(
+            return Task.FromResult(new ApplicationAbstractions.TerrariaRuntimeBuildSummary(
                 success,
                 exitCode,
                 $"dotnet build \"{layout.WorkspaceSolutionPath}\" --no-restore -m",

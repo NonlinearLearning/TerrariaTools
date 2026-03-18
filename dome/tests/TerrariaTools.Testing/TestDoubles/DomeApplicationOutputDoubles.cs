@@ -1,5 +1,7 @@
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
 
 namespace TerrariaTools.Testing.TestDoubles;
 
@@ -22,15 +24,15 @@ public sealed class FakeRewriteOutputStore : IRewriteOutputStore
 
 public sealed class FakeArtifactEmissionService : IArtifactEmissionService
 {
-    public List<(string OutputPath, ArtifactPlan ArtifactPlan, AuditPlan? Plan, RunReport Report, AnalysisResultModel? AnalysisView)> Calls { get; } = [];
+    public List<(string OutputPath, ArtifactPlan ArtifactPlan, ModelPlanning.AuditPlan? Plan, ApplicationAbstractions.RunReport Report, ModelAnalysis.AnalysisResultModel? AnalysisView)> Calls { get; } = [];
     public string? FailureMessage { get; set; }
 
     public Task EmitAsync(
         string outputPath,
         ArtifactPlan artifactPlan,
-        AuditPlan? plan,
-        RunReport report,
-        AnalysisResultModel? analysisView,
+        ModelPlanning.AuditPlan? plan,
+        ApplicationAbstractions.RunReport report,
+        ModelAnalysis.AnalysisResultModel? analysisView,
         CancellationToken cancellationToken)
     {
         if (FailureMessage != null)

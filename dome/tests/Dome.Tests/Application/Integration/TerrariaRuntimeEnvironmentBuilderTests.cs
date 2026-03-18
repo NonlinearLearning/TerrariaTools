@@ -1,10 +1,10 @@
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
 
-public sealed class TerrariaRuntimeEnvironmentBuilderTests
+public sealed class TerrariaRuntimeEnvironmentBuilderLegacyTests
 {
     [Fact]
     public async Task RefreshDependencyEnvironmentAsync_CopiesOnlyNonCsFiles()
@@ -21,8 +21,8 @@ public sealed class TerrariaRuntimeEnvironmentBuilderTests
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "Config", "settings.json"), "{ }");
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "TerrariaServer.sln"), "solution");
 
-            var request = new TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
-            var layout = TerrariaRuntimeLayout.Create(request);
+            var request = new ApplicationAbstractions.TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
+            var layout = ApplicationAbstractions.TerrariaRuntimeLayout.Create(request);
             var builder = new TerrariaRuntimeEnvironmentBuilder();
             var progress = new FakeTerrariaRuntimeProgressReporter();
 
@@ -57,8 +57,8 @@ public sealed class TerrariaRuntimeEnvironmentBuilderTests
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "TerrariaServer.sln"), "solution");
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "TerrariaServer.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
 
-            var request = new TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
-            var layout = TerrariaRuntimeLayout.Create(request);
+            var request = new ApplicationAbstractions.TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
+            var layout = ApplicationAbstractions.TerrariaRuntimeLayout.Create(request);
             var builder = new TerrariaRuntimeEnvironmentBuilder();
             var progress = new FakeTerrariaRuntimeProgressReporter();
             await builder.RefreshDependencyEnvironmentAsync(layout, progress, CancellationToken.None);
@@ -106,8 +106,8 @@ public sealed class TerrariaRuntimeEnvironmentBuilderTests
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "Config", "settings.json"), "{ }");
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "TerrariaServer.sln"), "solution");
 
-            var request = new TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
-            var layout = TerrariaRuntimeLayout.Create(request);
+            var request = new ApplicationAbstractions.TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
+            var layout = ApplicationAbstractions.TerrariaRuntimeLayout.Create(request);
             var builder = new TerrariaRuntimeEnvironmentBuilder();
             var progress = new FakeTerrariaRuntimeProgressReporter();
 

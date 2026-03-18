@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace TerrariaTools.Testing.Assertions;
@@ -27,7 +27,8 @@ public static class TestSuiteLayoutAuditor
         AssertDomeTestingContainsOnlySupportFolders(domeTestsRoot);
         AssertUnitTestsAvoidDirectEnvironmentIo(domeTestsRoot);
         AssertDomeTestingAvoidsGenericHelpers(domeTestsRoot);
-        AssertApplicationIntegrationStaysEndToEnd(domeTestsRoot);
+        AssertSharedTestingBoundary(sharedTestingRoot);
+        AssertApplicationIntegrationStaysWithinApprovedSurface(domeTestsRoot);
         AssertSnapshotsStayOutOfSharedTesting(sharedTestingRoot);
         AssertSnapshotsRemainColocated(domeTestsRoot);
     }
@@ -138,7 +139,7 @@ public static class TestSuiteLayoutAuditor
             .Where(path =>
             {
                 var content = File.ReadAllText(path);
-                return content.Contains("class RecordingProcessRunner", StringComparison.Ordinal) ||
+                return content.Contains("class RecordingProcessCompatibilityRunner", StringComparison.Ordinal) ||
                        content.Contains("class FakeRewriteOutputStore", StringComparison.Ordinal) ||
                        content.Contains("class FakeArtifactEmissionService", StringComparison.Ordinal);
             })
@@ -150,7 +151,44 @@ public static class TestSuiteLayoutAuditor
             $"Generic recording/store helpers must live in TerrariaTools.Testing, not DomeTesting. Offenders:{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
     }
 
-    private static void AssertApplicationIntegrationStaysEndToEnd(string domeTestsRoot)
+    private static void AssertSharedTestingBoundary(string sharedTestingRoot)
+    {
+        if (!Directory.Exists(sharedTestingRoot))
+        {
+            return;
+        }
+
+        var allowedRuntimeFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "TestSuiteLayoutAuditor.cs",
+            "RecordingProcessRunner.cs",
+            "RuntimeLayoutCompatibilityBuilder.cs"
+        };
+
+        var offenders = Directory.GetFiles(sharedTestingRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path =>
+            {
+                var fileName = Path.GetFileName(path);
+                if (allowedRuntimeFiles.Contains(fileName))
+                {
+                    return false;
+                }
+
+                var content = File.ReadAllText(path);
+                return content.Contains("ITerrariaRuntime", StringComparison.Ordinal) ||
+                       content.Contains("TerrariaRuntimeShadow", StringComparison.Ordinal) ||
+                       content.Contains("ShadowClosurePlan", StringComparison.Ordinal) ||
+                       content.Contains("IShadow", StringComparison.Ordinal);
+            })
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            $"TerrariaTools.Testing should not accumulate runtime/shadow-specific helpers beyond the approved seam files. Offenders:{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
+    }
+
+    private static void AssertApplicationIntegrationStaysWithinApprovedSurface(string domeTestsRoot)
     {
         var applicationIntegrationRoot = Path.Combine(domeTestsRoot, "Application", "Integration");
         if (!Directory.Exists(applicationIntegrationRoot))
@@ -158,27 +196,22 @@ public static class TestSuiteLayoutAuditor
             return;
         }
 
-        var bannedMethodNameParts = new[]
+        var allowedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "Failure",
-            "ConflictSummary",
-            "RiskSummary",
-            "FunctionImpactSummary",
-            "BoundaryPromotion",
-            "ReferenceZeroPrediction"
+            "DomeApplicationTests.cs",
+            "TerrariaRuntimeApplicationTests.cs",
+            "TerrariaRuntimeEnvironmentBuilderTests.cs",
+            "TerrariaRuntimeShadowExtractionApplicationTests.cs"
         };
 
         var offenders = Directory.GetFiles(applicationIntegrationRoot, "*.cs", SearchOption.AllDirectories)
-            .SelectMany(path => File.ReadAllLines(path)
-                .Where(line => line.Contains("public async Task", StringComparison.Ordinal))
-                .Where(line => bannedMethodNameParts.Any(part => line.Contains(part, StringComparison.Ordinal)))
-                .Select(line => $"{path}: {line.Trim()}"))
-            .OrderBy(line => line, StringComparer.Ordinal)
+            .Where(path => !allowedFiles.Contains(Path.GetFileName(path)))
+            .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
 
         Assert.True(
             offenders.Length == 0,
-            $"Application/Integration should keep end-to-end samples only, not failure/summary-focused tests. Offenders:{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
+            $"Application/Integration should stay a small approved end-to-end surface. Offenders:{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
     }
 
     private static bool HasMatchingTestFile(string baselinePath)
@@ -212,3 +245,4 @@ public static class TestSuiteLayoutAuditor
         return directory ?? throw new InvalidOperationException($"Unable to locate '{expectedName}' from '{sourceFilePath}'.");
     }
 }
+

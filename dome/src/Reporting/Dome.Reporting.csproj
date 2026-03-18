@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Core\Dome.Core.csproj" />
+    <ProjectReference Include="..\Application\Abstractions\Dome.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\Model\Analysis\Dome.Model.Analysis.csproj" />
+    <ProjectReference Include="..\Model\Planning\Dome.Model.Planning.csproj" />
+    <ProjectReference Include="..\Model\Primitives\Dome.Model.Primitives.csproj" />
+    <ProjectReference Include="..\Model\Rules\Dome.Model.Rules.csproj" />
   </ItemGroup>
 </Project>

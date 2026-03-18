@@ -1,5 +1,5 @@
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
 using TerrariaTools.Dome.Cli;
-using TerrariaTools.Dome.Core;
 using TerrariaTools.Testing.TestBuilders;
 using TerrariaTools.Testing.TestFixtures;
 using Xunit;
@@ -33,7 +33,7 @@ public sealed class DomeCliParserConfigFileTests : IClassFixture<TemporaryDirect
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Request);
-        Assert.Equal(WorkspaceLoaderPreference.SourceOnly, result.Request!.WorkspaceLoadOptions.PreferredLoader);
+        Assert.Equal(ApplicationAbstractions.WorkspaceLoaderPreference.SourceOnly, result.Request!.WorkspaceLoadOptions.PreferredLoader);
         Assert.False(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
     }
 

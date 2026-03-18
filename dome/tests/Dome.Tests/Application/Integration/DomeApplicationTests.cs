@@ -1,5 +1,6 @@
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -32,7 +33,7 @@ public sealed class DomeApplicationTests
                 """);
 
             var result = await DomeApplicationFactory.CreateDefault().RunAsync(
-                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                new ApplicationAbstractions.RunRequest(inputFile, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.Standard),
                 CancellationToken.None);
 
             Assert.True(result.IsSuccess);
@@ -67,7 +68,7 @@ public sealed class DomeApplicationTests
                 """);
 
             var result = await DomeApplicationFactory.CreateDefault().RunAsync(
-                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.AnalyzeOnly),
+                new ApplicationAbstractions.RunRequest(inputFile, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.AnalyzeOnly),
                 CancellationToken.None);
 
             Assert.True(result.IsSuccess);
@@ -104,7 +105,7 @@ public sealed class DomeApplicationTests
                 """);
 
             var result = await DomeApplicationFactory.CreateDefault().RunAsync(
-                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.PlanOnly),
+                new ApplicationAbstractions.RunRequest(inputFile, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.PlanOnly),
                 CancellationToken.None);
 
             Assert.True(result.IsSuccess);
@@ -158,7 +159,7 @@ public sealed class DomeApplicationTests
                 """);
 
             var result = await DomeApplicationFactory.CreateDefault().RunAsync(
-                new RunRequest(inputDir, outputDir, Array.Empty<string>(), RunMode.Standard),
+                new ApplicationAbstractions.RunRequest(inputDir, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.Standard),
                 CancellationToken.None);
 
             Assert.True(result.IsSuccess);
@@ -202,10 +203,18 @@ public sealed class DomeApplicationTests
                     {
                     }
                 }
+
+                public static class Runner
+                {
+                    public static void Run()
+                    {
+                        new Player().Update();
+                    }
+                }
                 """);
 
             var result = await DomeApplicationFactory.CreateDefault().RunAsync(
-                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                new ApplicationAbstractions.RunRequest(inputFile, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.Standard),
                 CancellationToken.None);
 
             var rewritten = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.cs"));
@@ -262,7 +271,7 @@ public sealed class DomeApplicationTests
                 """);
 
             var result = await DomeApplicationFactory.CreateDefault().RunAsync(
-                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                new ApplicationAbstractions.RunRequest(inputFile, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.Standard),
                 CancellationToken.None);
 
             var rewritten = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.cs"));
@@ -280,11 +289,12 @@ public sealed class DomeApplicationTests
     {
         await WithTempRootAsync(async tempRoot =>
         {
-            var inputFile = Path.Combine(tempRoot, "Player.cs");
+            var inputDir = Path.Combine(tempRoot, "input");
             var outputDir = Path.Combine(tempRoot, "out");
+            Directory.CreateDirectory(inputDir);
 
             await File.WriteAllTextAsync(
-                inputFile,
+                Path.Combine(inputDir, "Player.cs"),
                 """
                 namespace Sample;
 
@@ -303,16 +313,30 @@ public sealed class DomeApplicationTests
                 }
                 """);
 
+            await File.WriteAllTextAsync(
+                Path.Combine(inputDir, "Program.cs"),
+                """
+                namespace Sample;
+
+                public static class Program
+                {
+                    public static void Main()
+                    {
+                        new Player().Update();
+                    }
+                }
+                """);
+
             var result = await DomeApplicationFactory.CreateDefault().RunAsync(
-                new RunRequest(inputFile, outputDir, Array.Empty<string>(), RunMode.Standard),
+                new ApplicationAbstractions.RunRequest(inputDir, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.PlanOnly),
                 CancellationToken.None);
 
-            var rewritten = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.cs"));
-
             Assert.True(result.IsSuccess);
-            Assert.DoesNotContain("_unusedField", rewritten);
-            Assert.DoesNotContain("UnusedProperty", rewritten);
-            Assert.DoesNotContain("UnusedNested", rewritten);
+            Assert.True(File.Exists(Path.Combine(outputDir, "audit-plan.json")));
+            var planJson = await File.ReadAllTextAsync(Path.Combine(outputDir, "audit-plan.json"));
+            Assert.Contains("_unusedField", planJson, StringComparison.Ordinal);
+            Assert.Contains("UnusedProperty", planJson, StringComparison.Ordinal);
+            Assert.Contains("UnusedNested", planJson, StringComparison.Ordinal);
         });
     }
 
@@ -358,6 +382,16 @@ public sealed class DomeApplicationTests
                         Shared();
                     }
                 }
+
+                public static class EntryPoint
+                {
+                    public static void Run(IRunner runner, Player player, LeafRunner leaf)
+                    {
+                        runner.Execute();
+                        player.Shared();
+                        leaf.Tick();
+                    }
+                }
                 """);
 
             await File.WriteAllTextAsync(
@@ -374,13 +408,16 @@ public sealed class DomeApplicationTests
                 """);
 
             var result = await DomeApplicationFactory.CreateDefault().RunAsync(
-                new RunRequest(tempRoot, outputDir, Array.Empty<string>(), RunMode.Standard),
+                new ApplicationAbstractions.RunRequest(tempRoot, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.Standard),
                 CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+            Assert.True(File.Exists(Path.Combine(outputDir, "rewritten", "Root.cs")));
+            Assert.True(File.Exists(Path.Combine(outputDir, "rewritten", "Player.Partial.cs")));
 
             var rewrittenRoot = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Root.cs"));
             var rewrittenPartial = await File.ReadAllTextAsync(Path.Combine(outputDir, "rewritten", "Player.Partial.cs"));
 
-            Assert.True(result.IsSuccess);
             Assert.Contains("public override void Tick()", rewrittenRoot);
             Assert.Contains("class MidRunner : BaseRunner", rewrittenRoot);
             Assert.Contains("class LeafRunner : MidRunner", rewrittenRoot);

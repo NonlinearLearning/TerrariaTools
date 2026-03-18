@@ -1,53 +1,42 @@
 namespace TerrariaTools.Dome.Analysis.Roslyn;
 
-using TerrariaTools.Dome.Core;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 
-/// <summary>
-/// 函数删除影响分析器。
-/// </summary>
-public sealed class FunctionImpactAnalyzer : IFunctionImpactAnalyzer
+public sealed partial class FunctionImpactAnalyzer : ApplicationAbstractions.IFunctionImpactAnalyzer
 {
-    /// <summary>
-    /// 分析函数删除对其他函数的影响。
-    /// </summary>
-    /// <param name="plan">审计计划。</param>
-    /// <param name="services">分析服务。</param>
-    /// <param name="request">函数图请求。</param>
-    /// <returns>受影响的函数集合。</returns>
-    public FunctionImpactSet Analyze(
-        AuditPlan plan,
-        AnalysisServices services,
-        FunctionGraphRequest request)
-    {
-        return Analyze(plan, services.FunctionGraphs.GetSnapshot(request));
-    }
+    ModelPlanning.FunctionImpactSet ApplicationAbstractions.IFunctionImpactAnalyzer.Analyze(
+        ModelPlanning.AuditPlan plan,
+        ModelAnalysis.AnalysisServices services,
+        ModelAnalysis.FunctionGraphRequest request) =>
+        ((ApplicationAbstractions.IFunctionImpactAnalyzer)this).Analyze(plan, services.FunctionGraphs.GetSnapshot(request));
 
-    /// <summary>
-    /// 仅基于 Calls 边计算函数删除的一跳影响范围。
-    /// </summary>
-    public FunctionImpactSet Analyze(AuditPlan plan, FunctionGraphSnapshot snapshot)
+    ModelPlanning.FunctionImpactSet ApplicationAbstractions.IFunctionImpactAnalyzer.Analyze(
+        ModelPlanning.AuditPlan plan,
+        ModelAnalysis.FunctionGraphSnapshot snapshot)
     {
         var deletedFunctionIds = plan.Changes
-            .Where(change => change.Target.TargetKind == TargetKind.Method && change.Action.Kind == PlanActionKind.Delete)
+            .Where(change => change.Target.TargetKind == ModelPrimitives.TargetKind.Method && change.Action.Kind == ModelPrimitives.PlanActionKind.Delete)
             .Select(change => change.Target.MemberId.Value)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         if (deletedFunctionIds.Length == 0)
         {
-            return new FunctionImpactSet(
+            return new ModelPlanning.FunctionImpactSet(
                 Array.Empty<string>(),
                 Array.Empty<string>(),
                 Array.Empty<string>(),
                 1,
-                new[] { FunctionDependencyKind.Calls });
+                new[] { ModelPrimitives.FunctionDependencyKind.Calls });
         }
 
         var deletedFunctionSet = deletedFunctionIds.ToHashSet(StringComparer.Ordinal);
         var affectedFunctionIds = new HashSet<string>(StringComparer.Ordinal);
 
-        var functionGraph = snapshot.Graph;
-        foreach (var edge in functionGraph.Edges.Where(edge => edge.Kind == FunctionDependencyKind.Calls))
+        foreach (var edge in snapshot.Graph.Edges.Where(edge => edge.Kind == ModelPrimitives.FunctionDependencyKind.Calls))
         {
             if (deletedFunctionSet.Contains(edge.TargetMemberId.Value) &&
                 !deletedFunctionSet.Contains(edge.SourceMemberId.Value))
@@ -62,18 +51,18 @@ public sealed class FunctionImpactAnalyzer : IFunctionImpactAnalyzer
             }
         }
 
-        var affectedDocumentPaths = functionGraph.Nodes
+        var affectedDocumentPaths = snapshot.Graph.Nodes
             .Where(node => affectedFunctionIds.Contains(node.MemberId.Value))
             .Select(node => node.DocumentPath)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
 
-        return new FunctionImpactSet(
+        return new ModelPlanning.FunctionImpactSet(
             deletedFunctionIds,
             affectedFunctionIds.OrderBy(id => id, StringComparer.Ordinal).ToArray(),
             affectedDocumentPaths,
             1,
-            new[] { FunctionDependencyKind.Calls });
+            new[] { ModelPrimitives.FunctionDependencyKind.Calls });
     }
 }

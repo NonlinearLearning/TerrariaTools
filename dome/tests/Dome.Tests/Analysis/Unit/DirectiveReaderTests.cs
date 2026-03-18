@@ -1,12 +1,12 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 using TerrariaTools.Dome.Analysis.Roslyn;
-using TerrariaTools.Dome.Core;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;
 
-public sealed class DirectiveReaderTests
+public sealed class DirectiveReaderLegacyTests
 {
     [Fact]
     public void Read_NoLeadingComment_ReturnsEmptyList()
@@ -24,7 +24,7 @@ public sealed class DirectiveReaderTests
         var directives = DirectiveReader.Read(ParseStatement("// dome:delete\nvalue++;"));
 
         var directive = Assert.Single(directives);
-        Assert.Equal(PlanActionKind.Delete, directive.ActionKind);
+        Assert.Equal(ModelPrimitives.PlanActionKind.Delete, directive.ActionKind);
         Assert.Null(directive.Payload);
     }
 
@@ -34,7 +34,7 @@ public sealed class DirectiveReaderTests
         var directives = DirectiveReader.Read(ParseStatement("// dome:comment\nvalue++;"));
 
         var directive = Assert.Single(directives);
-        Assert.Equal(PlanActionKind.CommentOut, directive.ActionKind);
+        Assert.Equal(ModelPrimitives.PlanActionKind.CommentOut, directive.ActionKind);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public sealed class DirectiveReaderTests
         var directives = DirectiveReader.Read(ParseStatement("// dome:default\nvalue++;"));
 
         var directive = Assert.Single(directives);
-        Assert.Equal(PlanActionKind.ReplaceWithDefault, directive.ActionKind);
+        Assert.Equal(ModelPrimitives.PlanActionKind.ReplaceWithDefault, directive.ActionKind);
         Assert.Equal("default", directive.Payload);
     }
 
@@ -53,7 +53,7 @@ public sealed class DirectiveReaderTests
         var directives = DirectiveReader.Read(ParseStatement("// DOME:DELETE\nvalue++;"));
 
         Assert.Single(directives);
-        Assert.Equal(PlanActionKind.Delete, directives[0].ActionKind);
+        Assert.Equal(ModelPrimitives.PlanActionKind.Delete, directives[0].ActionKind);
     }
 
     [Fact]
@@ -75,6 +75,10 @@ public sealed class DirectiveReaderTests
                 }
             }
             """);
-        return tree.GetCompilationUnitRoot().DescendantNodes().OfType<StatementSyntax>().Single();
+        var method = tree.GetCompilationUnitRoot()
+            .DescendantNodes()
+            .OfType<MethodDeclarationSyntax>()
+            .Single();
+        return method.Body!.Statements.Single();
     }
 }

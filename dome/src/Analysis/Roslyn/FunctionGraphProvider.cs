@@ -1,61 +1,62 @@
 namespace TerrariaTools.Dome.Analysis.Roslyn;
 
-using TerrariaTools.Dome.Core;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 
 /// <summary>
-/// 提供函数调用图快照数据。
+/// Provides function graph snapshots for the model-native analysis pipeline.
 /// </summary>
-public sealed class FunctionGraphProvider(
-    FunctionIndex functionIndex,
-    FunctionFactsIndex functionFacts) : IFunctionGraphProvider
+public sealed partial class FunctionGraphProvider : ModelAnalysis.IFunctionGraphProvider
 {
-    /// <summary>
-    /// 获取函数图快照。
-    /// </summary>
-    /// <param name="request">函数图请求。</param>
-    /// <returns>函数图快照。</returns>
-    public FunctionGraphSnapshot GetSnapshot(FunctionGraphRequest request)
+    private readonly ModelAnalysis.FunctionIndex _functionIndex;
+    private readonly ModelAnalysis.FunctionFactsIndex _functionFacts;
+
+    public FunctionGraphProvider(
+        ModelAnalysis.FunctionIndex functionIndex,
+        ModelAnalysis.FunctionFactsIndex functionFacts)
+    {
+        _functionIndex = functionIndex;
+        _functionFacts = functionFacts;
+    }
+
+    public ModelAnalysis.FunctionGraphSnapshot GetSnapshot(ModelAnalysis.FunctionGraphRequest request)
     {
         ValidateRequest(request);
 
         return request.Scope switch
         {
-            FunctionGraphScope.WholeProject => BuildWholeProjectSnapshot(),
-            FunctionGraphScope.ExpandedMembers => BuildExpandedMembersSnapshot(request.RootMemberIds, request.Depth),
+            ModelAnalysis.FunctionGraphScope.WholeProject => BuildWholeProjectSnapshot(),
+            ModelAnalysis.FunctionGraphScope.ExpandedMembers => BuildExpandedMembersSnapshot(request.RootMemberIds, request.Depth),
             _ => throw new NotSupportedException($"Unsupported function graph scope '{request.Scope}'.")
         };
     }
 
-    /// <summary>
-    /// 构建全项目函数调用图快照。
-    /// </summary>
-    private FunctionGraphSnapshot BuildWholeProjectSnapshot()
+    private ModelAnalysis.FunctionGraphSnapshot BuildWholeProjectSnapshot()
     {
-        var nodes = functionFacts.FactsByMemberId.Values
+        var nodes = _functionFacts.FactsByMemberId.Values
             .Select(fact => fact.Node)
             .OrderBy(node => node.MemberId.Value, StringComparer.Ordinal)
             .ToArray();
-        var edges = functionFacts.FactsByMemberId.Values
+        var edges = _functionFacts.FactsByMemberId.Values
             .SelectMany(BuildCallEdges)
             .OrderBy(edge => edge.SourceMemberId.Value, StringComparer.Ordinal)
             .ThenBy(edge => edge.TargetMemberId.Value, StringComparer.Ordinal)
             .ThenBy(edge => edge.Kind)
             .ToArray();
-        var includedDocumentPaths = functionFacts.MemberIdsByDocumentPath.Keys
+        var includedDocumentPaths = _functionFacts.MemberIdsByDocumentPath.Keys
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
 
-        return new FunctionGraphSnapshot(
-            FunctionGraphScope.WholeProject,
-            Array.Empty<MemberId>(),
+        return new ModelAnalysis.FunctionGraphSnapshot(
+            ModelAnalysis.FunctionGraphScope.WholeProject,
+            Array.Empty<ModelPrimitives.MemberId>(),
             includedDocumentPaths,
-            new FunctionDependencyGraph(nodes, edges));
+            new ModelAnalysis.FunctionDependencyGraph(nodes, edges));
     }
 
-    /// <summary>
-    /// 构建扩展成员函数调用图快照。
-    /// </summary>
-    private FunctionGraphSnapshot BuildExpandedMembersSnapshot(IReadOnlyList<MemberId> rootMemberIds, int depth)
+    private ModelAnalysis.FunctionGraphSnapshot BuildExpandedMembersSnapshot(
+        IReadOnlyList<ModelPrimitives.MemberId> rootMemberIds,
+        int depth)
     {
         if (depth < 0)
         {
@@ -91,25 +92,25 @@ public sealed class FunctionGraphProvider(
         }
 
         var includedDocumentPaths = includedMemberIds
-            .Select(memberId => functionIndex.NodesByMemberId.TryGetValue(memberId, out var node) ? node.DocumentPath : null)
+            .Select(memberId => _functionIndex.NodesByMemberId.TryGetValue(memberId, out var node) ? node.DocumentPath : null)
             .OfType<string>()
             .Distinct(StringComparer.Ordinal)
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
 
         var rebuiltMemberIds = includedDocumentPaths
-            .SelectMany(path => functionIndex.MemberIdsByDocumentPath.TryGetValue(path, out var memberIds)
+            .SelectMany(path => _functionIndex.MemberIdsByDocumentPath.TryGetValue(path, out var memberIds)
                 ? memberIds
                 : Array.Empty<string>())
             .Distinct(StringComparer.Ordinal)
             .ToArray();
         var rebuiltMemberIdSet = rebuiltMemberIds.ToHashSet(StringComparer.Ordinal);
         var nodes = rebuiltMemberIds
-            .Select(memberId => functionFacts.FactsByMemberId.TryGetValue(memberId, out var fact) ? fact.Node : null)
-            .OfType<FunctionNodeRef>()
+            .Select(memberId => _functionFacts.FactsByMemberId.TryGetValue(memberId, out var fact) ? fact.Node : null)
+            .OfType<ModelAnalysis.FunctionNodeRef>()
             .OrderBy(node => node.MemberId.Value, StringComparer.Ordinal)
             .ToArray();
-        var edges = functionFacts.FactsByMemberId.Values
+        var edges = _functionFacts.FactsByMemberId.Values
             .Where(fact => rebuiltMemberIdSet.Contains(fact.Node.MemberId.Value))
             .SelectMany(BuildCallEdges)
             .Where(edge => rebuiltMemberIdSet.Contains(edge.TargetMemberId.Value))
@@ -117,25 +118,22 @@ public sealed class FunctionGraphProvider(
             .ThenBy(edge => edge.TargetMemberId.Value, StringComparer.Ordinal)
             .ToArray();
 
-        return new FunctionGraphSnapshot(
-            FunctionGraphScope.ExpandedMembers,
+        return new ModelAnalysis.FunctionGraphSnapshot(
+            ModelAnalysis.FunctionGraphScope.ExpandedMembers,
             normalizedRootMemberIds,
             includedDocumentPaths,
-            new FunctionDependencyGraph(nodes, edges));
+            new ModelAnalysis.FunctionDependencyGraph(nodes, edges));
     }
 
-    /// <summary>
-    /// 验证函数图请求的有效性。
-    /// </summary>
-    private static void ValidateRequest(FunctionGraphRequest request)
+    private static void ValidateRequest(ModelAnalysis.FunctionGraphRequest request)
     {
         if (request.EdgeKinds.Count == 0 ||
-            request.EdgeKinds.Any(kind => kind != FunctionDependencyKind.Calls))
+            request.EdgeKinds.Any(kind => kind != ModelPrimitives.FunctionDependencyKind.Calls))
         {
             throw new NotSupportedException("Only call edges are supported by the current function graph provider.");
         }
 
-        if (request.Scope == FunctionGraphScope.ExpandedMembers)
+        if (request.Scope == ModelAnalysis.FunctionGraphScope.ExpandedMembers)
         {
             if (request.RootMemberIds.Count == 0)
             {
@@ -149,12 +147,9 @@ public sealed class FunctionGraphProvider(
         }
     }
 
-    /// <summary>
-    /// 获取与指定成员有调用关系的相邻成员（调用者和被调用者）。
-    /// </summary>
     private IEnumerable<string> GetCallAdjacentMembers(string memberId)
     {
-        if (functionFacts.FactsByMemberId.TryGetValue(memberId, out var sourceFact))
+        if (_functionFacts.FactsByMemberId.TryGetValue(memberId, out var sourceFact))
         {
             foreach (var calledMemberId in sourceFact.CalledMemberIds)
             {
@@ -162,7 +157,7 @@ public sealed class FunctionGraphProvider(
             }
         }
 
-        if (functionFacts.IncomingCallersByMemberId.TryGetValue(memberId, out var callers))
+        if (_functionFacts.IncomingCallersByMemberId.TryGetValue(memberId, out var callers))
         {
             foreach (var caller in callers)
             {
@@ -171,17 +166,14 @@ public sealed class FunctionGraphProvider(
         }
     }
 
-    /// <summary>
-    /// 构建函数调用边。
-    /// </summary>
-    private static IEnumerable<FunctionDependencyEdge> BuildCallEdges(FunctionFact fact)
+    private static IEnumerable<ModelAnalysis.FunctionDependencyEdge> BuildCallEdges(ModelAnalysis.FunctionFact fact)
     {
         foreach (var calledMemberId in fact.CalledMemberIds)
         {
-            yield return new FunctionDependencyEdge(
+            yield return new ModelAnalysis.FunctionDependencyEdge(
                 fact.Node.MemberId,
                 calledMemberId,
-                FunctionDependencyKind.Calls);
+                ModelPrimitives.FunctionDependencyKind.Calls);
         }
     }
 }

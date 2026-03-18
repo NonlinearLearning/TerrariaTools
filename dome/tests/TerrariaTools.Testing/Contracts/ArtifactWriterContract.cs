@@ -1,11 +1,14 @@
-using TerrariaTools.Dome.Core;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 using Xunit;
 
 namespace TerrariaTools.Testing.Contracts;
 
 public static class ArtifactWriterContract
 {
-    public static async Task AssertWritesArtifactsAsync(IArtifactWriter writer)
+    public static async Task AssertWritesArtifactsAsync(ApplicationAbstractions.IArtifactWriter writer)
     {
         var root = Path.Combine(Path.GetTempPath(), "TerrariaTools.Testing", Guid.NewGuid().ToString("N"));
 
@@ -23,40 +26,40 @@ public static class ArtifactWriterContract
         }
     }
 
-    public static async Task AssertWritesArtifactsAsyncAtPath(IArtifactWriter writer, string rootPath)
+    public static async Task AssertWritesArtifactsAsyncAtPath(ApplicationAbstractions.IArtifactWriter writer, string rootPath)
     {
-        var report = new RunReport(
+        var report = new ApplicationAbstractions.RunReport(
             true,
-            FailureCode.None,
+            ModelPrimitives.FailureCode.None,
             0,
             0,
             0,
             0,
             Array.Empty<string>(),
             null,
-            Array.Empty<ConflictSummary>(),
-            new RiskSummary(0, Array.Empty<string>()),
-            new PlanCoverageSummary(0, 0, Array.Empty<string>()),
+            Array.Empty<ApplicationAbstractions.ConflictSummary>(),
+            new ApplicationAbstractions.RiskSummary(0, Array.Empty<string>()),
+            new ApplicationAbstractions.PlanCoverageSummary(0, 0, Array.Empty<string>()),
             null,
             null,
             null,
-            WorkspaceLoadMode.SourceOnly,
+            ModelPrimitives.WorkspaceLoadMode.SourceOnly,
             false,
-            Array.Empty<WorkspaceLoadDiagnostic>(),
+            Array.Empty<ApplicationAbstractions.WorkspaceLoadDiagnostic>(),
             null);
 
-        var analysis = new AnalysisResultModel(
-            Array.Empty<AnalysisTarget>(),
-            Array.Empty<AnalysisEdge>(),
-            new TypeDependencyGraph(Array.Empty<TypeNodeRef>(), Array.Empty<TypeDependencyEdge>()),
-            new FunctionDependencyGraph(Array.Empty<FunctionNodeRef>(), Array.Empty<FunctionDependencyEdge>()),
-            new StatementDependencyGraph(Array.Empty<string>(), Array.Empty<StatementDependencyEdge>()),
-            StatementGraphMaterialization.SnapshotOnly,
-            FunctionGraphMaterialization.None);
-        var plan = new AuditPlan(
-            new PlanMetadata("dome", "1", "in", "out", RunMode.Standard),
-            Array.Empty<PlannedChange>(),
-            Array.Empty<PlanConflict>());
+        var analysis = new ModelAnalysis.AnalysisResultModel(
+            Array.Empty<ModelAnalysis.AnalysisTarget>(),
+            Array.Empty<ModelAnalysis.AnalysisEdge>(),
+            new ModelAnalysis.TypeDependencyGraph(Array.Empty<ModelAnalysis.TypeNodeRef>(), Array.Empty<ModelAnalysis.TypeDependencyEdge>()),
+            new ModelAnalysis.FunctionDependencyGraph(Array.Empty<ModelAnalysis.FunctionNodeRef>(), Array.Empty<ModelAnalysis.FunctionDependencyEdge>()),
+            new ModelAnalysis.StatementDependencyGraph(Array.Empty<string>(), Array.Empty<ModelAnalysis.StatementDependencyEdge>()),
+            ModelPrimitives.StatementGraphMaterialization.SnapshotOnly,
+            ModelPrimitives.FunctionGraphMaterialization.None);
+        var plan = new ModelPlanning.AuditPlan(
+            new ModelPlanning.PlanMetadata("dome", "1", "in", "out", ModelPrimitives.RunMode.Standard),
+            Array.Empty<ModelPlanning.PlannedChange>(),
+            Array.Empty<ModelPlanning.PlanConflict>());
 
         await writer.WriteAnalysisAsync(Path.Combine(rootPath, "analysis.json"), analysis, CancellationToken.None);
         await writer.WritePlanAsync(Path.Combine(rootPath, "audit-plan.json"), plan, CancellationToken.None);

@@ -1,10 +1,10 @@
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 using TerrariaTools.Dome.Analysis.Roslyn;
-using TerrariaTools.Dome.Core;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;
 
-public sealed class QueryServicesTests
+public sealed class QueryServicesLegacyTests
 {
     [Fact]
     public void InheritanceQueryService_ReturnsTrueOnlyForConfiguredIds()
@@ -23,9 +23,9 @@ public sealed class QueryServicesTests
     public void ReferenceQueryService_HasReferences_WhenAnyLookupContainsId()
     {
         var service = new ReferenceQueryService(
-            new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal) { ["member"] = [new MemberId("Sample.A.Run()")] },
+            new Dictionary<string, HashSet<ModelPrimitives.MemberId>>(StringComparer.Ordinal) { ["member"] = [new ModelPrimitives.MemberId("Sample.A.Run()")] },
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal),
-            new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal),
+            new Dictionary<string, HashSet<ModelPrimitives.MemberId>>(StringComparer.Ordinal),
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal) { ["type"] = ["Sample.Type"] });
 
         Assert.True(service.HasReferences("member"));
@@ -37,14 +37,14 @@ public sealed class QueryServicesTests
     public void ReferenceQueryService_GetReferencingFunctions_ReturnsSortedUnionFromMemberAndTypeLookups()
     {
         var service = new ReferenceQueryService(
-            new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal)
+            new Dictionary<string, HashSet<ModelPrimitives.MemberId>>(StringComparer.Ordinal)
             {
-                ["symbol"] = [new MemberId("B.Run()"), new MemberId("A.Run()")]
+                ["symbol"] = [new ModelPrimitives.MemberId("B.Run()"), new ModelPrimitives.MemberId("A.Run()")]
             },
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal),
-            new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal)
+            new Dictionary<string, HashSet<ModelPrimitives.MemberId>>(StringComparer.Ordinal)
             {
-                ["symbol"] = [new MemberId("C.Run()"), new MemberId("A.Run()")]
+                ["symbol"] = [new ModelPrimitives.MemberId("C.Run()"), new ModelPrimitives.MemberId("A.Run()")]
             },
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal));
 
@@ -57,12 +57,12 @@ public sealed class QueryServicesTests
     public void ReferenceQueryService_GetReferencingTypes_ReturnsSortedUnionFromMemberAndTypeLookups()
     {
         var service = new ReferenceQueryService(
-            new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal),
+            new Dictionary<string, HashSet<ModelPrimitives.MemberId>>(StringComparer.Ordinal),
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
             {
                 ["symbol"] = ["B.Type", "A.Type"]
             },
-            new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal),
+            new Dictionary<string, HashSet<ModelPrimitives.MemberId>>(StringComparer.Ordinal),
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
             {
                 ["symbol"] = ["C.Type", "A.Type"]
@@ -77,9 +77,9 @@ public sealed class QueryServicesTests
     public void ReferenceQueryService_MissingIds_ReturnEmptyArrays()
     {
         var service = new ReferenceQueryService(
-            new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal),
+            new Dictionary<string, HashSet<ModelPrimitives.MemberId>>(StringComparer.Ordinal),
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal),
-            new Dictionary<string, HashSet<MemberId>>(StringComparer.Ordinal),
+            new Dictionary<string, HashSet<ModelPrimitives.MemberId>>(StringComparer.Ordinal),
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal));
 
         Assert.Empty(service.GetReferencingFunctions("missing"));

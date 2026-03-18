@@ -1,39 +1,34 @@
 namespace TerrariaTools.Dome.Analysis.Roslyn;
 
-using TerrariaTools.Dome.Core;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 
-/// <summary>
-/// 基于源码文件的工作区加载器。
-/// 仅加载 .cs 文件内容，不进行编译或语义分析。
-/// </summary>
-public sealed class SourceOnlyLoader : IWorkspaceLoader
+public sealed partial class SourceOnlyLoader : ApplicationAbstractions.IWorkspaceLoader
 {
-    /// <inheritdoc />
-    public Task<WorkspaceLoadResult> LoadAsync(string inputPath, WorkspaceLoadOptions options, CancellationToken cancellationToken)
-    {
-        return LoadInternalAsync(inputPath, cancellationToken);
-    }
+    async Task<ApplicationAbstractions.WorkspaceLoadResult> ApplicationAbstractions.IWorkspaceLoader.LoadAsync(
+        string inputPath,
+        ApplicationAbstractions.WorkspaceLoadOptions options,
+        CancellationToken cancellationToken) =>
+        await LoadApplicationAsync(inputPath, cancellationToken);
 
-    /// <summary>
-    /// 从根路径加载源码文档。
-    /// </summary>
-    /// <param name="rootPath">根路径（文件或目录）。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>加载结果。</returns>
-    internal static async Task<WorkspaceLoadResult> LoadFromRootAsync(string rootPath, CancellationToken cancellationToken)
+    internal static async Task<ApplicationAbstractions.WorkspaceLoadResult> LoadApplicationAsync(
+        string rootPath,
+        CancellationToken cancellationToken)
     {
         if (File.Exists(rootPath) && string.Equals(Path.GetExtension(rootPath), ".cs", StringComparison.OrdinalIgnoreCase))
         {
             var sourceText = await File.ReadAllTextAsync(rootPath, cancellationToken);
-            return WorkspaceLoadResult.Success(
-                new[]
-                {
-                    new SourceDocument(
-                        Path.GetFullPath(rootPath),
-                        Path.GetFileName(rootPath),
-                        sourceText)
-                },
-                WorkspaceLoadMode.SourceOnly,
+            return ApplicationAbstractions.WorkspaceLoadResult.Success(
+                new ApplicationAbstractions.SourceDocumentSet(
+                    Path.GetFullPath(rootPath),
+                    Path.GetDirectoryName(Path.GetFullPath(rootPath)) ?? Path.GetFullPath(rootPath),
+                    [
+                        new ApplicationAbstractions.SourceDocument(
+                            Path.GetFullPath(rootPath),
+                            Path.GetFileName(rootPath),
+                            sourceText)
+                    ]),
+                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
                 "SourceOnly");
         }
 
@@ -43,53 +38,33 @@ public sealed class SourceOnlyLoader : IWorkspaceLoader
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            var documents = new List<SourceDocument>(files.Length);
+            var documents = new List<ApplicationAbstractions.SourceDocument>(files.Length);
             foreach (var file in files)
             {
                 var sourceText = await File.ReadAllTextAsync(file, cancellationToken);
-                documents.Add(new SourceDocument(
+                documents.Add(new ApplicationAbstractions.SourceDocument(
                     Path.GetFullPath(file),
                     Path.GetRelativePath(rootPath, file),
                     sourceText));
             }
 
-            return WorkspaceLoadResult.Success(
-                documents,
-                WorkspaceLoadMode.SourceOnly,
+            return ApplicationAbstractions.WorkspaceLoadResult.Success(
+                new ApplicationAbstractions.SourceDocumentSet(
+                    rootPath,
+                    rootPath,
+                    documents),
+                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
                 "SourceOnly");
         }
 
-        return WorkspaceLoadResult.Failure(
-            WorkspaceLoadMode.SourceOnly,
+        return ApplicationAbstractions.WorkspaceLoadResult.Failure(
+            ModelPrimitives.WorkspaceLoadMode.SourceOnly,
             "SourceOnly",
-            new[]
-            {
-                new WorkspaceLoadDiagnostic(
+            [
+                new ApplicationAbstractions.WorkspaceLoadDiagnostic(
                     "SourceOnlyLoad",
-                    WorkspaceLoadDiagnosticSeverity.Error,
+                    ModelPrimitives.WorkspaceLoadDiagnosticSeverity.Error,
                     $"Input path '{rootPath}' was not found.")
-            });
-    }
-
-    /// <summary>
-    /// 内部加载逻辑。
-    /// </summary>
-    private static async Task<WorkspaceLoadResult> LoadInternalAsync(string inputPath, CancellationToken cancellationToken)
-    {
-        if (File.Exists(inputPath) && !string.Equals(Path.GetExtension(inputPath), ".cs", StringComparison.OrdinalIgnoreCase))
-        {
-            return WorkspaceLoadResult.Failure(
-                WorkspaceLoadMode.SourceOnly,
-                "SourceOnly",
-                new[]
-                {
-                    new WorkspaceLoadDiagnostic(
-                        "SourceOnlyLoad",
-                        WorkspaceLoadDiagnosticSeverity.Error,
-                        $"Input file '{inputPath}' is not a C# source file.")
-                });
-        }
-
-        return await LoadFromRootAsync(inputPath, cancellationToken);
+            ]);
     }
 }

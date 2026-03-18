@@ -1,7 +1,9 @@
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
+﻿using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using TerrariaTools.Dome.Core;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelRules = TerrariaTools.Dome.Model.Rules;
 using TerrariaTools.Dome.Rewrite.Roslyn;
 using TerrariaTools.Testing.GoldenOutputs;
 using Xunit;
@@ -37,76 +39,68 @@ public sealed class RewriteExecutorGoldenTests
             }
             """;
 
-        var context = CreateRewriteContext("Sample.cs", source);
-        var root = (CompilationUnitSyntax)context.Root;
+        var root = CSharpSyntaxTree.ParseText(source, path: "Sample.cs").GetCompilationUnitRoot();
         var classNode = Assert.Single(root.DescendantNodes().OfType<ClassDeclarationSyntax>());
         var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>().ToDictionary(method => method.Identifier.ValueText, StringComparer.Ordinal);
         var deleteStatement = Assert.Single(methods["Helper"].DescendantNodes().OfType<LocalDeclarationStatementSyntax>());
-        var plan = new AuditPlan(
-            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+        var plan = new ModelPlanning.AuditPlan(
+            new ModelPlanning.PlanMetadata("dome", "1", "input.cs", "out", ModelPrimitives.RunMode.Standard),
             new[]
             {
-                new PlannedChange(
+                new ModelPlanning.PlannedChange(
                     0,
-                    new PlanTarget(
+                    new ModelPrimitives.TargetIdentity(
                         "Sample.cs",
-                        new MemberId("Sample.Player.Helper()"),
-                        MemberKind.Method,
-                        TargetKind.Method,
+                        new ModelPrimitives.MemberId("Sample.Player.Helper()"),
+                        ModelPrimitives.MemberKind.Method,
+                        ModelPrimitives.TargetKind.Method),
+                    new ModelPrimitives.TargetLocator(
                         methods["Helper"].SpanStart,
                         methods["Helper"].Span.Length,
                         methods["Helper"].ToString().Trim(),
-                        new TargetResolutionKey(methods["Helper"].SpanStart, methods["Helper"].Span.Length)),
-                    new PlanAction(PlanActionKind.ChangeVisibilityToPrivate),
-                    new PlanReason("member-cleanup", "privatize helper")),
-                new PlannedChange(
+                        new ModelPrimitives.TargetResolutionKey(methods["Helper"].SpanStart, methods["Helper"].Span.Length)),
+                    new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.ChangeVisibilityToPrivate),
+                    new ModelRules.PlanReason("member-cleanup", "privatize helper")),
+                new ModelPlanning.PlannedChange(
                     1,
-                    new PlanTarget(
+                    new ModelPrimitives.TargetIdentity(
                         "Sample.cs",
-                        new MemberId("Sample.Player"),
-                        MemberKind.Class,
-                        TargetKind.Class,
+                        new ModelPrimitives.MemberId("Sample.Player"),
+                        ModelPrimitives.MemberKind.Class,
+                        ModelPrimitives.TargetKind.Class),
+                    new ModelPrimitives.TargetLocator(
                         classNode.SpanStart,
                         classNode.Span.Length,
                         classNode.Identifier.ValueText,
-                        new TargetResolutionKey(classNode.SpanStart, classNode.Span.Length)),
-                    new PlanAction(PlanActionKind.ReorderPublicMethods),
-                    new PlanReason("member-cleanup", "reorder public methods")),
-                new PlannedChange(
+                        new ModelPrimitives.TargetResolutionKey(classNode.SpanStart, classNode.Span.Length)),
+                    new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.ReorderPublicMethods),
+                    new ModelRules.PlanReason("member-cleanup", "reorder public methods")),
+                new ModelPlanning.PlannedChange(
                     2,
-                    new PlanTarget(
+                    new ModelPrimitives.TargetIdentity(
                         "Sample.cs",
-                        new MemberId("Sample.Player.Helper()"),
-                        MemberKind.Method,
-                        TargetKind.Statement,
+                        new ModelPrimitives.MemberId("Sample.Player.Helper()"),
+                        ModelPrimitives.MemberKind.Method,
+                        ModelPrimitives.TargetKind.Statement),
+                    new ModelPrimitives.TargetLocator(
                         deleteStatement.SpanStart,
                         deleteStatement.Span.Length,
                         deleteStatement.ToString().Trim(),
-                        new TargetResolutionKey(deleteStatement.SpanStart, deleteStatement.Span.Length)),
-                    new PlanAction(PlanActionKind.Delete),
-                    new PlanReason("statement-delete", "delete temp"))
+                        new ModelPrimitives.TargetResolutionKey(deleteStatement.SpanStart, deleteStatement.Span.Length)),
+                    new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+                    new ModelRules.PlanReason("statement-delete", "delete temp"))
             },
-            Array.Empty<PlanConflict>());
+            Array.Empty<ModelPlanning.PlanConflict>());
+        var sourceSet = new ApplicationAbstractions.SourceDocumentSet(
+            "Sample.cs",
+            "Sample.cs",
+            [new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", source)]);
 
-        var result = await new RoslynRewriteExecutor().ExecuteAsync(context, plan, CancellationToken.None);
+        var result = await new RoslynRewriteExecutor().ExecuteAsync(sourceSet, plan, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.RewrittenSource);
-        await VerifySettingsFixture.VerifyText(result.RewrittenSource!);
-    }
-
-    private static RewriteExecutionDocumentContext CreateRewriteContext(string relativePath, string source)
-    {
-        var tree = CSharpSyntaxTree.ParseText(source, path: relativePath);
-        var root = tree.GetCompilationUnitRoot();
-        var compilation = CSharpCompilation.Create(
-            "RewriteExecutorGoldenTests",
-            new[] { tree },
-            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
-
-        return new RewriteExecutionDocumentContext(
-            new SourceDocument(relativePath, relativePath, source),
-            root,
-            compilation.GetSemanticModel(tree));
+        await VerifyCompatibilitySettingsFixture.VerifyText(result.RewrittenSource!);
     }
 }
+

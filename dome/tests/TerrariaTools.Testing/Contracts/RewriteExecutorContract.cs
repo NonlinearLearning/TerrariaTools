@@ -1,30 +1,24 @@
-using TerrariaTools.Dome.Core;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 using Xunit;
 
 namespace TerrariaTools.Testing.Contracts;
 
 public static class RewriteExecutorContract
 {
-    public static async Task AssertReturnsConfiguredResultAsync(IRewriteExecutor executor)
+    public static async Task AssertReturnsConfiguredResultAsync(ApplicationAbstractions.IRewriteExecutor executor)
     {
-        var tree = CSharpSyntaxTree.ParseText("class C { void M() { } }", path: "Sample.cs");
-        var root = tree.GetCompilationUnitRoot();
-        var compilation = CSharpCompilation.Create(
-            "RewriteExecutorContract",
-            new[] { tree },
-            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
-        var context = new RewriteExecutionDocumentContext(
-            new SourceDocument("Sample.cs", "Sample.cs", tree.ToString()),
-            root,
-            compilation.GetSemanticModel(tree));
-        var plan = new AuditPlan(
-            new PlanMetadata("dome", "1", "in", "out", RunMode.Standard),
-            Array.Empty<PlannedChange>(),
-            Array.Empty<PlanConflict>());
+        var sourceSet = new ApplicationAbstractions.SourceDocumentSet(
+            "Sample.cs",
+            "Sample.cs",
+            [new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "class C { void M() { } }")]);
+        var plan = new ModelPlanning.AuditPlan(
+            new ModelPlanning.PlanMetadata("dome", "1", "in", "out", ModelPrimitives.RunMode.Standard),
+            Array.Empty<ModelPlanning.PlannedChange>(),
+            Array.Empty<ModelPlanning.PlanConflict>());
 
-        var result = await executor.ExecuteAsync(context, plan, CancellationToken.None);
+        var result = await executor.ExecuteAsync(sourceSet, plan, CancellationToken.None);
 
         Assert.NotNull(result);
     }

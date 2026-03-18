@@ -1,15 +1,13 @@
 namespace TerrariaTools.Dome.Rules;
 
-using TerrariaTools.Dome.Core;
-
-public interface IMemberTargetRule
-{
-    IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target);
-}
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelRules = TerrariaTools.Dome.Model.Rules;
 
 public sealed class PublicMethodPrivatizationRule : IMethodRule
 {
-    public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, FunctionNodeRef functionNode)
+    public IEnumerable<ModelRules.MarkDecision> Evaluate(ModelAnalysis.AnalysisContext context, ModelAnalysis.FunctionNodeRef functionNode)
     {
         if (!TryGetEligibleMethod(context, functionNode, out var info) || !info.IsPublic)
         {
@@ -22,26 +20,21 @@ public sealed class PublicMethodPrivatizationRule : IMethodRule
             yield break;
         }
 
-        yield return MarkDecision.ForTarget(
-            new PlanTarget(
-                functionNode.DocumentPath,
-                functionNode.MemberId,
-                functionNode.MemberKind,
-                TargetKind.Method,
-                functionNode.SpanStart,
-                functionNode.SpanLength,
-                functionNode.DisplayName,
-                new TargetResolutionKey(functionNode.SpanStart, functionNode.SpanLength)),
-            PlanActionKind.ChangeVisibilityToPrivate,
-            "method-privatization",
-            "Public method has only internal references and can be reduced to private.",
-            origin: DecisionOrigin.Cleanup);
+        yield return new ModelRules.MarkDecision(
+            ToMethodTarget(functionNode),
+            ToMethodLocator(functionNode),
+            new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.ChangeVisibilityToPrivate),
+            new ModelRules.PlanReason(
+                "method-privatization",
+                "Public method has only internal references and can be reduced to private.",
+                Origin: ModelPrimitives.DecisionOrigin.Cleanup,
+                Category: ModelPrimitives.DecisionCategory.VisibilityChange));
     }
 
-    private static bool TryGetEligibleMethod(AnalysisContext context, FunctionNodeRef functionNode, out MemberCleanupSymbolInfo info)
+    private static bool TryGetEligibleMethod(ModelAnalysis.AnalysisContext context, ModelAnalysis.FunctionNodeRef functionNode, out ModelAnalysis.MemberCleanupSymbolInfo info)
     {
         info = null!;
-        if (functionNode.MemberKind != MemberKind.Method ||
+        if (functionNode.MemberKind != ModelPrimitives.MemberKind.Method ||
             context.MemberCleanup.GetSymbolInfo(functionNode.MemberId.Value) is not { } symbolInfo ||
             !symbolInfo.IsOrdinaryMethod ||
             symbolInfo.IsStatic ||
@@ -70,13 +63,27 @@ public sealed class PublicMethodPrivatizationRule : IMethodRule
         info = symbolInfo;
         return true;
     }
+
+    private static ModelPrimitives.TargetIdentity ToMethodTarget(ModelAnalysis.FunctionNodeRef functionNode) =>
+        new(
+            functionNode.DocumentPath,
+            functionNode.MemberId,
+            functionNode.MemberKind,
+            ModelPrimitives.TargetKind.Method);
+
+    private static ModelPrimitives.TargetLocator ToMethodLocator(ModelAnalysis.FunctionNodeRef functionNode) =>
+        new(
+            functionNode.SpanStart,
+            functionNode.SpanLength,
+            functionNode.DisplayName,
+            new ModelPrimitives.TargetResolutionKey(functionNode.SpanStart, functionNode.SpanLength));
 }
 
 public sealed class UnusedMethodRule : IMethodRule
 {
-    public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, FunctionNodeRef functionNode)
+    public IEnumerable<ModelRules.MarkDecision> Evaluate(ModelAnalysis.AnalysisContext context, ModelAnalysis.FunctionNodeRef functionNode)
     {
-        if (functionNode.MemberKind != MemberKind.Method ||
+        if (functionNode.MemberKind != ModelPrimitives.MemberKind.Method ||
             context.MemberCleanup.GetSymbolInfo(functionNode.MemberId.Value) is not { } info ||
             !info.IsPrivate ||
             !info.IsOrdinaryMethod ||
@@ -110,28 +117,37 @@ public sealed class UnusedMethodRule : IMethodRule
             yield break;
         }
 
-        yield return MarkDecision.ForTarget(
-            new PlanTarget(
-                functionNode.DocumentPath,
-                functionNode.MemberId,
-                functionNode.MemberKind,
-                TargetKind.Method,
-                functionNode.SpanStart,
-                functionNode.SpanLength,
-                functionNode.DisplayName,
-                new TargetResolutionKey(functionNode.SpanStart, functionNode.SpanLength)),
-            PlanActionKind.Delete,
-            "unused-method",
-            "Method has no internal or external references.",
-            origin: DecisionOrigin.Cleanup);
+        yield return new ModelRules.MarkDecision(
+            ToMethodTarget(functionNode),
+            ToMethodLocator(functionNode),
+            new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+            new ModelRules.PlanReason(
+                "unused-method",
+                "Method has no internal or external references.",
+                Origin: ModelPrimitives.DecisionOrigin.Cleanup,
+                Category: ModelPrimitives.DecisionCategory.Delete));
     }
+
+    private static ModelPrimitives.TargetIdentity ToMethodTarget(ModelAnalysis.FunctionNodeRef functionNode) =>
+        new(
+            functionNode.DocumentPath,
+            functionNode.MemberId,
+            functionNode.MemberKind,
+            ModelPrimitives.TargetKind.Method);
+
+    private static ModelPrimitives.TargetLocator ToMethodLocator(ModelAnalysis.FunctionNodeRef functionNode) =>
+        new(
+            functionNode.SpanStart,
+            functionNode.SpanLength,
+            functionNode.DisplayName,
+            new ModelPrimitives.TargetResolutionKey(functionNode.SpanStart, functionNode.SpanLength));
 }
 
 public sealed class UnusedMemberRule : IMemberTargetRule
 {
-    public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target)
+    public IEnumerable<ModelRules.MarkDecision> Evaluate(ModelAnalysis.AnalysisContext context, ModelAnalysis.AnalysisTarget target)
     {
-        if (target.Target.TargetKind is not (TargetKind.Field or TargetKind.Property) ||
+        if (target.Target.TargetKind is not (ModelPrimitives.TargetKind.Field or ModelPrimitives.TargetKind.Property) ||
             context.MemberCleanup.GetSymbolInfo(target.Target.MemberId.Value) is not { } info ||
             !info.IsPrivate ||
             info.IsStatic ||
@@ -158,22 +174,25 @@ public sealed class UnusedMemberRule : IMemberTargetRule
             yield break;
         }
 
-        yield return MarkDecision.ForTarget(
+        yield return new ModelRules.MarkDecision(
             target.Target,
-            PlanActionKind.Delete,
-            "unused-member",
-            $"{target.Target.MemberKind} has no references.",
-            origin: DecisionOrigin.Cleanup);
+            target.Locator,
+            new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+            new ModelRules.PlanReason(
+                "unused-member",
+                $"{target.Target.MemberKind} has no references.",
+                Origin: ModelPrimitives.DecisionOrigin.Cleanup,
+                Category: ModelPrimitives.DecisionCategory.Delete));
     }
 }
 
 public sealed class UnusedClassRule : IClassRule
 {
-    public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target)
+    public IEnumerable<ModelRules.MarkDecision> Evaluate(ModelAnalysis.AnalysisContext context, ModelAnalysis.AnalysisTarget target)
     {
         var typeId = target.Target.MemberId.Value;
         var typeInfo = context.MemberCleanup.GetTypeInfo(typeId);
-        if (target.Target.TargetKind != TargetKind.Class ||
+        if (target.Target.TargetKind != ModelPrimitives.TargetKind.Class ||
             typeInfo == null ||
             target.IsHighRisk ||
             typeInfo.IsPublic ||
@@ -188,19 +207,22 @@ public sealed class UnusedClassRule : IClassRule
             yield break;
         }
 
-        yield return MarkDecision.ForTarget(
+        yield return new ModelRules.MarkDecision(
             target.Target,
-            PlanActionKind.Delete,
-            "class-mark",
-            "Class has no references and is not protected by inheritance.",
-            origin: DecisionOrigin.Cleanup);
+            target.Locator,
+            new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+            new ModelRules.PlanReason(
+                "class-mark",
+                "Class has no references and is not protected by inheritance.",
+                Origin: ModelPrimitives.DecisionOrigin.Cleanup,
+                Category: ModelPrimitives.DecisionCategory.Delete));
     }
 
-    private static bool IsKnownFrameworkType(AnalysisContext context, string typeId)
+    private static bool IsKnownFrameworkType(ModelAnalysis.AnalysisContext context, string typeId)
     {
         return context.View.TypeGraph.Edges.Any(edge =>
             string.Equals(edge.SourceTypeId, typeId, StringComparison.Ordinal) &&
-            edge.Kind is TypeDependencyKind.Inherits or TypeDependencyKind.Implements &&
+            edge.Kind is ModelAnalysis.TypeDependencyKind.Inherits or ModelAnalysis.TypeDependencyKind.Implements &&
             (edge.TargetTypeId.Contains("GenPass", StringComparison.Ordinal) ||
              edge.TargetTypeId.Contains("GenShape", StringComparison.Ordinal) ||
              edge.TargetTypeId.Contains("GenAction", StringComparison.Ordinal) ||
@@ -213,9 +235,9 @@ public sealed class UnusedClassRule : IClassRule
 
 public sealed class PublicMethodOrderingRule : IClassRule
 {
-    public IEnumerable<MarkDecision> Evaluate(AnalysisContext context, AnalysisTarget target)
+    public IEnumerable<ModelRules.MarkDecision> Evaluate(ModelAnalysis.AnalysisContext context, ModelAnalysis.AnalysisTarget target)
     {
-        if (target.Target.TargetKind != TargetKind.Class ||
+        if (target.Target.TargetKind != ModelPrimitives.TargetKind.Class ||
             context.MemberCleanup.GetTypeInfo(target.Target.MemberId.Value) is not { } typeInfo ||
             typeInfo.IsPartial)
         {
@@ -228,11 +250,14 @@ public sealed class PublicMethodOrderingRule : IClassRule
             yield break;
         }
 
-        yield return MarkDecision.ForTarget(
+        yield return new ModelRules.MarkDecision(
             target.Target,
-            PlanActionKind.ReorderPublicMethods,
-            "public-method-order",
-            "Reorder public ordinary methods within the type.",
-            origin: DecisionOrigin.Cleanup);
+            target.Locator,
+            new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.ReorderPublicMethods),
+            new ModelRules.PlanReason(
+                "public-method-order",
+                "Reorder public ordinary methods within the type.",
+                Origin: ModelPrimitives.DecisionOrigin.Cleanup,
+                Category: ModelPrimitives.DecisionCategory.Reorder));
     }
 }

@@ -1,20 +1,13 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using TerrariaTools.Dome.Analysis.Roslyn;
-using TerrariaTools.Dome.Core;
+using TerrariaTools.Dome.Analysis.Legacy;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;
 
-/// <summary>
-/// 成员ID构建器测试类。
-/// </summary>
-public class MemberIdBuilderTests
+public class MemberIdBuilderLegacyTests
 {
-    /// <summary>
-    /// 测试构建方法ID使用元数据签名处理重载。
-    /// </summary>
     [Fact]
     public void BuildMethodId_UsesMetadataSignatureForOverloads()
     {
@@ -43,9 +36,6 @@ public class MemberIdBuilderTests
         Assert.Equal("Sample.Calculator.Add(string, string)", rightId.Value);
     }
 
-    /// <summary>
-    /// 测试构建访问器ID包含属性访问器类型。
-    /// </summary>
     [Fact]
     public void BuildAccessorId_IncludesPropertyAccessorKind()
     {
@@ -74,17 +64,12 @@ public class MemberIdBuilderTests
         Assert.Equal("Sample.Player.Health.set", MetadataMemberIdBuilder.Build(setter).Value);
     }
 
-    /// <summary>
-    /// 创建编译单元。
-    /// </summary>
-    /// <param name="source">源代码。</param>
-    /// <returns>C#编译单元。</returns>
     private static CSharpCompilation CreateCompilation(string source)
     {
         var tree = CSharpSyntaxTree.ParseText(source);
         return CSharpCompilation.Create(
             "MemberIds",
-            new[] { tree },
-            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+            [tree],
+            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
     }
 }

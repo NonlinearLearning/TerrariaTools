@@ -1,33 +1,34 @@
-using TerrariaTools.Dome.Core;
-using TerrariaTools.Dome.Plan;
+using TerrariaTools.Dome.Model.Planning;
+using TerrariaTools.Dome.Model.Primitives;
+using TerrariaTools.Dome.Model.Rules;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Plan;
 
-/// <summary>
-/// 审计计划去重测试类。
-/// </summary>
 public class AuditPlanDedupTests
 {
-    /// <summary>
-    /// 测试编译方法为单个目标去重重复的相同操作。
-    /// </summary>
     [Fact]
     public void Compile_DeduplicatesRepeatedSameActionForSingleTarget()
     {
-        var target = new PlanTarget(
+        var targetIdentity = new TargetIdentity(
             "Sample.cs",
             new MemberId("Sample.Player.Update()"),
             MemberKind.Method,
-            TargetKind.Statement,
-            10,
-            12,
-            "Run();");
+            TargetKind.Statement);
+        var targetLocator = new TargetLocator(10, 12, "Run();");
 
         var decisions = new[]
         {
-            MarkDecision.ForTarget(target, PlanActionKind.Delete, "dome:delete", "seed"),
-            MarkDecision.ForTarget(target, PlanActionKind.Delete, "dataflow-propagation", "propagated", sourceTargetKey: "seed-target")
+            new MarkDecision(
+                targetIdentity,
+                targetLocator,
+                new PlanAction(PlanActionKind.Delete),
+                new PlanReason("dome:delete", "seed")),
+            new MarkDecision(
+                targetIdentity,
+                targetLocator,
+                new PlanAction(PlanActionKind.Delete),
+                new PlanReason("dataflow-propagation", "propagated", SourceTargetKey: "seed-target"))
         };
 
         var result = AuditPlanCompiler.Compile(
@@ -36,6 +37,10 @@ public class AuditPlanDedupTests
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Plan);
-        Assert.Single(result.Plan!.Changes);
+        var change = Assert.Single(result.Plan!.Changes);
+        Assert.Equal("Sample.Player.Update()", change.Target.MemberId.Value);
+        Assert.Equal("Run();", change.Locator.DisplayText);
+        Assert.Equal(10, change.Locator.SpanStart);
+        Assert.IsType<PlanReason>(change.Reason);
     }
 }

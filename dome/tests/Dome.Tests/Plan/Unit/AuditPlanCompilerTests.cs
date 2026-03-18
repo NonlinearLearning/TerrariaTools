@@ -1,34 +1,22 @@
-using TerrariaTools.Dome.Core;
-using TerrariaTools.Dome.Plan;
-using Xunit;
 using System.Text.Json;
+using TerrariaTools.Dome.Model.Planning;
+using TerrariaTools.Dome.Model.Primitives;
+using TerrariaTools.Dome.Model.Rules;
+using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Plan;
 
-/// <summary>
-/// 审计计划编译器测试类。
-/// </summary>
 public class AuditPlanCompilerTests
 {
-    /// <summary>
-    /// 测试编译方法在同一目标具有未解决的冲突操作时失败。
-    /// </summary>
     [Fact]
     public void Compile_FailsWhenSameTargetHasUnresolvedConflictingActions()
     {
-        var target = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.Update()"),
-            MemberKind.Method,
-            TargetKind.Statement,
-            10,
-            12,
-            "player.Run();");
+        var target = CreateTarget(TargetKind.Statement, "Sample.Player.Update()", MemberKind.Method, 10, 12, "player.Run();");
 
         var decisions = new[]
         {
-            MarkDecision.ForTarget(target, PlanActionKind.Delete, "delete-rule", "delete reason"),
-            MarkDecision.ForTarget(target, PlanActionKind.CommentOut, "comment-rule", "comment reason")
+            CreateDecision(target, PlanActionKind.Delete, "delete-rule", "delete reason"),
+            CreateDecision(target, PlanActionKind.CommentOut, "comment-rule", "comment reason")
         };
 
         var result = AuditPlanCompiler.Compile(
@@ -39,41 +27,27 @@ public class AuditPlanCompilerTests
         Assert.Equal(FailureCode.PlanCompileFailed, result.FailureCode);
         var conflict = Assert.Single(result.Conflicts);
         Assert.Equal("MultipleActionsForTarget", conflict.ConflictCode);
+        Assert.Equal("Sample.Player.Update()", conflict.Target.MemberId.Value);
+        Assert.Equal(10, conflict.Locator.SpanStart);
+        Assert.Equal("player.Run();", conflict.Locator.DisplayText);
         Assert.Contains("no resolver is configured", conflict.Reason);
     }
 
-    /// <summary>
-    /// 测试编译方法为编译后的更改保留传播链。
-    /// </summary>
     [Fact]
     public void Compile_PreservesPropagationChainForCompiledChanges()
     {
-        var rootTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.Update()"),
-            MemberKind.Method,
-            TargetKind.Statement,
-            10,
-            14,
-            "int count = 1;");
-        var target = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.Update()"),
-            MemberKind.Method,
-            TargetKind.Statement,
-            25,
-            17,
-            "int next = count;");
+        var rootTarget = CreateTarget(TargetKind.Statement, "Sample.Player.Update()", MemberKind.Method, 10, 14, "int count = 1;");
+        var target = CreateTarget(TargetKind.Statement, "Sample.Player.Update()", MemberKind.Method, 25, 17, "int next = count;");
         var chain = new PropagationChain(
-            rootTarget.TargetKey,
-            rootTarget.DisplayText,
+            CreateTargetKey(rootTarget),
+            rootTarget.locator.DisplayText,
             new[]
             {
                 new PropagationHop(
-                    rootTarget.TargetKey,
-                    rootTarget.DisplayText,
-                    target.TargetKey,
-                    target.DisplayText,
+                    CreateTargetKey(rootTarget),
+                    rootTarget.locator.DisplayText,
+                    CreateTargetKey(target),
+                    target.locator.DisplayText,
                     "dataflow-propagation",
                     PlanActionKind.Delete,
                     new PropagationEvidence(new[] { "count-key" }, new[] { "count" }))
@@ -81,17 +55,20 @@ public class AuditPlanCompilerTests
 
         var decisions = new[]
         {
-            MarkDecision.ForTarget(rootTarget, PlanActionKind.Delete, "dome:delete", "delete reason"),
-            MarkDecision.ForTarget(
+            CreateDecision(rootTarget, PlanActionKind.Delete, "dome:delete", "delete reason"),
+            CreateDecision(
                 target,
                 PlanActionKind.Delete,
                 "dataflow-propagation",
                 "propagation reason",
-                sourceTargetKey: rootTarget.TargetKey,
-                sourceTargetDisplayText: rootTarget.DisplayText,
-                relatedSymbolKeys: new[] { "count-key" },
-                relatedSymbolNames: new[] { "count" },
-                chain: chain)
+                new PlanReason(
+                    "dataflow-propagation",
+                    "propagation reason",
+                    SourceTargetKey: CreateTargetKey(rootTarget),
+                    SourceTargetDisplayText: rootTarget.locator.DisplayText,
+                    RelatedSymbolKeys: new[] { "count-key" },
+                    RelatedSymbolNames: new[] { "count" }),
+                chain)
         };
 
         var result = AuditPlanCompiler.Compile(
@@ -99,72 +76,49 @@ public class AuditPlanCompilerTests
             decisions);
 
         var plan = Assert.IsType<AuditPlan>(result.Plan);
-        var direct = Assert.Single(plan.Changes.Where(change => change.Reason.RuleId == "dome:delete"));
-        var propagated = Assert.Single(plan.Changes.Where(change => change.Reason.RuleId == "dataflow-propagation"));
+        var direct = Assert.Single(plan.Changes.Where(change => Assert.IsType<PlanReason>(change.Reason).RuleId == "dome:delete"));
+        var propagated = Assert.Single(plan.Changes.Where(change => Assert.IsType<PlanReason>(change.Reason).RuleId == "dataflow-propagation"));
 
         Assert.Null(direct.Chain);
-        Assert.NotNull(propagated.Chain);
-        Assert.Equal(rootTarget.DisplayText, propagated.Chain!.RootTargetDisplayText);
-        Assert.Single(propagated.Chain.Hops);
-        Assert.Equal(rootTarget.TargetKey, propagated.Reason.SourceTargetKey);
-        Assert.Contains("count", propagated.Reason.RelatedSymbolNames!);
+        var propagatedChain = Assert.IsType<PropagationChain>(propagated.Chain);
+        Assert.Equal(rootTarget.locator.DisplayText, propagatedChain.RootTargetDisplayText);
+        Assert.Single(propagatedChain.Hops);
+        var propagatedReason = Assert.IsType<PlanReason>(propagated.Reason);
+        Assert.Equal(CreateTargetKey(rootTarget), propagatedReason.SourceTargetKey);
+        Assert.Contains("count", propagatedReason.RelatedSymbolNames!);
     }
 
-    /// <summary>
-    /// 测试编译方法为直接和传播更改生成一致的 JSON 形状。
-    /// </summary>
     [Fact]
     public void Compile_ProducesConsistentJsonShapeForDirectAndPropagationChanges()
     {
-        var rootTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.Update()"),
-            MemberKind.Method,
-            TargetKind.Statement,
-            10,
-            14,
-            "int count = 1;");
-        var singleHopTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.Update()"),
-            MemberKind.Method,
-            TargetKind.Statement,
-            25,
-            17,
-            "int next = count;");
-        var multiHopTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.Update()"),
-            MemberKind.Method,
-            TargetKind.Statement,
-            45,
-            17,
-            "int final = next;");
+        var rootTarget = CreateTarget(TargetKind.Statement, "Sample.Player.Update()", MemberKind.Method, 10, 14, "int count = 1;");
+        var singleHopTarget = CreateTarget(TargetKind.Statement, "Sample.Player.Update()", MemberKind.Method, 25, 17, "int next = count;");
+        var multiHopTarget = CreateTarget(TargetKind.Statement, "Sample.Player.Update()", MemberKind.Method, 45, 17, "int final = next;");
         var singleHopChain = new PropagationChain(
-            rootTarget.TargetKey,
-            rootTarget.DisplayText,
+            CreateTargetKey(rootTarget),
+            rootTarget.locator.DisplayText,
             new[]
             {
                 new PropagationHop(
-                    rootTarget.TargetKey,
-                    rootTarget.DisplayText,
-                    singleHopTarget.TargetKey,
-                    singleHopTarget.DisplayText,
+                    CreateTargetKey(rootTarget),
+                    rootTarget.locator.DisplayText,
+                    CreateTargetKey(singleHopTarget),
+                    singleHopTarget.locator.DisplayText,
                     "dataflow-propagation",
                     PlanActionKind.Delete,
                     new PropagationEvidence(new[] { "count-key" }, new[] { "count" }))
             });
         var multiHopChain = new PropagationChain(
-            rootTarget.TargetKey,
-            rootTarget.DisplayText,
+            CreateTargetKey(rootTarget),
+            rootTarget.locator.DisplayText,
             new[]
             {
                 singleHopChain.Hops[0],
                 new PropagationHop(
-                    singleHopTarget.TargetKey,
-                    singleHopTarget.DisplayText,
-                    multiHopTarget.TargetKey,
-                    multiHopTarget.DisplayText,
+                    CreateTargetKey(singleHopTarget),
+                    singleHopTarget.locator.DisplayText,
+                    CreateTargetKey(multiHopTarget),
+                    multiHopTarget.locator.DisplayText,
                     "dataflow-propagation",
                     PlanActionKind.Delete,
                     new PropagationEvidence(new[] { "next-key" }, new[] { "next" }))
@@ -174,27 +128,33 @@ public class AuditPlanCompilerTests
             new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
             new[]
             {
-                MarkDecision.ForTarget(rootTarget, PlanActionKind.Delete, "dome:delete", "delete reason"),
-                MarkDecision.ForTarget(
+                CreateDecision(rootTarget, PlanActionKind.Delete, "dome:delete", "delete reason"),
+                CreateDecision(
                     singleHopTarget,
                     PlanActionKind.Delete,
                     "dataflow-propagation",
                     "single hop",
-                    sourceTargetKey: rootTarget.TargetKey,
-                    sourceTargetDisplayText: rootTarget.DisplayText,
-                    relatedSymbolKeys: new[] { "count-key" },
-                    relatedSymbolNames: new[] { "count" },
-                    chain: singleHopChain),
-                MarkDecision.ForTarget(
+                    new PlanReason(
+                        "dataflow-propagation",
+                        "single hop",
+                        SourceTargetKey: CreateTargetKey(rootTarget),
+                        SourceTargetDisplayText: rootTarget.locator.DisplayText,
+                        RelatedSymbolKeys: new[] { "count-key" },
+                        RelatedSymbolNames: new[] { "count" }),
+                    singleHopChain),
+                CreateDecision(
                     multiHopTarget,
                     PlanActionKind.Delete,
                     "dataflow-propagation",
                     "multi hop",
-                    sourceTargetKey: singleHopTarget.TargetKey,
-                    sourceTargetDisplayText: singleHopTarget.DisplayText,
-                    relatedSymbolKeys: new[] { "next-key" },
-                    relatedSymbolNames: new[] { "next" },
-                    chain: multiHopChain)
+                    new PlanReason(
+                        "dataflow-propagation",
+                        "multi hop",
+                        SourceTargetKey: CreateTargetKey(singleHopTarget),
+                        SourceTargetDisplayText: singleHopTarget.locator.DisplayText,
+                        RelatedSymbolKeys: new[] { "next-key" },
+                        RelatedSymbolNames: new[] { "next" }),
+                    multiHopChain)
             });
 
         var plan = Assert.IsType<AuditPlan>(result.Plan);
@@ -211,86 +171,78 @@ public class AuditPlanCompilerTests
         Assert.Equal(2, multiChain.GetProperty("Hops").GetArrayLength());
     }
 
-    /// <summary>
-    /// 测试编译方法在存在方法删除时丢弃语句更改。
-    /// </summary>
     [Fact]
     public void Compile_DropsStatementChangesWhenMethodDeleteExists()
     {
-        var methodTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.Run()"),
-            MemberKind.Method,
-            TargetKind.Method,
-            100,
-            40,
-            "private void Run() { }");
-        var statementTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.Run()"),
-            MemberKind.Method,
-            TargetKind.Statement,
-            120,
-            14,
-            "int count = 1;");
+        var methodTarget = CreateTarget(TargetKind.Method, "Sample.Player.Run()", MemberKind.Method, 100, 40, "private void Run() { }");
+        var statementTarget = CreateTarget(TargetKind.Statement, "Sample.Player.Run()", MemberKind.Method, 120, 14, "int count = 1;");
 
         var result = AuditPlanCompiler.Compile(
             new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
             new[]
             {
-                MarkDecision.ForTarget(methodTarget, PlanActionKind.Delete, "function-mark", "method delete"),
-                MarkDecision.ForTarget(statementTarget, PlanActionKind.CommentOut, "dome:comment", "statement comment")
+                CreateDecision(methodTarget, PlanActionKind.Delete, "function-mark", "method delete"),
+                CreateDecision(statementTarget, PlanActionKind.CommentOut, "dome:comment", "statement comment")
             });
 
         var plan = Assert.IsType<AuditPlan>(result.Plan);
         var change = Assert.Single(plan.Changes);
         Assert.Equal(TargetKind.Method, change.Target.TargetKind);
+        Assert.Equal("Sample.Player.Run()", change.Target.MemberId.Value);
         Assert.Equal(PlanActionKind.Delete, change.Action.Kind);
     }
 
-    /// <summary>
-    /// 测试编译方法在存在类删除时丢弃方法和语句更改。
-    /// </summary>
     [Fact]
     public void Compile_DropsMethodAndStatementChangesWhenClassDeleteExists()
     {
-        var classTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.CacheEntry"),
-            MemberKind.Class,
-            TargetKind.Class,
-            20,
-            60,
-            "private class CacheEntry { }");
-        var methodTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.CacheEntry.Run()"),
-            MemberKind.Method,
-            TargetKind.Method,
-            40,
-            20,
-            "private void Run() { }");
-        var statementTarget = new PlanTarget(
-            "Sample.cs",
-            new MemberId("Sample.Player.CacheEntry.Run()"),
-            MemberKind.Method,
-            TargetKind.Statement,
-            50,
-            14,
-            "int count = 1;");
+        var classTarget = CreateTarget(TargetKind.Class, "Sample.Player.CacheEntry", MemberKind.Class, 20, 60, "private class CacheEntry { }");
+        var methodTarget = CreateTarget(TargetKind.Method, "Sample.Player.CacheEntry.Run()", MemberKind.Method, 40, 20, "private void Run() { }");
+        var statementTarget = CreateTarget(TargetKind.Statement, "Sample.Player.CacheEntry.Run()", MemberKind.Method, 50, 14, "int count = 1;");
 
         var result = AuditPlanCompiler.Compile(
             new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
             new[]
             {
-                MarkDecision.ForTarget(classTarget, PlanActionKind.Delete, "class-mark", "class delete"),
-                MarkDecision.ForTarget(methodTarget, PlanActionKind.Delete, "function-mark", "method delete"),
-                MarkDecision.ForTarget(statementTarget, PlanActionKind.CommentOut, "dome:comment", "statement comment")
+                CreateDecision(classTarget, PlanActionKind.Delete, "class-mark", "class delete"),
+                CreateDecision(methodTarget, PlanActionKind.Delete, "function-mark", "method delete"),
+                CreateDecision(statementTarget, PlanActionKind.CommentOut, "dome:comment", "statement comment")
             });
 
         var plan = Assert.IsType<AuditPlan>(result.Plan);
         var change = Assert.Single(plan.Changes);
         Assert.Equal(TargetKind.Class, change.Target.TargetKind);
+        Assert.Equal("Sample.Player.CacheEntry", change.Target.MemberId.Value);
+        Assert.Equal(20, change.Locator.SpanStart);
+        Assert.Equal("private class CacheEntry { }", change.Locator.DisplayText);
         Assert.Equal(PlanActionKind.Delete, change.Action.Kind);
     }
+
+    private static (TargetIdentity target, TargetLocator locator) CreateTarget(
+        TargetKind targetKind,
+        string memberId,
+        MemberKind memberKind,
+        int spanStart,
+        int spanLength,
+        string displayText) =>
+        (
+            new TargetIdentity("Sample.cs", new MemberId(memberId), memberKind, targetKind),
+            new TargetLocator(spanStart, spanLength, displayText)
+        );
+
+    private static string CreateTargetKey((TargetIdentity target, TargetLocator locator) target) =>
+        $"{target.target.IdentityKey}|{target.locator.EffectiveResolutionKey.SpanStart}|{target.locator.EffectiveResolutionKey.SpanLength}";
+
+    private static MarkDecision CreateDecision(
+        (TargetIdentity target, TargetLocator locator) target,
+        PlanActionKind actionKind,
+        string ruleId,
+        string reasonText,
+        PlanReason? reason = null,
+        PropagationChain? chain = null) =>
+        new(
+            target.target,
+            target.locator,
+            new PlanAction(actionKind),
+            reason ?? new PlanReason(ruleId, reasonText),
+            chain);
 }

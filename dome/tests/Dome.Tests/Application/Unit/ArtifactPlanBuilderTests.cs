@@ -1,5 +1,4 @@
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;

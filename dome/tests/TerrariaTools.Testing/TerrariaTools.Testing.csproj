@@ -14,8 +14,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Core\Dome.Core.csproj" />
     <ProjectReference Include="..\..\src\Application\Dome.Application.csproj" />
+    <ProjectReference Include="..\..\src\Application\Legacy\Dome.Application.Legacy.csproj" />
   </ItemGroup>
 
 </Project>

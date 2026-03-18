@@ -6,10 +6,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Core\Dome.Core.csproj" />
+    <Compile Remove="Abstractions\**\*.cs" />
+    <Compile Remove="Legacy\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Application\Abstractions\Dome.Application.Abstractions.csproj" />
     <ProjectReference Include="..\Analysis\Roslyn\Dome.Analysis.Roslyn.csproj" />
     <ProjectReference Include="..\Rules\Dome.Rules.csproj" />
-    <ProjectReference Include="..\Plan\Dome.Plan.csproj" />
     <ProjectReference Include="..\Rewrite\Roslyn\Dome.Rewrite.Roslyn.csproj" />
     <ProjectReference Include="..\Reporting\Dome.Reporting.csproj" />
   </ItemGroup>

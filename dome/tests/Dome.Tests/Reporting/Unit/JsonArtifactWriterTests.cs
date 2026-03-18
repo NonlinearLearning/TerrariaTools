@@ -86,8 +86,8 @@ public sealed class JsonArtifactWriterTests : IClassFixture<TemporaryDirectoryFi
             new ModelAnalysis.TypeDependencyGraph([], []),
             new ModelAnalysis.FunctionDependencyGraph([], []),
             new ModelAnalysis.StatementDependencyGraph([], []),
-            ModelAnalysis.StatementGraphMaterialization.SnapshotOnly,
-            ModelAnalysis.FunctionGraphMaterialization.None);
+            ModelPrimitives.StatementGraphMaterialization.SnapshotOnly,
+            ModelPrimitives.FunctionGraphMaterialization.None);
 
     private static ApplicationAbstractions.RunReport CreateReport() =>
         new(

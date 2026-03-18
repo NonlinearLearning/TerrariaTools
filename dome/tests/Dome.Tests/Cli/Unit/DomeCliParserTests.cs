@@ -1,5 +1,6 @@
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 using TerrariaTools.Dome.Cli;
-using TerrariaTools.Dome.Core;
 using TerrariaTools.Testing.TestBuilders;
 using Xunit;
 
@@ -8,17 +9,17 @@ namespace TerrariaTools.Dome.Tests.Cli;
 public class DomeCliParserTests
 {
     [Theory]
-    [InlineData("run", RunMode.Standard)]
-    [InlineData("analyze", RunMode.AnalyzeOnly)]
-    [InlineData("plan", RunMode.PlanOnly)]
-    public async Task ParseAsync_MapsCommandsToRunModes(string command, RunMode expectedMode)
+    [InlineData("run", ModelPrimitives.RunMode.Standard)]
+    [InlineData("analyze", ModelPrimitives.RunMode.AnalyzeOnly)]
+    [InlineData("plan", ModelPrimitives.RunMode.PlanOnly)]
+    public async Task ParseAsync_MapsCommandsToRunModes(string command, ModelPrimitives.RunMode expectedMode)
     {
         var result = await DomeCliParser.ParseAsync(new[] { command, "input.cs", "out" }, CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Request);
         Assert.Equal(expectedMode, result.Request!.Mode);
-        Assert.Equal(WorkspaceLoaderPreference.Auto, result.Request.WorkspaceLoadOptions.PreferredLoader);
+        Assert.Equal(ApplicationAbstractions.WorkspaceLoaderPreference.Auto, result.Request.WorkspaceLoadOptions.PreferredLoader);
         Assert.True(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
     }
 
@@ -31,41 +32,28 @@ public class DomeCliParserTests
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Request);
-        Assert.Equal(WorkspaceLoaderPreference.CodeAnalysisFirst, result.Request!.WorkspaceLoadOptions.PreferredLoader);
+        Assert.Equal(ApplicationAbstractions.WorkspaceLoaderPreference.CodeAnalysisFirst, result.Request!.WorkspaceLoadOptions.PreferredLoader);
         Assert.False(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
     }
 
     [Fact]
-    public async Task ParseAsync_ParsesTrRunCommand()
+    public async Task ParseAsync_RejectsLegacyTrRunCommand()
     {
         var result = await DomeCliParser.ParseAsync(new[] { "tr-run" }, CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
+        Assert.False(result.IsSuccess);
         Assert.Null(result.Request);
-        Assert.NotNull(result.TerrariaRuntimeRunRequest);
-        Assert.Equal(
-            @"D:\lodes\TR\Backup\New1.27\1.45\TR\TerrariaServer.sln",
-            result.TerrariaRuntimeRunRequest!.SolutionPath);
-        Assert.Equal(
-            @"D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\tr-runtime",
-            result.TerrariaRuntimeRunRequest.OutputRootPath);
+        Assert.Contains("Legacy runtime commands", result.ErrorMessage);
     }
 
     [Fact]
-    public async Task ParseAsync_ParsesTrShadowCommand()
+    public async Task ParseAsync_RejectsLegacyTrShadowCommand()
     {
         var result = await DomeCliParser.ParseAsync(new[] { "tr-shadow" }, CancellationToken.None);
 
-        Assert.True(result.IsSuccess);
+        Assert.False(result.IsSuccess);
         Assert.Null(result.Request);
-        Assert.NotNull(result.TerrariaRuntimeShadowExtractionRequest);
-        Assert.Equal(
-            @"D:\lodes\TR\Backup\New1.27\1.45\TR\TerrariaServer.sln",
-            result.TerrariaRuntimeShadowExtractionRequest!.SolutionPath);
-        Assert.Equal(
-            @"D:\ProjectItem\SourceCode\Net\TerrariaTools\.worktrees\dda\dome\.tmp\tr-shadow",
-            result.TerrariaRuntimeShadowExtractionRequest.OutputRootPath);
-        Assert.Equal("Terraria.Main.DedServ", result.TerrariaRuntimeShadowExtractionRequest.SeedMemberName);
+        Assert.Contains("Legacy runtime commands", result.ErrorMessage);
     }
 
     [Fact]
@@ -85,9 +73,9 @@ public class DomeCliParserTests
 
         Assert.True(result.IsSuccess);
         Assert.NotNull(result.Request);
-        Assert.Equal(RunMode.PlanOnly, result.Request!.Mode);
+        Assert.Equal(ModelPrimitives.RunMode.PlanOnly, result.Request!.Mode);
         Assert.Single(result.Request.RuleSet);
-        Assert.Equal(WorkspaceLoaderPreference.SourceOnly, result.Request.WorkspaceLoadOptions.PreferredLoader);
+        Assert.Equal(ApplicationAbstractions.WorkspaceLoaderPreference.SourceOnly, result.Request.WorkspaceLoadOptions.PreferredLoader);
         Assert.False(result.Request.WorkspaceLoadOptions.AllowFallbackToSourceOnly);
     }
 

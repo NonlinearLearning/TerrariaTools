@@ -1,78 +1,107 @@
-using TerrariaTools.Dome.Core;
+using TerrariaTools.Dome.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelRules = TerrariaTools.Dome.Model.Rules;
 using TerrariaTools.Dome.Rules;
-using TerrariaTools.Dome.Tests.Testing.TestBuilders;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
 
-public sealed class BoundaryPromotionEngineUnitTests
+// Legacy internal coverage for the boundary promotion runtime behind the scenes.
+public sealed class BoundaryPromotionEngineLegacyUnitTests
 {
     [Fact]
-    public void Promote_UsesBuilderContextWithoutRoslyn()
+    public async Task Promote_UsesRoslynModelContext()
     {
-        var sourceTarget = new PlanTarget("Sample.cs", new MemberId("Sample.Player.Update()"), MemberKind.Method, TargetKind.Statement, 0, 12, "Helper();");
-        var boundaryTarget = new PlanTarget("Sample.cs", new MemberId("Sample.Player.Helper()"), MemberKind.Method, TargetKind.Method, 20, 20, "Helper");
-        var invocationTarget = new AnalysisTarget(
-            sourceTarget,
-            false,
-            [],
-            [],
-            [],
-            [boundaryTarget.MemberId],
-            StatementKindRef.Unknown,
-            false,
-            false,
-            false,
-            [],
-            StatementScopeMode.MinimalBlock,
-            "scope",
-            null);
-        var context = new TestAnalysisContextBuilder()
-            .AddTarget(invocationTarget)
-            .AddFunctionNode(new FunctionNodeRef(
-                boundaryTarget.MemberId,
-                MemberKind.Method,
-                "Sample.Player",
-                "Helper",
-                "Sample.cs",
-                boundaryTarget.SpanStart,
-                boundaryTarget.SpanLength,
-                true,
-                true,
-                true,
-                false,
-                "void"))
-            .WithReferences(new SingleReferenceQueryService(boundaryTarget.MemberId, sourceTarget.MemberId))
-            .BuildContext();
-        var decisions = new[]
-        {
-            MarkDecision.ForTarget(
-                sourceTarget,
-                PlanActionKind.Delete,
-                "seed",
-                "seed delete")
-        };
-        var engine = new BoundaryPromotionEngine(MarkingRuleRegistry.CreateDefault());
+        var analysis = await AnalyzeAsync(
+            """
+            namespace Sample;
 
-        var result = engine.Promote(
+            public class Player
+            {
+                public void Update(int value)
+                {
+                    // dome:delete
+                    fun2(value);
+                }
+
+                private void fun2(int i)
+                {
+                }
+            }
+            """);
+
+        var context = analysis.CreateContext();
+        var statementDecision = CreateDeleteDecision(context.View.Targets.Single(target => target.Locator.DisplayText == "fun2(value);"));
+        var decisions = new[] { statementDecision };
+
+        var promoted = new BoundaryPromotionEngine(MarkingRuleRegistry.CreateDefault()).Promote(
             context,
             decisions,
-            new Dictionary<string, AnalysisTarget>(StringComparer.Ordinal)
-            {
-                [sourceTarget.TargetKey] = invocationTarget
-            });
+            context.View.Targets.ToDictionary(target => $"{target.Target.IdentityKey}|{target.Locator.EffectiveResolutionKey.SpanStart}|{target.Locator.EffectiveResolutionKey.SpanLength}", StringComparer.Ordinal));
 
-        var promoted = Assert.Single(result);
-        Assert.Equal(boundaryTarget.MemberId, promoted.Target.MemberId);
-        Assert.Equal(DecisionOrigin.BoundaryPromotion, promoted.Reason.Origin);
+        var promotedDecision = Assert.Single(promoted);
+        Assert.Equal("boundary-promotion", promotedDecision.Reason.RuleId);
+        Assert.Equal(ModelPrimitives.TargetKind.Method, promotedDecision.Target.TargetKind);
+        Assert.Equal("Sample.Player.fun2(int)", promotedDecision.Target.MemberId.Value);
     }
 
-    private sealed class SingleReferenceQueryService(MemberId from, MemberId to) : IReferenceQueryService
+    [Fact]
+    public async Task Promote_DoesNotPromotePropagatedDelete()
     {
-        public bool HasReferences(string symbolOrMemberId) => symbolOrMemberId == to.Value;
+        var analysis = await AnalyzeAsync(
+            """
+            namespace Sample;
 
-        public IReadOnlyList<MemberId> GetReferencingFunctions(string symbolOrMemberId) => symbolOrMemberId == to.Value ? [from] : Array.Empty<MemberId>();
+            public class Player
+            {
+                public void Update(int value)
+                {
+                    int count = value;
+                    fun2(count);
+                }
 
-        public IReadOnlyList<string> GetReferencingTypes(string symbolOrMemberId) => Array.Empty<string>();
+                private void fun2(int i)
+                {
+                }
+            }
+            """);
+
+        var context = analysis.CreateContext();
+        var invocationTarget = context.View.Targets.Single(target => target.Locator.DisplayText == "fun2(count);");
+        var propagatedDelete = CreatePropagatedDecision(invocationTarget);
+
+        var promoted = new BoundaryPromotionEngine(MarkingRuleRegistry.CreateDefault()).Promote(
+            context,
+            new[] { propagatedDelete },
+            context.View.Targets.ToDictionary(target => $"{target.Target.IdentityKey}|{target.Locator.EffectiveResolutionKey.SpanStart}|{target.Locator.EffectiveResolutionKey.SpanLength}", StringComparer.Ordinal));
+
+        Assert.Empty(promoted);
     }
+
+    private static ModelRules.MarkDecision CreateDeleteDecision(ModelAnalysis.AnalysisTarget target) =>
+        new(
+            target.Target,
+            target.Locator,
+            new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete, null),
+            new ModelRules.PlanReason("boundary-promotion", "Legacy propagation test"));
+
+    private static ModelRules.MarkDecision CreatePropagatedDecision(ModelAnalysis.AnalysisTarget target) =>
+        new(
+            target.Target,
+            target.Locator,
+            new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete, null),
+            new ModelRules.PlanReason("dataflow-propagation", "propagated", Origin: ModelPrimitives.DecisionOrigin.Propagation));
+
+    private static async Task<ApplicationAbstractions.AnalysisEngineResult> AnalyzeAsync(string sourceText) =>
+        await ((ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine()).AnalyzeAsync(
+            new ApplicationAbstractions.SourceDocumentSet(
+                "Sample.cs",
+                "Sample.cs",
+                [
+                    new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", sourceText)
+                ]),
+            CancellationToken.None);
 }

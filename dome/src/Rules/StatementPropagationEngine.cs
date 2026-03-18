@@ -1,50 +1,38 @@
 namespace TerrariaTools.Dome.Rules;
 
-using TerrariaTools.Dome.Core;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelRules = TerrariaTools.Dome.Model.Rules;
 
-/// <summary>
-/// 语句级传播引擎。
-/// </summary>
 public sealed class StatementPropagationEngine
 {
     private readonly MarkingRuleRegistry _registry;
 
-    /// <summary>
-    /// 初始化语句级传播引擎。
-    /// </summary>
-    /// <param name="registry">规则注册表。</param>
     public StatementPropagationEngine(MarkingRuleRegistry registry)
     {
         _registry = registry;
     }
 
-    /// <summary>
-    /// 基于种子决策在语句依赖图中执行传播。
-    /// </summary>
-    /// <param name="context">分析上下文。</param>
-    /// <param name="executionContext">规则执行上下文。</param>
-    /// <param name="seedTarget">当前种子目标。</param>
-    /// <param name="seedDecisionsByTarget">按目标分组的种子决策。</param>
-    /// <returns>传播产生的决策集合。</returns>
-    public IReadOnlyList<MarkDecision> Propagate(
-        AnalysisContext context,
-        RuleExecutionContext executionContext,
-        AnalysisTarget seedTarget,
-        IReadOnlyDictionary<string, IReadOnlyList<MarkDecision>> seedDecisionsByTarget)
+    public IReadOnlyList<ModelRules.MarkDecision> Propagate(
+        ModelAnalysis.AnalysisContext context,
+        ModelRules.RuleExecutionContext executionContext,
+        ModelAnalysis.AnalysisTarget seedTarget,
+        IReadOnlyDictionary<string, IReadOnlyList<ModelRules.MarkDecision>> seedDecisionsByTarget)
     {
         executionContext.CancellationToken.ThrowIfCancellationRequested();
 
         var scopeMode = ResolveScopeMode(context, executionContext, seedTarget);
-        var snapshot = context.Statements.Analyze(seedTarget.Target, scopeMode);
-        var targetsByKey = context.View.Targets.ToDictionary(target => target.Target.TargetKey, StringComparer.Ordinal);
+        var snapshot = context.Statements.Analyze(GetTargetKey(seedTarget), scopeMode);
+        var targetsByKey = context.View.Targets.ToDictionary(GetTargetKey, StringComparer.Ordinal);
 
-        var taintedSymbols = new Dictionary<string, MarkDecision>(StringComparer.Ordinal);
-        var propagated = new List<MarkDecision>();
+        var taintedSymbols = new Dictionary<string, ModelRules.MarkDecision>(StringComparer.Ordinal);
+        var propagated = new List<ModelRules.MarkDecision>();
 
         foreach (var target in snapshot.Nodes
                      .Select(nodeKey => targetsByKey[nodeKey])
-                     .OrderBy(target => target.Target.SpanStart)
-                     .ThenBy(target => target.Target.TargetKey, StringComparer.Ordinal))
+                     .OrderBy(target => target.Locator.SpanStart)
+                     .ThenBy(GetTargetKey, StringComparer.Ordinal))
         {
             executionContext.CancellationToken.ThrowIfCancellationRequested();
 
@@ -54,14 +42,14 @@ public sealed class StatementPropagationEngine
                 continue;
             }
 
-            IReadOnlyList<MarkDecision> directDecisions = seedDecisionsByTarget.TryGetValue(target.Target.TargetKey, out var seeds)
+            IReadOnlyList<ModelRules.MarkDecision> directDecisions = seedDecisionsByTarget.TryGetValue(GetTargetKey(target), out var seeds)
                 ? seeds
-                : Array.Empty<MarkDecision>();
+                : Array.Empty<ModelRules.MarkDecision>();
 
-            var emitted = new List<MarkDecision>(directDecisions);
+            var emitted = new List<ModelRules.MarkDecision>(directDecisions);
             if (emitted.Count == 0)
             {
-                var propagatedByAction = new Dictionary<PlanActionKind, (MarkDecision SourceDecision, List<SymbolRef> Symbols)>();
+                var propagatedByAction = new Dictionary<ModelPrimitives.PlanActionKind, (ModelRules.MarkDecision SourceDecision, List<ModelAnalysis.SymbolRef> Symbols)>();
                 foreach (var usedSymbol in target.UsesSymbols)
                 {
                     if (!taintedSymbols.TryGetValue(usedSymbol.SymbolKey, out var sourceDecision))
@@ -76,7 +64,7 @@ public sealed class StatementPropagationEngine
 
                     if (!propagatedByAction.TryGetValue(sourceDecision.Action.Kind, out var propagation))
                     {
-                        propagation = (sourceDecision, new List<SymbolRef>());
+                        propagation = (sourceDecision, []);
                         propagatedByAction[sourceDecision.Action.Kind] = propagation;
                     }
 
@@ -88,21 +76,22 @@ public sealed class StatementPropagationEngine
 
                 foreach (var propagation in propagatedByAction.Values)
                 {
-                    var evidence = new PropagationEvidence(
+                    var evidence = new ModelRules.PropagationEvidence(
                         propagation.Symbols.Select(symbol => symbol.SymbolKey).ToArray(),
                         propagation.Symbols.Select(symbol => symbol.DisplayName).Distinct(StringComparer.Ordinal).ToArray());
-                    var propagatedDecision = MarkDecision.ForTarget(
+                    var propagatedDecision = new ModelRules.MarkDecision(
                         target.Target,
-                        propagation.SourceDecision.Action.Kind,
-                        "dataflow-propagation",
-                        "Propagated through a use/def dependency.",
-                        propagation.SourceDecision.Action.Payload,
-                        propagation.SourceDecision.Target.TargetKey,
-                        propagation.SourceDecision.Target.DisplayText,
-                        evidence.RelatedSymbolKeys,
-                        evidence.RelatedSymbolNames,
-                        origin: DecisionOrigin.Propagation,
-                        chain: AppendPropagationChain(propagation.SourceDecision, target.Target, evidence));
+                        target.Locator,
+                        new ModelPlanning.PlanAction(propagation.SourceDecision.Action.Kind, propagation.SourceDecision.Action.Payload),
+                        new ModelRules.PlanReason(
+                            "dataflow-propagation",
+                            "Propagated through a use/def dependency.",
+                            propagation.SourceDecision.TargetKey,
+                            propagation.SourceDecision.Locator.DisplayText,
+                            evidence.RelatedSymbolKeys,
+                            evidence.RelatedSymbolNames,
+                            Origin: ModelPrimitives.DecisionOrigin.Propagation),
+                        AppendPropagationChain(propagation.SourceDecision, target, evidence));
                     emitted.Add(propagatedDecision);
                     propagated.Add(propagatedDecision);
                 }
@@ -111,7 +100,7 @@ public sealed class StatementPropagationEngine
             foreach (var definedSymbol in target.DefinesSymbols)
             {
                 var sourceDecision = emitted.FirstOrDefault();
-                if (sourceDecision != null)
+                if (sourceDecision is not null)
                 {
                     taintedSymbols[definedSymbol.SymbolKey] = sourceDecision;
                 }
@@ -125,27 +114,15 @@ public sealed class StatementPropagationEngine
         return propagated;
     }
 
-    /// <summary>
-    /// 判断目标是否命中保护规则。
-    /// </summary>
-    /// <param name="target">分析目标。</param>
-    /// <returns>是否受保护。</returns>
-    private bool IsProtected(AnalysisTarget target) =>
+    private bool IsProtected(ModelAnalysis.AnalysisTarget target) =>
         _registry.ProtectionRules.Any(rule => rule.Blocks(target));
 
-    /// <summary>
-    /// 解析实际使用的语句作用域模式。
-    /// </summary>
-    /// <param name="context">分析上下文。</param>
-    /// <param name="executionContext">规则执行上下文。</param>
-    /// <param name="seedTarget">种子目标。</param>
-    /// <returns>语句作用域模式。</returns>
-    private StatementScopeMode ResolveScopeMode(
-        AnalysisContext context,
-        RuleExecutionContext executionContext,
-        AnalysisTarget seedTarget)
+    private ModelPrimitives.StatementScopeMode ResolveScopeMode(
+        ModelAnalysis.AnalysisContext context,
+        ModelRules.RuleExecutionContext executionContext,
+        ModelAnalysis.AnalysisTarget seedTarget)
     {
-        if (executionContext.StatementScopeMode != StatementScopeMode.MinimalBlock)
+        if (executionContext.StatementScopeMode != ModelPrimitives.StatementScopeMode.MinimalBlock)
         {
             return executionContext.StatementScopeMode;
         }
@@ -153,42 +130,38 @@ public sealed class StatementPropagationEngine
         foreach (var rule in _registry.StatementScopeRules)
         {
             var selected = rule.SelectScopeMode(context, seedTarget);
-            if (selected != StatementScopeMode.MinimalBlock)
+            if (selected != ModelPrimitives.StatementScopeMode.MinimalBlock)
             {
                 return selected;
             }
         }
 
-        return StatementScopeMode.MinimalBlock;
+        return ModelPrimitives.StatementScopeMode.MinimalBlock;
     }
 
-    /// <summary>
-    /// 追加传播链路节点。
-    /// </summary>
-    /// <param name="sourceDecision">源决策。</param>
-    /// <param name="target">目标计划项。</param>
-    /// <param name="evidence">传播证据。</param>
-    /// <returns>新的传播链。</returns>
-    private static PropagationChain AppendPropagationChain(
-        MarkDecision sourceDecision,
-        PlanTarget target,
-        PropagationEvidence evidence)
+    private static ModelRules.PropagationChain AppendPropagationChain(
+        ModelRules.MarkDecision sourceDecision,
+        ModelAnalysis.AnalysisTarget target,
+        ModelRules.PropagationEvidence evidence)
     {
-        var existingHops = sourceDecision.Chain?.Hops ?? Array.Empty<PropagationHop>();
-        var rootTargetKey = sourceDecision.Chain?.RootTargetKey ?? sourceDecision.Target.TargetKey;
-        var rootTargetDisplayText = sourceDecision.Chain?.RootTargetDisplayText ?? sourceDecision.Target.DisplayText;
-        var newHop = new PropagationHop(
-            sourceDecision.Target.TargetKey,
-            sourceDecision.Target.DisplayText,
-            target.TargetKey,
-            target.DisplayText,
+        var existingHops = sourceDecision.Chain?.Hops ?? Array.Empty<ModelRules.PropagationHop>();
+        var rootTargetKey = sourceDecision.Chain?.RootTargetKey ?? sourceDecision.TargetKey;
+        var rootTargetDisplayText = sourceDecision.Chain?.RootTargetDisplayText ?? sourceDecision.Locator.DisplayText;
+        var newHop = new ModelRules.PropagationHop(
+            sourceDecision.TargetKey,
+            sourceDecision.Locator.DisplayText,
+            GetTargetKey(target),
+            target.Locator.DisplayText,
             "dataflow-propagation",
             sourceDecision.Action.Kind,
             evidence);
 
-        return new PropagationChain(
+        return new ModelRules.PropagationChain(
             rootTargetKey,
             rootTargetDisplayText,
             existingHops.Concat([newHop]).ToArray());
     }
+
+    private static string GetTargetKey(ModelAnalysis.AnalysisTarget target) =>
+        $"{target.Target.IdentityKey}|{target.Locator.EffectiveResolutionKey.SpanStart}|{target.Locator.EffectiveResolutionKey.SpanLength}";
 }

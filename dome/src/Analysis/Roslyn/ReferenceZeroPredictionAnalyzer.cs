@@ -1,54 +1,51 @@
 namespace TerrariaTools.Dome.Analysis.Roslyn;
 
-using TerrariaTools.Dome.Core;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelRules = TerrariaTools.Dome.Model.Rules;
 
-/// <summary>
-/// 计划期引用归零预测分析器。
-/// </summary>
-public sealed class ReferenceZeroPredictionAnalyzer : IReferenceZeroPredictionAnalyzer
+public sealed partial class ReferenceZeroPredictionAnalyzer : ApplicationAbstractions.IReferenceZeroPredictionAnalyzer
 {
-    /// <summary>
-    /// 根据当前计划预测将变为零引用的方法。
-    /// </summary>
-    /// <param name="snapshot">分析快照。</param>
-    /// <param name="services">分析服务。</param>
-    /// <param name="executionContext">规则执行上下文。</param>
-    /// <param name="decisions">当前已有的标记决策。</param>
-    /// <returns>预测的标记决策列表。</returns>
-    public IReadOnlyList<MarkDecision> Predict(
-        AnalysisExecutionSnapshot snapshot,
-        AnalysisServices services,
-        RuleExecutionContext executionContext,
-        IReadOnlyList<MarkDecision> decisions)
+    IReadOnlyList<ModelRules.MarkDecision> ApplicationAbstractions.IReferenceZeroPredictionAnalyzer.Predict(
+        ModelAnalysis.AnalysisExecutionSnapshot snapshot,
+        ModelAnalysis.AnalysisServices services,
+        ModelRules.RuleExecutionContext executionContext,
+        IReadOnlyList<ModelRules.MarkDecision> decisions)
     {
         var deletedCallSites = decisions
-            .Where(decision => decision.Target.TargetKind == TargetKind.Statement && decision.Action.Kind == PlanActionKind.Delete)
+            .Where(decision => decision.Target.TargetKind == ModelPrimitives.TargetKind.Statement && decision.Action.Kind == ModelPrimitives.PlanActionKind.Delete)
             .Select(decision => new
             {
                 Decision = decision,
-                Target = snapshot.View.Targets.FirstOrDefault(target => target.Target.TargetKey == decision.Target.TargetKey)
+                Target = snapshot.View.Targets.FirstOrDefault(target =>
+                    string.Equals(
+                        $"{target.Target.IdentityKey}|{target.Locator.EffectiveResolutionKey.SpanStart}|{target.Locator.EffectiveResolutionKey.SpanLength}",
+                        decision.TargetKey,
+                        StringComparison.Ordinal))
             })
             .Where(item => item.Target != null && item.Target.InvokedMemberIds.Count == 1)
             .ToArray();
 
         if (deletedCallSites.Length == 0)
         {
-            return Array.Empty<MarkDecision>();
+            return Array.Empty<ModelRules.MarkDecision>();
         }
 
         var existingMethodDeletes = decisions
-            .Where(decision => decision.Target.TargetKind == TargetKind.Method && decision.Action.Kind == PlanActionKind.Delete)
+            .Where(decision => decision.Target.TargetKind == ModelPrimitives.TargetKind.Method && decision.Action.Kind == ModelPrimitives.PlanActionKind.Delete)
             .Select(decision => decision.Target.MemberId.Value)
             .ToHashSet(StringComparer.Ordinal);
         var decisionsByInvokedMethod = deletedCallSites
             .GroupBy(item => item.Target!.InvokedMemberIds[0].Value, StringComparer.Ordinal);
-        var predicted = new List<MarkDecision>();
+        var predicted = new List<ModelRules.MarkDecision>();
 
         foreach (var group in decisionsByInvokedMethod)
         {
             var functionSnapshot = services.FunctionGraphs.GetSnapshot(
-                FunctionGraphRequests.ExpandedMembersCalls(
-                    new[] { new MemberId(group.Key) },
+                ModelAnalysis.FunctionGraphRequests.ExpandedMembersCalls(
+                    new[] { new ModelPrimitives.MemberId(group.Key) },
                     executionContext.Requester,
                     executionContext.Reason ?? "Reference-zero prediction"));
             var functionNodes = functionSnapshot.Graph.Nodes
@@ -59,7 +56,7 @@ public sealed class ReferenceZeroPredictionAnalyzer : IReferenceZeroPredictionAn
                 continue;
             }
 
-            if (functionNode.MemberKind != MemberKind.Method ||
+            if (functionNode.MemberKind != ModelPrimitives.MemberKind.Method ||
                 !functionNode.IsPrivate ||
                 !functionNode.HasBody)
             {
@@ -87,45 +84,43 @@ public sealed class ReferenceZeroPredictionAnalyzer : IReferenceZeroPredictionAn
 
             var sourceDecision = group
                 .OrderBy(item => item.Decision.Target.DocumentPath, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(item => item.Decision.Target.SpanStart)
+                .ThenBy(item => item.Decision.Locator.SpanStart)
                 .First()
                 .Decision;
 
-            predicted.Add(MarkDecision.ForTarget(
-                new PlanTarget(
+            predicted.Add(new ModelRules.MarkDecision(
+                new ModelPrimitives.TargetIdentity(
                     functionNode.DocumentPath,
                     functionNode.MemberId,
                     functionNode.MemberKind,
-                    TargetKind.Method,
+                    ModelPrimitives.TargetKind.Method),
+                new ModelPrimitives.TargetLocator(
                     functionNode.SpanStart,
                     functionNode.SpanLength,
                     functionNode.DisplayName,
-                    new TargetResolutionKey(functionNode.SpanStart, functionNode.SpanLength)),
-                PlanActionKind.Delete,
-                "reference-zero-prediction",
-                "All call references are scheduled for deletion in the current plan.",
-                sourceTargetKey: sourceDecision.Target.TargetKey,
-                sourceTargetDisplayText: sourceDecision.Target.DisplayText,
-                origin: DecisionOrigin.Prediction));
+                    new ModelPrimitives.TargetResolutionKey(functionNode.SpanStart, functionNode.SpanLength)),
+                new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+                new ModelRules.PlanReason(
+                    "reference-zero-prediction",
+                    "All call references are scheduled for deletion in the current plan.",
+                    sourceDecision.TargetKey,
+                    sourceDecision.Locator.DisplayText,
+                    Origin: ModelPrimitives.DecisionOrigin.Prediction)));
         }
 
         return predicted;
     }
 
-    /// <summary>
-    /// 根据当前计划预测将变为零引用的方法。
-    /// </summary>
-    /// <param name="context">分析上下文。</param>
-    /// <param name="decisions">当前已有的标记决策。</param>
-    /// <returns>预测的标记决策列表。</returns>
-    public IReadOnlyList<MarkDecision> Predict(AnalysisContext context, IReadOnlyList<MarkDecision> decisions) =>
-        Predict(
+    IReadOnlyList<ModelRules.MarkDecision> ApplicationAbstractions.IReferenceZeroPredictionAnalyzer.Predict(
+        ModelAnalysis.AnalysisContext context,
+        IReadOnlyList<ModelRules.MarkDecision> decisions) =>
+        ((ApplicationAbstractions.IReferenceZeroPredictionAnalyzer)this).Predict(
             context.Snapshot,
             context.Services,
-            new RuleExecutionContext(
+            new ModelRules.RuleExecutionContext(
                 "ReferenceZeroPredictionAnalyzer",
                 null,
-                StatementScopeMode.MinimalBlock,
+                ModelPrimitives.StatementScopeMode.MinimalBlock,
                 CancellationToken.None,
                 "Compatibility facade"),
             decisions);

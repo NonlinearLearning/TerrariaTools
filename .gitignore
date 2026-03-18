@@ -28,7 +28,10 @@
 
 .editorconfig
 TerrariaTools.code-workspace
-.dotnet_cli_home
+.dotnet-cli-home
+.dotnet-cli_home/*
 .dotnet-home
 Build
 .dotnet-home
+use-dotnet-env.ps1
+dome/.dotnet

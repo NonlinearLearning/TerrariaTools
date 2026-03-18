@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dome.Application.csproj" />
+    <ProjectReference Include="..\..\Analysis\Legacy\Dome.Analysis.Legacy.csproj" />
+    <ProjectReference Include="..\..\Rules\Dome.Rules.csproj" />
+    <ProjectReference Include="..\..\Rewrite\Roslyn\Dome.Rewrite.Roslyn.csproj" />
+    <ProjectReference Include="..\..\Reporting\Dome.Reporting.csproj" />
+  </ItemGroup>
+</Project>

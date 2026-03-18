@@ -1,171 +1,170 @@
 using TerrariaTools.Dome.Analysis.Roslyn;
-using TerrariaTools.Dome.Core;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelRules = TerrariaTools.Dome.Model.Rules;
 using TerrariaTools.Dome.Rules;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
 
-public class StatementPropagationEngineTests
+// Legacy internal engine coverage. These tests verify the propagation engine below
+// BuildDecisions; the public Rules contract is covered by BuildDecisions tests.
+public sealed class StatementPropagationEngineLegacyTests
 {
     [Fact]
     public async Task Propagate_BuildsPropagationDecisionFromSeedStatement()
     {
-        var engine = new RoslynAnalysisEngine();
-        var analysis = await engine.AnalyzeAsync(
-            new[]
+        var analysis = await AnalyzeAsync(
+            """
+            namespace Sample;
+
+            public class Player
             {
-                new SourceDocument(
-                    "Sample.cs",
-                    "Sample.cs",
-                    """
-                    namespace Sample;
+                public void Update()
+                {
+                    // dome:delete
+                    int count = 1;
+                    int next = count;
+                }
+            }
+            """);
 
-                    public class Player
-                    {
-                        public void Update()
-                        {
-                            // dome:delete
-                            int count = 1;
-                            int next = count;
-                        }
-                    }
-                    """)
-            },
-            CancellationToken.None);
-
-        var context = engine.CreateContext(analysis);
-        var seedTarget = Assert.Single(analysis.View.Targets.Where(target => target.Target.DisplayText == "int count = 1;"));
-        var seedDecision = MarkDecision.ForTarget(seedTarget.Target, PlanActionKind.Delete, "dome:delete", "seed");
-        var seedDecisionsByTarget = new Dictionary<string, IReadOnlyList<MarkDecision>>(StringComparer.Ordinal)
+        var context = analysis.CreateContext();
+        var seedTarget = Assert.Single(context.View.Targets.Where(target => target.Locator.DisplayText == "int count = 1;"));
+        var seedDecision = CreateDeleteDecision(seedTarget, "dome:delete", "seed");
+        var seedDecisionsByTarget = new Dictionary<string, IReadOnlyList<ModelRules.MarkDecision>>(StringComparer.Ordinal)
         {
-            [seedTarget.Target.TargetKey] = new[] { seedDecision }
+            [seedDecision.TargetKey] = [seedDecision]
         };
 
         var propagated = new StatementPropagationEngine(MarkingRuleRegistry.CreateDefault()).Propagate(
             context,
-            new RuleExecutionContext("StatementPropagationEngineTests", seedTarget.Target, StatementScopeMode.MinimalBlock, CancellationToken.None, "direct propagation"),
+            new ModelRules.RuleExecutionContext("StatementPropagationEngineTests", seedTarget.Target, ModelPrimitives.StatementScopeMode.MinimalBlock, CancellationToken.None, "direct propagation"),
             seedTarget,
             seedDecisionsByTarget);
 
         var propagatedDecision = Assert.Single(propagated);
-        Assert.Equal("int next = count;", propagatedDecision.Target.DisplayText);
+        Assert.Equal("int next = count;", propagatedDecision.Locator.DisplayText);
         Assert.Equal("dataflow-propagation", propagatedDecision.Reason.RuleId);
         Assert.NotNull(propagatedDecision.Chain);
     }
 
-    // Rule family: IStatementScopeRule
-    // Direct behavior: the seed statement remains the direct decision root.
-    // Propagation: explicit ParentBlockPiercing expands the statement snapshot to the parent block.
-    // Blocking: expansion still cannot cross the function boundary.
-    // Boundary promotion: scope changes affect visibility only and do not change promotion semantics.
+    // Legacy internal engine coverage for statement scope selection. The public
+    // contract proof for this behavior lives in BuildDecisions tests.
     [Fact]
     public async Task ParentBlockPiercingScopeRule_ExpandsSnapshotWhenExplicitlyRequired()
     {
-        var engine = new RoslynAnalysisEngine();
-        var analysis = await engine.AnalyzeAsync(
-            new[]
+        var analysis = await AnalyzeAsync(
+            """
+            namespace Sample;
+
+            public class Player
             {
-                new SourceDocument(
-                    "Sample.cs",
-                    "Sample.cs",
-                    """
-                    namespace Sample;
-
-                    public class Player
+                public void Update(int seed)
+                {
+                    int parent = seed;
                     {
-                        public void Update(int seed)
-                        {
-                            int parent = seed;
-                            {
-                                // dome:delete
-                                int child = parent;
-                                int next = child;
-                            }
-                        }
+                        // dome:delete
+                        int child = parent;
+                        int next = child;
                     }
-                    """)
-            },
-            CancellationToken.None);
+                }
+            }
+            """);
 
-        var context = engine.CreateContext(analysis);
+        var context = analysis.CreateContext();
         var recordingStatements = new RecordingStatementAnalysisService(context.Statements);
-        var patchedContext = AnalysisContext.Create(context.Snapshot, context.Services with { Statements = recordingStatements });
-        var seedTarget = Assert.Single(analysis.View.Targets.Where(target => target.Target.DisplayText == "int child = parent;"));
-        var seedDecision = MarkDecision.ForTarget(seedTarget.Target, PlanActionKind.Delete, "dome:delete", "seed");
-        var seedDecisionsByTarget = new Dictionary<string, IReadOnlyList<MarkDecision>>(StringComparer.Ordinal)
+        var patchedContext = ModelAnalysis.AnalysisContext.Create(context.Snapshot, context.Services with { Statements = recordingStatements });
+        var seedTarget = Assert.Single(context.View.Targets.Where(target => target.Locator.DisplayText == "int child = parent;"));
+        var seedDecision = CreateDeleteDecision(seedTarget, "dome:delete", "seed");
+        var seedDecisionsByTarget = new Dictionary<string, IReadOnlyList<ModelRules.MarkDecision>>(StringComparer.Ordinal)
         {
-            [seedTarget.Target.TargetKey] = new[] { seedDecision }
+            [seedDecision.TargetKey] = [seedDecision]
         };
 
         var propagated = new StatementPropagationEngine(MarkingRuleRegistry.CreateDefault()).Propagate(
             patchedContext,
-            new RuleExecutionContext("StatementPropagationEngineTests", seedTarget.Target, StatementScopeMode.ParentBlockPiercing, CancellationToken.None, "explicit scope"),
+            new ModelRules.RuleExecutionContext("StatementPropagationEngineTests", seedTarget.Target, ModelPrimitives.StatementScopeMode.ParentBlockPiercing, CancellationToken.None, "explicit scope"),
             seedTarget,
             seedDecisionsByTarget);
 
-        Assert.Contains(propagated, decision => decision.Target.DisplayText == "int next = child;");
+        Assert.Contains(propagated, decision => decision.Locator.DisplayText == "int next = child;");
         Assert.Contains(
             recordingStatements.Calls,
-            call => call.TargetKey == seedTarget.Target.TargetKey && call.ScopeMode == StatementScopeMode.ParentBlockPiercing);
+            call => call.TargetKey == seedDecision.TargetKey && call.ScopeMode == ModelPrimitives.StatementScopeMode.ParentBlockPiercing);
     }
 
     [Fact]
     public async Task Propagate_StopsAtProtectedObjectInitializerBoundary()
     {
-        var engine = new RoslynAnalysisEngine();
-        var analysis = await engine.AnalyzeAsync(
-            new[]
+        var analysis = await AnalyzeAsync(
+            """
+            namespace Sample;
+
+            public class Item
             {
-                new SourceDocument(
-                    "Sample.cs",
-                    "Sample.cs",
-                    """
-                    namespace Sample;
+                public int Value { get; set; }
+            }
 
-                    public class Item
-                    {
-                        public int Value { get; set; }
-                    }
+            public class Player
+            {
+                public void Update(int seed)
+                {
+                    // dome:delete
+                    int count = seed;
+                    var item = new Item { Value = count };
+                    int next = count;
+                }
+            }
+            """);
 
-                    public class Player
-                    {
-                        public void Update(int seed)
-                        {
-                            // dome:delete
-                            int count = seed;
-                            var item = new Item { Value = count };
-                            int next = count;
-                        }
-                    }
-                    """)
-            },
-            CancellationToken.None);
-
-        var context = engine.CreateContext(analysis);
-        var seedTarget = Assert.Single(analysis.View.Targets.Where(target => target.Target.DisplayText == "int count = seed;"));
-        var seedDecision = MarkDecision.ForTarget(seedTarget.Target, PlanActionKind.Delete, "dome:delete", "seed");
-        var seedDecisionsByTarget = new Dictionary<string, IReadOnlyList<MarkDecision>>(StringComparer.Ordinal)
+        var context = analysis.CreateContext();
+        var seedTarget = Assert.Single(context.View.Targets.Where(target => target.Locator.DisplayText == "int count = seed;"));
+        var seedDecision = CreateDeleteDecision(seedTarget, "dome:delete", "seed");
+        var seedDecisionsByTarget = new Dictionary<string, IReadOnlyList<ModelRules.MarkDecision>>(StringComparer.Ordinal)
         {
-            [seedTarget.Target.TargetKey] = new[] { seedDecision }
+            [seedDecision.TargetKey] = [seedDecision]
         };
 
         var propagated = new StatementPropagationEngine(MarkingRuleRegistry.CreateDefault()).Propagate(
             context,
-            new RuleExecutionContext("StatementPropagationEngineTests", seedTarget.Target, StatementScopeMode.MinimalBlock, CancellationToken.None, "protection boundary"),
+            new ModelRules.RuleExecutionContext("StatementPropagationEngineTests", seedTarget.Target, ModelPrimitives.StatementScopeMode.MinimalBlock, CancellationToken.None, "protection boundary"),
             seedTarget,
             seedDecisionsByTarget);
 
-        Assert.DoesNotContain(propagated, decision => decision.Target.DisplayText == "int next = count;");
+        Assert.DoesNotContain(propagated, decision => decision.Locator.DisplayText == "int next = count;");
     }
 
-    private sealed class RecordingStatementAnalysisService(IStatementAnalysisService inner) : IStatementAnalysisService
-    {
-        public List<(string TargetKey, StatementScopeMode ScopeMode)> Calls { get; } = new();
+    private static ModelRules.MarkDecision CreateDeleteDecision(ModelAnalysis.AnalysisTarget target, string ruleId, string reasonText) =>
+        new(
+            target.Target,
+            target.Locator,
+            new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete, null),
+            new ModelRules.PlanReason(ruleId, reasonText));
 
-        public StatementGraphSnapshot Analyze(PlanTarget seedTarget, StatementScopeMode scopeMode)
+    private static async Task<ApplicationAbstractions.AnalysisEngineResult> AnalyzeAsync(string sourceText) =>
+        await ((ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine()).AnalyzeAsync(
+            new ApplicationAbstractions.SourceDocumentSet(
+                "Sample.cs",
+                "Sample.cs",
+                [
+                    new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", sourceText)
+                ]),
+            CancellationToken.None);
+
+    private sealed class RecordingStatementAnalysisService(ModelAnalysis.IStatementAnalysisService inner) : ModelAnalysis.IStatementAnalysisService
+    {
+        public List<(string TargetKey, ModelPrimitives.StatementScopeMode ScopeMode)> Calls { get; } = [];
+
+        public ModelAnalysis.StatementGraphSnapshot Analyze(string targetKey) =>
+            Analyze(targetKey, ModelPrimitives.StatementScopeMode.MinimalBlock);
+
+        public ModelAnalysis.StatementGraphSnapshot Analyze(string targetKey, ModelPrimitives.StatementScopeMode scopeMode)
         {
-            Calls.Add((seedTarget.TargetKey, scopeMode));
-            return inner.Analyze(seedTarget, scopeMode);
+            Calls.Add((targetKey, scopeMode));
+            return inner.Analyze(targetKey, scopeMode);
         }
     }
 }

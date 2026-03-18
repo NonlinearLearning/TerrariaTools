@@ -1,5 +1,4 @@
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Tests.Testing.TestDoubles;
 using TerrariaTools.Testing.TestBuilders;
 using TerrariaTools.Testing.TestDoubles;
@@ -7,14 +6,14 @@ using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
 
-public sealed class TerrariaRuntimeBuildExecutorTests
+public sealed class TerrariaRuntimeBuildExecutorLegacyTests
 {
     [Fact]
     public async Task ExecuteAsync_UsesNoRestoreAndMultiProcBuildCommand()
     {
-        var runner = new RecordingProcessRunner();
+        var runner = new RecordingProcessCompatibilityRunner();
         var executor = new TerrariaRuntimeBuildExecutor(runner);
-        var layout = new RuntimeLayoutBuilder()
+        var layout = new RuntimeLayoutCompatibilityBuilder()
             .WithWorkspacePath("workspace")
             .WithWorkspaceSolutionPath(Path.Combine("workspace", "TerrariaServer.sln"))
             .WithDependencyEnvironmentPath("dependency-env")

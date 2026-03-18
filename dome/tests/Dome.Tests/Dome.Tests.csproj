@@ -25,14 +25,18 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TerrariaTools.Testing\TerrariaTools.Testing.csproj" />
-    <ProjectReference Include="..\..\src\Core\Dome.Core.csproj" />
     <ProjectReference Include="..\..\src\Analysis\Roslyn\Dome.Analysis.Roslyn.csproj" />
     <ProjectReference Include="..\..\src\Rules\Dome.Rules.csproj" />
-    <ProjectReference Include="..\..\src\Plan\Dome.Plan.csproj" />
     <ProjectReference Include="..\..\src\Rewrite\Roslyn\Dome.Rewrite.Roslyn.csproj" />
     <ProjectReference Include="..\..\src\Reporting\Dome.Reporting.csproj" />
     <ProjectReference Include="..\..\src\Application\Dome.Application.csproj" />
+    <ProjectReference Include="..\..\src\Application\Legacy\Dome.Application.Legacy.csproj" />
     <ProjectReference Include="..\..\src\Cli\Dome.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Application\Abstractions\Dome.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Model\Primitives\Dome.Model.Primitives.csproj" />
+    <ProjectReference Include="..\..\src\Model\Analysis\Dome.Model.Analysis.csproj" />
+    <ProjectReference Include="..\..\src\Model\Rules\Dome.Model.Rules.csproj" />
+    <ProjectReference Include="..\..\src\Model\Planning\Dome.Model.Planning.csproj" />
   </ItemGroup>
 
 </Project>

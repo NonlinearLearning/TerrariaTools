@@ -1,30 +1,44 @@
-using TerrariaTools.Dome.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelRules = TerrariaTools.Dome.Model.Rules;
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
-using TerrariaTools.Dome.Plan;
+using TerrariaTools.Dome.Reporting;
+using TerrariaTools.Dome.Rewrite.Roslyn;
 using TerrariaTools.Dome.Rules;
+using TerrariaTools.Dome.Tests.Testing.TestDoubles;
 using TerrariaTools.Dome.Tests.Testing.TestBuilders;
 using TerrariaTools.Testing.TestDoubles;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
 
+/// <summary>
+/// Dome 搴旂敤缂栨帓娴佺▼娴嬭瘯銆
+/// </summary>
 public sealed class DomeApplicationOrchestrationTests
 {
     [Fact]
     public async Task RunAsync_AnalyzeOnly_EmitsArtifactsWithoutRewriteOutput()
     {
-        var source = new SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
-        var analysisResult = new TestAnalysisContextBuilder().BuildEngineResult(source);
+        var source = new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
+        var analysisResult = new ApplicationNativeAnalysisResultBuilder().Build(source);
         var artifactEmission = new FakeArtifactEmissionService();
         var rewriteOutput = new FakeRewriteOutputStore();
         var app = CreateApplication(
-            new FakeWorkspaceLoader(_ => Task.FromResult(WorkspaceLoadResult.Success([source], WorkspaceLoadMode.SourceOnly, "StubLoader"))),
+            new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Success(
+                new ApplicationAbstractions.SourceDocumentSet(
+                    source.SourcePath,
+                    source.SourcePath,
+                    [new ApplicationAbstractions.SourceDocument(source.SourcePath, source.RelativePath, source.SourceText)]),
+                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+                "StubLoader"))),
             new FakeAnalysisEngine(analysisResult),
             artifactEmissionService: artifactEmission,
             rewriteOutputStore: rewriteOutput);
 
-        var result = await app.RunAsync(new RunRequest("in", "out", Array.Empty<string>(), RunMode.AnalyzeOnly), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.RunRequest("in", "out", Array.Empty<string>(), ModelPrimitives.RunMode.AnalyzeOnly), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Single(artifactEmission.Calls);
@@ -35,42 +49,54 @@ public sealed class DomeApplicationOrchestrationTests
     [Fact]
     public async Task RunAsync_PlanOnly_MergesInitialAndPredictedDecisionsThroughInjectedAnalyzers()
     {
-        var memberId = new MemberId("Sample.Player.Update()");
-        var target = new PlanTarget("Sample.cs", memberId, MemberKind.Method, TargetKind.Statement, 0, 10, "int count = 1;");
-        var source = new SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
-        var analysisResult = new TestAnalysisContextBuilder()
-            .AddTarget(new AnalysisTarget(
-                target,
+        var memberId = new ModelPrimitives.MemberId("Sample.Player.Update()");
+        var source = new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
+        var analysisResult = new ApplicationNativeAnalysisResultBuilder()
+            .AddTarget(new ModelAnalysis.AnalysisTarget(
+                new ModelPrimitives.TargetIdentity("Sample.cs", memberId, ModelPrimitives.MemberKind.Method, ModelPrimitives.TargetKind.Statement),
+                new ModelPrimitives.TargetLocator(0, 10, "int count = 1;"),
                 false,
-                [new DirectiveAction(PlanActionKind.Delete, null, "dome:delete", "delete")],
+                [new ModelRules.DirectiveAction(ModelPrimitives.PlanActionKind.Delete, null, "dome:delete", "delete")],
                 [],
                 [],
                 [],
-                StatementKindRef.Declaration,
+                ModelPrimitives.StatementKindRef.Declaration,
                 false,
                 false,
                 false,
                 [],
-                StatementScopeMode.MinimalBlock,
+                ModelPrimitives.StatementScopeMode.MinimalBlock,
                 "scope",
                 null))
-            .BuildEngineResult(source);
+            .Build(source);
         var artifactEmission = new FakeArtifactEmissionService();
-        var predictionTarget = new PlanTarget("Sample.cs", new MemberId("Sample.Player.Run()"), MemberKind.Method, TargetKind.Method, 20, 5, "Run");
+        var predictionTarget = new ModelPrimitives.TargetIdentity(
+            "Sample.cs",
+            new ModelPrimitives.MemberId("Sample.Player.Run()"),
+            ModelPrimitives.MemberKind.Method,
+            ModelPrimitives.TargetKind.Method);
         var predictionAnalyzer = new FakeReferenceZeroPredictionAnalyzer(
-            MarkDecision.ForTarget(
+            new ModelRules.MarkDecision(
                 predictionTarget,
-                PlanActionKind.Delete,
-                "reference-zero-prediction",
-                "predicted",
-                origin: DecisionOrigin.Prediction));
+                new ModelPrimitives.TargetLocator(20, 5, "Run"),
+                new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+                new ModelRules.PlanReason(
+                    "reference-zero-prediction",
+                    "predicted",
+                    Origin: ModelPrimitives.DecisionOrigin.Prediction)));
         var app = CreateApplication(
-            new FakeWorkspaceLoader(_ => Task.FromResult(WorkspaceLoadResult.Success([source], WorkspaceLoadMode.SourceOnly, "StubLoader"))),
+            new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Success(
+                new ApplicationAbstractions.SourceDocumentSet(
+                    source.SourcePath,
+                    source.SourcePath,
+                    [new ApplicationAbstractions.SourceDocument(source.SourcePath, source.RelativePath, source.SourceText)]),
+                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+                "StubLoader"))),
             new FakeAnalysisEngine(analysisResult),
             predictionAnalyzer: predictionAnalyzer,
             artifactEmissionService: artifactEmission);
 
-        var result = await app.RunAsync(new RunRequest("in", "out", Array.Empty<string>(), RunMode.PlanOnly), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.RunRequest("in", "out", Array.Empty<string>(), ModelPrimitives.RunMode.PlanOnly), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Single(predictionAnalyzer.ObservedInitialDecisionCounts);
@@ -86,18 +112,24 @@ public sealed class DomeApplicationOrchestrationTests
         var analysisResult = BuildStandardAnalysisResult();
         var artifactEmission = new FakeArtifactEmissionService();
         var rewriteOutput = new FakeRewriteOutputStore();
-        var rewriteExecutor = new FakeRewriteExecutor(RewriteExecutionResult.Failure("rewrite broke"));
+        var rewriteExecutor = new FakeRewriteExecutor(ApplicationAbstractions.RewriteExecutionResult.Failure("rewrite broke"));
         var app = CreateApplication(
-            new FakeWorkspaceLoader(_ => Task.FromResult(WorkspaceLoadResult.Success([new SourceDocument("Sample.cs", "Sample.cs", "namespace Sample;")], WorkspaceLoadMode.SourceOnly, "StubLoader"))),
+            new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Success(
+                new ApplicationAbstractions.SourceDocumentSet(
+                    "Sample.cs",
+                    "Sample.cs",
+                    [new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "namespace Sample;")]),
+                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+                "StubLoader"))),
             new FakeAnalysisEngine(analysisResult),
             rewriteExecutor: rewriteExecutor,
             artifactEmissionService: artifactEmission,
             rewriteOutputStore: rewriteOutput);
 
-        var result = await app.RunAsync(new RunRequest("in", "out", Array.Empty<string>(), RunMode.Standard), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.RunRequest("in", "out", Array.Empty<string>(), ModelPrimitives.RunMode.Standard), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(FailureCode.RewriteFailed, result.FailureCode);
+        Assert.Equal(ModelPrimitives.FailureCode.RewriteFailed, result.FailureCode);
         Assert.Single(rewriteExecutor.Calls);
         Assert.Single(artifactEmission.Calls);
         Assert.NotNull(artifactEmission.Calls[0].Report.FailureSummary);
@@ -111,15 +143,21 @@ public sealed class DomeApplicationOrchestrationTests
         var artifactEmission = new FakeArtifactEmissionService();
         var rewriteOutput = new FakeRewriteOutputStore { FailureMessage = "disk broke" };
         var app = CreateApplication(
-            new FakeWorkspaceLoader(_ => Task.FromResult(WorkspaceLoadResult.Success([new SourceDocument("Sample.cs", "Sample.cs", "namespace Sample;")], WorkspaceLoadMode.SourceOnly, "StubLoader"))),
+            new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Success(
+                new ApplicationAbstractions.SourceDocumentSet(
+                    "Sample.cs",
+                    "Sample.cs",
+                    [new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "namespace Sample;")]),
+                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+                "StubLoader"))),
             new FakeAnalysisEngine(analysisResult),
             artifactEmissionService: artifactEmission,
             rewriteOutputStore: rewriteOutput);
 
-        var result = await app.RunAsync(new RunRequest("in", "out", Array.Empty<string>(), RunMode.Standard), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.RunRequest("in", "out", Array.Empty<string>(), ModelPrimitives.RunMode.Standard), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(FailureCode.RewriteFailed, result.FailureCode);
+        Assert.Equal(ModelPrimitives.FailureCode.RewriteFailed, result.FailureCode);
         Assert.Single(artifactEmission.Calls);
         Assert.Contains("disk broke", artifactEmission.Calls[0].Report.FailureSummary!.Message);
     }
@@ -127,70 +165,88 @@ public sealed class DomeApplicationOrchestrationTests
     [Fact]
     public async Task RunAsync_ArtifactEmissionFailure_BubblesException()
     {
-        var source = new SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
-        var analysisResult = new TestAnalysisContextBuilder().BuildEngineResult(source);
+        var source = new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
+        var analysisResult = new ApplicationNativeAnalysisResultBuilder().Build(source);
         var artifactEmission = new FakeArtifactEmissionService { FailureMessage = "emit broke" };
         var app = CreateApplication(
-            new FakeWorkspaceLoader(_ => Task.FromResult(WorkspaceLoadResult.Success([source], WorkspaceLoadMode.SourceOnly, "StubLoader"))),
+            new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Success(
+                new ApplicationAbstractions.SourceDocumentSet(
+                    source.SourcePath,
+                    source.SourcePath,
+                    [new ApplicationAbstractions.SourceDocument(source.SourcePath, source.RelativePath, source.SourceText)]),
+                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+                "StubLoader"))),
             new FakeAnalysisEngine(analysisResult),
             artifactEmissionService: artifactEmission);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            app.RunAsync(new RunRequest("in", "out", Array.Empty<string>(), RunMode.AnalyzeOnly), CancellationToken.None));
+            app.RunAsync(new ApplicationAbstractions.RunRequest("in", "out", Array.Empty<string>(), ModelPrimitives.RunMode.AnalyzeOnly), CancellationToken.None));
 
         Assert.Equal("emit broke", ex.Message);
     }
 
-    private static AnalysisEngineResult BuildStandardAnalysisResult()
+    private static ApplicationAbstractions.AnalysisEngineResult BuildStandardAnalysisResult()
     {
-        var memberId = new MemberId("Sample.Player.Update()");
-        var target = new PlanTarget("Sample.cs", memberId, MemberKind.Method, TargetKind.Statement, 0, 10, "int count = 1;");
-        var source = new SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
-        return new TestAnalysisContextBuilder()
-            .AddTarget(new AnalysisTarget(
-                target,
+        var memberId = new ModelPrimitives.MemberId("Sample.Player.Update()");
+        var source = new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "namespace Sample; public class Player { }");
+        return new ApplicationNativeAnalysisResultBuilder()
+            .AddTarget(new ModelAnalysis.AnalysisTarget(
+                new ModelPrimitives.TargetIdentity("Sample.cs", memberId, ModelPrimitives.MemberKind.Method, ModelPrimitives.TargetKind.Statement),
+                new ModelPrimitives.TargetLocator(0, 10, "int count = 1;"),
                 false,
-                [new DirectiveAction(PlanActionKind.Delete, null, "dome:delete", "delete")],
+                [new ModelRules.DirectiveAction(ModelPrimitives.PlanActionKind.Delete, null, "dome:delete", "delete")],
                 [],
                 [],
                 [],
-                StatementKindRef.Declaration,
+                ModelPrimitives.StatementKindRef.Declaration,
                 false,
                 false,
                 false,
                 [],
-                StatementScopeMode.MinimalBlock,
+                ModelPrimitives.StatementScopeMode.MinimalBlock,
                 "scope",
                 null))
-            .BuildEngineResult(source);
+            .Build(source);
     }
 
     private static DomeApplication CreateApplication(
-        IWorkspaceLoader workspaceLoader,
-        IAnalysisEngine? analysisEngine = null,
-        IFunctionImpactAnalyzer? impactAnalyzer = null,
-        IReferenceZeroPredictionAnalyzer? predictionAnalyzer = null,
-        IRewriteExecutor? rewriteExecutor = null,
+        ApplicationAbstractions.IWorkspaceLoader workspaceLoader,
+        ApplicationAbstractions.IAnalysisEngine? analysisEngine = null,
+        ApplicationAbstractions.IFunctionImpactAnalyzer? impactAnalyzer = null,
+        ApplicationAbstractions.IReferenceZeroPredictionAnalyzer? predictionAnalyzer = null,
+        ApplicationAbstractions.IRewriteExecutor? rewriteExecutor = null,
         IRewriteOutputStore? rewriteOutputStore = null,
         IArtifactEmissionService? artifactEmissionService = null)
     {
+        ApplicationAbstractions.IWorkspaceLoader effectiveWorkspaceLoader = workspaceLoader;
+        ApplicationAbstractions.IAnalysisEngine effectiveAnalysisEngine =
+            analysisEngine ?? new FakeAnalysisEngine(new ApplicationNativeAnalysisResultBuilder().Build());
+        ApplicationAbstractions.IFunctionImpactAnalyzer effectiveImpactAnalyzer =
+            impactAnalyzer ?? new FakeFunctionImpactAnalyzer();
+        ApplicationAbstractions.IReferenceZeroPredictionAnalyzer effectivePredictionAnalyzer =
+            predictionAnalyzer ?? new FakeReferenceZeroPredictionAnalyzer();
+        ApplicationAbstractions.IRewriteExecutor effectiveRewriteExecutor =
+            rewriteExecutor ?? new FakeRewriteExecutor(ApplicationAbstractions.RewriteExecutionResult.Success("namespace Sample;"));
+        ApplicationAbstractions.IArtifactWriter effectiveArtifactWriter =
+            new RecordingApplicationArtifactWriter();
+
         return new DomeApplication(
-            workspaceLoader,
-            analysisEngine ?? new FakeAnalysisEngine(new TestAnalysisContextBuilder().BuildEngineResult()),
-            impactAnalyzer ?? new FakeFunctionImpactAnalyzer(),
-            predictionAnalyzer ?? new FakeReferenceZeroPredictionAnalyzer(),
+            effectiveWorkspaceLoader,
+            effectiveAnalysisEngine,
+            effectiveImpactAnalyzer,
+            effectivePredictionAnalyzer,
             new MarkingRuleEngine(MarkingRuleRegistry.CreateDefault()),
-            rewriteExecutor ?? new FakeRewriteExecutor(RewriteExecutionResult.Success("namespace Sample;")),
+            effectiveRewriteExecutor,
             new RunReportBuilder(),
             new ArtifactPlanBuilder(),
-            new RecordingArtifactWriter(),
+            effectiveArtifactWriter,
             rewriteOutputStore: rewriteOutputStore,
             artifactEmissionService: artifactEmissionService);
     }
 
-    private sealed class FakeWorkspaceLoader(Func<string, Task<WorkspaceLoadResult>> handler) : IWorkspaceLoader
+    private sealed class FakeWorkspaceLoader(Func<string, Task<ApplicationAbstractions.WorkspaceLoadResult>> handler) : ApplicationAbstractions.IWorkspaceLoader
     {
-        public Task<WorkspaceLoadResult> LoadAsync(string inputPath, WorkspaceLoadOptions options, CancellationToken cancellationToken) =>
+        public Task<ApplicationAbstractions.WorkspaceLoadResult> LoadAsync(string inputPath, ApplicationAbstractions.WorkspaceLoadOptions options, CancellationToken cancellationToken) =>
             handler(inputPath);
     }
 }

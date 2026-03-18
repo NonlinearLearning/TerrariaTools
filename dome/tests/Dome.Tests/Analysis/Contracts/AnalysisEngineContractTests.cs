@@ -1,17 +1,17 @@
-using TerrariaTools.Dome.Analysis.Roslyn;
-using TerrariaTools.Dome.Core;
+﻿using TerrariaTools.Dome.Analysis.Legacy;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
 using TerrariaTools.Testing.Contracts;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;
 
-public sealed class AnalysisEngineContractTests
+public sealed class AnalysisEngineCompatibilityContractTests
 {
     [Fact]
-    public async Task AnalyzeAsync_ReturnsContextWithStableCoreAbstractions()
+    public async Task AnalyzeAsync_ReturnsContextWithStableNativeAbstractions()
     {
-        IAnalysisEngine engine = new RoslynAnalysisEngine();
-        var document = new SourceDocument(
+        ApplicationAbstractions.IAnalysisEngine engine = new RoslynAnalysisEngine();
+        var document = new ApplicationAbstractions.SourceDocument(
             "Sample.cs",
             "Sample.cs",
             """
@@ -25,6 +25,6 @@ public sealed class AnalysisEngineContractTests
             }
             """);
 
-        await AnalysisEngineContract.AssertStableResultAsync(engine, [document]);
+        await AnalysisEngineCompatibilityContract.AssertStableResultAsync(engine, [document]);
     }
 }

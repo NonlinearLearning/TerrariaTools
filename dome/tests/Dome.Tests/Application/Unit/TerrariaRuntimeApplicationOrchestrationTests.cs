@@ -1,28 +1,32 @@
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Tests.Testing.TestDoubles;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
 
-public sealed class TerrariaRuntimeApplicationOrchestrationTests
+/// <summary>
+/// Runtime legacy exception-path orchestration tests. These assertions are not the standard DomeApplication baseline.
+/// </summary>
+public sealed class TerrariaRuntimeApplicationOrchestrationLegacyTests
 {
     [Fact]
     public async Task RunAsync_Success_InvokesStagesInOrderAndPersistsUpdatedReport()
     {
-        var reportStore = new FakeRunReportStore();
-        var workspacePreparer = new FakeTerrariaRuntimeWorkspacePreparer();
-        var buildExecutor = new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0);
-        var domeRunner = new FakeDomeApplicationRunner(RunResult.Success("artifacts", "report.json"));
+        var reportStore = new FakeRunReportCompatibilityStore();
+        var workspacePreparer = new FakeTerrariaRuntimeCompatibilityWorkspacePreparer();
+        var buildExecutor = new FakeTerrariaRuntimeCompatibilityBuildExecutor(success: true, exitCode: 0);
+        var domeRunner = new FakeDomeApplicationCompatibilityRunner(ApplicationAbstractions.RunResult.Success("artifacts", "report.json"));
         var app = new TerrariaRuntimeApplication(
             domeRunner,
             workspacePreparer,
             buildExecutor,
             reportStore,
-            new FakeTerrariaRuntimeProgressReporter(),
+            new FakeTerrariaRuntimeCompatibilityProgressReporter(),
             new FakeTerrariaRuntimeLayoutFactory());
 
-        var result = await app.RunAsync(new TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         Assert.Equal(
@@ -41,19 +45,19 @@ public sealed class TerrariaRuntimeApplicationOrchestrationTests
     [Fact]
     public async Task RunAsync_DomeFailure_SkipsReportLoadAndBuild()
     {
-        var reportStore = new FakeRunReportStore();
-        var workspacePreparer = new FakeTerrariaRuntimeWorkspacePreparer();
-        var buildExecutor = new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0);
-        var domeRunner = new FakeDomeApplicationRunner(RunResult.Failure(FailureCode.AnalysisFailed, "out", "failed"));
+        var reportStore = new FakeRunReportCompatibilityStore();
+        var workspacePreparer = new FakeTerrariaRuntimeCompatibilityWorkspacePreparer();
+        var buildExecutor = new FakeTerrariaRuntimeCompatibilityBuildExecutor(success: true, exitCode: 0);
+        var domeRunner = new FakeDomeApplicationCompatibilityRunner(ApplicationAbstractions.RunResult.Failure(ModelPrimitives.FailureCode.AnalysisFailed, "out", "failed"));
         var app = new TerrariaRuntimeApplication(
             domeRunner,
             workspacePreparer,
             buildExecutor,
             reportStore,
-            new FakeTerrariaRuntimeProgressReporter(),
+            new FakeTerrariaRuntimeCompatibilityProgressReporter(),
             new FakeTerrariaRuntimeLayoutFactory());
 
-        var result = await app.RunAsync(new TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
         Assert.Empty(reportStore.LoadedPaths);
@@ -65,22 +69,22 @@ public sealed class TerrariaRuntimeApplicationOrchestrationTests
     [Fact]
     public async Task RunAsync_ReportLoadFailure_ReturnsFailureWithoutPreparingWorkspace()
     {
-        var reportStore = new FakeRunReportStore(StageResult<RunReport>.Failure(FailureCode.AnalysisFailed, "report load failed"));
-        var workspacePreparer = new FakeTerrariaRuntimeWorkspacePreparer();
-        var buildExecutor = new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0);
-        var domeRunner = new FakeDomeApplicationRunner(RunResult.Success("artifacts", "report.json"));
+        var reportStore = new FakeRunReportCompatibilityStore(StageResult<ApplicationAbstractions.RunReport>.Failure(ModelPrimitives.FailureCode.AnalysisFailed, "report load failed"));
+        var workspacePreparer = new FakeTerrariaRuntimeCompatibilityWorkspacePreparer();
+        var buildExecutor = new FakeTerrariaRuntimeCompatibilityBuildExecutor(success: true, exitCode: 0);
+        var domeRunner = new FakeDomeApplicationCompatibilityRunner(ApplicationAbstractions.RunResult.Success("artifacts", "report.json"));
         var app = new TerrariaRuntimeApplication(
             domeRunner,
             workspacePreparer,
             buildExecutor,
             reportStore,
-            new FakeTerrariaRuntimeProgressReporter(),
+            new FakeTerrariaRuntimeCompatibilityProgressReporter(),
             new FakeTerrariaRuntimeLayoutFactory());
 
-        var result = await app.RunAsync(new TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(FailureCode.AnalysisFailed, result.FailureCode);
+        Assert.Equal(ModelPrimitives.FailureCode.AnalysisFailed, result.FailureCode);
         Assert.Single(reportStore.LoadedPaths);
         Assert.Empty(buildExecutor.Calls);
         Assert.DoesNotContain(nameof(ITerrariaRuntimeWorkspacePreparer.PrepareWorkspaceAsync), workspacePreparer.Calls);
@@ -89,41 +93,41 @@ public sealed class TerrariaRuntimeApplicationOrchestrationTests
     [Fact]
     public async Task RunAsync_BuildFailure_ReturnsFailureAfterSavingUpdatedReport()
     {
-        var reportStore = new FakeRunReportStore();
-        var workspacePreparer = new FakeTerrariaRuntimeWorkspacePreparer();
-        var buildExecutor = new FakeTerrariaRuntimeBuildExecutor(success: false, exitCode: 1, standardError: "build failed");
-        var domeRunner = new FakeDomeApplicationRunner(RunResult.Success("artifacts", "report.json"));
+        var reportStore = new FakeRunReportCompatibilityStore();
+        var workspacePreparer = new FakeTerrariaRuntimeCompatibilityWorkspacePreparer();
+        var buildExecutor = new FakeTerrariaRuntimeCompatibilityBuildExecutor(success: false, exitCode: 1, standardError: "build failed");
+        var domeRunner = new FakeDomeApplicationCompatibilityRunner(ApplicationAbstractions.RunResult.Success("artifacts", "report.json"));
         var app = new TerrariaRuntimeApplication(
             domeRunner,
             workspacePreparer,
             buildExecutor,
             reportStore,
-            new FakeTerrariaRuntimeProgressReporter(),
+            new FakeTerrariaRuntimeCompatibilityProgressReporter(),
             new FakeTerrariaRuntimeLayoutFactory());
 
-        var result = await app.RunAsync(new TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(FailureCode.BuildFailed, result.FailureCode);
+        Assert.Equal(ModelPrimitives.FailureCode.BuildFailed, result.FailureCode);
         Assert.Single(reportStore.SavedReports);
     }
 
     [Fact]
     public async Task RunAsync_ForwardsSolutionPathToDomeRunner()
     {
-        var reportStore = new FakeRunReportStore();
-        var workspacePreparer = new FakeTerrariaRuntimeWorkspacePreparer();
-        var buildExecutor = new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0);
-        var domeRunner = new FakeDomeApplicationRunner(RunResult.Success("artifacts", "report.json"));
+        var reportStore = new FakeRunReportCompatibilityStore();
+        var workspacePreparer = new FakeTerrariaRuntimeCompatibilityWorkspacePreparer();
+        var buildExecutor = new FakeTerrariaRuntimeCompatibilityBuildExecutor(success: true, exitCode: 0);
+        var domeRunner = new FakeDomeApplicationCompatibilityRunner(ApplicationAbstractions.RunResult.Success("artifacts", "report.json"));
         var app = new TerrariaRuntimeApplication(
             domeRunner,
             workspacePreparer,
             buildExecutor,
             reportStore,
-            new FakeTerrariaRuntimeProgressReporter(),
+            new FakeTerrariaRuntimeCompatibilityProgressReporter(),
             new FakeTerrariaRuntimeLayoutFactory());
 
-        var result = await app.RunAsync(new TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
+        var result = await app.RunAsync(new ApplicationAbstractions.TerrariaRuntimeRunRequest("input.sln", "out"), CancellationToken.None);
 
         Assert.True(result.IsSuccess);
         var request = Assert.Single(domeRunner.Calls);
@@ -132,7 +136,7 @@ public sealed class TerrariaRuntimeApplicationOrchestrationTests
 
     private sealed class FakeTerrariaRuntimeLayoutFactory : ITerrariaRuntimeLayoutFactory
     {
-        public TerrariaRuntimeLayout Create(TerrariaRuntimeRunRequest request) =>
+        public ApplicationAbstractions.TerrariaRuntimeLayout Create(ApplicationAbstractions.TerrariaRuntimeRunRequest request) =>
             new(
                 request.SolutionPath,
                 "source",

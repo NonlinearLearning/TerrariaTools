@@ -1,7 +1,7 @@
 using System.Text.Json;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
 using TerrariaTools.Dome.Analysis.Roslyn;
 using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Core;
 using TerrariaTools.Dome.Reporting;
 using TerrariaTools.Dome.Rewrite.Roslyn;
 using TerrariaTools.Dome.Rules;
@@ -9,7 +9,7 @@ using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
 
-public sealed class TerrariaRuntimeApplicationTests
+public sealed class TerrariaRuntimeApplicationLegacyTests
 {
     [Fact]
     public async Task RunAsync_WritesArtifactsWorkspaceAndBuildSummary()
@@ -43,7 +43,9 @@ public sealed class TerrariaRuntimeApplicationTests
 
             var progress = new FakeTerrariaRuntimeProgressReporter();
             var app = CreateApplication(new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0), progress);
-            var result = await app.RunAsync(new TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot), CancellationToken.None);
+            var result = await app.RunAsync(
+                new ApplicationAbstractions.TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot),
+                CancellationToken.None);
 
             Assert.True(result.IsSuccess);
             Assert.True(File.Exists(Path.Combine(outputRoot, "artifacts", "audit-plan.json")));
@@ -97,10 +99,13 @@ public sealed class TerrariaRuntimeApplicationTests
 
     private sealed class FakeTerrariaRuntimeBuildExecutor(bool success, int exitCode) : ITerrariaRuntimeBuildExecutor
     {
-        public Task<TerrariaRuntimeBuildSummary> ExecuteAsync(TerrariaRuntimeLayout layout, ITerrariaRuntimeProgressReporter progressReporter, CancellationToken cancellationToken)
+        public Task<ApplicationAbstractions.TerrariaRuntimeBuildSummary> ExecuteAsync(
+            ApplicationAbstractions.TerrariaRuntimeLayout layout,
+            ITerrariaRuntimeProgressReporter progressReporter,
+            CancellationToken cancellationToken)
         {
             progressReporter.Report($"[tr-run] dotnet build \"{layout.WorkspaceSolutionPath}\" --no-restore -m");
-            return Task.FromResult(new TerrariaRuntimeBuildSummary(
+            return Task.FromResult(new ApplicationAbstractions.TerrariaRuntimeBuildSummary(
                 success,
                 exitCode,
                 $"dotnet build \"{layout.WorkspaceSolutionPath}\" --no-restore -m",
