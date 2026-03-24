@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Application\Ports\Dome.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\..\Core\Analysis\Dome.Model.Analysis.csproj" />
+    <ProjectReference Include="..\..\Core\Planning\Dome.Model.Planning.csproj" />
+    <ProjectReference Include="..\..\Core\Common\Dome.Model.Primitives.csproj" />
+    <ProjectReference Include="..\..\Core\Rules\Model\Dome.Model.Rules.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="JsonArtifactWriter.cs" />
+  </ItemGroup>
+</Project>

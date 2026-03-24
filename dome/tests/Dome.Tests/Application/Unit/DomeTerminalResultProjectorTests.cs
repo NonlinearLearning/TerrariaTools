@@ -1,6 +1,7 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Application;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelExecution = TerrariaTools.Dome.Application.Ports;
+using ModelPrimitives = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -10,7 +11,7 @@ public sealed class DomeTerminalResultProjectorTests
     [Fact]
     public void Project_ApplicationRunResult_ReturnsEquivalentResult()
     {
-        var result = ApplicationAbstractions.RunResult.Failure(ModelPrimitives.FailureCode.AnalysisFailed, "out", "boom");
+        var result = ModelExecution.RunResult.Failure(ModelPrimitives.FailureCode.AnalysisFailed, "out", "boom");
 
         var projected = DomeTerminalResultProjector.Project(result);
 
@@ -33,3 +34,7 @@ public sealed class DomeTerminalResultProjectorTests
         Assert.Equal("rewrite broke", failure.Message);
     }
 }
+
+
+
+

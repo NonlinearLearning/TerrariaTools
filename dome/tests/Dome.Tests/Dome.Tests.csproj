@@ -25,18 +25,21 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TerrariaTools.Testing\TerrariaTools.Testing.csproj" />
-    <ProjectReference Include="..\..\src\Analysis\Roslyn\Dome.Analysis.Roslyn.csproj" />
-    <ProjectReference Include="..\..\src\Rules\Dome.Rules.csproj" />
-    <ProjectReference Include="..\..\src\Rewrite\Roslyn\Dome.Rewrite.Roslyn.csproj" />
-    <ProjectReference Include="..\..\src\Reporting\Dome.Reporting.csproj" />
-    <ProjectReference Include="..\..\src\Application\Dome.Application.csproj" />
-    <ProjectReference Include="..\..\src\Application\Legacy\Dome.Application.Legacy.csproj" />
-    <ProjectReference Include="..\..\src\Cli\Dome.Cli.csproj" />
-    <ProjectReference Include="..\..\src\Application\Abstractions\Dome.Application.Abstractions.csproj" />
-    <ProjectReference Include="..\..\src\Model\Primitives\Dome.Model.Primitives.csproj" />
-    <ProjectReference Include="..\..\src\Model\Analysis\Dome.Model.Analysis.csproj" />
-    <ProjectReference Include="..\..\src\Model\Rules\Dome.Model.Rules.csproj" />
-    <ProjectReference Include="..\..\src\Model\Planning\Dome.Model.Planning.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Analysis.Roslyn\Dome.Analysis.Roslyn.csproj" />
+    <ProjectReference Include="..\..\src\Core\Rules\Services\Dome.Rules.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Rewrite.Roslyn\Dome.Rewrite.Roslyn.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Reporting.Json\Dome.Reporting.csproj" />
+    <ProjectReference Include="..\..\apps\Dome.Application\Dome.Application.csproj" />
+    <ProjectReference Include="..\..\apps\Dome.Application.Runtime\Dome.Application.Runtime.csproj" />
+    <ProjectReference Include="..\..\apps\Dome.Application.ShadowExtraction\Dome.Application.ShadowExtraction.csproj" />
+    <ProjectReference Include="..\..\apps\Dome.Cli\Dome.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ports\Dome.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Application\UseCases\Execution\Dome.Model.Execution.csproj" />
+    <ProjectReference Include="..\..\src\Core\Common\Dome.Model.Primitives.csproj" />
+    <ProjectReference Include="..\..\src\Core\Analysis\Dome.Model.Analysis.csproj" />
+    <ProjectReference Include="..\..\src\Core\Rules\Model\Dome.Model.Rules.csproj" />
+    <ProjectReference Include="..\..\src\Core\Planning\Dome.Model.Planning.csproj" />
+    <ProjectReference Include="..\..\src\Core\Planning.Services\Dome.Core.Planning.Services.csproj" />
   </ItemGroup>
 
 </Project>

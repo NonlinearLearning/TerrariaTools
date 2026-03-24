@@ -1,9 +1,11 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
-using TerrariaTools.Dome.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
+using PortsCommon = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using TerrariaTools.Dome.Core.Cpg;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;
@@ -31,7 +33,7 @@ public sealed class AnalysisNativePathTests
 
             Assert.IsType<ApplicationAbstractions.WorkspaceLoadResult>(result);
             Assert.True(result.IsSuccess);
-            Assert.Equal(ModelPrimitives.WorkspaceLoadMode.SourceOnly, result.LoadMode);
+            Assert.Equal(PortsCommon.WorkspaceLoadMode.SourceOnly, result.LoadMode);
             Assert.False(result.FallbackUsed);
             Assert.Equal("Sample.cs", Assert.Single(result.Documents).RelativePath);
         }
@@ -58,9 +60,9 @@ public sealed class AnalysisNativePathTests
             await File.WriteAllTextAsync(sourcePath, "class Sample { }");
             var coordinator = new WorkspaceLoadCoordinator(
                 new StubWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Failure(
-                    ModelPrimitives.WorkspaceLoadMode.CodeAnalysis,
+                    PortsCommon.WorkspaceLoadMode.CodeAnalysis,
                     "CodeAnalysis",
-                    [new ApplicationAbstractions.WorkspaceLoadDiagnostic("CodeAnalysisLoad", ModelPrimitives.WorkspaceLoadDiagnosticSeverity.Error, "load failed")]))),
+                    [new ApplicationAbstractions.WorkspaceLoadDiagnostic("CodeAnalysisLoad", PortsCommon.WorkspaceLoadDiagnosticSeverity.Error, "load failed")]))),
                 new SourceOnlyLoader());
 
             var result = await ((ApplicationAbstractions.IWorkspaceLoader)coordinator).LoadAsync(
@@ -69,7 +71,7 @@ public sealed class AnalysisNativePathTests
                 CancellationToken.None);
 
             Assert.True(result.IsSuccess);
-            Assert.Equal(ModelPrimitives.WorkspaceLoadMode.CodeAnalysisFallbackToSourceOnly, result.LoadMode);
+            Assert.Equal(PortsCommon.WorkspaceLoadMode.CodeAnalysisFallbackToSourceOnly, result.LoadMode);
             Assert.True(result.FallbackUsed);
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Stage == "CodeAnalysisLoad");
             Assert.Equal("Sample.cs", Assert.Single(result.Documents).RelativePath);
@@ -87,11 +89,11 @@ public sealed class AnalysisNativePathTests
     public async Task AnalysisEngine_ApplicationContract_ReturnsModelNativeSnapshotAndStatementFacts()
     {
         var engine = (ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine();
-        var sourceSet = new ApplicationAbstractions.SourceDocumentSet(
+        var sourceSet = new ModelAnalysis.SourceDocumentSet(
             "Sample.cs",
             ".",
             [
-                new ApplicationAbstractions.SourceDocument(
+                new ModelAnalysis.SourceDocument(
                     "Sample.cs",
                     "Sample.cs",
                     """
@@ -111,7 +113,7 @@ public sealed class AnalysisNativePathTests
 
         var result = await engine.AnalyzeAsync(sourceSet, CancellationToken.None);
 
-        Assert.IsType<ApplicationAbstractions.AnalysisEngineResult>(result);
+        Assert.IsType<ModelAnalysis.AnalysisOutput>(result);
         Assert.IsType<ModelAnalysis.AnalysisExecutionSnapshot>(result.Snapshot);
         Assert.IsType<ModelAnalysis.StatementFactsIndex>(result.Snapshot.StatementFacts);
         Assert.NotEmpty(result.Snapshot.StatementFacts.FactsByTargetKey);
@@ -123,11 +125,11 @@ public sealed class AnalysisNativePathTests
     {
         var engine = (ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine();
         var result = await engine.AnalyzeAsync(
-            new ApplicationAbstractions.SourceDocumentSet(
+            new ModelAnalysis.SourceDocumentSet(
                 "Sample.cs",
                 ".",
                 [
-                    new ApplicationAbstractions.SourceDocument(
+                    new ModelAnalysis.SourceDocument(
                         "Sample.cs",
                         "Sample.cs",
                         """
@@ -185,10 +187,10 @@ public sealed class AnalysisNativePathTests
             """;
         var engine = (ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine();
         var analysis = await engine.AnalyzeAsync(
-            new ApplicationAbstractions.SourceDocumentSet(
+            new ModelAnalysis.SourceDocumentSet(
                 "Sample.cs",
                 ".",
-                [new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", sourceText)]),
+                [new ModelAnalysis.SourceDocument("Sample.cs", "Sample.cs", sourceText)]),
             CancellationToken.None);
         var callStatement = Assert.Single(analysis.View.Targets.Where(target =>
             target.Target.TargetKind == ModelPrimitives.TargetKind.Statement &&
@@ -204,9 +206,7 @@ public sealed class AnalysisNativePathTests
 
         var predictionAnalyzer = (ApplicationAbstractions.IReferenceZeroPredictionAnalyzer)new ReferenceZeroPredictionAnalyzer();
         var predicted = predictionAnalyzer.Predict(
-            analysis.Snapshot,
-            analysis.Services,
-            new ModelRules.RuleExecutionContext("AnalysisNativePathTests", null, ModelPrimitives.StatementScopeMode.MinimalBlock, CancellationToken.None),
+            analysis.CreateContext(),
             decisions);
         Assert.Contains(predicted, decision =>
             decision.Target.TargetKind == ModelPrimitives.TargetKind.Method &&
@@ -224,15 +224,16 @@ public sealed class AnalysisNativePathTests
                         ModelPrimitives.MemberKind.Method,
                         ModelPrimitives.TargetKind.Method),
                     new ModelPrimitives.TargetLocator(0, 0, "fun2"),
-                    new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete))
+                    new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+                    new ModelPlanning.PlanReason("function-mark", "delete callee"))
             ],
             []);
         var snapshot = analysis.Services.FunctionGraphs.GetSnapshot(
-            ModelAnalysis.FunctionGraphRequests.ExpandedMembersCalls(
+            ApplicationAbstractions.FunctionGraphRequests.ExpandedMembersCalls(
                 [new ModelPrimitives.MemberId("Sample.Player.fun2(int)")],
                 "AnalysisNativePathTests",
                 "function impact validation"));
-        var impact = functionImpactAnalyzer.Analyze(plan, snapshot);
+        var impact = functionImpactAnalyzer.Analyze(plan, analysis);
 
         Assert.Contains("Sample.Player.fun2(int)", impact.DeletedFunctionIds);
 
@@ -249,6 +250,163 @@ public sealed class AnalysisNativePathTests
 
         var advanced = analysis.Services.AdvancedAnalysis.BuildSummary();
         Assert.True(advanced.PersistentTypeCount >= 1);
+    }
+
+    [Fact]
+    public async Task AnalysisEngine_ShouldProjectCallEdgesIntoCodePropertyGraphAndFunctionGraph()
+    {
+        var engine = (ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine();
+        var analysis = await engine.AnalyzeAsync(
+            new ModelAnalysis.SourceDocumentSet(
+                "Sample.cs",
+                ".",
+                [
+                    new ModelAnalysis.SourceDocument(
+                        "Sample.cs",
+                        "Sample.cs",
+                        """
+                        class C
+                        {
+                            void A()
+                            {
+                            }
+
+                            void B()
+                            {
+                                A();
+                            }
+                        }
+                        """)
+                ]),
+            CancellationToken.None);
+
+        Assert.Contains(
+            analysis.CodePropertyGraph.Edges,
+            edge => edge is
+            {
+                Label: EdgeKinds.Call,
+                SourceId: "method:C.B",
+                TargetId: "method:C.A"
+            });
+        Assert.Contains(
+            analysis.View.FunctionGraph.Edges,
+            edge => edge.SourceMemberId.Value == "C.B()" &&
+                    edge.TargetMemberId.Value == "C.A()" &&
+                    edge.Kind == ModelPrimitives.FunctionDependencyKind.Calls);
+    }
+
+    [Fact]
+    public async Task AnalysisEngine_WorkspaceMode_PreservesQualifiedExternalParameterTypesInMemberIds()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-native-workspace", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var externalRoot = Path.Combine(tempRoot, "External");
+            var sourceRoot = Path.Combine(tempRoot, "TR");
+            Directory.CreateDirectory(externalRoot);
+            Directory.CreateDirectory(sourceRoot);
+
+            var externalProjectPath = Path.Combine(externalRoot, "External.csproj");
+            var projectPath = Path.Combine(sourceRoot, "TerrariaServer.csproj");
+
+            await File.WriteAllTextAsync(
+                externalProjectPath,
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <ImplicitUsings>disable</ImplicitUsings>
+                    <Nullable>disable</Nullable>
+                  </PropertyGroup>
+                </Project>
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(externalRoot, "ExternalType.cs"),
+                """
+                namespace External;
+
+                public sealed class ExternalType
+                {
+                    public void Touch()
+                    {
+                    }
+                }
+                """);
+            await File.WriteAllTextAsync(
+                projectPath,
+                $$"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <ImplicitUsings>disable</ImplicitUsings>
+                    <Nullable>disable</Nullable>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="{{Path.GetRelativePath(sourceRoot, externalProjectPath)}}" />
+                  </ItemGroup>
+                </Project>
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceRoot, "Main.cs"),
+                """
+                using External;
+
+                namespace Terraria;
+
+                public static class Main
+                {
+                    public static void DedServ()
+                    {
+                        Helper.Run(new ExternalType());
+                    }
+                }
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceRoot, "Helper.cs"),
+                """
+                using External;
+
+                namespace Terraria;
+
+                internal static class Helper
+                {
+                    public static void Run(ExternalType value)
+                    {
+                        value.Touch();
+                    }
+                }
+                """);
+
+            var loadResult = await new WorkspaceLoadCoordinator(
+                    new CodeAnalysisWorkspaceLoader(),
+                    new SourceOnlyLoader())
+                .LoadAsync(
+                    projectPath,
+                    ApplicationAbstractions.WorkspaceLoadOptions.Default,
+                    CancellationToken.None);
+
+            Assert.True(loadResult.IsSuccess);
+            Assert.NotNull(loadResult.Input);
+            Assert.Equal(ModelAnalysis.AnalysisInputMode.Workspace, loadResult.Input!.InputMode);
+
+            var analysis = await new RoslynAnalysisEngine().AnalyzeAsync(loadResult.Input, CancellationToken.None);
+
+            Assert.Contains(
+                "Terraria.Helper.Run(External.ExternalType)",
+                analysis.FunctionIndex.NodesByMemberId.Keys);
+            Assert.Contains(
+                analysis.Services.MethodCalls.GetReachableMethods([new ModelPrimitives.MemberId("Terraria.Main.DedServ()")]),
+                item => item.Value == "Terraria.Helper.Run(External.ExternalType)");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
     }
 
     private sealed class StubWorkspaceLoader(Func<string, Task<ApplicationAbstractions.WorkspaceLoadResult>> handler) : ApplicationAbstractions.IWorkspaceLoader

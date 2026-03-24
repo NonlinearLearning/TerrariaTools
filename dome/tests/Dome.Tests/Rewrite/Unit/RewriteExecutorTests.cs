@@ -1,7 +1,7 @@
-using TerrariaTools.Dome.Model.Planning;
-using TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Model.Rules;
-using TerrariaTools.Dome.Rewrite.Roslyn;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelCommon = TerrariaTools.Dome.Core.Common;
+using TerrariaTools.Dome.Adapters.Rewrite.Roslyn;
+using PortsCommon = TerrariaTools.Dome.Application.Ports;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rewrite;
@@ -28,15 +28,15 @@ public sealed class RewriteExecutorCompatibilityTests
             }
             """;
 
-        var plan = new AuditPlan(
-            new PlanMetadata("dome", "1", "Sample.cs", "out", RunMode.Standard),
+        var plan = new ModelPlanning.AuditPlan(
+            new ModelPlanning.PlanMetadata("dome", "1", "Sample.cs", "out", ModelCommon.RunMode.Standard),
             [
-                new PlannedChange(
+                new ModelPlanning.PlannedChange(
                     0,
-                    new TargetIdentity("Sample.cs", new MemberId("Sample.Player.Update()"), MemberKind.Method, TargetKind.Statement),
-                    new TargetLocator(999, 3, "Run();"),
-                    new PlanAction(PlanActionKind.Delete),
-                    new PlanReason("delete-rule", "delete reason"))
+                    new ModelCommon.TargetIdentity("Sample.cs", new ModelCommon.MemberId("Sample.Player.Update()"), ModelCommon.MemberKind.Method, ModelCommon.TargetKind.Statement),
+                    new ModelCommon.TargetLocator(999, 3, "Run();"),
+                    new ModelPlanning.PlanAction(ModelCommon.PlanActionKind.Delete),
+                    new ModelPlanning.PlanReason("delete-rule", "delete reason"))
             ],
             []);
 
@@ -44,7 +44,7 @@ public sealed class RewriteExecutorCompatibilityTests
         var result = await executor.ExecuteAsync(source, plan, CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal(FailureCode.RewriteFailed, result.FailureCode);
+        Assert.Equal(PortsCommon.FailureCode.RewriteFailed, result.FailureCode);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public sealed class RewriteExecutorCompatibilityTests
         var executor = new RoslynRewriteExecutor();
         var result = await executor.ExecuteAsync(
             source,
-            CreateLegacyPlan(spanStart, "Run();".Length, "Run();", PlanActionKind.AddReturn, "1"),
+            CreateLegacyPlan(spanStart, "Run();".Length, "Run();", ModelCommon.PlanActionKind.AddReturn, "1"),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -98,7 +98,7 @@ public sealed class RewriteExecutorCompatibilityTests
         var executor = new RoslynRewriteExecutor();
         var result = await executor.ExecuteAsync(
             CreateLegacyDocumentContext("Sample.cs", source),
-            CreateLegacyPlan(spanStart, "Run();".Length, "Run();", PlanActionKind.Delete),
+            CreateLegacyPlan(spanStart, "Run();".Length, "Run();", ModelCommon.PlanActionKind.Delete),
             CancellationToken.None);
 
         Assert.True(result.IsSuccess);
@@ -116,7 +116,7 @@ public sealed class RewriteExecutorCompatibilityTests
             }
         };
 
-    private static object CreateLegacyPlan(int spanStart, int spanLength, string displayText, PlanActionKind actionKind, string? payload = null) =>
+    private static object CreateLegacyPlan(int spanStart, int spanLength, string displayText, ModelCommon.PlanActionKind actionKind, string? payload = null) =>
         new
         {
             Metadata = new
@@ -125,7 +125,7 @@ public sealed class RewriteExecutorCompatibilityTests
                 PlanVersion = "1",
                 InputPath = "Sample.cs",
                 OutputPath = "out",
-                RunMode = RunMode.Standard
+                RunMode = ModelCommon.RunMode.Standard
             },
             Changes = new object[]
             {
@@ -136,8 +136,8 @@ public sealed class RewriteExecutorCompatibilityTests
                     {
                         DocumentPath = "Sample.cs",
                         MemberId = new { Value = "Sample.Player.Update()" },
-                        MemberKind = MemberKind.Method,
-                        TargetKind = TargetKind.Statement,
+                        MemberKind = ModelCommon.MemberKind.Method,
+                        TargetKind = ModelCommon.TargetKind.Statement,
                         SpanStart = spanStart,
                         SpanLength = spanLength,
                         DisplayText = displayText,

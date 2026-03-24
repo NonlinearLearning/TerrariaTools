@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dome.Application\Dome.Application.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ports\Dome.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Runtime.Process\Dome.Runtime.Process.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Reporting.Json\Dome.Reporting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\Application\UseCases\ShadowExtraction\ShadowExtractionFeatureContracts.cs" Link="UseCases\ShadowExtraction\ShadowExtractionFeatureContracts.cs" />
+    <Compile Include="..\..\src\Application\UseCases\ShadowExtraction\ShadowExtractionPipelineTypes.cs" Link="UseCases\ShadowExtraction\ShadowExtractionPipelineTypes.cs" />
+    <Compile Include="..\..\src\Application\UseCases\ShadowExtraction\ShadowExtractionWrappers.cs" Link="UseCases\ShadowExtraction\ShadowExtractionWrappers.cs" />
+    <Compile Include="..\..\src\Application\UseCases\ShadowExtraction\TerrariaRuntimeShadowExtractionPipelineStages.cs" Link="UseCases\ShadowExtraction\TerrariaRuntimeShadowExtractionPipelineStages.cs" />
+    <Compile Include="..\..\src\Adapters\Reporting.Json\JsonShadowExtractionReportStore.cs" Link="Adapters\Reporting\JsonShadowExtractionReportStore.cs" />
+    <Compile Include="..\..\src\Adapters\Runtime.Process\ShadowExtractionSupport.cs" Link="Adapters\Runtime.Process\ShadowExtractionSupport.cs" />
+    <Compile Include="..\..\src\Adapters\Runtime.Process\TerrariaRuntimeShadowLayoutFactory.cs" Link="Adapters\Runtime.Process\TerrariaRuntimeShadowLayoutFactory.cs" />
+    <Compile Include="..\..\src\Adapters\Runtime.Process\TerrariaRuntimeShadowProjectBuilder.cs" Link="Adapters\Runtime.Process\TerrariaRuntimeShadowProjectBuilder.cs" />
+    <Compile Include="..\..\src\Adapters\Runtime.Process\TerrariaRuntimeShadowSourceRewriter.cs" Link="Adapters\Runtime.Process\TerrariaRuntimeShadowSourceRewriter.cs" />
+  </ItemGroup>
+</Project>

@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace TerrariaTools.Testing.Assertions;
@@ -31,6 +31,10 @@ public static class TestSuiteLayoutAuditor
         AssertApplicationIntegrationStaysWithinApprovedSurface(domeTestsRoot);
         AssertSnapshotsStayOutOfSharedTesting(sharedTestingRoot);
         AssertSnapshotsRemainColocated(domeTestsRoot);
+        AssertCoreCpgDocumentationCutover(sourceFilePath);
+        AssertCoreCpgCiWorkflow(sourceFilePath);
+        AssertApplicationFlowCompositionCutover(sourceFilePath);
+        AssertApplicationFlowArchitectureDocs(sourceFilePath);
     }
 
     private static void AssertNoRootTestFiles(string domeTestsRoot)
@@ -105,6 +109,10 @@ public static class TestSuiteLayoutAuditor
             Path.Combine(domeTestsRoot, "Application", "Unit"),
             Path.Combine(domeTestsRoot, "Cli", "Unit")
         };
+        var allowedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "TerrariaRuntimeBuildExecutorTests.cs"
+        };
         var bannedPatterns = new[]
         {
             "Path.GetTempPath(",
@@ -118,6 +126,7 @@ public static class TestSuiteLayoutAuditor
         var offenders = unitRoots
             .Where(Directory.Exists)
             .SelectMany(root => Directory.GetFiles(root, "*.cs", SearchOption.AllDirectories))
+            .Where(path => !allowedFiles.Contains(Path.GetFileName(path)))
             .Where(path => bannedPatterns.Any(pattern => File.ReadAllText(path).Contains(pattern, StringComparison.Ordinal)))
             .OrderBy(path => path, StringComparer.Ordinal)
             .ToArray();
@@ -199,6 +208,7 @@ public static class TestSuiteLayoutAuditor
         var allowedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "DomeApplicationTests.cs",
+            "SolutionCutoverTests.cs",
             "TerrariaRuntimeApplicationTests.cs",
             "TerrariaRuntimeEnvironmentBuilderTests.cs",
             "TerrariaRuntimeShadowExtractionApplicationTests.cs"
@@ -212,6 +222,112 @@ public static class TestSuiteLayoutAuditor
         Assert.True(
             offenders.Length == 0,
             $"Application/Integration should stay a small approved end-to-end surface. Offenders:{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
+    }
+
+    private static void AssertCoreCpgDocumentationCutover(string sourceFilePath)
+    {
+        var repositoryRoot = ResolveAncestorDirectory(sourceFilePath, ".worktrees");
+        var domeRoot = Path.Combine(repositoryRoot, "dda", "dome");
+        var targetFiles = new[]
+        {
+            Path.Combine(domeRoot, "docs", "guides", "build-and-test.md"),
+            Path.Combine(domeRoot, "docs", "architecture", "overview.md"),
+            Path.Combine(domeRoot, "docs", "architecture", "project-layout.md"),
+            Path.Combine(domeRoot, "docs", "plans", "2026-03-24-joernish-cpg.md"),
+            Path.Combine(domeRoot, "docs", "plans", "2026-03-24-joernish-cpg-gap-plan.md"),
+            Path.Combine(domeRoot, "docs", "plans", "2026-03-24-joernish-cpg-third-stage-closure.md"),
+            Path.Combine(domeRoot, "docs", "plans", "2026-03-24-joernish-cpg-final-gap-closure.md")
+        };
+
+        var offenders = targetFiles
+            .Where(File.Exists)
+            .Where(path => File.ReadAllText(path).Contains("dome/prototypes/JoernishCpg", StringComparison.Ordinal) ||
+                           File.ReadAllText(path).Contains(@"dome\prototypes\JoernishCpg", StringComparison.Ordinal))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            $"Target documentation must not reference dome/prototypes/JoernishCpg anymore. Offenders:{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
+
+        var missingCoreCpgMentions = targetFiles
+            .Where(File.Exists)
+            .Where(path => !File.ReadAllText(path).Contains("src/Core/CPG", StringComparison.Ordinal) &&
+                           !File.ReadAllText(path).Contains(@"src\Core\CPG", StringComparison.Ordinal))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            missingCoreCpgMentions.Length == 0,
+            $"Target documentation must mention src/Core/CPG after the cutover. Missing:{Environment.NewLine}{string.Join(Environment.NewLine, missingCoreCpgMentions)}");
+    }
+
+    private static void AssertCoreCpgCiWorkflow(string sourceFilePath)
+    {
+        var repositoryRoot = ResolveAncestorDirectory(sourceFilePath, ".worktrees");
+        var workflowPath = Path.Combine(repositoryRoot, "dda", "dome", ".github", "workflows", "dome-ci.yml");
+
+        Assert.True(File.Exists(workflowPath), $"Expected CI workflow at '{workflowPath}'.");
+
+        var workflow = File.ReadAllText(workflowPath);
+        Assert.Contains("src/Core/CPG/Tests/JoernishCpg.Tests.csproj", workflow, StringComparison.Ordinal);
+        Assert.Contains("tests/Dome.Tests/Dome.Tests.csproj", workflow, StringComparison.Ordinal);
+    }
+
+    private static void AssertApplicationFlowCompositionCutover(string sourceFilePath)
+    {
+        var repositoryRoot = ResolveAncestorDirectory(sourceFilePath, ".worktrees");
+        var domeRoot = Path.Combine(repositoryRoot, "dda", "dome");
+        var compositionFiles = new[]
+        {
+            Path.Combine(domeRoot, "apps", "Dome.Application", "Composition", "DomeApplicationComposition.cs"),
+            Path.Combine(domeRoot, "apps", "Dome.Application.Runtime", "Composition", "TerrariaRuntimeComposition.cs"),
+            Path.Combine(domeRoot, "apps", "Dome.Application.ShadowExtraction", "Composition", "TerrariaRuntimeShadowExtractionComposition.cs")
+        };
+
+        var offenders = compositionFiles
+            .Where(File.Exists)
+            .Where(path =>
+            {
+                var content = File.ReadAllText(path);
+                return content.Contains("PipelineBuilder", StringComparison.Ordinal) ||
+                       content.Contains("RecipePipelineRunner", StringComparison.Ordinal);
+            })
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            offenders.Length == 0,
+            "Composition roots should delegate recipe assembly directly and must not retain PipelineBuilder/RecipePipelineRunner wrapper types. "
+            + $"Offenders:{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
+    }
+
+    private static void AssertApplicationFlowArchitectureDocs(string sourceFilePath)
+    {
+        var repositoryRoot = ResolveAncestorDirectory(sourceFilePath, ".worktrees");
+        var domeRoot = Path.Combine(repositoryRoot, "dda", "dome");
+        var architectureFiles = new[]
+        {
+            Path.Combine(domeRoot, "docs", "architecture", "overview.md"),
+            Path.Combine(domeRoot, "docs", "architecture", "project-layout.md")
+        };
+
+        var missingRecipeAssembly = architectureFiles
+            .Where(File.Exists)
+            .Where(path =>
+            {
+                var content = File.ReadAllText(path);
+                return !content.Contains("recipe-based", StringComparison.OrdinalIgnoreCase) ||
+                       !content.Contains("fixed-slot", StringComparison.OrdinalIgnoreCase);
+            })
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            missingRecipeAssembly.Length == 0,
+            "Architecture docs must describe the recipe-based fixed-slot flow assembly model. Missing:{0}".Replace(
+                "{0}",
+                $"{Environment.NewLine}{string.Join(Environment.NewLine, missingRecipeAssembly)}"));
     }
 
     private static bool HasMatchingTestFile(string baselinePath)

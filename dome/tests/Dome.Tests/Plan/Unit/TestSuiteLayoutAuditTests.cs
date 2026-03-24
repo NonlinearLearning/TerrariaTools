@@ -1,4 +1,4 @@
-using TerrariaTools.Testing.Assertions;
+﻿using TerrariaTools.Testing.Assertions;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Plan;

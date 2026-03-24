@@ -1,18 +1,16 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Reporting;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelExecution = TerrariaTools.Dome.Application.Ports;
+using ModelPrimitives = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
+using TerrariaTools.Dome.Adapters.Reporting.Json;
 
 namespace TerrariaTools.Dome.Tests.Testing.TestDoubles;
 
-/// <summary>
-/// Compatibility-only doubles for runtime/shadow legacy execution paths on native contracts.
-/// </summary>
-internal sealed class FakeDomeApplicationCompatibilityRunner(ApplicationAbstractions.RunResult result) : IDomeApplicationRunner
+internal sealed class FakeDomeApplicationCompatibilityRunner(ModelExecution.RunResult result) : IDomeApplicationRunner
 {
     public List<ApplicationAbstractions.RunRequest> Calls { get; } = [];
 
-    public Task<ApplicationAbstractions.RunResult> RunAsync(ApplicationAbstractions.RunRequest request, CancellationToken cancellationToken)
+    public Task<ModelExecution.RunResult> RunAsync(ApplicationAbstractions.RunRequest request, CancellationToken cancellationToken)
     {
         Calls.Add(request);
         return Task.FromResult(result);
@@ -21,11 +19,11 @@ internal sealed class FakeDomeApplicationCompatibilityRunner(ApplicationAbstract
 
 internal sealed class FakeRunReportCompatibilityStore : IRunReportStore
 {
-    private readonly StageResult<ApplicationAbstractions.RunReport> _loadResult;
+    private readonly StageResult<ModelExecution.RunReport> _loadResult;
 
-    public FakeRunReportCompatibilityStore(StageResult<ApplicationAbstractions.RunReport>? loadResult = null)
+    public FakeRunReportCompatibilityStore(StageResult<ModelExecution.RunReport>? loadResult = null)
     {
-        _loadResult = loadResult ?? StageResult<ApplicationAbstractions.RunReport>.Success(new ApplicationAbstractions.RunReport(
+        _loadResult = loadResult ?? StageResult<ModelExecution.RunReport>.Success(new ModelExecution.RunReport(
             true,
             ModelPrimitives.FailureCode.None,
             0,
@@ -35,8 +33,8 @@ internal sealed class FakeRunReportCompatibilityStore : IRunReportStore
             [],
             null,
             [],
-            new ApplicationAbstractions.RiskSummary(0, []),
-            new ApplicationAbstractions.PlanCoverageSummary(0, 0, []),
+            new ModelExecution.RiskSummary(0, []),
+            new ModelExecution.PlanCoverageSummary(0, 0, []),
             null,
             null,
             null,
@@ -47,15 +45,15 @@ internal sealed class FakeRunReportCompatibilityStore : IRunReportStore
     }
 
     public List<string> LoadedPaths { get; } = [];
-    public List<(string Path, ApplicationAbstractions.RunReport Report)> SavedReports { get; } = [];
+    public List<(string Path, ModelExecution.RunReport Report)> SavedReports { get; } = [];
 
-    public Task<StageResult<ApplicationAbstractions.RunReport>> LoadAsync(string path, CancellationToken cancellationToken)
+    public Task<StageResult<ModelExecution.RunReport>> LoadAsync(string path, CancellationToken cancellationToken)
     {
         LoadedPaths.Add(path);
         return Task.FromResult(_loadResult);
     }
 
-    public Task SaveAsync(string path, ApplicationAbstractions.RunReport report, CancellationToken cancellationToken)
+    public Task SaveAsync(string path, ModelExecution.RunReport report, CancellationToken cancellationToken)
     {
         SavedReports.Add((path, report));
         return Task.CompletedTask;
@@ -197,3 +195,7 @@ internal sealed class FakeShadowExtractionCompatibilityReportStore : IShadowExtr
         return Task.CompletedTask;
     }
 }
+
+
+
+

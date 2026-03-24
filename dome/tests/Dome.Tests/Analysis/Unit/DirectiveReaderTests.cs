@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Analysis.Roslyn;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;

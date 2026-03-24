@@ -1,7 +1,7 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Rewrite.Roslyn;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using TerrariaTools.Dome.Adapters.Rewrite.Roslyn;
 using TerrariaTools.Testing.Contracts;
 using Xunit;
 
@@ -18,10 +18,10 @@ public sealed class RoslynRewriteExecutorContractTests
     [Fact]
     public async Task Executor_SucceedsForEmptyPlan()
     {
-        var sourceSet = new ApplicationAbstractions.SourceDocumentSet(
+        var sourceSet = new ModelAnalysis.SourceDocumentSet(
             "Sample.cs",
             "Sample.cs",
-            [new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "class C { void M() { } }")]);
+            [new ModelAnalysis.SourceDocument("Sample.cs", "Sample.cs", "class C { void M() { } }")]);
         var plan = new ModelPlanning.AuditPlan(
             new ModelPlanning.PlanMetadata("dome", "1", "in", "out", ModelPrimitives.RunMode.Standard),
             Array.Empty<ModelPlanning.PlannedChange>(),

@@ -14,8 +14,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Application\Dome.Application.csproj" />
-    <ProjectReference Include="..\..\src\Application\Legacy\Dome.Application.Legacy.csproj" />
+    <ProjectReference Include="..\..\apps\Dome.Application\Dome.Application.csproj" />
+    <ProjectReference Include="..\..\apps\Dome.Application.Runtime\Dome.Application.Runtime.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,8 +1,8 @@
-using System.Text.Json;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using TerrariaTools.Dome.Analysis.Roslyn;
-using TerrariaTools.Dome.Application;
-using TerrariaTools.Dome.Reporting;
+﻿using System.Text.Json;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
+using TerrariaTools.Dome.Adapters.Reporting.Json;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -92,7 +92,9 @@ public sealed class TerrariaRuntimeShadowExtractionApplicationLegacyTests
             Assert.Equal(2, report.RootElement.GetProperty("RewrittenDocuments").GetInt32());
             Assert.True(report.RootElement.TryGetProperty("TrBuildSummary", out var buildSummary));
             Assert.True(buildSummary.GetProperty("BuildSucceeded").GetBoolean());
-            Assert.Contains(progress.Messages, message => message.Contains("Symbol closure documents", StringComparison.Ordinal));
+            Assert.Contains(progress.Messages, message => message.Contains("Building closure plan", StringComparison.Ordinal));
+            Assert.Contains(progress.Messages, message => message.Contains("开始准备 shadow 项目工作区", StringComparison.Ordinal));
+            Assert.Contains(progress.Messages, message => message.Contains("Shadow 项目工作区已完成", StringComparison.Ordinal));
         }
         finally
         {
@@ -180,23 +182,206 @@ public sealed class TerrariaRuntimeShadowExtractionApplicationLegacyTests
         }
     }
 
+    [Fact]
+    public async Task RunAsync_ShadowReportCarriesCpgFingerprintNotes()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var sourceRoot = Path.Combine(tempRoot, "TR");
+            var outputRoot = Path.Combine(tempRoot, "tr-shadow");
+            Directory.CreateDirectory(sourceRoot);
+
+            var solutionPath = Path.Combine(sourceRoot, "TerrariaServer.sln");
+            await File.WriteAllTextAsync(solutionPath, "solution");
+            await File.WriteAllTextAsync(Path.Combine(sourceRoot, "TerrariaServer.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceRoot, "Main.cs"),
+                """
+                namespace Terraria;
+
+                public static class Main
+                {
+                    public static void DedServ()
+                    {
+                        Helper.Run();
+                    }
+                }
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceRoot, "Helper.cs"),
+                """
+                namespace Terraria;
+
+                internal static class Helper
+                {
+                    public static void Run()
+                    {
+                        Nested();
+                    }
+
+                    private static void Nested()
+                    {
+                    }
+                }
+                """);
+
+            var app = CreateApplication(new FakeTerrariaRuntimeProgressReporter(), new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0));
+            var result = await app.RunAsync(
+                new ApplicationAbstractions.TerrariaRuntimeShadowExtractionRequest(solutionPath, outputRoot, "Terraria.Main.DedServ"),
+                CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+
+            using var report = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(outputRoot, "artifacts", "shadow-report.json")));
+            var notes = report.RootElement
+                .GetProperty("AdvancedAnalysisSummary")
+                .GetProperty("Notes")
+                .EnumerateArray()
+                .Select(static element => element.GetString())
+                .OfType<string>()
+                .ToArray();
+
+            Assert.Contains(notes, static note => note.StartsWith("CpgCallEdges=", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_PreservesMembersWithExternalTypeSignaturesWhenWorkspaceLoadUsesRealProjectReferences()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "dome-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try
+        {
+            var externalRoot = Path.Combine(tempRoot, "External");
+            var sourceRoot = Path.Combine(tempRoot, "TR");
+            var outputRoot = Path.Combine(tempRoot, "tr-shadow");
+            Directory.CreateDirectory(externalRoot);
+            Directory.CreateDirectory(sourceRoot);
+
+            var externalProjectPath = Path.Combine(externalRoot, "External.csproj");
+            var projectPath = Path.Combine(sourceRoot, "TerrariaServer.csproj");
+
+            await File.WriteAllTextAsync(
+                externalProjectPath,
+                """
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <ImplicitUsings>disable</ImplicitUsings>
+                    <Nullable>disable</Nullable>
+                  </PropertyGroup>
+                </Project>
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(externalRoot, "ExternalType.cs"),
+                """
+                namespace External;
+
+                public sealed class ExternalType
+                {
+                    public void Touch()
+                    {
+                    }
+                }
+                """);
+
+            await File.WriteAllTextAsync(
+                projectPath,
+                $$"""
+                <Project Sdk="Microsoft.NET.Sdk">
+                  <PropertyGroup>
+                    <TargetFramework>net10.0</TargetFramework>
+                    <ImplicitUsings>disable</ImplicitUsings>
+                    <Nullable>disable</Nullable>
+                  </PropertyGroup>
+                  <ItemGroup>
+                    <ProjectReference Include="{{Path.GetRelativePath(sourceRoot, externalProjectPath)}}" />
+                  </ItemGroup>
+                </Project>
+                """);
+
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceRoot, "Main.cs"),
+                """
+                using External;
+
+                namespace Terraria;
+
+                public static class Main
+                {
+                    public static void DedServ()
+                    {
+                        Helper.Run(new ExternalType());
+                    }
+                }
+                """);
+            await File.WriteAllTextAsync(
+                Path.Combine(sourceRoot, "Helper.cs"),
+                """
+                using External;
+
+                namespace Terraria;
+
+                internal static class Helper
+                {
+                    public static void Run(ExternalType value)
+                    {
+                        value.Touch();
+                    }
+                }
+                """);
+
+            var progress = new FakeTerrariaRuntimeProgressReporter();
+            var app = CreateApplication(progress, new FakeTerrariaRuntimeBuildExecutor(success: true, exitCode: 0));
+            var result = await app.RunAsync(
+                new ApplicationAbstractions.TerrariaRuntimeShadowExtractionRequest(projectPath, outputRoot, "Terraria.Main.DedServ"),
+                CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+
+            var helperShadow = await File.ReadAllTextAsync(Path.Combine(outputRoot, "workspace", "Helper.cs"));
+            Assert.Contains("value.Touch();", helperShadow);
+            Assert.DoesNotContain("return default;", helperShadow, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
     private static TerrariaRuntimeShadowExtractionApplication CreateApplication(
         ITerrariaRuntimeProgressReporter progressReporter,
         ITerrariaRuntimeBuildExecutor buildExecutor) =>
-        new(
-            new ShadowExtractionInputResolver(
-                new WorkspaceLoadCoordinator(
-                    new CodeAnalysisWorkspaceLoader(),
-                    new SourceOnlyLoader())),
-            new ShadowExtractionAnalysisStage(new RoslynAnalysisEngine()),
-            new ShadowClosurePlanner(),
-            new ShadowWorkspaceWriter(
-                new TerrariaRuntimeShadowProjectBuilder(),
-                new TerrariaRuntimeShadowSourceRewriter()),
-            buildExecutor,
-            new ShadowExtractionReportBuilder(),
-            new JsonShadowExtractionReportStore(new JsonArtifactWriter()),
-            progressReporter);
+        TerrariaRuntimeShadowExtractionCompositionRoot.Create(
+            new ShadowExtractionPipelineDependencies(
+                new ShadowExtractionInputResolver(
+                    new WorkspaceLoadCoordinator(
+                        new CodeAnalysisWorkspaceLoader(),
+                        new SourceOnlyLoader()),
+                    new TerrariaRuntimeShadowLayoutFactory()),
+                new ShadowExtractionAnalysisStage(new RoslynAnalysisEngine()),
+                new ShadowClosurePlanner(new SeedClosureAnalyzer()),
+                new ShadowWorkspaceWriter(
+                    new TerrariaRuntimeShadowProjectBuilder(),
+                    new TerrariaRuntimeShadowSourceRewriter()),
+                buildExecutor,
+                new ShadowExtractionReportBuilder(),
+                new JsonShadowExtractionReportStore(new JsonArtifactWriter()),
+                progressReporter));
 
     private sealed class FakeTerrariaRuntimeProgressReporter : ITerrariaRuntimeProgressReporter
     {
@@ -228,3 +413,6 @@ public sealed class TerrariaRuntimeShadowExtractionApplicationLegacyTests
         }
     }
 }
+
+
+

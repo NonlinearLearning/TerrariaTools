@@ -1,8 +1,6 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using TerrariaTools.Dome.Core.Cpg;
 
 namespace TerrariaTools.Dome.Tests.Testing.TestBuilders;
 
@@ -23,7 +21,7 @@ internal sealed class ApplicationNativeAnalysisResultBuilder
         return this;
     }
 
-    public ApplicationAbstractions.AnalysisEngineResult Build(params ApplicationAbstractions.SourceDocument[] documents)
+    public ModelAnalysis.AnalysisOutput Build(params ModelAnalysis.SourceDocument[] documents)
     {
         var view = new ModelAnalysis.AnalysisResultModel(
             _targets.ToArray(),
@@ -37,9 +35,10 @@ internal sealed class ApplicationNativeAnalysisResultBuilder
             view,
             ModelAnalysis.FunctionIndex.Empty,
             ModelAnalysis.FunctionFactsIndex.Empty,
-            BuildStatementFacts(_targets));
+            BuildStatementFacts(_targets),
+            new DomeCpg());
 
-        return new ApplicationAbstractions.AnalysisEngineResult(
+        return new ModelAnalysis.AnalysisOutput(
             view,
             snapshot,
             BuildServices(),
@@ -94,14 +93,18 @@ internal sealed class ApplicationNativeAnalysisResultBuilder
     private sealed class StubInheritanceQueryService : ModelAnalysis.IInheritanceQueryService
     {
         public bool ImplementsInterfaceMember(string memberId) => false;
+
         public bool IsInInheritanceChain(string typeId) => false;
+
         public bool IsOverrideMember(string memberId) => false;
     }
 
     private sealed class StubReferenceQueryService : ModelAnalysis.IReferenceQueryService
     {
         public IReadOnlyList<ModelPrimitives.MemberId> GetReferencingFunctions(string symbolOrMemberId) => [];
+
         public IReadOnlyList<string> GetReferencingTypes(string symbolOrMemberId) => [];
+
         public bool HasReferences(string symbolOrMemberId) => false;
     }
 
@@ -154,10 +157,19 @@ internal sealed class ApplicationNativeAnalysisResultBuilder
     private sealed class StubMemberCleanupQueryService : ModelAnalysis.IMemberCleanupQueryService
     {
         public ModelAnalysis.MemberCleanupSymbolInfo? GetSymbolInfo(string symbolId) => null;
+
         public ModelAnalysis.MemberCleanupTypeInfo? GetTypeInfo(string typeId) => null;
+
         public bool HasAnyReferences(string symbolId) => false;
+
         public bool HasInternalMethodReferences(ModelPrimitives.MemberId memberId) => false;
+
         public bool HasExternalMethodReferences(ModelPrimitives.MemberId memberId) => false;
+
         public IReadOnlyList<ModelPrimitives.MemberId> GetReorderablePublicMethods(string typeId) => [];
     }
 }
+
+
+
+

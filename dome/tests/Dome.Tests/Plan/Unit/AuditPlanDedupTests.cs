@@ -1,6 +1,6 @@
-using TerrariaTools.Dome.Model.Planning;
-using TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Model.Rules;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Plan;
@@ -10,29 +10,29 @@ public class AuditPlanDedupTests
     [Fact]
     public void Compile_DeduplicatesRepeatedSameActionForSingleTarget()
     {
-        var targetIdentity = new TargetIdentity(
+        var targetIdentity = new ModelPrimitives.TargetIdentity(
             "Sample.cs",
-            new MemberId("Sample.Player.Update()"),
-            MemberKind.Method,
-            TargetKind.Statement);
-        var targetLocator = new TargetLocator(10, 12, "Run();");
+            new ModelPrimitives.MemberId("Sample.Player.Update()"),
+            ModelPrimitives.MemberKind.Method,
+            ModelPrimitives.TargetKind.Statement);
+        var targetLocator = new ModelPrimitives.TargetLocator(10, 12, "Run();");
 
         var decisions = new[]
         {
-            new MarkDecision(
+            new ModelRules.MarkDecision(
                 targetIdentity,
                 targetLocator,
-                new PlanAction(PlanActionKind.Delete),
-                new PlanReason("dome:delete", "seed")),
-            new MarkDecision(
+                new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+                new ModelRules.PlanReason("dome:delete", "seed")),
+            new ModelRules.MarkDecision(
                 targetIdentity,
                 targetLocator,
-                new PlanAction(PlanActionKind.Delete),
-                new PlanReason("dataflow-propagation", "propagated", SourceTargetKey: "seed-target"))
+                new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
+                new ModelRules.PlanReason("dataflow-propagation", "propagated", SourceTargetKey: "seed-target"))
         };
 
-        var result = AuditPlanCompiler.Compile(
-            new PlanMetadata("dome", "1", "input.cs", "out", RunMode.Standard),
+        var result = ModelPlanning.AuditPlanCompiler.Compile(
+            new ModelPlanning.PlanMetadata("dome", "1", "input.cs", "out", ModelPrimitives.RunMode.Standard),
             decisions);
 
         Assert.True(result.IsSuccess);
@@ -41,6 +41,6 @@ public class AuditPlanDedupTests
         Assert.Equal("Sample.Player.Update()", change.Target.MemberId.Value);
         Assert.Equal("Run();", change.Locator.DisplayText);
         Assert.Equal(10, change.Locator.SpanStart);
-        Assert.IsType<PlanReason>(change.Reason);
+        Assert.IsType<ModelPlanning.PlanReason>(change.Reason);
     }
 }

@@ -1,5 +1,5 @@
 using Microsoft.CodeAnalysis;
-using TerrariaTools.Dome.Analysis.Roslyn;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;

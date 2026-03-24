@@ -1,4 +1,4 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
 using TerrariaTools.Dome.Cli;
 using TerrariaTools.Testing.TestBuilders;
 using TerrariaTools.Testing.TestFixtures;

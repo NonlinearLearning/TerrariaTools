@@ -1,6 +1,7 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelExecution = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
 
 namespace TerrariaTools.Dome.Tests.Testing.TestDoubles;
 
@@ -10,7 +11,7 @@ public sealed class RecordingApplicationArtifactWriter : ApplicationAbstractions
 
     public List<(string Path, ModelPlanning.AuditPlan Plan)> PlanWrites { get; } = [];
 
-    public List<(string Path, ApplicationAbstractions.RunReport Report)> ReportWrites { get; } = [];
+    public List<(string Path, ModelExecution.RunReport Report)> ReportWrites { get; } = [];
 
     public Task WriteAnalysisAsync(string path, ModelAnalysis.AnalysisResultModel view, CancellationToken cancellationToken)
     {
@@ -24,9 +25,13 @@ public sealed class RecordingApplicationArtifactWriter : ApplicationAbstractions
         return Task.CompletedTask;
     }
 
-    public Task WriteReportAsync(string path, ApplicationAbstractions.RunReport report, CancellationToken cancellationToken)
+    public Task WriteReportAsync(string path, ModelExecution.RunReport report, CancellationToken cancellationToken)
     {
         ReportWrites.Add((path, report));
         return Task.CompletedTask;
     }
 }
+
+
+
+

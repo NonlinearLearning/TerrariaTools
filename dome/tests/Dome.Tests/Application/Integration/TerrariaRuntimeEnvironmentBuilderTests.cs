@@ -1,5 +1,5 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using TerrariaTools.Dome.Application;
+﻿using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -22,7 +22,7 @@ public sealed class TerrariaRuntimeEnvironmentBuilderLegacyTests
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "TerrariaServer.sln"), "solution");
 
             var request = new ApplicationAbstractions.TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
-            var layout = ApplicationAbstractions.TerrariaRuntimeLayout.Create(request);
+            var layout = new TerrariaRuntimeLayoutFactory().Create(request);
             var builder = new TerrariaRuntimeEnvironmentBuilder();
             var progress = new FakeTerrariaRuntimeProgressReporter();
 
@@ -31,6 +31,8 @@ public sealed class TerrariaRuntimeEnvironmentBuilderLegacyTests
             Assert.False(File.Exists(Path.Combine(layout.DependencyEnvironmentPath, "Player.cs")));
             Assert.True(File.Exists(Path.Combine(layout.DependencyEnvironmentPath, "Config", "settings.json")));
             Assert.True(File.Exists(Path.Combine(layout.DependencyEnvironmentPath, "TerrariaServer.sln")));
+            Assert.Contains(progress.Messages, message => message.Contains("开始刷新依赖环境目录", StringComparison.Ordinal));
+            Assert.Contains(progress.Messages, message => message.Contains("依赖环境目录复制完成", StringComparison.Ordinal));
         }
         finally
         {
@@ -58,7 +60,7 @@ public sealed class TerrariaRuntimeEnvironmentBuilderLegacyTests
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "TerrariaServer.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\"><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>");
 
             var request = new ApplicationAbstractions.TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
-            var layout = ApplicationAbstractions.TerrariaRuntimeLayout.Create(request);
+            var layout = new TerrariaRuntimeLayoutFactory().Create(request);
             var builder = new TerrariaRuntimeEnvironmentBuilder();
             var progress = new FakeTerrariaRuntimeProgressReporter();
             await builder.RefreshDependencyEnvironmentAsync(layout, progress, CancellationToken.None);
@@ -76,6 +78,8 @@ public sealed class TerrariaRuntimeEnvironmentBuilderLegacyTests
                 await File.ReadAllTextAsync(Path.Combine(layout.WorkspacePath, "Player.cs")));
             var workspaceProject = await File.ReadAllTextAsync(Path.Combine(layout.WorkspacePath, "TerrariaServer.csproj"));
             Assert.Contains("<ImplicitUsings>disable</ImplicitUsings>", workspaceProject, StringComparison.Ordinal);
+            Assert.Contains(progress.Messages, message => message.Contains("开始准备运行时工作区", StringComparison.Ordinal));
+            Assert.Contains(progress.Messages, message => message.Contains("运行时工作区准备完成", StringComparison.Ordinal));
         }
         finally
         {
@@ -107,7 +111,7 @@ public sealed class TerrariaRuntimeEnvironmentBuilderLegacyTests
             await File.WriteAllTextAsync(Path.Combine(sourceRoot, "TerrariaServer.sln"), "solution");
 
             var request = new ApplicationAbstractions.TerrariaRuntimeRunRequest(Path.Combine(sourceRoot, "TerrariaServer.sln"), outputRoot);
-            var layout = ApplicationAbstractions.TerrariaRuntimeLayout.Create(request);
+            var layout = new TerrariaRuntimeLayoutFactory().Create(request);
             var builder = new TerrariaRuntimeEnvironmentBuilder();
             var progress = new FakeTerrariaRuntimeProgressReporter();
 
@@ -131,8 +135,14 @@ public sealed class TerrariaRuntimeEnvironmentBuilderLegacyTests
 
     private sealed class FakeTerrariaRuntimeProgressReporter : ITerrariaRuntimeProgressReporter
     {
+        public List<string> Messages { get; } = [];
+
         public void Report(string message)
         {
+            Messages.Add(message);
         }
     }
 }
+
+
+

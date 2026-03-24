@@ -1,44 +1,56 @@
-# Dome 文档入口
+# Dome 文档
 
-这套文档只描述当前仓库已经存在并仍在维护的结构。
+本目录描述的是当前仓库中的实际实现。它回答三个问题：
 
-当前主链路：
+1. Dome 现在有哪些可用流程。
+2. 代码应该放在哪一层。
+3. 你在修改代码时应该先看哪份文档。
 
-`CLI -> Application -> Analysis -> Rules -> Planning -> Rewrite -> Reporting`
+如果你第一次进入仓库，按下面的顺序阅读：
 
-其中：
+1. [架构总览](./architecture/overview.md)
+2. [项目布局](./architecture/project-layout.md)
+3. [执行流程](./architecture/flows.md)
+4. [边界约束](./architecture/boundaries.md)
+5. [术语表](./glossary.md)
+6. [构建与测试](./guides/build-and-test.md)
 
-- `Planning` 是一个阶段与模型集合，不是独立 `src/Plan` 项目
-- 共享契约位于 `src/Application/Abstractions` 与 `src/Model/*`
-- `src/Application/Legacy` 与 `src/Analysis/Legacy` 是兼容/运行时孤岛，不是标准主路径
+如果你已经知道自己要做什么，直接按任务查阅：
 
-## 文档结构
+- 修改标准 `dome run` 流程：先看 [执行流程](./architecture/flows.md) 和 [产物说明](./guides/artifacts.md)
+- 修改运行时流程：先看 [执行流程](./architecture/flows.md) 和 [边界约束](./architecture/boundaries.md)
+- 修改 shadow extraction：先看 [执行流程](./architecture/flows.md)、[规则概念](./rules/concepts.md) 和 [术语表](./glossary.md)
+- 修改规则引擎：先看 [规则概念](./rules/concepts.md)、[规则目录](./rules/catalog.md) 和 [规则编写](./rules/authoring.md)
+- 修改测试或新增测试：先看 [测试指南](./guides/testing.md)
 
-- [架构总览](./architecture.md)
-- [执行流程](./execution-flow.md)
-- [产物说明](./artifacts.md)
-- [测试说明](./testing.md)
-- [快速构建与验证](./rapid-build-test.md)
-- [闭环样例](./closed-loop-demo.md)
+## 文档索引
 
-### 分层说明
+### 架构
 
-- [Cli 层](./layers/cli.md)
-- [Application 层](./layers/application.md)
-- [Analysis 层](./layers/analysis.md)
-- [Rules 层](./layers/rules.md)
-- [Planning 阶段](./layers/planning.md)
-- [Rewrite 层](./layers/rewrite.md)
-- [Reporting 层](./layers/reporting.md)
+- [架构总览](./architecture/overview.md)
+- [项目布局](./architecture/project-layout.md)
+- [执行流程](./architecture/flows.md)
+- [边界约束](./architecture/boundaries.md)
 
-### 规则文档
+### 指南
 
-- [规则编写指南](./rule-authoring-guidelines.md)
-- [规则术语](./rule-concepts.md)
-- [默认规则清单](./rule-spec-catalog.md)
+- [构建与测试](./guides/build-and-test.md)
+- [测试指南](./guides/testing.md)
+- [产物说明](./guides/artifacts.md)
+- [闭环示例](./guides/closed-loop-demo.md)
 
-## 当前边界
+### 规则
 
-- 仓库已经完成 `0 Core`
-- 标准文档不再描述 `Core` 层
-- 文档只保留当前可验证的行为和入口，不保留迁移期实施草案
+- [规则概念](./rules/concepts.md)
+- [规则编写](./rules/authoring.md)
+- [规则目录](./rules/catalog.md)
+
+### 参考
+
+- [术语表](./glossary.md)
+
+## 使用约定
+
+- 文档默认以 `dome/` 目录作为当前工作目录。
+- 文档优先描述“当前实现”，不描述历史目录结构。
+- 文档优先给出可执行步骤，不给抽象口号。

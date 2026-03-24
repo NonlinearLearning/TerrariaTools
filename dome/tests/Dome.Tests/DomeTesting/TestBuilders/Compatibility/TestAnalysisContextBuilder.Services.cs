@@ -1,12 +1,9 @@
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
 
 namespace TerrariaTools.Dome.Tests.Testing.TestBuilders;
 
-/// <summary>
-/// Compatibility-only service stubs for native analysis contexts.
-/// </summary>
-internal sealed partial class LegacyAnalysisContextBuilder
+internal sealed partial class CompatibilityAnalysisContextBuilder
 {
     private ModelAnalysis.AnalysisServices BuildServices()
     {
@@ -106,3 +103,4 @@ internal sealed partial class LegacyAnalysisContextBuilder
         public bool HasInternalMethodReferences(ModelPrimitives.MemberId memberId) => false;
     }
 }
+

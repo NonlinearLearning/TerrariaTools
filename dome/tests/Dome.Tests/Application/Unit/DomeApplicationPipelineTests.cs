@@ -1,6 +1,7 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Application;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelExecution = TerrariaTools.Dome.Application.Ports;
+using ModelPrimitives = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -14,7 +15,7 @@ public sealed class DomeApplicationPipelineTests
         var runner = new DelegatePipelineRunner<DomePipelineContext>((context, _) =>
         {
             observedRequests.Add(context.Request);
-            context.TerminalState = new PipelineTerminalState(ApplicationAbstractions.RunResult.Success(context.Request.OutputPath, Path.Combine(context.Request.OutputPath, "report.json")));
+            context.TerminalState = new PipelineTerminalState(ModelExecution.RunResult.Success(context.Request.OutputPath, Path.Combine(context.Request.OutputPath, "report.json")));
             return Task.CompletedTask;
         });
         var app = new DomeApplication(runner);
@@ -47,3 +48,7 @@ public sealed class DomeApplicationPipelineTests
         public Task RunAsync(TContext context, CancellationToken cancellationToken) => handler(context, cancellationToken);
     }
 }
+
+
+
+

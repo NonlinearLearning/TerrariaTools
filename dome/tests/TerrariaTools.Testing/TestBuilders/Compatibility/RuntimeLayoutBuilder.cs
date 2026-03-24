@@ -1,9 +1,10 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
 
 namespace TerrariaTools.Testing.TestBuilders;
 
 /// <summary>
-/// Compatibility-only builder for native runtime layout contracts.
+/// 用于构建测试场景中的 Terraria 运行时布局。
+/// 方便按需覆盖各个路径字段。
 /// </summary>
 public sealed class RuntimeLayoutCompatibilityBuilder
 {
@@ -57,6 +58,9 @@ public sealed class RuntimeLayoutCompatibilityBuilder
         return this;
     }
 
+    /// <summary>
+    /// 构建运行时布局实例。
+    /// </summary>
     public ApplicationAbstractions.TerrariaRuntimeLayout Build() =>
         new(
             _solutionPath,
@@ -67,3 +71,6 @@ public sealed class RuntimeLayoutCompatibilityBuilder
             _artifactsPath,
             _workspaceSolutionPath);
 }
+
+
+

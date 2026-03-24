@@ -1,7 +1,8 @@
-using TerrariaTools.Dome.Analysis.Roslyn;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
-using TerrariaTools.Dome.Rules;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
+using TerrariaTools.Dome.Core.Rules.Services;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
@@ -13,11 +14,11 @@ public sealed class MarkingRuleEngineUnitTests
     public async Task BuildDecisions_UsesModelContextForDirectiveAndPropagation()
     {
         var analysis = await ((ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine()).AnalyzeAsync(
-            new ApplicationAbstractions.SourceDocumentSet(
+            new ModelAnalysis.SourceDocumentSet(
                 "Sample.cs",
                 "Sample.cs",
                 [
-                    new ApplicationAbstractions.SourceDocument(
+                    new ModelAnalysis.SourceDocument(
                         "Sample.cs",
                         "Sample.cs",
                         """

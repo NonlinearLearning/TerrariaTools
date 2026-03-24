@@ -1,7 +1,7 @@
-using TerrariaTools.Dome.Application;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
+using ModelExecution = TerrariaTools.Dome.Application.Ports;
+using CoreAnalysis = TerrariaTools.Dome.Core.Analysis;
+using CorePlanning = TerrariaTools.Dome.Core.Planning;
 
 namespace TerrariaTools.Testing.TestDoubles;
 
@@ -24,15 +24,15 @@ public sealed class FakeRewriteOutputStore : IRewriteOutputStore
 
 public sealed class FakeArtifactEmissionService : IArtifactEmissionService
 {
-    public List<(string OutputPath, ArtifactPlan ArtifactPlan, ModelPlanning.AuditPlan? Plan, ApplicationAbstractions.RunReport Report, ModelAnalysis.AnalysisResultModel? AnalysisView)> Calls { get; } = [];
+    public List<(string OutputPath, ArtifactPlan ArtifactPlan, CorePlanning.AuditPlan? Plan, ModelExecution.RunReport Report, CoreAnalysis.AnalysisResultModel? AnalysisView)> Calls { get; } = [];
     public string? FailureMessage { get; set; }
 
     public Task EmitAsync(
         string outputPath,
         ArtifactPlan artifactPlan,
-        ModelPlanning.AuditPlan? plan,
-        ApplicationAbstractions.RunReport report,
-        ModelAnalysis.AnalysisResultModel? analysisView,
+        CorePlanning.AuditPlan? plan,
+        ModelExecution.RunReport report,
+        CoreAnalysis.AnalysisResultModel? analysisView,
         CancellationToken cancellationToken)
     {
         if (FailureMessage != null)
@@ -44,3 +44,7 @@ public sealed class FakeArtifactEmissionService : IArtifactEmissionService
         return Task.CompletedTask;
     }
 }
+
+
+
+

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Application\Ports\Dome.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\..\..\apps\Dome.Application\Dome.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="TerrariaRuntimeBuildExecutor.cs" />
+  </ItemGroup>
+</Project>

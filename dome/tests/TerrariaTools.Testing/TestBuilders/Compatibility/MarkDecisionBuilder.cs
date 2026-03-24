@@ -1,12 +1,9 @@
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
 
 namespace TerrariaTools.Testing.TestBuilders;
 
-/// <summary>
-/// Compatibility-only builder for native mark decisions.
-/// </summary>
 public sealed class MarkDecisionCompatibilityBuilder
 {
     private ModelPrimitives.TargetIdentity _target = new PlanTargetCompatibilityBuilder().Build();
@@ -18,18 +15,27 @@ public sealed class MarkDecisionCompatibilityBuilder
     private ModelPrimitives.DecisionOrigin _origin = ModelPrimitives.DecisionOrigin.Rule;
     private ModelPrimitives.DecisionCategory _category = ModelPrimitives.DecisionCategory.Delete;
 
+    /// <summary>
+    /// 设置目标标识。
+    /// </summary>
     public MarkDecisionCompatibilityBuilder WithTarget(ModelPrimitives.TargetIdentity target)
     {
         _target = target;
         return this;
     }
 
+    /// <summary>
+    /// 设置目标定位器。
+    /// </summary>
     public MarkDecisionCompatibilityBuilder WithLocator(ModelPrimitives.TargetLocator locator)
     {
         _locator = locator;
         return this;
     }
 
+    /// <summary>
+    /// 设置计划动作及其可选载荷。
+    /// </summary>
     public MarkDecisionCompatibilityBuilder WithAction(ModelPrimitives.PlanActionKind actionKind, string? payload = null)
     {
         _actionKind = actionKind;
@@ -37,6 +43,9 @@ public sealed class MarkDecisionCompatibilityBuilder
         return this;
     }
 
+    /// <summary>
+    /// 设置规则标识与原因文本。
+    /// </summary>
     public MarkDecisionCompatibilityBuilder WithReason(string ruleId, string reasonText)
     {
         _ruleId = ruleId;
@@ -44,6 +53,9 @@ public sealed class MarkDecisionCompatibilityBuilder
         return this;
     }
 
+    /// <summary>
+    /// 设置决策来源与分类。
+    /// </summary>
     public MarkDecisionCompatibilityBuilder WithOrigin(
         ModelPrimitives.DecisionOrigin origin,
         ModelPrimitives.DecisionCategory category = ModelPrimitives.DecisionCategory.Delete)
@@ -53,13 +65,17 @@ public sealed class MarkDecisionCompatibilityBuilder
         return this;
     }
 
+    /// <summary>
+    /// 构建标记决策实例。
+    /// </summary>
     public ModelRules.MarkDecision Build() => new(
         _target,
         _locator,
-        new ModelPlanning.PlanAction(_actionKind, _payload),
+        new ModelPrimitives.PlanAction(_actionKind, _payload),
         new ModelRules.PlanReason(
             _ruleId,
             _reasonText,
             Origin: _origin,
             Category: _category));
 }
+

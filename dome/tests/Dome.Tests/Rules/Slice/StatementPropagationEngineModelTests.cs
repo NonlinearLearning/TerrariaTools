@@ -1,8 +1,9 @@
-using TerrariaTools.Dome.Analysis.Roslyn;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
-using TerrariaTools.Dome.Rules;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
+using TerrariaTools.Dome.Core.Rules.Services;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
@@ -13,11 +14,11 @@ public sealed class StatementPropagationEngineModelTests
     public async Task Propagate_UsesModelContextAndReturnsModelDecisions()
     {
         var analysis = await ((ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine()).AnalyzeAsync(
-            new ApplicationAbstractions.SourceDocumentSet(
+            new ModelAnalysis.SourceDocumentSet(
                 "Sample.cs",
                 "Sample.cs",
                 [
-                    new ApplicationAbstractions.SourceDocument(
+                    new ModelAnalysis.SourceDocument(
                         "Sample.cs",
                         "Sample.cs",
                         """
@@ -41,7 +42,7 @@ public sealed class StatementPropagationEngineModelTests
         var seedDecision = new ModelRules.MarkDecision(
             seedTarget.Target,
             seedTarget.Locator,
-            new TerrariaTools.Dome.Model.Planning.PlanAction(ModelPrimitives.PlanActionKind.Delete, null),
+            new TerrariaTools.Dome.Core.Planning.PlanAction(ModelPrimitives.PlanActionKind.Delete, null),
             new ModelRules.PlanReason("dome:delete", "seed"));
         var seedDecisionsByTarget = new Dictionary<string, IReadOnlyList<ModelRules.MarkDecision>>(StringComparer.Ordinal)
         {

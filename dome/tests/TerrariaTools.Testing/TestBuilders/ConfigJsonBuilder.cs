@@ -9,6 +9,7 @@ public sealed class ConfigJsonBuilder
     private string? _logLevel;
     private string? _loader;
     private bool? _allowFallbackToSourceOnly;
+    private string? _seedMemberName;
 
     public ConfigJsonBuilder WithCommand(string? command)
     {
@@ -52,6 +53,12 @@ public sealed class ConfigJsonBuilder
         return this;
     }
 
+    public ConfigJsonBuilder WithSeedMemberName(string? seedMemberName)
+    {
+        _seedMemberName = seedMemberName;
+        return this;
+    }
+
     public string Build()
     {
         var values = new List<string>();
@@ -67,6 +74,7 @@ public sealed class ConfigJsonBuilder
 
         Add(values, "LogLevel", _logLevel);
         Add(values, "Loader", _loader);
+        Add(values, "SeedMemberName", _seedMemberName);
         if (_allowFallbackToSourceOnly.HasValue)
         {
             values.Add($"""  "AllowFallbackToSourceOnly": {(_allowFallbackToSourceOnly.Value ? "true" : "false")}""");

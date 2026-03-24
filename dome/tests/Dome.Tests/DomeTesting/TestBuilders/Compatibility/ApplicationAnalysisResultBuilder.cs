@@ -1,16 +1,11 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
 
 namespace TerrariaTools.Dome.Tests.Testing.TestBuilders;
 
-/// <summary>
-/// Compatibility-only builder for native analysis contracts.
-/// </summary>
 internal sealed class ApplicationAnalysisCompatibilityResultBuilder
 {
-    private readonly LegacyAnalysisContextBuilder _inner = new();
+    private readonly CompatibilityAnalysisContextBuilder _inner = new();
 
     public ApplicationAnalysisCompatibilityResultBuilder AddTarget(ModelAnalysis.AnalysisTarget target)
     {
@@ -120,9 +115,12 @@ internal sealed class ApplicationAnalysisCompatibilityResultBuilder
         return this;
     }
 
-    public ApplicationAbstractions.AnalysisEngineResult BuildEngineResult(params ApplicationAbstractions.SourceDocument[] documents) => _inner.BuildEngineResult(documents);
+    public ModelAnalysis.AnalysisOutput BuildEngineResult(params ModelAnalysis.SourceDocument[] documents) => _inner.BuildEngineResult(documents);
 
-    public ApplicationAbstractions.AnalysisEngineResult BuildApplicationResult(params ApplicationAbstractions.SourceDocument[] documents) =>
+    public ModelAnalysis.AnalysisOutput BuildApplicationResult(params ModelAnalysis.SourceDocument[] documents) =>
         _inner.BuildEngineResult(documents);
 }
+
+
+
 

@@ -1,6 +1,7 @@
-﻿using TerrariaTools.Dome.Analysis.Legacy;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using PortsCommon = TerrariaTools.Dome.Application.Ports;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Analysis;
@@ -19,21 +20,23 @@ public class WorkspaceLoadCoordinatorLegacyTests
             await File.WriteAllTextAsync(inputFile, "class Sample { }");
 
             var sourceLoader = new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Success(
-                new ApplicationAbstractions.SourceDocumentSet(inputFile, tempRoot, [new ApplicationAbstractions.SourceDocument(inputFile, "Sample.cs", "class Sample { }")]),
-                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+                new ModelAnalysis.AnalysisInput(
+                    new ModelAnalysis.SourceDocumentSet(inputFile, tempRoot, [new ModelAnalysis.SourceDocument(inputFile, "Sample.cs", "class Sample { }")]),
+                    ModelAnalysis.AnalysisInputMode.SourceOnly),
+                PortsCommon.WorkspaceLoadMode.SourceOnly,
                 "SourceOnly")));
             var codeLoader = new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Failure(
-                ModelPrimitives.WorkspaceLoadMode.CodeAnalysis,
+                PortsCommon.WorkspaceLoadMode.CodeAnalysis,
                 "CodeAnalysis",
-                [new ApplicationAbstractions.WorkspaceLoadDiagnostic("CodeAnalysisLoad", ModelPrimitives.WorkspaceLoadDiagnosticSeverity.Error, "Should not be called.")])));
+                [new ApplicationAbstractions.WorkspaceLoadDiagnostic("CodeAnalysisLoad", PortsCommon.WorkspaceLoadDiagnosticSeverity.Error, "Should not be called.")])));
 
             var coordinator = new WorkspaceLoadCoordinator(codeLoader, sourceLoader);
             var result = await coordinator.LoadAsync(inputFile, ApplicationAbstractions.WorkspaceLoadOptions.Default, CancellationToken.None);
 
             Assert.True(result.IsSuccess);
-            Assert.Equal(ModelPrimitives.WorkspaceLoadMode.SourceOnly, result.LoadMode);
+            Assert.Equal(PortsCommon.WorkspaceLoadMode.SourceOnly, result.LoadMode);
             Assert.False(result.FallbackUsed);
-            Assert.NotNull(result.SourceSet);
+            Assert.NotNull(result.Input?.SourceSet);
             Assert.Single(result.Documents);
         }
         finally
@@ -59,22 +62,24 @@ public class WorkspaceLoadCoordinatorLegacyTests
             await File.WriteAllTextAsync(sourceFile, "class Sample { }");
 
             var codeLoader = new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Failure(
-                ModelPrimitives.WorkspaceLoadMode.CodeAnalysis,
+                PortsCommon.WorkspaceLoadMode.CodeAnalysis,
                 "CodeAnalysis",
-                [new ApplicationAbstractions.WorkspaceLoadDiagnostic("CodeAnalysisLoad", ModelPrimitives.WorkspaceLoadDiagnosticSeverity.Error, "MSBuild load failed.")])));
+                [new ApplicationAbstractions.WorkspaceLoadDiagnostic("CodeAnalysisLoad", PortsCommon.WorkspaceLoadDiagnosticSeverity.Error, "MSBuild load failed.")])));
             var sourceLoader = new FakeWorkspaceLoader(path => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Success(
-                new ApplicationAbstractions.SourceDocumentSet(path, tempRoot, [new ApplicationAbstractions.SourceDocument(sourceFile, "Sample.cs", "class Sample { }")]),
-                ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+                new ModelAnalysis.AnalysisInput(
+                    new ModelAnalysis.SourceDocumentSet(path, tempRoot, [new ModelAnalysis.SourceDocument(sourceFile, "Sample.cs", "class Sample { }")]),
+                    ModelAnalysis.AnalysisInputMode.SourceOnly),
+                PortsCommon.WorkspaceLoadMode.SourceOnly,
                 "SourceOnly")));
 
             var coordinator = new WorkspaceLoadCoordinator(codeLoader, sourceLoader);
             var result = await coordinator.LoadAsync(projectPath, ApplicationAbstractions.WorkspaceLoadOptions.Default, CancellationToken.None);
 
             Assert.True(result.IsSuccess);
-            Assert.Equal(ModelPrimitives.WorkspaceLoadMode.CodeAnalysisFallbackToSourceOnly, result.LoadMode);
+            Assert.Equal(PortsCommon.WorkspaceLoadMode.CodeAnalysisFallbackToSourceOnly, result.LoadMode);
             Assert.True(result.FallbackUsed);
             Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Stage == "CodeAnalysisLoad");
-            Assert.NotNull(result.SourceSet);
+            Assert.NotNull(result.Input?.SourceSet);
         }
         finally
         {
@@ -97,9 +102,9 @@ public class WorkspaceLoadCoordinatorLegacyTests
             await File.WriteAllTextAsync(projectPath, "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
 
             var codeLoader = new FakeWorkspaceLoader(_ => Task.FromResult(ApplicationAbstractions.WorkspaceLoadResult.Failure(
-                ModelPrimitives.WorkspaceLoadMode.CodeAnalysis,
+                PortsCommon.WorkspaceLoadMode.CodeAnalysis,
                 "CodeAnalysis",
-                [new ApplicationAbstractions.WorkspaceLoadDiagnostic("CodeAnalysisLoad", ModelPrimitives.WorkspaceLoadDiagnosticSeverity.Error, "MSBuild load failed.")])));
+                [new ApplicationAbstractions.WorkspaceLoadDiagnostic("CodeAnalysisLoad", PortsCommon.WorkspaceLoadDiagnosticSeverity.Error, "MSBuild load failed.")])));
             var sourceLoader = new FakeWorkspaceLoader(_ => throw new InvalidOperationException("Source fallback should not run."));
 
             var coordinator = new WorkspaceLoadCoordinator(codeLoader, sourceLoader);
@@ -109,9 +114,9 @@ public class WorkspaceLoadCoordinatorLegacyTests
                 CancellationToken.None);
 
             Assert.False(result.IsSuccess);
-            Assert.Equal(ModelPrimitives.WorkspaceLoadMode.CodeAnalysis, result.LoadMode);
+            Assert.Equal(PortsCommon.WorkspaceLoadMode.CodeAnalysis, result.LoadMode);
             Assert.False(result.FallbackUsed);
-            Assert.Null(result.SourceSet);
+            Assert.Null(result.Input?.SourceSet);
         }
         finally
         {
@@ -122,7 +127,7 @@ public class WorkspaceLoadCoordinatorLegacyTests
         }
     }
 
-    private sealed class FakeWorkspaceLoader(Func<string, Task<ApplicationAbstractions.WorkspaceLoadResult>> handler) : IWorkspaceLoader
+    private sealed class FakeWorkspaceLoader(Func<string, Task<ApplicationAbstractions.WorkspaceLoadResult>> handler) : ApplicationAbstractions.IWorkspaceLoader
     {
         public Task<ApplicationAbstractions.WorkspaceLoadResult> LoadAsync(string inputPath, ApplicationAbstractions.WorkspaceLoadOptions options, CancellationToken cancellationToken) =>
             handler(inputPath);

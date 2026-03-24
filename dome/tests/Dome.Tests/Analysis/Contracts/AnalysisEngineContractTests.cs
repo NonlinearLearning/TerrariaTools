@@ -1,5 +1,6 @@
-﻿using TerrariaTools.Dome.Analysis.Legacy;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
 using TerrariaTools.Testing.Contracts;
 using Xunit;
 
@@ -11,7 +12,7 @@ public sealed class AnalysisEngineCompatibilityContractTests
     public async Task AnalyzeAsync_ReturnsContextWithStableNativeAbstractions()
     {
         ApplicationAbstractions.IAnalysisEngine engine = new RoslynAnalysisEngine();
-        var document = new ApplicationAbstractions.SourceDocument(
+        var document = new ModelAnalysis.SourceDocument(
             "Sample.cs",
             "Sample.cs",
             """

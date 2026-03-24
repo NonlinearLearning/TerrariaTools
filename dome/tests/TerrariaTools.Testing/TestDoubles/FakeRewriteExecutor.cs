@@ -1,25 +1,29 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelExecution = TerrariaTools.Dome.Application.Ports;
+using CorePlanning = TerrariaTools.Dome.Core.Planning;
 
 namespace TerrariaTools.Testing.TestDoubles;
 
 public sealed class FakeRewriteExecutor : ApplicationAbstractions.IRewriteExecutor
 {
-    private readonly ApplicationAbstractions.RewriteExecutionResult _result;
+    private readonly ModelExecution.RewriteOutput _result;
 
-    public FakeRewriteExecutor(ApplicationAbstractions.RewriteExecutionResult result)
+    public FakeRewriteExecutor(ModelExecution.RewriteOutput result)
     {
         _result = result;
     }
 
-    public List<(ApplicationAbstractions.SourceDocumentSet SourceSet, ModelPlanning.AuditPlan Plan)> Calls { get; } = [];
+    public List<(ModelExecution.RewriteInput Input, CorePlanning.AuditPlan Plan)> Calls { get; } = [];
 
-    public Task<ApplicationAbstractions.RewriteExecutionResult> ExecuteAsync(
-        ApplicationAbstractions.SourceDocumentSet sourceSet,
-        ModelPlanning.AuditPlan plan,
+    public Task<ModelExecution.RewriteOutput> ExecuteAsync(
+        ModelExecution.RewriteInput input,
         CancellationToken cancellationToken)
     {
-        Calls.Add((sourceSet, plan));
+        Calls.Add((input, input.Plan));
         return Task.FromResult(_result);
     }
 }
+
+
+
+

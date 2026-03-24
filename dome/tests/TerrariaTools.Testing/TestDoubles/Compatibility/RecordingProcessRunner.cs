@@ -1,11 +1,8 @@
-using TerrariaTools.Dome.Application;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
 
 namespace TerrariaTools.Testing.TestDoubles;
 
-/// <summary>
-/// Compatibility-only process runner double for native runtime paths.
-/// </summary>
 public sealed class RecordingProcessCompatibilityRunner : ITerrariaRuntimeProcessRunner
 {
     private readonly ApplicationAbstractions.TerrariaRuntimeProcessResult _result;
@@ -39,3 +36,6 @@ public sealed class RecordingProcessCompatibilityRunner : ITerrariaRuntimeProces
         return Task.FromResult(_result);
     }
 }
+
+
+

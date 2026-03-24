@@ -1,5 +1,5 @@
 using System.Reflection;
-using TerrariaTools.Dome.Rules;
+using TerrariaTools.Dome.Core.Rules.Services;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
@@ -61,55 +61,11 @@ public sealed class MarkingRuleRegistryContractTests
     }
 
     [Fact]
-    public void PublicRuleCollections_MethodMemberClass_ExposeOnlyModelContracts()
+    public void PublicRuleCollections_MethodMemberClass_ExposeCoreRuleContracts()
     {
         var type = typeof(MarkingRuleRegistry);
         Assert.Equal(typeof(IReadOnlyList<IMethodRule>), type.GetProperty(nameof(MarkingRuleRegistry.MethodRules))!.PropertyType);
         Assert.Equal(typeof(IReadOnlyList<IMemberTargetRule>), type.GetProperty(nameof(MarkingRuleRegistry.MemberTargetRules))!.PropertyType);
         Assert.Equal(typeof(IReadOnlyList<IClassRule>), type.GetProperty(nameof(MarkingRuleRegistry.ClassRules))!.PropertyType);
-
-        var offenders = new[]
-            {
-                type.GetProperty(nameof(MarkingRuleRegistry.MethodRules))!,
-                type.GetProperty(nameof(MarkingRuleRegistry.MemberTargetRules))!,
-                type.GetProperty(nameof(MarkingRuleRegistry.ClassRules))!
-            }
-            .SelectMany(property => FlattenType(property.PropertyType)
-                .Where(exposed => exposed.FullName?.StartsWith("TerrariaTools.Dome.Core.", StringComparison.Ordinal) == true)
-                .Select(exposed => $"{property.Name} => {exposed.FullName}"))
-            .OrderBy(value => value, StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.True(
-            offenders.Length == 0,
-            $"Method/member/class public rule collections must not expose TerrariaTools.Dome.Core.* types.{Environment.NewLine}{string.Join(Environment.NewLine, offenders)}");
-    }
-
-    private static IEnumerable<Type> FlattenType(Type type)
-    {
-        yield return type;
-
-        if (type.IsArray)
-        {
-            foreach (var inner in FlattenType(type.GetElementType()!))
-            {
-                yield return inner;
-            }
-
-            yield break;
-        }
-
-        if (!type.IsGenericType)
-        {
-            yield break;
-        }
-
-        foreach (var argument in type.GetGenericArguments())
-        {
-            foreach (var inner in FlattenType(argument))
-            {
-                yield return inner;
-            }
-        }
     }
 }

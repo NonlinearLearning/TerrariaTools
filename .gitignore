@@ -35,3 +35,4 @@ Build
 .dotnet-home
 use-dotnet-env.ps1
 dome/.dotnet
+.dotnet/*

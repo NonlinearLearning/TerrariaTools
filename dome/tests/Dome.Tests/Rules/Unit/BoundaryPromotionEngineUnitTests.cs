@@ -1,15 +1,15 @@
-using TerrariaTools.Dome.Analysis.Roslyn;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
-using TerrariaTools.Dome.Rules;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
+using TerrariaTools.Dome.Core.Rules.Services;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
 
-// Legacy internal coverage for the boundary promotion runtime behind the scenes.
+// 为边界提升运行时的内部实现提供遗留覆盖测试。
 public sealed class BoundaryPromotionEngineLegacyUnitTests
 {
     [Fact]
@@ -95,13 +95,13 @@ public sealed class BoundaryPromotionEngineLegacyUnitTests
             new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete, null),
             new ModelRules.PlanReason("dataflow-propagation", "propagated", Origin: ModelPrimitives.DecisionOrigin.Propagation));
 
-    private static async Task<ApplicationAbstractions.AnalysisEngineResult> AnalyzeAsync(string sourceText) =>
+    private static async Task<ModelAnalysis.AnalysisOutput> AnalyzeAsync(string sourceText) =>
         await ((ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine()).AnalyzeAsync(
-            new ApplicationAbstractions.SourceDocumentSet(
+            new ModelAnalysis.SourceDocumentSet(
                 "Sample.cs",
                 "Sample.cs",
                 [
-                    new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", sourceText)
+                    new ModelAnalysis.SourceDocument("Sample.cs", "Sample.cs", sourceText)
                 ]),
             CancellationToken.None);
 }

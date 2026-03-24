@@ -1,6 +1,6 @@
-using Microsoft.CodeAnalysis;
+﻿using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using TerrariaTools.Dome.Application;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -173,3 +173,4 @@ public sealed class TerrariaRuntimeShadowSourceRewriterTests
         return (compilation.GetSemanticModel(tree), new TerrariaRuntimeShadowSourceRewriter());
     }
 }
+

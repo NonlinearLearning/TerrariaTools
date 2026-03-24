@@ -1,10 +1,7 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
 
 namespace TerrariaTools.Testing.TestBuilders;
 
-/// <summary>
-/// Compatibility-only builder for native source documents.
-/// </summary>
 public sealed class SourceDocumentCompatibilityBuilder
 {
     private string _relativePath = "Sample.cs";
@@ -29,5 +26,6 @@ public sealed class SourceDocumentCompatibilityBuilder
         return this;
     }
 
-    public ApplicationAbstractions.SourceDocument Build() => new(_sourcePath, _relativePath, _text);
+    public ModelAnalysis.SourceDocument Build() => new(_sourcePath, _relativePath, _text);
 }
+

@@ -1,5 +1,5 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelPrimitives = TerrariaTools.Dome.Application.Ports;
 using TerrariaTools.Dome.Cli;
 using TerrariaTools.Testing.TestBuilders;
 using Xunit;
@@ -43,7 +43,7 @@ public class DomeCliParserTests
 
         Assert.False(result.IsSuccess);
         Assert.Null(result.Request);
-        Assert.Contains("Legacy runtime commands", result.ErrorMessage);
+        Assert.Contains("Usage", result.ErrorMessage);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class DomeCliParserTests
 
         Assert.False(result.IsSuccess);
         Assert.Null(result.Request);
-        Assert.Contains("Legacy runtime commands", result.ErrorMessage);
+        Assert.Contains("Usage", result.ErrorMessage);
     }
 
     [Fact]

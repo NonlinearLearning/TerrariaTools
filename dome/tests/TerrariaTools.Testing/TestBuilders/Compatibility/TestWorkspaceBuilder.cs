@@ -1,19 +1,17 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelPrimitives = TerrariaTools.Dome.Application.Ports;
+using CoreAnalysis = TerrariaTools.Dome.Core.Analysis;
 
 namespace TerrariaTools.Testing.TestBuilders;
 
-/// <summary>
-/// Compatibility-only builder for native workspace load contracts.
-/// </summary>
 public sealed class TestWorkspaceCompatibilityBuilder
 {
-    private readonly List<ApplicationAbstractions.SourceDocument> _documents = [];
+    private readonly List<CoreAnalysis.SourceDocument> _documents = [];
     private ModelPrimitives.WorkspaceLoadMode _loadMode = ModelPrimitives.WorkspaceLoadMode.SourceOnly;
     private string _requestedPrimaryLoader = "TestWorkspaceCompatibilityBuilder";
     private bool _fallbackUsed;
 
-    public TestWorkspaceCompatibilityBuilder AddDocument(ApplicationAbstractions.SourceDocument document)
+    public TestWorkspaceCompatibilityBuilder AddDocument(CoreAnalysis.SourceDocument document)
     {
         _documents.Add(document);
         return this;
@@ -50,9 +48,14 @@ public sealed class TestWorkspaceCompatibilityBuilder
         var entryPath = _documents.FirstOrDefault()?.SourcePath ?? "input";
         var rootPath = Path.GetDirectoryName(entryPath) ?? string.Empty;
         return ApplicationAbstractions.WorkspaceLoadResult.Success(
-            new ApplicationAbstractions.SourceDocumentSet(entryPath, rootPath, _documents.ToArray()),
+            new CoreAnalysis.AnalysisInput(
+                new CoreAnalysis.SourceDocumentSet(entryPath, rootPath, _documents.ToArray()),
+                CoreAnalysis.AnalysisInputMode.SourceOnly),
             _loadMode,
             _requestedPrimaryLoader,
             _fallbackUsed);
     }
 }
+
+
+

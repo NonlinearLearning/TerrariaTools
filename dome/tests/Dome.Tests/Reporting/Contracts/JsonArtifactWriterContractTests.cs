@@ -1,7 +1,6 @@
-using TerrariaTools.Dome.Reporting;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
+using TerrariaTools.Dome.Adapters.Reporting.Json;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
 using TerrariaTools.Testing.Contracts;
 using TerrariaTools.Testing.TestFixtures;
 using Xunit;
@@ -55,7 +54,7 @@ public sealed class JsonArtifactWriterContractTests : IClassFixture<TemporaryDir
                         ModelPrimitives.TargetKind.Method),
                     new ModelPrimitives.TargetLocator(12, 7, "Run();"),
                     new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
-                    new ModelRules.PlanReason("rule", "reason"))
+                    new ModelPlanning.PlanReason("rule", "reason"))
             },
             Array.Empty<ModelPlanning.PlanConflict>());
 

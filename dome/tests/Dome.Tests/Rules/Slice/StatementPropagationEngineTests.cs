@@ -1,16 +1,16 @@
-using TerrariaTools.Dome.Analysis.Roslyn;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
-using TerrariaTools.Dome.Rules;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
+using TerrariaTools.Dome.Core.Rules.Services;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
 
-// Legacy internal engine coverage. These tests verify the propagation engine below
-// BuildDecisions; the public Rules contract is covered by BuildDecisions tests.
+// 为遗留的内部传播引擎提供覆盖。
+// 这些测试直接验证 BuildDecisions 之下的传播逻辑；公开规则契约由 BuildDecisions 测试覆盖。
 public sealed class StatementPropagationEngineLegacyTests
 {
     [Fact]
@@ -144,13 +144,13 @@ public sealed class StatementPropagationEngineLegacyTests
             new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete, null),
             new ModelRules.PlanReason(ruleId, reasonText));
 
-    private static async Task<ApplicationAbstractions.AnalysisEngineResult> AnalyzeAsync(string sourceText) =>
+    private static async Task<ModelAnalysis.AnalysisOutput> AnalyzeAsync(string sourceText) =>
         await ((ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine()).AnalyzeAsync(
-            new ApplicationAbstractions.SourceDocumentSet(
+            new ModelAnalysis.SourceDocumentSet(
                 "Sample.cs",
                 "Sample.cs",
                 [
-                    new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", sourceText)
+                    new ModelAnalysis.SourceDocument("Sample.cs", "Sample.cs", sourceText)
                 ]),
             CancellationToken.None);
 

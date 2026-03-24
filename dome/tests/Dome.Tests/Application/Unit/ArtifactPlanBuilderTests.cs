@@ -1,4 +1,4 @@
-using TerrariaTools.Dome.Application;
+﻿using TerrariaTools.Dome.Adapters.Runtime.Process;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -63,3 +63,4 @@ public sealed class ArtifactPlanBuilderTests
             plan.GeneratedArtifacts);
     }
 }
+

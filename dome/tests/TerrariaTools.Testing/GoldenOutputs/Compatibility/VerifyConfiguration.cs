@@ -1,12 +1,10 @@
 using System.Runtime.CompilerServices;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelExecution = TerrariaTools.Dome.Application.Ports;
 using VerifyTests;
 
 namespace TerrariaTools.Testing.GoldenOutputs;
 
-/// <summary>
-/// Compatibility-only verifier settings for native golden contracts.
-/// </summary>
 public sealed class VerifyCompatibilitySettingsFixture
 {
     private static int _initialized;
@@ -42,7 +40,7 @@ public sealed class VerifyCompatibilitySettingsFixture
         }
 
         VerifierSettings.SortPropertiesAlphabetically();
-        VerifierSettings.IgnoreMember<ApplicationAbstractions.RunReport>(report => report.Message);
+        VerifierSettings.IgnoreMember<ModelExecution.RunReport>(report => report.Message);
         VerifierSettings.IgnoreMember<ApplicationAbstractions.WorkspaceLoadDiagnostic>(diagnostic => diagnostic.Message);
         VerifierSettings.AddScrubber(builder =>
         {
@@ -58,3 +56,7 @@ public sealed class VerifyCompatibilitySettingsFixture
         return settings;
     }
 }
+
+
+
+

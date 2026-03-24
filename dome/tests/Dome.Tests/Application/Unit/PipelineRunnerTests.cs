@@ -1,5 +1,6 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using TerrariaTools.Dome.Application;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelExecution = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Adapters.Runtime.Process;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -39,7 +40,7 @@ public sealed class PipelineRunnerTests
             new DelegatePipelineStage<TestPipelineContext>("one", (ctx, _) =>
             {
                 ctx.VisitedStages.Add("one");
-                ctx.TerminalState = new PipelineTerminalState(ApplicationAbstractions.RunResult.Success("out", "report.json"));
+                ctx.TerminalState = new PipelineTerminalState(ModelExecution.RunResult.Success("out", "report.json"));
                 return Task.CompletedTask;
             }),
             new DelegatePipelineStage<TestPipelineContext>("two", (ctx, _) =>
@@ -77,10 +78,10 @@ public sealed class PipelineRunnerTests
     {
         var context = new TestPipelineContext();
         context.BeginStage("one", 0);
-        context.TerminalState = new PipelineTerminalState(ApplicationAbstractions.RunResult.Success("out", "report.json"));
+        context.TerminalState = new PipelineTerminalState(ModelExecution.RunResult.Success("out", "report.json"));
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            context.TerminalState = new PipelineTerminalState(ApplicationAbstractions.RunResult.Success("out", "report.json")));
+            context.TerminalState = new PipelineTerminalState(ModelExecution.RunResult.Success("out", "report.json")));
 
         Assert.Contains("already terminal", ex.Message);
     }
@@ -106,3 +107,7 @@ public sealed class PipelineRunnerTests
         public override Task ExecuteAsync(TContext context, CancellationToken cancellationToken) => _handler(context, cancellationToken);
     }
 }
+
+
+
+

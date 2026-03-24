@@ -1,8 +1,9 @@
-﻿using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
+using PortsCommon = TerrariaTools.Dome.Application.Ports;
 using TerrariaTools.Dome.Application;
 using TerrariaTools.Testing.GoldenOutputs;
 using Xunit;
@@ -32,7 +33,7 @@ public sealed class RunReportBuilderTests
                     target.target,
                     target.locator,
                     new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
-                    new ModelRules.PlanReason("class-mark", "delete method"))
+                    new ModelPlanning.PlanReason("class-mark", "delete method"))
             },
             Array.Empty<ModelPlanning.PlanConflict>());
 
@@ -59,7 +60,7 @@ public sealed class RunReportBuilderTests
                     riskyTarget.target,
                     riskyTarget.locator,
                     true,
-                    new[] { new ModelRules.DirectiveAction(ModelPrimitives.PlanActionKind.Delete, null, "directive", "delete") },
+                    new[] { new ModelAnalysis.DirectiveAction(ModelPrimitives.PlanActionKind.Delete, null, "directive", "delete") },
                     Array.Empty<ModelAnalysis.SymbolRef>(),
                     Array.Empty<ModelAnalysis.SymbolRef>(),
                     Array.Empty<ModelPrimitives.MemberId>(),
@@ -112,7 +113,7 @@ public sealed class RunReportBuilderTests
                     classTarget.target,
                     classTarget.locator,
                     new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
-                    new ModelRules.PlanReason("class-mark", "delete class"))
+                    new ModelPlanning.PlanReason("class-mark", "delete class"))
             },
             Array.Empty<ModelPlanning.PlanConflict>());
         var impact = new ModelPlanning.FunctionImpactSet(
@@ -194,11 +195,13 @@ public sealed class RunReportBuilderTests
 
     private static ApplicationAbstractions.WorkspaceLoadResult CreateLoadResult() =>
         ApplicationAbstractions.WorkspaceLoadResult.Success(
-            new ApplicationAbstractions.SourceDocumentSet(
-                "Sample.cs",
-                ".",
-                new[] { new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", "class C {}") }),
-            ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+            new ModelAnalysis.AnalysisInput(
+                new ModelAnalysis.SourceDocumentSet(
+                    "Sample.cs",
+                    ".",
+                    new[] { new ModelAnalysis.SourceDocument("Sample.cs", "Sample.cs", "class C {}") }),
+                ModelAnalysis.AnalysisInputMode.SourceOnly),
+            PortsCommon.WorkspaceLoadMode.SourceOnly,
             "SourceOnly");
 
     private static (ModelPrimitives.TargetIdentity target, ModelPrimitives.TargetLocator locator) CreateTarget(

@@ -1,10 +1,9 @@
-﻿using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
-using TerrariaTools.Dome.Rewrite.Roslyn;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using TerrariaTools.Dome.Adapters.Rewrite.Roslyn;
 using TerrariaTools.Testing.GoldenOutputs;
 using Xunit;
 
@@ -60,7 +59,7 @@ public sealed class RewriteExecutorGoldenTests
                         methods["Helper"].ToString().Trim(),
                         new ModelPrimitives.TargetResolutionKey(methods["Helper"].SpanStart, methods["Helper"].Span.Length)),
                     new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.ChangeVisibilityToPrivate),
-                    new ModelRules.PlanReason("member-cleanup", "privatize helper")),
+                    new ModelPlanning.PlanReason("member-cleanup", "privatize helper")),
                 new ModelPlanning.PlannedChange(
                     1,
                     new ModelPrimitives.TargetIdentity(
@@ -74,7 +73,7 @@ public sealed class RewriteExecutorGoldenTests
                         classNode.Identifier.ValueText,
                         new ModelPrimitives.TargetResolutionKey(classNode.SpanStart, classNode.Span.Length)),
                     new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.ReorderPublicMethods),
-                    new ModelRules.PlanReason("member-cleanup", "reorder public methods")),
+                    new ModelPlanning.PlanReason("member-cleanup", "reorder public methods")),
                 new ModelPlanning.PlannedChange(
                     2,
                     new ModelPrimitives.TargetIdentity(
@@ -88,13 +87,13 @@ public sealed class RewriteExecutorGoldenTests
                         deleteStatement.ToString().Trim(),
                         new ModelPrimitives.TargetResolutionKey(deleteStatement.SpanStart, deleteStatement.Span.Length)),
                     new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
-                    new ModelRules.PlanReason("statement-delete", "delete temp"))
+                    new ModelPlanning.PlanReason("statement-delete", "delete temp"))
             },
             Array.Empty<ModelPlanning.PlanConflict>());
-        var sourceSet = new ApplicationAbstractions.SourceDocumentSet(
+        var sourceSet = new ModelAnalysis.SourceDocumentSet(
             "Sample.cs",
             "Sample.cs",
-            [new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", source)]);
+            [new ModelAnalysis.SourceDocument("Sample.cs", "Sample.cs", source)]);
 
         var result = await new RoslynRewriteExecutor().ExecuteAsync(sourceSet, plan, CancellationToken.None);
 

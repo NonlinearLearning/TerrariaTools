@@ -1,6 +1,7 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Application;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelPrimitives = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Application.Host;
+using System.Text.Json;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Application;
@@ -76,6 +77,51 @@ public sealed class DomeApplicationTests
             Assert.True(File.Exists(Path.Combine(outputDir, "report.json")));
             Assert.False(File.Exists(Path.Combine(outputDir, "audit-plan.json")));
             Assert.False(Directory.Exists(Path.Combine(outputDir, "rewritten")));
+        });
+    }
+
+    [Fact]
+    public async Task RunAsync_AnalyzeOnly_ReportCarriesCpgFingerprintNotes()
+    {
+        await WithTempRootAsync(async tempRoot =>
+        {
+            var inputFile = Path.Combine(tempRoot, "Sample.cs");
+            var outputDir = Path.Combine(tempRoot, "out");
+
+            await File.WriteAllTextAsync(
+                inputFile,
+                """
+                namespace Sample;
+
+                public static class EntryPoint
+                {
+                    public static void Run()
+                    {
+                        Helper();
+                    }
+
+                    private static void Helper()
+                    {
+                    }
+                }
+                """);
+
+            var result = await DomeApplicationFactory.CreateDefault().RunAsync(
+                new ApplicationAbstractions.RunRequest(inputFile, outputDir, Array.Empty<string>(), ModelPrimitives.RunMode.AnalyzeOnly),
+                CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+
+            using var report = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(outputDir, "report.json")));
+            var notes = report.RootElement
+                .GetProperty("AdvancedAnalysisSummary")
+                .GetProperty("Notes")
+                .EnumerateArray()
+                .Select(static element => element.GetString())
+                .OfType<string>()
+                .ToArray();
+
+            Assert.Contains(notes, static note => note.StartsWith("CpgCallEdges=", StringComparison.Ordinal));
         });
     }
 
@@ -444,3 +490,4 @@ public sealed class DomeApplicationTests
         }
     }
 }
+

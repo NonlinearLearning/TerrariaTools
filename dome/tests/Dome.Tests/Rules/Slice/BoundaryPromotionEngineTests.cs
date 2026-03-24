@@ -1,16 +1,16 @@
-using TerrariaTools.Dome.Analysis.Roslyn;
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using TerrariaTools.Dome.Rules;
+using TerrariaTools.Dome.Adapters.Analysis.Roslyn;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using TerrariaTools.Dome.Core.Rules.Services;
 using Xunit;
 
 namespace TerrariaTools.Dome.Tests.Rules;
 
-// Legacy-internal coverage for the model-based promotion engine.
-// These tests verify that the new public entry still promotes correctly.
+// 为基于模型的提升引擎提供遗留内部覆盖。
+// 这些测试验证新的公开入口仍然能够正确执行提升。
 public class BoundaryPromotionEngineLegacyTests
 {
     [Fact]
@@ -99,13 +99,13 @@ public class BoundaryPromotionEngineLegacyTests
             new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete, null),
             new ModelRules.PlanReason("dataflow-propagation", "propagated", Origin: ModelPrimitives.DecisionOrigin.Propagation));
 
-    private static async Task<ApplicationAbstractions.AnalysisEngineResult> AnalyzeAsync(string sourceText) =>
+    private static async Task<ModelAnalysis.AnalysisOutput> AnalyzeAsync(string sourceText) =>
         await ((ApplicationAbstractions.IAnalysisEngine)new RoslynAnalysisEngine()).AnalyzeAsync(
-            new ApplicationAbstractions.SourceDocumentSet(
+            new ModelAnalysis.SourceDocumentSet(
                 "Sample.cs",
                 "Sample.cs",
                 [
-                    new ApplicationAbstractions.SourceDocument("Sample.cs", "Sample.cs", sourceText)
+                    new ModelAnalysis.SourceDocument("Sample.cs", "Sample.cs", sourceText)
                 ]),
             CancellationToken.None);
 }

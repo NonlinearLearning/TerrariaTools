@@ -1,9 +1,10 @@
-using ApplicationAbstractions = TerrariaTools.Dome.Application.Abstractions;
-using ModelAnalysis = TerrariaTools.Dome.Model.Analysis;
-using ModelPlanning = TerrariaTools.Dome.Model.Planning;
-using ModelPrimitives = TerrariaTools.Dome.Model.Primitives;
-using ModelRules = TerrariaTools.Dome.Model.Rules;
-using TerrariaTools.Dome.Reporting;
+using ApplicationAbstractions = TerrariaTools.Dome.Application.Ports;
+using ModelAnalysis = TerrariaTools.Dome.Core.Analysis;
+using ModelPlanning = TerrariaTools.Dome.Core.Planning;
+using ModelPrimitives = TerrariaTools.Dome.Core.Common;
+using ModelRules = TerrariaTools.Dome.Core.Rules.Model;
+using PortsCommon = TerrariaTools.Dome.Application.Ports;
+using TerrariaTools.Dome.Adapters.Reporting.Json;
 using TerrariaTools.Testing.TestFixtures;
 using Xunit;
 
@@ -75,7 +76,7 @@ public sealed class JsonArtifactWriterTests : IClassFixture<TemporaryDirectoryFi
                     new ModelPrimitives.TargetIdentity("Sample.cs", new ModelPrimitives.MemberId("Sample.Player.Run()"), ModelPrimitives.MemberKind.Method, ModelPrimitives.TargetKind.Method),
                     new ModelPrimitives.TargetLocator(12, 3, "Run"),
                     new ModelPlanning.PlanAction(ModelPrimitives.PlanActionKind.Delete),
-                    new ModelRules.PlanReason("rule", "reason"))
+                    new ModelPlanning.PlanReason("rule", "reason"))
             ],
             []);
 
@@ -92,7 +93,7 @@ public sealed class JsonArtifactWriterTests : IClassFixture<TemporaryDirectoryFi
     private static ApplicationAbstractions.RunReport CreateReport() =>
         new(
             true,
-            ModelPrimitives.FailureCode.None,
+            PortsCommon.FailureCode.None,
             1,
             1,
             0,
@@ -105,7 +106,7 @@ public sealed class JsonArtifactWriterTests : IClassFixture<TemporaryDirectoryFi
             null,
             null,
             null,
-            ModelPrimitives.WorkspaceLoadMode.SourceOnly,
+            PortsCommon.WorkspaceLoadMode.SourceOnly,
             false,
             [],
             null);

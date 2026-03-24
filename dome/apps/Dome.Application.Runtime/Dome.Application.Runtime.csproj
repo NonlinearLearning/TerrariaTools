@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dome.Application\Dome.Application.csproj" />
+    <ProjectReference Include="..\..\src\Application\Ports\Dome.Application.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Runtime.Process\Dome.Runtime.Process.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Analysis.Roslyn\Dome.Analysis.Roslyn.csproj" />
+    <ProjectReference Include="..\..\src\Core\Rules\Services\Dome.Rules.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Rewrite.Roslyn\Dome.Rewrite.Roslyn.csproj" />
+    <ProjectReference Include="..\..\src\Adapters\Reporting.Json\Dome.Reporting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\src\Application\UseCases\Runtime\RuntimeFeatureContracts.cs" Link="UseCases\Runtime\RuntimeFeatureContracts.cs" />
+    <Compile Include="..\..\src\Application\UseCases\Runtime\RuntimePipelineTypes.cs" Link="UseCases\Runtime\RuntimePipelineTypes.cs" />
+    <Compile Include="..\..\src\Application\UseCases\Runtime\TerrariaRuntimeApplicationStages.cs" Link="UseCases\Runtime\TerrariaRuntimeApplicationStages.cs" />
+    <Compile Include="..\..\src\Adapters\Reporting.Json\JsonRunReportStore.cs" Link="Adapters\Reporting\JsonRunReportStore.cs" />
+    <Compile Include="..\..\src\Adapters\Runtime.Process\TerrariaRuntimeEnvironmentBuilder.cs" Link="Adapters\Runtime.Process\TerrariaRuntimeEnvironmentBuilder.cs" />
+    <Compile Include="..\..\src\Adapters\Runtime.Process\TerrariaRuntimeLayoutFactory.cs" Link="Adapters\Runtime.Process\TerrariaRuntimeLayoutFactory.cs" />
+  </ItemGroup>
+</Project>
