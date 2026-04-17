@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="Domain">
+      <HintPath>..\..\..\Build\bin\Domain\Debug\net8.0\Domain.dll</HintPath>
+    </Reference>
+    <Reference Include="Application">
+      <HintPath>..\..\..\Build\bin\Application\Debug\net8.0\Application.dll</HintPath>
+    </Reference>
+    <Reference Include="Infrastructure">
+      <HintPath>..\..\..\Build\bin\Infrastructure\Debug\net8.0\Infrastructure.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis">
+      <HintPath>$(NuGetPackageRoot)microsoft.codeanalysis.common\5.0.0\lib\net8.0\Microsoft.CodeAnalysis.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Microsoft.CodeAnalysis.CSharp">
+      <HintPath>$(NuGetPackageRoot)microsoft.codeanalysis.csharp\5.0.0\lib\net8.0\Microsoft.CodeAnalysis.CSharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Collections.Immutable">
+      <HintPath>$(NuGetPackageRoot)system.collections.immutable\9.0.0\lib\net8.0\System.Collections.Immutable.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Reflection.Metadata">
+      <HintPath>$(NuGetPackageRoot)system.reflection.metadata\9.0.0\lib\net8.0\System.Reflection.Metadata.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

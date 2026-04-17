@@ -1,2 +1,7 @@
-*
+.agents
+.codex
+.dotnet
+.nuget
+ai-rules
 !.gitignore
+*.log
