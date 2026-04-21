@@ -83,10 +83,10 @@ public sealed class X2CpgEntryTests
         Assert.Equal("value", StringUtils.StripQuotes("\"value\""));
         Assert.Equal("value", StringUtils.StripQuotes("'value'"));
 
-        DirectoryInfo tmpDir = global::Infrastructure.Analysis.Engine.X2Cpg.X2Cpg.WriteCodeToFile("class Demo {}", "analysis-x2cpg-", ".cs");
+        DirectoryInfo temporaryDirectory = global::Infrastructure.Analysis.Engine.X2Cpg.X2Cpg.WriteCodeToFile("class Demo {}", "analysis-x2cpg-", ".cs");
 
-        Assert.True(tmpDir.Exists);
-        Assert.True(File.Exists(Path.Combine(tmpDir.FullName, "Test.cs")));
+        Assert.True(temporaryDirectory.Exists);
+        Assert.True(File.Exists(Path.Combine(temporaryDirectory.FullName, "Test.cs")));
     }
 
     [Fact]

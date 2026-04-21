@@ -50,19 +50,21 @@ public static class X2Cpg
     /// 把源码写入临时目录中的临时文件。
     /// </summary>
     /// <param name="sourceCode">源码文本。</param>
-    /// <param name="tmpDirPrefix">临时目录前缀。</param>
+    /// <param name="temporaryDirectoryPrefix">临时目录前缀。</param>
     /// <param name="suffix">临时文件后缀。</param>
     /// <returns>临时目录路径。行为对齐 Joern：返回目录而不是文件。</returns>
-    public static DirectoryInfo WriteCodeToFile(string sourceCode, string tmpDirPrefix, string suffix)
+    public static DirectoryInfo WriteCodeToFile(string sourceCode, string temporaryDirectoryPrefix, string suffix)
     {
         ArgumentNullException.ThrowIfNull(sourceCode);
-        ArgumentException.ThrowIfNullOrWhiteSpace(tmpDirPrefix);
+        ArgumentException.ThrowIfNullOrWhiteSpace(temporaryDirectoryPrefix);
         ArgumentException.ThrowIfNullOrWhiteSpace(suffix);
 
-        string tmpDirPath = Path.Combine(Path.GetTempPath(), tmpDirPrefix + Guid.NewGuid().ToString("N"));
-        DirectoryInfo tmpDir = Directory.CreateDirectory(tmpDirPath);
-        string codeFile = Path.Combine(tmpDir.FullName, "Test" + suffix);
+        string temporaryDirectoryPath = Path.Combine(
+            Path.GetTempPath(),
+            temporaryDirectoryPrefix + Guid.NewGuid().ToString("N"));
+        DirectoryInfo temporaryDirectory = Directory.CreateDirectory(temporaryDirectoryPath);
+        string codeFile = Path.Combine(temporaryDirectory.FullName, "Test" + suffix);
         File.WriteAllText(codeFile, sourceCode);
-        return tmpDir;
+        return temporaryDirectory;
     }
 }
