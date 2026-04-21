@@ -8,7 +8,26 @@ namespace Isolation.AnalysisTests.Naming;
 
 public sealed class NamingGovernanceConventionsTests
 {
-    private static readonly string[] ApprovedLegacyLowercaseDirectories = [];
+    private static readonly string[] ApprovedLegacyLowercaseDirectories =
+    [
+        "src/Logic/Analysis/Engine/Language/android",
+        "src/Logic/Analysis/Engine/Language/bindingextension",
+        "src/Logic/Analysis/Engine/Language/callgraphextension",
+        "src/Logic/Analysis/Engine/Language/DataFlow/dotextension",
+        "src/Logic/Analysis/Engine/Language/DataFlow/nodemethods",
+        "src/Logic/Analysis/Engine/Language/dotextension",
+        "src/Logic/Analysis/Engine/Language/importresolver",
+        "src/Logic/Analysis/Engine/Language/modulevariable",
+        "src/Logic/Analysis/Engine/Language/modulevariable/nodemethods",
+        "src/Logic/Analysis/Engine/Language/nodemethods",
+        "src/Logic/Analysis/Engine/Language/operatorextension",
+        "src/Logic/Analysis/Engine/Language/operatorextension/nodemethods",
+        "src/Logic/Analysis/Engine/Language/types",
+        "src/Logic/Analysis/Engine/Language/types/expressions",
+        "src/Logic/Analysis/Engine/Language/types/expressions/generalizations",
+        "src/Logic/Analysis/Engine/Language/types/propertyaccessors",
+        "src/Logic/Analysis/Engine/Language/types/structure",
+    ];
 
     private static readonly IReadOnlyDictionary<string, string[]> ApprovedContractsMultiTypeHotspots =
         new Dictionary<string, string[]>();
@@ -52,6 +71,21 @@ public sealed class NamingGovernanceConventionsTests
         "src/Logic/Analysis/Engine/Passes/ControlFlow/BuildCdgPass.cs",
         "src/Logic/Analysis/Engine/Passes/ControlFlow/ControlDependenceGraph/CpgPostDomTreeAdapter.cs",
     ];
+
+    private static readonly IReadOnlyDictionary<string, string[]> ApprovedGenericTechnicalSuffixHotspots =
+        new Dictionary<string, string[]>
+        {
+            ["src/Domain/Common/Events/DomainEventBase.cs"] = ["DomainEventBase"],
+            ["src/Domain/Analysis/Engine/Semantic/AccessPath/TrackedBase.cs"] = ["ITrackedBase"],
+            ["src/Logic/Analysis/Engine/Frontend/CpgFrontendBase.cs"] = ["CpgFrontendBase"],
+            ["src/Logic/Analysis/Engine/Frontend/AstModel/AstCreatorBase.cs"] = ["AstCreatorBase"],
+            ["src/Logic/Analysis/Engine/Layers/LayerCreatorBase.cs"] = ["LayerCreatorBase"],
+            ["src/Logic/Analysis/Engine/Frontend/FrontendGraphConventions.cs"] = ["InvocationReceiverInfo"],
+            ["src/Logic/Analysis/Engine/Passes/ImportDirectiveInfo.cs"] = ["ImportDirectiveInfo"],
+            ["src/Logic/Analysis/Engine/Passes/ControlFlow/CfgModel.cs"] = ["CfgModel"],
+            ["src/Logic/Analysis/Engine/X2Cpg/DataStructures/VariableScopeManager.cs"] = ["VariableScopeManager"],
+            ["src/Logic/Analysis/Engine/X2Cpg/TypeStubs/TypeStubConfig.cs"] = ["TypeStubMetaData"],
+        };
 
     [Fact]
     public void Legacy_lowercase_source_directories_stay_on_allowlist()
@@ -219,6 +253,44 @@ public sealed class NamingGovernanceConventionsTests
         Assert.Empty(unexpectedFiles);
     }
 
+    [Fact]
+    public void Generic_technical_suffixes_stay_confined_to_known_hotspots()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string sourceRoot = Path.Combine(repositoryRoot, "src");
+
+        FileShape[] hotspotFiles = Directory
+            .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
+            .Select(path => CreateFileShape(repositoryRoot, path))
+            .Select(shape => new FileShape(
+                shape.RelativePath,
+                shape.FileBaseName,
+                shape.TypeNames.Where(IsGenericTechnicalSuffixTypeName).ToArray()))
+            .Where(shape => shape.TypeNames.Count > 0)
+            .OrderBy(shape => shape.RelativePath, StringComparer.Ordinal)
+            .ToArray();
+
+        string[] unexpectedFiles = hotspotFiles
+            .Where(shape => !ApprovedGenericTechnicalSuffixHotspots.ContainsKey(shape.RelativePath))
+            .Select(shape => $"{shape.RelativePath} => {string.Join(", ", shape.TypeNames)}")
+            .ToArray();
+
+        Assert.Empty(unexpectedFiles);
+
+        foreach (FileShape hotspot in hotspotFiles)
+        {
+            string[] approvedTypes = ApprovedGenericTechnicalSuffixHotspots[hotspot.RelativePath];
+            string[] unexpectedTypes = hotspot.TypeNames
+                .Where(typeName => !approvedTypes.Contains(typeName, StringComparer.Ordinal))
+                .ToArray();
+
+            Assert.Empty(unexpectedTypes);
+            Assert.True(
+                hotspot.TypeNames.Count <= approvedTypes.Length,
+                $"{hotspot.RelativePath} 的技术债命名范围扩大了：{string.Join(", ", hotspot.TypeNames)}");
+        }
+    }
+
     private static FileShape CreateFileShape(string repositoryRoot, string filePath)
     {
         string relativePath = NormalizeRelativePath(repositoryRoot, filePath);
@@ -232,6 +304,15 @@ public sealed class NamingGovernanceConventionsTests
         return typeName.EndsWith("Engine", StringComparison.Ordinal) ||
                typeName.EndsWith("Creator", StringComparison.Ordinal) ||
                typeName.EndsWith("Solver", StringComparison.Ordinal);
+    }
+
+    private static bool IsGenericTechnicalSuffixTypeName(string typeName)
+    {
+        return typeName.EndsWith("Base", StringComparison.Ordinal) ||
+               typeName.EndsWith("Manager", StringComparison.Ordinal) ||
+               typeName.EndsWith("Info", StringComparison.Ordinal) ||
+               typeName.EndsWith("Model", StringComparison.Ordinal) ||
+               typeName.EndsWith("MetaData", StringComparison.Ordinal);
     }
 
     private static IReadOnlyList<string> GetPublicTopLevelTypeNames(string filePath)
