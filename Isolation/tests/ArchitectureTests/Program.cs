@@ -58,12 +58,12 @@ try
     AssertServiceRegistrations(repositoryRoot);
 
     InMemoryWorkspaceContextRepository workspaceRepository = new();
-RuleCatalog ruleCatalog = new();
-WorkspaceContextAppService workspaceAppService = new(
-    new WorkspaceContextBuilder(
-        new WorkspaceDefaultRulePreset(),
-        new WorkspaceRuleDefaultsBuilder(new EnabledRuleFactory(ruleCatalog))),
-    workspaceRepository);
+    RuleCatalog ruleCatalog = new();
+    WorkspaceContextAppService workspaceAppService = new(
+        new WorkspaceContextBuilder(
+            new WorkspaceDefaultRulePreset(),
+            new WorkspaceRuleDefaultsBuilder(new EnabledRuleFactory(ruleCatalog))),
+        workspaceRepository);
     WorkspaceContextDto workspace = await workspaceAppService.CreateAsync(new CreateWorkspaceContextRequest
     {
         SolutionPath = repositoryRoot,
@@ -97,77 +97,77 @@ WorkspaceContextAppService workspaceAppService = new(
         },
     });
 
-Assert(workspace.Documents.Count == 2, "WorkspaceContext 应该对文档路径做标准化去重。");
+    Assert(workspace.Documents.Count == 2, "WorkspaceContext 应该对文档路径做标准化去重。");
 
-InMemoryAnalysisSnapshotRepository analysisSnapshotRepository = new();
-InMemoryRuleTargetRepository ruleTargetRepository = new();
+    InMemoryAnalysisSnapshotRepository analysisSnapshotRepository = new();
+    InMemoryRuleTargetRepository ruleTargetRepository = new();
 
-AnalysisAppService analysisAppService = new(
-    workspaceRepository,
-    analysisSnapshotRepository,
-    new AnalysisSnapshotComposer(new DefaultAnalysisSnapshotBuilder()));
+    AnalysisAppService analysisAppService = new(
+        workspaceRepository,
+        analysisSnapshotRepository,
+        new AnalysisSnapshotComposer(new DefaultAnalysisSnapshotBuilder()));
 
-AnalysisCpgSnapshotDto cpgSnapshot = await analysisAppService.BuildCpgSnapshotAsync(new BuildAnalysisCpgSnapshotRequest
-{
-    WorkspaceContextId = workspace.Id,
-    EntrySymbol = "Domain.Analysis.Engine.Core.CpgGraphBuilder.Build",
-    MinimumTarget = ContractMinimumAnalysisTarget.Method,
-    Depth = 2,
-});
-
-Assert(cpgSnapshot.Nodes.Count >= 2, "CPG 快照至少应生成入口节点和一个文档节点。");
-
-AnalysisCpgAppService analysisCpgAppService = new(
-    workspaceRepository,
-    analysisSnapshotRepository,
-    new AnalysisBackedCpgGateway(new AnalysisCpgSnapshotAssembler()),
-    new AnalysisInputDescriptorBuilder());
-
-AnalysisCpgSnapshotDto analysisBackedSnapshot = await analysisCpgAppService.BuildAnalysisBackedCpgSnapshotAsync(
-    new BuildAnalysisBackedCpgSnapshotRequest
+    AnalysisCpgSnapshotDto cpgSnapshot = await analysisAppService.BuildCpgSnapshotAsync(new BuildAnalysisCpgSnapshotRequest
     {
         WorkspaceContextId = workspace.Id,
-        SourcePath = "src/Domain/Workspaces/WorkspaceContext.cs",
-        SourceKind = ContractAnalysisSourceKind.SourceFile,
-        EntrySymbol = "WorkspaceContext",
-        MinimumTarget = ContractMinimumAnalysisTarget.Type,
-        Depth = 3,
+        EntrySymbol = "Domain.Analysis.Engine.Core.CpgGraphBuilder.Build",
+        MinimumTarget = ContractMinimumAnalysisTarget.Method,
+        Depth = 2,
     });
-Assert(analysisBackedSnapshot.Nodes.Count > cpgSnapshot.Nodes.Count, "Analysis 适配器应产出真实 CPG 节点。");
-Assert(
-    analysisBackedSnapshot.Nodes.Any(item => item.DisplayName.Contains("WorkspaceContext", StringComparison.Ordinal)),
-    "Analysis 适配器应把旧 Analysis 的类型节点映射到领域快照。");
 
-RuleTargetAppService ruleTargetAppService = new(
-    new RuleTargetBuilder(),
-    new MarkingRulePreset(),
-    ruleTargetRepository,
-    new RuleTargetMarkingPreparer(CreateRuleTargetCandidateBuilder()),
-    analysisSnapshotRepository,
-    new MarkingDomainEventPublisher(new InMemoryDomainEventRecorder(), new MarkingEventSequenceBuilder()));
-RuleTargetDto ruleTarget = await ruleTargetAppService.CreateAsync(new CreateRuleTargetRequest
-{
-    SnapshotId = cpgSnapshot.Id,
-    RuleCode = "workflow.rule",
-    CandidateReason = ContractCandidateReason.ManualReviewRequired,
-    Node = new MinimumNodeDto
+    Assert(cpgSnapshot.Nodes.Count >= 2, "CPG 快照至少应生成入口节点和一个文档节点。");
+
+    AnalysisCpgAppService analysisCpgAppService = new(
+        workspaceRepository,
+        analysisSnapshotRepository,
+        new AnalysisBackedCpgGateway(new AnalysisCpgSnapshotAssembler()),
+        new AnalysisInputDescriptorBuilder());
+
+    AnalysisCpgSnapshotDto analysisBackedSnapshot = await analysisCpgAppService.BuildAnalysisBackedCpgSnapshotAsync(
+        new BuildAnalysisBackedCpgSnapshotRequest
+        {
+            WorkspaceContextId = workspace.Id,
+            SourcePath = "src/Domain/Workspaces/WorkspaceContext.cs",
+            SourceKind = ContractAnalysisSourceKind.SourceFile,
+            EntrySymbol = "WorkspaceContext",
+            MinimumTarget = ContractMinimumAnalysisTarget.Type,
+            Depth = 3,
+        });
+    Assert(analysisBackedSnapshot.Nodes.Count > cpgSnapshot.Nodes.Count, "Analysis 适配器应产出真实 CPG 节点。");
+    Assert(
+        analysisBackedSnapshot.Nodes.Any(item => item.DisplayName.Contains("WorkspaceContext", StringComparison.Ordinal)),
+        "Analysis 适配器应把旧 Analysis 的类型节点映射到领域快照。");
+
+    RuleTargetAppService ruleTargetAppService = new(
+        new RuleTargetBuilder(),
+        new MarkingRulePreset(),
+        ruleTargetRepository,
+        new RuleTargetMarkingPreparer(CreateRuleTargetCandidateBuilder()),
+        analysisSnapshotRepository,
+        new MarkingDomainEventPublisher(new InMemoryDomainEventRecorder(), new MarkingEventSequenceBuilder()));
+    RuleTargetDto ruleTarget = await ruleTargetAppService.CreateAsync(new CreateRuleTargetRequest
     {
-        NodeId = "entry",
-        DisplayName = "WorkspaceContext",
-        DocumentPath = "docs/DDD/事件风暴.md",
-        NodeType = ContractCpgNodeType.TypeDecl,
-        StartLine = 1,
-        StartColumn = 1,
-        EndLine = 1,
-        EndColumn = 16,
-    },
-    Note = "首批落地规则命中。",
-});
+        SnapshotId = cpgSnapshot.Id,
+        RuleCode = "workflow.rule",
+        CandidateReason = ContractCandidateReason.ManualReviewRequired,
+        Node = new MinimumNodeDto
+        {
+            NodeId = "entry",
+            DisplayName = "WorkspaceContext",
+            DocumentPath = "docs/DDD/事件风暴.md",
+            NodeType = ContractCpgNodeType.TypeDecl,
+            StartLine = 1,
+            StartColumn = 1,
+            EndLine = 1,
+            EndColumn = 16,
+        },
+        Note = "首批落地规则命中。",
+    });
 
-Assert(ruleTarget.RuleCode == "workflow.rule", "规则命中目标应返回正确规则编号。");
+    Assert(ruleTarget.RuleCode == "workflow.rule", "规则命中目标应返回正确规则编号。");
 
-CodeIsolationAppService codeIsolationAppService = new(new RoslynCodeIsolationFacade(new RoslynCodeIsolationGateway()));
-const string SampleSource = """
+    CodeIsolationAppService codeIsolationAppService = new(new RoslynCodeIsolationFacade(new RoslynCodeIsolationGateway()));
+    const string SampleSource = """
 using System;
 
 namespace Demo;
@@ -193,300 +193,300 @@ public class PlayerTools
 }
 """;
 
-CodeRewriteResultDto privatizedMethod = await codeIsolationAppService.PrivatizeMethodAsync(new PrivatizeMethodRequest
-{
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-    MethodName = "Helper",
-    ParameterCount = 1,
-});
-Assert(privatizedMethod.SourceCode.Contains("private int Helper"), "方法私有化应将访问级别改为 private。");
+    CodeRewriteResultDto privatizedMethod = await codeIsolationAppService.PrivatizeMethodAsync(new PrivatizeMethodRequest
+    {
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+        MethodName = "Helper",
+        ParameterCount = 1,
+    });
+    Assert(privatizedMethod.SourceCode.Contains("private int Helper"), "方法私有化应将访问级别改为 private。");
 
-CodeRewriteResultDto clearedMethod = await codeIsolationAppService.ClearMethodBodyAsync(new ClearMethodBodyRequest
-{
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-    MethodName = "Format",
-    ParameterCount = 0,
-});
-Assert(clearedMethod.SourceCode.Contains("return null;"), "非 void 方法体清空后应保留可编译返回。");
+    CodeRewriteResultDto clearedMethod = await codeIsolationAppService.ClearMethodBodyAsync(new ClearMethodBodyRequest
+    {
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+        MethodName = "Format",
+        ParameterCount = 0,
+    });
+    Assert(clearedMethod.SourceCode.Contains("return null;"), "非 void 方法体清空后应保留可编译返回。");
 
-CodeRewriteResultDto deletedMethod = await codeIsolationAppService.DeleteMethodAsync(new DeleteMethodRequest
-{
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-    MethodName = "Format",
-    ParameterCount = 0,
-});
-Assert(!deletedMethod.SourceCode.Contains("Format()"), "方法删除后不应再保留目标方法。");
+    CodeRewriteResultDto deletedMethod = await codeIsolationAppService.DeleteMethodAsync(new DeleteMethodRequest
+    {
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+        MethodName = "Format",
+        ParameterCount = 0,
+    });
+    Assert(!deletedMethod.SourceCode.Contains("Format()"), "方法删除后不应再保留目标方法。");
 
-CodeRewriteResultDto deletedClass = await codeIsolationAppService.DeleteClassAsync(new DeleteClassRequest
-{
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-});
-Assert(!deletedClass.SourceCode.Contains("class PlayerTools"), "类型删除后不应再保留目标类型。");
+    CodeRewriteResultDto deletedClass = await codeIsolationAppService.DeleteClassAsync(new DeleteClassRequest
+    {
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+    });
+    Assert(!deletedClass.SourceCode.Contains("class PlayerTools"), "类型删除后不应再保留目标类型。");
 
-MemberSliceDto memberSlice = await codeIsolationAppService.BuildMemberSliceAsync(new BuildMemberSliceRequest
-{
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-    MethodName = "Entry",
-    ParameterCount = 1,
-});
-Assert(memberSlice.MemberNames.Contains("Entry"), "成员切片应包含入口方法。");
-Assert(memberSlice.MemberNames.Contains("Helper"), "成员切片应包含被入口方法调用的方法。");
+    MemberSliceDto memberSlice = await codeIsolationAppService.BuildMemberSliceAsync(new BuildMemberSliceRequest
+    {
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+        MethodName = "Entry",
+        ParameterCount = 1,
+    });
+    Assert(memberSlice.MemberNames.Contains("Entry"), "成员切片应包含入口方法。");
+    Assert(memberSlice.MemberNames.Contains("Helper"), "成员切片应包含被入口方法调用的方法。");
 
-ShadowClassDto shadowClass = await codeIsolationAppService.GenerateShadowClassAsync(new GenerateShadowClassRequest
-{
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-    MethodName = "Entry",
-    ParameterCount = 1,
-});
-Assert(shadowClass.ShadowClassName == "PlayerToolsShadow", "影子类应生成约定名称。");
-Assert(shadowClass.SourceCode.Contains("class PlayerToolsShadow"), "影子类源码应生成影子类型。");
-Assert(shadowClass.Boundary.ReferenceMappings.Count == 0, "影子类应显式暴露传播边界载体。");
+    ShadowClassDto shadowClass = await codeIsolationAppService.GenerateShadowClassAsync(new GenerateShadowClassRequest
+    {
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+        MethodName = "Entry",
+        ParameterCount = 1,
+    });
+    Assert(shadowClass.ShadowClassName == "PlayerToolsShadow", "影子类应生成约定名称。");
+    Assert(shadowClass.SourceCode.Contains("class PlayerToolsShadow"), "影子类源码应生成影子类型。");
+    Assert(shadowClass.Boundary.ReferenceMappings.Count == 0, "影子类应显式暴露传播边界载体。");
 
-RuntimeClosureDto runtimeClosure = await codeIsolationAppService.ExtractMinimalRuntimeClosureAsync(new ExtractMinimalRuntimeClosureRequest
-{
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-    MethodName = "Entry",
-    ParameterCount = 1,
-});
-Assert(runtimeClosure.ClosureClassName == "PlayerToolsRuntimeClosure", "最小运行闭包应生成闭包类型名称。");
-Assert(runtimeClosure.MemberNames.Contains("Helper"), "最小运行闭包应保留入口依赖成员。");
-Assert(runtimeClosure.Boundary.Root.ClassName == "PlayerTools", "最小运行闭包边界应显式暴露闭包根类型。");
-Assert(runtimeClosure.Boundary.Root.MemberName == "Entry", "最小运行闭包边界应显式暴露闭包根成员。");
+    RuntimeClosureDto runtimeClosure = await codeIsolationAppService.ExtractMinimalRuntimeClosureAsync(new ExtractMinimalRuntimeClosureRequest
+    {
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+        MethodName = "Entry",
+        ParameterCount = 1,
+    });
+    Assert(runtimeClosure.ClosureClassName == "PlayerToolsRuntimeClosure", "最小运行闭包应生成闭包类型名称。");
+    Assert(runtimeClosure.MemberNames.Contains("Helper"), "最小运行闭包应保留入口依赖成员。");
+    Assert(runtimeClosure.Boundary.Root.ClassName == "PlayerTools", "最小运行闭包边界应显式暴露闭包根类型。");
+    Assert(runtimeClosure.Boundary.Root.MemberName == "Entry", "最小运行闭包边界应显式暴露闭包根成员。");
 
-ChangeCandidate changeCandidate = ChangeCandidate.Create(
-    ruleTarget.Id,
-    ruleTarget.RuleCode,
-    "PlayerTools.Entry",
-    CandidateKind.Method,
-    CandidateReason.CallChainMatched,
-    ScenarioTag.MethodDeletion);
-changeCandidate.AddReason(CandidateReason.DataFlowReachable);
-changeCandidate.AddScenarioTag(ScenarioTag.MinimalRuntimeClosure);
-changeCandidate.SetSliceBoundary(new SliceBoundary("EntryClosure", SliceDirection.Bidirectional, 3, false));
-changeCandidate.AddPropagationTrace(new PropagationTrace("PlayerTools.Entry", "PlayerTools.Helper", "调用传播", 1));
-Assert(changeCandidate.Reasons.Count == 2, "变更候选应能累计候选原因。");
-Assert(changeCandidate.PropagationTraces.Count == 1, "变更候选应能附加传播轨迹。");
+    ChangeCandidate changeCandidate = ChangeCandidate.Create(
+        ruleTarget.Id,
+        ruleTarget.RuleCode,
+        "PlayerTools.Entry",
+        CandidateKind.Method,
+        CandidateReason.CallChainMatched,
+        ScenarioTag.MethodDeletion);
+    changeCandidate.AddReason(CandidateReason.DataFlowReachable);
+    changeCandidate.AddScenarioTag(ScenarioTag.MinimalRuntimeClosure);
+    changeCandidate.SetSliceBoundary(new SliceBoundary("EntryClosure", SliceDirection.Bidirectional, 3, false));
+    changeCandidate.AddPropagationTrace(new PropagationTrace("PlayerTools.Entry", "PlayerTools.Helper", "调用传播", 1));
+    Assert(changeCandidate.Reasons.Count == 2, "变更候选应能累计候选原因。");
+    Assert(changeCandidate.PropagationTraces.Count == 1, "变更候选应能附加传播轨迹。");
 
-RewriteDecision rewriteDecision = RewriteDecision.Create("entry-flow", ConfidenceLevel.Medium);
-rewriteDecision.Approve(changeCandidate.Id, ApprovalReason.PropagationBounded);
-rewriteDecision.AddProtection(new DecisionProtection(changeCandidate.Id, "contract.protect", "外部契约需要人工确认。"));
-rewriteDecision.AddConflict(new DecisionConflict(changeCandidate.Id, Guid.NewGuid(), "父子动作存在覆盖冲突。"));
-Assert(rewriteDecision.Approvals.ContainsKey(changeCandidate.Id), "决策应记录批准项。");
-Assert(rewriteDecision.Protections.Count == 1, "决策应记录保护项。");
-Assert(rewriteDecision.Conflicts.Count == 1, "决策应记录冲突项。");
+    RewriteDecision rewriteDecision = RewriteDecision.Create("entry-flow", ConfidenceLevel.Medium);
+    rewriteDecision.Approve(changeCandidate.Id, ApprovalReason.PropagationBounded);
+    rewriteDecision.AddProtection(new DecisionProtection(changeCandidate.Id, "contract.protect", "外部契约需要人工确认。"));
+    rewriteDecision.AddConflict(new DecisionConflict(changeCandidate.Id, Guid.NewGuid(), "父子动作存在覆盖冲突。"));
+    Assert(rewriteDecision.Approvals.ContainsKey(changeCandidate.Id), "决策应记录批准项。");
+    Assert(rewriteDecision.Protections.Count == 1, "决策应记录保护项。");
+    Assert(rewriteDecision.Conflicts.Count == 1, "决策应记录冲突项。");
 
-PlanMetadata planMetadata = new("entry-plan", "1.0.0", DateTimeOffset.UtcNow, "首批执行骨架");
-RewritePlan rewritePlan = RewritePlan.Create(planMetadata);
-PlanChangeItem planChangeItem = PlanChangeItem.Create(
-    changeCandidate.Id,
-    new PlanTarget(DocumentPath.Create("src/Domain/Rewrite/Artifacts/RuntimeClosure.cs"), "PlayerTools.Entry", "Entry(int)", "Entry"),
-    PlanAction.DeleteMethod,
-    PlanReason.CandidateApproved);
-planChangeItem.AddReason(PlanReason.ClosureBoundaryRequired);
-rewritePlan.AddChangeItem(planChangeItem);
-rewritePlan.OrderChangeItem(planChangeItem.Id, 1);
-rewritePlan.AddConflict(PlanConflict.ParentCoverage);
-Assert(rewritePlan.ChangeItems.Count == 1, "改写计划应能聚合计划项。");
-Assert(rewritePlan.ChangeItems.Single().Order == 1, "改写计划应支持排序。");
-Assert(rewritePlan.Conflicts.Contains(PlanConflict.ParentCoverage), "改写计划应记录计划冲突。");
+    PlanMetadata planMetadata = new("entry-plan", "1.0.0", DateTimeOffset.UtcNow, "首批执行骨架");
+    RewritePlan rewritePlan = RewritePlan.Create(planMetadata);
+    PlanChangeItem planChangeItem = PlanChangeItem.Create(
+        changeCandidate.Id,
+        new PlanTarget(DocumentPath.Create("src/Domain/Rewrite/Artifacts/RuntimeClosure.cs"), "PlayerTools.Entry", "Entry(int)", "Entry"),
+        PlanAction.DeleteMethod,
+        PlanReason.CandidateApproved);
+    planChangeItem.AddReason(PlanReason.ClosureBoundaryRequired);
+    rewritePlan.AddChangeItem(planChangeItem);
+    rewritePlan.OrderChangeItem(planChangeItem.Id, 1);
+    rewritePlan.AddConflict(PlanConflict.ParentCoverage);
+    Assert(rewritePlan.ChangeItems.Count == 1, "改写计划应能聚合计划项。");
+    Assert(rewritePlan.ChangeItems.Single().Order == 1, "改写计划应支持排序。");
+    Assert(rewritePlan.Conflicts.Contains(PlanConflict.ParentCoverage), "改写计划应记录计划冲突。");
 
-RewriteResult rewriteResult = RewriteResult.Create(rewritePlan.Id);
-rewriteResult.StartExecution(Guid.NewGuid());
-rewriteResult.AddFileChange(new FileChange(
-    DocumentPath.Create("src/Domain/Rewrite/Artifacts/RuntimeClosure.cs"),
-    "删除入口方法并保留闭包依赖。",
-    new[] { "PlayerTools.Entry", "PlayerTools.Helper" }));
-rewriteResult.AddExecutionTrace(new ExecutionTrace(planChangeItem.Id, "定位目标代码", "已定位到 Entry(int)。", DateTimeOffset.UtcNow));
-rewriteResult.AddExecutionFailure(new ExecutionFailure(planChangeItem.Id, "Conflict", "存在待人工处理冲突。", true));
-rewriteResult.CompleteExecution(Guid.NewGuid());
-Assert(rewriteResult.FileChanges.Count == 1, "执行结果应记录文件变更。");
-Assert(rewriteResult.ExecutionTraces.Count == 1, "执行结果应记录执行轨迹。");
-Assert(rewriteResult.ExecutionFailures.Count == 1, "执行结果应记录执行失败。");
+    RewriteResult rewriteResult = RewriteResult.Create(rewritePlan.Id);
+    rewriteResult.StartExecution(Guid.NewGuid());
+    rewriteResult.AddFileChange(new FileChange(
+        DocumentPath.Create("src/Domain/Rewrite/Artifacts/RuntimeClosure.cs"),
+        "删除入口方法并保留闭包依赖。",
+        new[] { "PlayerTools.Entry", "PlayerTools.Helper" }));
+    rewriteResult.AddExecutionTrace(new ExecutionTrace(planChangeItem.Id, "定位目标代码", "已定位到 Entry(int)。", DateTimeOffset.UtcNow));
+    rewriteResult.AddExecutionFailure(new ExecutionFailure(planChangeItem.Id, "Conflict", "存在待人工处理冲突。", true));
+    rewriteResult.CompleteExecution(Guid.NewGuid());
+    Assert(rewriteResult.FileChanges.Count == 1, "执行结果应记录文件变更。");
+    Assert(rewriteResult.ExecutionTraces.Count == 1, "执行结果应记录执行轨迹。");
+    Assert(rewriteResult.ExecutionFailures.Count == 1, "执行结果应记录执行失败。");
 
-VerificationEvidence verificationEvidence = VerificationEvidence.Create(rewriteResult.Id);
-verificationEvidence.AddCompilationEvidence(new CompilationEvidence(true, 0, "编译通过。"));
-verificationEvidence.AddStaticReasoningEvidence(new StaticReasoningEvidence("PlayerTools.Entry", "传播轨迹覆盖 Helper 调用链。"));
-verificationEvidence.AddBehaviorEvidence(new BehaviorEvidence("RuntimeClosure", true, "闭包成员可完整导出。"));
-verificationEvidence.UpdateRiskSummary(new RiskSummary("Medium", true, new[] { "仍需人工确认外部契约。" }));
-Assert(verificationEvidence.CompilationEvidence.Count == 1, "证据应记录编译证据。");
-Assert(verificationEvidence.BehaviorEvidence.Count == 1, "证据应记录行为证据。");
-Assert(verificationEvidence.RiskSummary.RequiresManualReview, "风险摘要应能表达人工复核需求。");
+    VerificationEvidence verificationEvidence = VerificationEvidence.Create(rewriteResult.Id);
+    verificationEvidence.AddCompilationEvidence(new CompilationEvidence(true, 0, "编译通过。"));
+    verificationEvidence.AddStaticReasoningEvidence(new StaticReasoningEvidence("PlayerTools.Entry", "传播轨迹覆盖 Helper 调用链。"));
+    verificationEvidence.AddBehaviorEvidence(new BehaviorEvidence("RuntimeClosure", true, "闭包成员可完整导出。"));
+    verificationEvidence.UpdateRiskSummary(new RiskSummary("Medium", true, new[] { "仍需人工确认外部契约。" }));
+    Assert(verificationEvidence.CompilationEvidence.Count == 1, "证据应记录编译证据。");
+    Assert(verificationEvidence.BehaviorEvidence.Count == 1, "证据应记录行为证据。");
+    Assert(verificationEvidence.RiskSummary.RequiresManualReview, "风险摘要应能表达人工复核需求。");
 
-RunReport runReport = RunReport.Create(
-    workspace.Id,
-    rewriteDecision.Id,
-    rewritePlan.Id,
-    rewriteResult.Id,
-    new ReportSummary(1, 0, 1, "首批 DDD 传播/决策/执行/输出模型已落地。"),
-    AuditConclusion.RequiresManualReview);
-runReport.AttachVerificationEvidence(verificationEvidence.Id);
-Assert(runReport.VerificationEvidenceId == verificationEvidence.Id, "运行报告应能挂接证据。");
-Assert(runReport.AuditConclusion == AuditConclusion.RequiresManualReview, "运行报告应保留审计结论。");
+    RunReport runReport = RunReport.Create(
+        workspace.Id,
+        rewriteDecision.Id,
+        rewritePlan.Id,
+        rewriteResult.Id,
+        new ReportSummary(1, 0, 1, "首批 DDD 传播/决策/执行/输出模型已落地。"),
+        AuditConclusion.RequiresManualReview);
+    runReport.AttachVerificationEvidence(verificationEvidence.Id);
+    Assert(runReport.VerificationEvidenceId == verificationEvidence.Id, "运行报告应能挂接证据。");
+    Assert(runReport.AuditConclusion == AuditConclusion.RequiresManualReview, "运行报告应保留审计结论。");
 
-ChangeCandidateDto changeCandidateDto = ContractMapper.Map(changeCandidate);
-RewriteDecisionDto rewriteDecisionDto = ContractMapper.Map(rewriteDecision);
-RewritePlanDto rewritePlanDto = ContractMapper.Map(rewritePlan);
-RewriteResultDto rewriteResultDto = ContractMapper.Map(rewriteResult);
-VerificationEvidenceDto verificationEvidenceDto = ContractMapper.Map(verificationEvidence);
-RunReportDto runReportDto = ContractMapper.Map(runReport);
-Assert(changeCandidateDto.ScenarioTags.Contains(ContractScenarioTag.MinimalRuntimeClosure), "候选 DTO 应映射场景标签。");
-Assert(rewriteDecisionDto.Protections.Count == 1, "决策 DTO 应映射保护项。");
-Assert(rewritePlanDto.ChangeItems.Count == 1, "计划 DTO 应映射计划项。");
-Assert(rewriteResultDto.ExecutionFailures.Count == 1, "结果 DTO 应映射执行失败。");
-Assert(verificationEvidenceDto.RiskSummary.RequiresManualReview, "证据 DTO 应映射风险摘要。");
-Assert(runReportDto.VerificationEvidenceId == verificationEvidence.Id, "运行报告 DTO 应映射证据标识。");
-Assert(runReportDto.AuditConclusion == ContractAuditConclusion.RequiresManualReview, "运行报告 DTO 应映射审计结论。");
+    ChangeCandidateDto changeCandidateDto = ContractMapper.Map(changeCandidate);
+    RewriteDecisionDto rewriteDecisionDto = ContractMapper.Map(rewriteDecision);
+    RewritePlanDto rewritePlanDto = ContractMapper.Map(rewritePlan);
+    RewriteResultDto rewriteResultDto = ContractMapper.Map(rewriteResult);
+    VerificationEvidenceDto verificationEvidenceDto = ContractMapper.Map(verificationEvidence);
+    RunReportDto runReportDto = ContractMapper.Map(runReport);
+    Assert(changeCandidateDto.ScenarioTags.Contains(ContractScenarioTag.MinimalRuntimeClosure), "候选 DTO 应映射场景标签。");
+    Assert(rewriteDecisionDto.Protections.Count == 1, "决策 DTO 应映射保护项。");
+    Assert(rewritePlanDto.ChangeItems.Count == 1, "计划 DTO 应映射计划项。");
+    Assert(rewriteResultDto.ExecutionFailures.Count == 1, "结果 DTO 应映射执行失败。");
+    Assert(verificationEvidenceDto.RiskSummary.RequiresManualReview, "证据 DTO 应映射风险摘要。");
+    Assert(runReportDto.VerificationEvidenceId == verificationEvidence.Id, "运行报告 DTO 应映射证据标识。");
+    Assert(runReportDto.AuditConclusion == ContractAuditConclusion.RequiresManualReview, "运行报告 DTO 应映射审计结论。");
 
-PropagationAppService propagationAppService = new(new ImpactPropagator(), new PropagationRulePreset(), analysisSnapshotRepository);
-PropagationResultDto propagationResult = await propagationAppService.PropagateAsync(new BuildPropagationRequest
-{
-    RuleTargetId = ruleTarget.Id,
-    RuleCode = "propagation.rule",
-    TargetName = "PlayerTools.Entry",
-    CandidateKind = ContractCandidateKind.Method,
-    PrimaryReason = ContractCandidateReason.CallChainMatched,
-    AdditionalReasons = new[] { ContractCandidateReason.DataFlowReachable },
-    ScenarioTags = new[] { ContractScenarioTag.MethodDeletion, ContractScenarioTag.MemberSlice },
-    BoundaryName = "DirectPropagationBoundary",
-    SliceDirection = ContractSliceDirection.Bidirectional,
-    MaxDepth = 2,
-    PropagationTargets = new[] { "PlayerTools.Helper" },
-});
-Assert(propagationResult.Candidate.Reasons.Count == 2, "传播服务应生成候选原因。");
-Assert(propagationResult.PropagationTraces.Count == 1, "传播服务应生成传播轨迹。");
-Assert(propagationResult.SliceBoundary?.BoundaryName == "DirectPropagationBoundary", "传播服务应生成切片边界。");
+    PropagationAppService propagationAppService = new(new ImpactPropagator(), new PropagationRulePreset(), analysisSnapshotRepository);
+    PropagationResultDto propagationResult = await propagationAppService.PropagateAsync(new BuildPropagationRequest
+    {
+        RuleTargetId = ruleTarget.Id,
+        RuleCode = "propagation.rule",
+        TargetName = "PlayerTools.Entry",
+        CandidateKind = ContractCandidateKind.Method,
+        PrimaryReason = ContractCandidateReason.CallChainMatched,
+        AdditionalReasons = new[] { ContractCandidateReason.DataFlowReachable },
+        ScenarioTags = new[] { ContractScenarioTag.MethodDeletion, ContractScenarioTag.MemberSlice },
+        BoundaryName = "DirectPropagationBoundary",
+        SliceDirection = ContractSliceDirection.Bidirectional,
+        MaxDepth = 2,
+        PropagationTargets = new[] { "PlayerTools.Helper" },
+    });
+    Assert(propagationResult.Candidate.Reasons.Count == 2, "传播服务应生成候选原因。");
+    Assert(propagationResult.PropagationTraces.Count == 1, "传播服务应生成传播轨迹。");
+    Assert(propagationResult.SliceBoundary?.BoundaryName == "DirectPropagationBoundary", "传播服务应生成切片边界。");
 
-DecisionAppService decisionAppService = new(new RewriteDecisionMaker());
-DecisionResultDto directDecisionResult = await decisionAppService.DecideAsync(new BuildRewriteDecisionRequest
-{
-    Candidate = propagationResult.Candidate,
-    ProtectionRules = Array.Empty<string>(),
-    ConflictTargets = Array.Empty<string>(),
-    ConfidenceLevel = ContractConfidenceLevel.High,
-    ForceReject = false,
-});
-Assert(directDecisionResult.Approved, "决策服务应批准无保护候选。");
-Assert(directDecisionResult.Decision.Approvals.Count == 1, "决策服务应输出批准项。");
+    DecisionAppService decisionAppService = new(new RewriteDecisionMaker());
+    DecisionResultDto directDecisionResult = await decisionAppService.DecideAsync(new BuildRewriteDecisionRequest
+    {
+        Candidate = propagationResult.Candidate,
+        ProtectionRules = Array.Empty<string>(),
+        ConflictTargets = Array.Empty<string>(),
+        ConfidenceLevel = ContractConfidenceLevel.High,
+        ForceReject = false,
+    });
+    Assert(directDecisionResult.Approved, "决策服务应批准无保护候选。");
+    Assert(directDecisionResult.Decision.Approvals.Count == 1, "决策服务应输出批准项。");
 
-DecisionResultDto protectedDecisionResult = await decisionAppService.DecideAsync(new BuildRewriteDecisionRequest
-{
-    Candidate = propagationResult.Candidate,
-    ProtectionRules = new[] { "public-contract" },
-    ConflictTargets = new[] { "PlayerToolsShadow.Entry" },
-    ConfidenceLevel = ContractConfidenceLevel.Medium,
-    ForceReject = false,
-});
-Assert(!protectedDecisionResult.Approved, "决策服务应拒绝受保护候选。");
-Assert(protectedDecisionResult.Protections.Count == 1, "决策服务应输出保护项。");
-Assert(protectedDecisionResult.Conflicts.Count == 1, "决策服务应输出冲突项。");
+    DecisionResultDto protectedDecisionResult = await decisionAppService.DecideAsync(new BuildRewriteDecisionRequest
+    {
+        Candidate = propagationResult.Candidate,
+        ProtectionRules = new[] { "public-contract" },
+        ConflictTargets = new[] { "PlayerToolsShadow.Entry" },
+        ConfidenceLevel = ContractConfidenceLevel.Medium,
+        ForceReject = false,
+    });
+    Assert(!protectedDecisionResult.Approved, "决策服务应拒绝受保护候选。");
+    Assert(protectedDecisionResult.Protections.Count == 1, "决策服务应输出保护项。");
+    Assert(protectedDecisionResult.Conflicts.Count == 1, "决策服务应输出冲突项。");
 
-InMemoryDomainEventRecorder workflowRecorder = new();
-RewriteWorkflowAppService rewriteWorkflowAppService = new(
-    workspaceRepository,
-    analysisSnapshotRepository,
-    ruleTargetRepository,
-    new RewriteWorkflowMarkingPreparer(new RewriteWorkflowRulePreset(), CreateRuleTargetCandidateBuilder()),
-    new RewriteWorkflowRulePreset(),
-    new AnalysisDomainEventPublisher(workflowRecorder, new AnalysisEventSequenceBuilder()),
-    new MarkingDomainEventPublisher(workflowRecorder, new MarkingEventSequenceBuilder()),
-    new PropagationDomainEventPublisher(workflowRecorder, new PropagationEventSequenceBuilder()),
-    new RewriteWorkflowPropagationStage(new ImpactPropagator()),
-    new RewriteWorkflowDecisionStage(new RewriteDecisionAssessmentBuilder(), new RewriteDecisionMaker()),
-    new RewriteWorkflowArtifactAssembler(
-        new RewriteWorkflowPlanStage(new RewritePlanCompiler()),
-        new RewriteWorkflowExecutionStage(new RewritePlanExecutor(new RoslynCodeIsolationFacade(new RoslynCodeIsolationGateway()))),
-        new RewriteWorkflowEvidenceStage(
-            new CompilationEvidenceCollector(),
-            new StaticReasoningEvidenceCollector(),
-            new BehaviorEvidenceCollector()),
-        new RewriteWorkflowReportStage(new RunReportAssembler()),
-        new RewriteWorkflowEventStage(
-            workflowRecorder,
-            new WorkflowEventSequenceBuilder(workflowRecorder))),
-    workflowRecorder);
-RewriteWorkflowRunDto workflowRun = await rewriteWorkflowAppService.RunAsync(new RunRewriteWorkflowRequest
-{
-    RunCorrelationId = Guid.NewGuid(),
-    WorkspaceContextId = workspace.Id,
-    AnalysisSnapshotId = cpgSnapshot.Id,
-    RuleTargetId = ruleTarget.Id,
-    RuleCode = "workflow.rule",
-    TargetName = "PlayerTools.Entry",
-    CandidateKind = ContractCandidateKind.Method,
-    PrimaryReason = ContractCandidateReason.CallChainMatched,
-    AdditionalReasons = new[] { ContractCandidateReason.DataFlowReachable },
-    ScenarioTags = new[] { ContractScenarioTag.MethodDeletion, ContractScenarioTag.MinimalRuntimeClosure },
-    BoundaryName = "WorkflowBoundary",
-    SliceDirection = ContractSliceDirection.Bidirectional,
-    MaxDepth = 2,
-    IncludeExternalReferences = false,
-    PropagationTargets = new[] { "PlayerTools.Helper", "PlayerTools.seed" },
-    ProtectionRules = Array.Empty<string>(),
-    ConflictTargets = Array.Empty<string>(),
-    ConfidenceLevel = ContractConfidenceLevel.High,
-    DocumentPath = "src/Infrastructure/Roslyn/RoslynCodeIsolationGateway.cs",
-    MemberSignature = "Entry(int)",
-    AnchorText = "Entry",
-    PlanAction = ContractPlanAction.DeleteMethod,
-    SimulateFailure = false,
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-    MethodName = "Format",
-    ParameterCount = 0,
-});
-Assert(workflowRun.Candidate.Reasons.Count == 2, "工作流服务应生成候选原因集合。");
-Assert(workflowRun.Decision.Approvals.Count == 1, "工作流服务应生成批准决策。");
-Assert(workflowRun.Plan.ChangeItems.Count == 1, "工作流服务应编译计划项。");
-Assert(workflowRun.Result.ExecutionFailures.Count == 0, "无冲突工作流不应生成执行失败。");
-Assert(workflowRun.Report.AuditConclusion == ContractAuditConclusion.ApprovedForExecution, "无失败时应允许执行。");
-Assert(workflowRun.DomainEvents.Count >= 8, "工作流服务应返回主链领域事件流。");
-Assert(workflowRun.DomainEvents.All(item => item.CorrelationId == workflowRun.RunCorrelationId), "工作流事件流应统一使用 RunCorrelationId。");
-Assert(workflowRun.DomainEvents.Any(item => item.EventName == "WorkspacePrepared"), "工作流事件流应包含工作区就绪事件。");
+    InMemoryDomainEventRecorder workflowRecorder = new();
+    RewriteWorkflowAppService rewriteWorkflowAppService = new(
+        workspaceRepository,
+        analysisSnapshotRepository,
+        ruleTargetRepository,
+        new RewriteWorkflowMarkingPreparer(new RewriteWorkflowRulePreset(), CreateRuleTargetCandidateBuilder()),
+        new RewriteWorkflowRulePreset(),
+        new AnalysisDomainEventPublisher(workflowRecorder, new AnalysisEventSequenceBuilder()),
+        new MarkingDomainEventPublisher(workflowRecorder, new MarkingEventSequenceBuilder()),
+        new PropagationDomainEventPublisher(workflowRecorder, new PropagationEventSequenceBuilder()),
+        new RewriteWorkflowPropagationStage(new ImpactPropagator()),
+        new RewriteWorkflowDecisionStage(new RewriteDecisionAssessmentBuilder(), new RewriteDecisionMaker()),
+        new RewriteWorkflowArtifactAssembler(
+            new RewriteWorkflowPlanStage(new RewritePlanCompiler()),
+            new RewriteWorkflowExecutionStage(new RewritePlanExecutor(new RoslynCodeIsolationFacade(new RoslynCodeIsolationGateway()))),
+            new RewriteWorkflowEvidenceStage(
+                new CompilationEvidenceCollector(),
+                new StaticReasoningEvidenceCollector(),
+                new BehaviorEvidenceCollector()),
+            new RewriteWorkflowReportStage(new RunReportAssembler()),
+            new RewriteWorkflowEventStage(
+                workflowRecorder,
+                new WorkflowEventSequenceBuilder(workflowRecorder))),
+        workflowRecorder);
+    RewriteWorkflowRunDto workflowRun = await rewriteWorkflowAppService.RunAsync(new RunRewriteWorkflowRequest
+    {
+        RunCorrelationId = Guid.NewGuid(),
+        WorkspaceContextId = workspace.Id,
+        AnalysisSnapshotId = cpgSnapshot.Id,
+        RuleTargetId = ruleTarget.Id,
+        RuleCode = "workflow.rule",
+        TargetName = "PlayerTools.Entry",
+        CandidateKind = ContractCandidateKind.Method,
+        PrimaryReason = ContractCandidateReason.CallChainMatched,
+        AdditionalReasons = new[] { ContractCandidateReason.DataFlowReachable },
+        ScenarioTags = new[] { ContractScenarioTag.MethodDeletion, ContractScenarioTag.MinimalRuntimeClosure },
+        BoundaryName = "WorkflowBoundary",
+        SliceDirection = ContractSliceDirection.Bidirectional,
+        MaxDepth = 2,
+        IncludeExternalReferences = false,
+        PropagationTargets = new[] { "PlayerTools.Helper", "PlayerTools.seed" },
+        ProtectionRules = Array.Empty<string>(),
+        ConflictTargets = Array.Empty<string>(),
+        ConfidenceLevel = ContractConfidenceLevel.High,
+        DocumentPath = "src/Infrastructure/Roslyn/RoslynCodeIsolationGateway.cs",
+        MemberSignature = "Entry(int)",
+        AnchorText = "Entry",
+        PlanAction = ContractPlanAction.DeleteMethod,
+        SimulateFailure = false,
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+        MethodName = "Format",
+        ParameterCount = 0,
+    });
+    Assert(workflowRun.Candidate.Reasons.Count == 2, "工作流服务应生成候选原因集合。");
+    Assert(workflowRun.Decision.Approvals.Count == 1, "工作流服务应生成批准决策。");
+    Assert(workflowRun.Plan.ChangeItems.Count == 1, "工作流服务应编译计划项。");
+    Assert(workflowRun.Result.ExecutionFailures.Count == 0, "无冲突工作流不应生成执行失败。");
+    Assert(workflowRun.Report.AuditConclusion == ContractAuditConclusion.ApprovedForExecution, "无失败时应允许执行。");
+    Assert(workflowRun.DomainEvents.Count >= 8, "工作流服务应返回主链领域事件流。");
+    Assert(workflowRun.DomainEvents.All(item => item.CorrelationId == workflowRun.RunCorrelationId), "工作流事件流应统一使用 RunCorrelationId。");
+    Assert(workflowRun.DomainEvents.Any(item => item.EventName == "WorkspacePrepared"), "工作流事件流应包含工作区就绪事件。");
 
-RewriteWorkflowRunDto guardedWorkflowRun = await rewriteWorkflowAppService.RunAsync(new RunRewriteWorkflowRequest
-{
-    WorkspaceContextId = workspace.Id,
-    AnalysisSnapshotId = cpgSnapshot.Id,
-    RuleTargetId = ruleTarget.Id,
-    RuleCode = "workflow.guard",
-    TargetName = "PlayerTools.Format",
-    CandidateKind = ContractCandidateKind.Method,
-    PrimaryReason = ContractCandidateReason.ManualReviewRequired,
-    AdditionalReasons = Array.Empty<ContractCandidateReason>(),
-    ScenarioTags = new[] { ContractScenarioTag.MethodBodyClearing },
-    BoundaryName = "GuardedBoundary",
-    SliceDirection = ContractSliceDirection.Forward,
-    MaxDepth = 1,
-    IncludeExternalReferences = false,
-    PropagationTargets = Array.Empty<string>(),
-    ProtectionRules = new[] { "public-contract" },
-    ConflictTargets = new[] { "PlayerToolsShadow.Format" },
-    ConfidenceLevel = ContractConfidenceLevel.Medium,
-    DocumentPath = "src/Infrastructure/Roslyn/RoslynCodeIsolationGateway.cs",
-    MemberSignature = "Format()",
-    AnchorText = "Format",
-    PlanAction = ContractPlanAction.ClearMethodBody,
-    SimulateFailure = true,
-    SourceCode = SampleSource,
-    ClassName = "PlayerTools",
-    MethodName = "Format",
-    ParameterCount = 0,
-});
-Assert(guardedWorkflowRun.Decision.Rejections.Count == 1, "受保护工作流应产生拒绝项。");
-Assert(guardedWorkflowRun.Result.ExecutionFailures.Count == 1, "受保护工作流应保留执行失败。");
-Assert(guardedWorkflowRun.Evidence.RiskSummary.RequiresManualReview, "受保护工作流应要求人工复核。");
-Assert(guardedWorkflowRun.Report.AuditConclusion == ContractAuditConclusion.RequiresManualReview, "受保护工作流应输出人工复核结论。");
-Assert(guardedWorkflowRun.DomainEvents.Any(item => item.EventName == "PlanConflictDetected"), "存在冲突时应发布计划冲突事件。");
+    RewriteWorkflowRunDto guardedWorkflowRun = await rewriteWorkflowAppService.RunAsync(new RunRewriteWorkflowRequest
+    {
+        WorkspaceContextId = workspace.Id,
+        AnalysisSnapshotId = cpgSnapshot.Id,
+        RuleTargetId = ruleTarget.Id,
+        RuleCode = "workflow.guard",
+        TargetName = "PlayerTools.Format",
+        CandidateKind = ContractCandidateKind.Method,
+        PrimaryReason = ContractCandidateReason.ManualReviewRequired,
+        AdditionalReasons = Array.Empty<ContractCandidateReason>(),
+        ScenarioTags = new[] { ContractScenarioTag.MethodBodyClearing },
+        BoundaryName = "GuardedBoundary",
+        SliceDirection = ContractSliceDirection.Forward,
+        MaxDepth = 1,
+        IncludeExternalReferences = false,
+        PropagationTargets = Array.Empty<string>(),
+        ProtectionRules = new[] { "public-contract" },
+        ConflictTargets = new[] { "PlayerToolsShadow.Format" },
+        ConfidenceLevel = ContractConfidenceLevel.Medium,
+        DocumentPath = "src/Infrastructure/Roslyn/RoslynCodeIsolationGateway.cs",
+        MemberSignature = "Format()",
+        AnchorText = "Format",
+        PlanAction = ContractPlanAction.ClearMethodBody,
+        SimulateFailure = true,
+        SourceCode = SampleSource,
+        ClassName = "PlayerTools",
+        MethodName = "Format",
+        ParameterCount = 0,
+    });
+    Assert(guardedWorkflowRun.Decision.Rejections.Count == 1, "受保护工作流应产生拒绝项。");
+    Assert(guardedWorkflowRun.Result.ExecutionFailures.Count == 1, "受保护工作流应保留执行失败。");
+    Assert(guardedWorkflowRun.Evidence.RiskSummary.RequiresManualReview, "受保护工作流应要求人工复核。");
+    Assert(guardedWorkflowRun.Report.AuditConclusion == ContractAuditConclusion.RequiresManualReview, "受保护工作流应输出人工复核结论。");
+    Assert(guardedWorkflowRun.DomainEvents.Any(item => item.EventName == "PlanConflictDetected"), "存在冲突时应发布计划冲突事件。");
 
-AssertNamespaceMatrix(new (Type Type, string ExpectedNamespace, string Message)[]
-{
+    AssertNamespaceMatrix(new (Type Type, string ExpectedNamespace, string Message)[]
+    {
     (typeof(WorkspaceContext), "Domain.Workspaces", "工作区上下文应归 Input / Workspace Context。"),
     (typeof(InputDescriptor), "Domain.Workspaces", "输入描述应归 Input / Workspace Context。"),
     (typeof(RunMode), "Domain.Workspaces", "运行模式应归 Input / Workspace Context。"),
@@ -558,443 +558,487 @@ AssertNamespaceMatrix(new (Type Type, string ExpectedNamespace, string Message)[
     (typeof(RoslynCodeIsolationGateway), "Infrastructure.Roslyn", "Roslyn 网关应归技术支撑层，而不是业务上下文。"),
     (typeof(CpgGraph), "Domain.Analysis.Engine.Core", "CPG 图应归 Program Fact Context 的内部事实模型层。"),
     (typeof(AnalysisBackedCpgGateway), "Infrastructure.Analysis", "Analysis 网关适配器应归 Program Fact Context 的技术适配层。")
-});
+    });
 
-AssertContractsDirectoryDoesNotReferenceDomainNamespaces(
-    applicationCompilation,
-    Path.Combine("src", "Application", "Contracts"));
+    AssertContractsDirectoryDoesNotReferenceDomainNamespaces(
+        applicationCompilation,
+        Path.Combine("src", "Application", "Contracts"));
 
-AssertApplicationServicesDoNotCreateForbiddenTypes(
-    applicationCompilation,
-    Path.Combine("src", "Application", "Services"),
-    "Logic.Marking.RuleTargetCandidateBuildInput",
-    "Domain.Rules.EnabledRule",
-    "Domain.Rules.RuleScope",
-    "Domain.Rules.RuleExecutionPolicy");
-AssertApplicationServicesDoNotReferenceForbiddenTypes(
-    applicationCompilation,
-    Path.Combine("src", "Application", "Services"),
-    "Application.Abstractions.IAnalysisAppService",
-    "Application.Abstractions.IAnalysisCpgAppService",
-    "Application.Abstractions.ICodeIsolationAppService",
-    "Application.Abstractions.IDecisionAppService",
-    "Application.Abstractions.IPropagationAppService",
-    "Application.Abstractions.IRewriteWorkflowAppService",
-    "Application.Abstractions.IRuleTargetAppService",
-    "Application.Abstractions.IWorkspaceContextAppService",
-    "Application.Services.AnalysisAppService",
-    "Application.Services.AnalysisCpgAppService",
-    "Application.Services.CodeIsolationAppService",
-    "Application.Services.DecisionAppService",
-    "Application.Services.PropagationAppService",
-    "Application.Services.RewriteWorkflowAppService",
-    "Application.Services.RuleTargetAppService",
-    "Application.Services.WorkspaceContextAppService",
-    "Logic.Workspaces.IWorkspaceRuleDefaultsBuilder",
-    "Domain.Decision.RewriteDecisionResolutionInput",
-    "Domain.Decision.RewriteDecisionOutcome",
-    "Domain.Decision.RewriteDecisionResolutionPolicy",
-    "Logic.Workflow.RewriteWorkflowPlanStageInput",
-    "Logic.Workflow.RewriteWorkflowExecutionStageInput",
-    "Logic.Workflow.RewriteWorkflowEvidenceStageInput",
-    "Logic.Workflow.RewriteWorkflowReportStageInput",
-    "Logic.Workflow.RewriteWorkflowEventStageInput");
-AssertFileDoesNotReferenceForbiddenTypes(
-    applicationCompilation,
-    Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
-    "Logic.Propagation.IImpactPropagator",
-    "Logic.Decision.IRewriteDecisionAssessmentBuilder",
-    "Logic.Decision.IRewriteDecisionMaker");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workspaces", "WorkspaceRuleDefaultsBuilder.cs"),
-    "RulePriority.Normal",
-    "WorkspaceRuleDefaultsBuilder 不应继续硬编码规则优先级。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workspaces", "WorkspaceRuleDefaultsBuilder.cs"),
-    "new RuleScope(",
-    "WorkspaceRuleDefaultsBuilder 不应继续硬编码 RuleScope。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workspaces", "WorkspaceRuleDefaultsBuilder.cs"),
-    "new RuleExecutionPolicy(",
-    "WorkspaceRuleDefaultsBuilder 不应继续硬编码 RuleExecutionPolicy。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workspaces", "WorkspaceContextBuilder.cs"),
-    "workflow.rule",
-    "WorkspaceContextBuilder 不应继续硬编码 workspace 默认规则码。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Marking", "RuleTargetCandidateBuilder.cs"),
-    "new RuleExecutionPolicy(",
-    "RuleTargetCandidateBuilder 不应继续局部 new 默认 RuleExecutionPolicy。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Marking", "RuleTargetCandidateBuilder.cs"),
-    "new EnabledRule(",
-    "RuleTargetCandidateBuilder 不应继续局部 new EnabledRule。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Marking", "RuleTargetCandidateBuilder.cs"),
-    "enabledRuleFactory.Create(",
-    "RuleTargetCandidateBuilder 应通过统一规则工厂构造启用规则。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowMarkingPreparer.cs"),
-    "\"workflow-marking\"",
-    "RewriteWorkflowMarkingPreparer 不应继续硬编码 workflow 规则集名称。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowMarkingPreparer.cs"),
-    "rewriteWorkflowRulePreset.GetMarkingRuleSetName()",
-    "RewriteWorkflowMarkingPreparer 应通过 RewriteWorkflowRulePreset 获取规则集名称。");
-AssertFileSourceContains(
-    Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
-    "rewriteWorkflowRulePreset.ResolveMarkingRuleCode(",
-    "RewriteWorkflowAppService 应通过 RewriteWorkflowRulePreset 解析 workflow 规则码。");
-AssertFileSourceContains(
-    Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
-    "rewriteWorkflowRulePreset.NormalizeProtectionRules(",
-    "RewriteWorkflowAppService 应通过 RewriteWorkflowRulePreset 规范化保护规则。");
-AssertFileSourceContains(
-    Path.Combine("src", "Application", "Services", "PropagationAppService.cs"),
-    "propagationRulePreset.ResolveRuleCode(",
-    "PropagationAppService 应通过 PropagationRulePreset 解析传播规则码。");
-AssertFileSourceContains(
-    Path.Combine("src", "Application", "Services", "RuleTargetAppService.cs"),
-    "markingRulePreset.ResolveRuleCode(",
-    "RuleTargetAppService 应通过 MarkingRulePreset 解析规则码。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
-    "RuleCode.Create(",
-    "RewriteWorkflowAppService 不应继续直接调用 RuleCode.Create，稳定规则码解析应走 preset。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Application", "Services", "PropagationAppService.cs"),
-    "RuleCode.Create(request.RuleCode)",
-    "PropagationAppService 不应继续局部解析请求传播规则码。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Application", "Services", "RuleTargetAppService.cs"),
-    "RuleCode.Create(request.RuleCode)",
-    "RuleTargetAppService 不应继续局部解析请求规则码。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Application", "Services", "WorkspaceContextAppService.cs"),
-    "RuleCode.Create(",
-    "WorkspaceContextAppService 不应继续直接解析稳定规则码，默认装配应停留在 Logic.Workspaces。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Domain", "Workspaces", "WorkspaceContext.cs"),
-    "RuleBoundary.CurrentWorkspace",
-    "WorkspaceContext.Create 不应重新吸收策略型规则边界默认值。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Domain", "Workspaces", "WorkspaceContext.cs"),
-    "RuleTargetKind.",
-    "WorkspaceContext.Create 不应重新吸收策略型规则目标默认值。");
-AssertApplicationServicesDoNotInvokeForbiddenMethods(
-    applicationCompilation,
-    Path.Combine("src", "Application", "Services"),
-    ("Application.Services.RewriteWorkflowAppService", "BuildMarkingCandidates"));
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
-    "new RewriteWorkflowPropagationStageInput",
-    "RewriteWorkflowAppService 应通过阶段输入构造函数封装编排，不应直接手写 new RewriteWorkflowPropagationStageInput。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
-    "new RewriteWorkflowDecisionStageInput",
-    "RewriteWorkflowAppService 应通过阶段输入构造函数封装编排，不应直接手写 new RewriteWorkflowDecisionStageInput。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "rewriteWorkflowPlanStage.BuildPlan(",
-    "RewriteWorkflowArtifactAssembler 应委派计划阶段。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "rewriteWorkflowExecutionStage.ExecutePlan(",
-    "RewriteWorkflowArtifactAssembler 应委派执行阶段。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "rewriteWorkflowEvidenceStage.BuildEvidence(",
-    "RewriteWorkflowArtifactAssembler 应委派证据阶段。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "rewriteWorkflowReportStage.BuildReport(",
-    "RewriteWorkflowArtifactAssembler 应委派报告阶段。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "rewriteWorkflowEventStage.RecordEvents(",
-    "RewriteWorkflowArtifactAssembler 应委派事件阶段。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "new RewritePlanCompilationInput",
-    "RewriteWorkflowArtifactAssembler 应保持阶段组装职责，计划输入细节留在 PlanStage。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "new RewritePlanExecutionInput",
-    "RewriteWorkflowArtifactAssembler 应保持阶段组装职责，执行输入细节留在 ExecutionStage。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "VerificationEvidence.Create(",
-    "RewriteWorkflowArtifactAssembler 应保持阶段组装职责，证据构造留在 EvidenceStage。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
-    "new RunReportAssemblyInput",
-    "RewriteWorkflowArtifactAssembler 应保持阶段组装职责，报告装配输入留在 ReportStage。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPlanStage.cs"),
-    "rewritePlanCompiler.Compile(",
-    "RewriteWorkflowPlanStage 应委派 IRewritePlanCompiler。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPlanStage.cs"),
-    "runReportAssembler",
-    "RewriteWorkflowPlanStage 应保持计划职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPlanStage.cs"),
-    "EvidenceCollector",
-    "RewriteWorkflowPlanStage 应保持计划职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionStage.cs"),
-    "rewritePlanExecutor.Execute(",
-    "RewriteWorkflowExecutionStage 应委派 IRewritePlanExecutor。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionStage.cs"),
-    "VerificationEvidence.Create(",
-    "RewriteWorkflowExecutionStage 应保持执行职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionStage.cs"),
-    "runReportAssembler",
-    "RewriteWorkflowExecutionStage 应保持执行职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEvidenceStage.cs"),
-    "compilationEvidenceCollector.Collect(",
-    "RewriteWorkflowEvidenceStage 应收集编译证据。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEvidenceStage.cs"),
-    "staticReasoningEvidenceCollector.Collect(",
-    "RewriteWorkflowEvidenceStage 应收集静态推理证据。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEvidenceStage.cs"),
-    "behaviorEvidenceCollector.Collect(",
-    "RewriteWorkflowEvidenceStage 应收集行为证据。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEvidenceStage.cs"),
-    "runReportAssembler.Assemble(",
-    "RewriteWorkflowEvidenceStage 应保持证据职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
-    "runReportAssembler.Assemble(",
-    "RewriteWorkflowReportStage 应委派 IRunReportAssembler。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
-    "compilationEvidenceCollector",
-    "RewriteWorkflowReportStage 应保持报告职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
-    "staticReasoningEvidenceCollector",
-    "RewriteWorkflowReportStage 应保持报告职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
-    "behaviorEvidenceCollector",
-    "RewriteWorkflowReportStage 应保持报告职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
-    "rewritePlanExecutor.Execute(",
-    "RewriteWorkflowReportStage 应保持报告职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPropagationStage.cs"),
-    "impactPropagator.Propagate(",
-    "RewriteWorkflowPropagationStage 应委派 IImpactPropagator。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPropagationStage.cs"),
-    "rewriteDecisionMaker",
-    "RewriteWorkflowPropagationStage 应保持传播职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPropagationStage.cs"),
-    "runReportAssembler",
-    "RewriteWorkflowPropagationStage 应保持传播职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowDecisionStage.cs"),
-    "rewriteDecisionAssessmentBuilder.Build(",
-    "RewriteWorkflowDecisionStage 应委派 IRewriteDecisionAssessmentBuilder。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowDecisionStage.cs"),
-    "rewriteDecisionMaker.Make(",
-    "RewriteWorkflowDecisionStage 应委派 IRewriteDecisionMaker。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowDecisionStage.cs"),
-    "impactPropagator",
-    "RewriteWorkflowDecisionStage 应保持决策职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowDecisionStage.cs"),
-    "runReportAssembler",
-    "RewriteWorkflowDecisionStage 应保持决策职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewritePlanCompiler.cs"),
-    "RewritePlan.Create(",
-    "RewritePlanCompiler 应负责创建 RewritePlan。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewritePlanCompiler.cs"),
-    "plan.ApplyDecisionOutcome(",
-    "RewritePlanCompiler 应负责把决策结果编译进计划。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewritePlanCompiler.cs"),
-    "rewritePlanExecutor",
-    "RewritePlanCompiler 应保持计划编译职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewritePlanCompiler.cs"),
-    "VerificationEvidence",
-    "RewritePlanCompiler 应保持计划编译职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RunReportAssembler.cs"),
-    "RunReport.CreateFromExecutionOutcome(",
-    "RunReportAssembler 应通过统一运行报告工厂装配报告。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RunReportAssembler.cs"),
-    "CompilationEvidenceCollector",
-    "RunReportAssembler 应保持报告装配职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RunReportAssembler.cs"),
-    "rewritePlanExecutor",
-    "RunReportAssembler 应保持报告装配职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
-    "public RewriteWorkflowPlanStageInput ToPlanStageInput()",
-    "RewriteWorkflowAssemblyInput 应显式提供 PlanStage 输入映射。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
-    "public RewriteWorkflowExecutionStageInput ToExecutionStageInput()",
-    "RewriteWorkflowAssemblyInput 应显式提供 ExecutionStage 输入映射。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
-    "public RewriteWorkflowEvidenceStageInput ToEvidenceStageInput()",
-    "RewriteWorkflowAssemblyInput 应显式提供 EvidenceStage 输入映射。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
-    "public RewriteWorkflowReportStageInput ToReportStageInput()",
-    "RewriteWorkflowAssemblyInput 应显式提供 ReportStage 输入映射。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
-    "public RewriteWorkflowEventStageInput ToEventStageInput()",
-    "RewriteWorkflowAssemblyInput 应显式提供 EventStage 输入映射。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
-    "domainEventRecorder",
-    "RewriteWorkflowAssemblyInput 应保持输入映射职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
-    "BuildEvents(",
-    "RewriteWorkflowAssemblyInput 应保持输入映射职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPlanStageInput.cs"),
-    "BuildEvents(",
-    "RewriteWorkflowPlanStageInput 应保持纯输入模型职责。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionStageInput.cs"),
-    "Propagate(",
-    "RewriteWorkflowExecutionStageInput 应保持纯输入模型职责。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStageInput.cs"),
-    "Make(",
-    "RewriteWorkflowEventStageInput 应保持纯输入模型职责。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
-    "workflowEventSequenceBuilder.BuildEvents(",
-    "RewriteWorkflowEventStage 应委派 WorkflowEventSequenceBuilder 生成事件序列。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
-    "domainEventRecorder.RecordRange(",
-    "RewriteWorkflowEventStage 应通过 DomainEventRecorder 记录缺失事件。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
-    "domainEventRecorder.GetRecordedEvents(",
-    "RewriteWorkflowEventStage 应从 DomainEventRecorder 返回已记录事件。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
-    "runReportAssembler",
-    "RewriteWorkflowEventStage 应保持事件职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
-    "rewritePlanExecutor",
-    "RewriteWorkflowEventStage 应保持事件职责边界。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStageResult.cs"),
-    "public RewriteWorkflowArtifacts ToArtifacts(",
-    "RewriteWorkflowReportStageResult 应提供统一 artifacts 回传入口。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "public IReadOnlyCollection<IDomainEvent> BuildEvents(",
-    "WorkflowEventSequenceBuilder 应显式提供事件序列构造入口。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "AddIfMissing(events, new DecisionCompletedDomainEvent(",
-    "WorkflowEventSequenceBuilder 应负责补齐决策完成事件。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "AddIfMissing(events, new RewritePlanCompiledDomainEvent(",
-    "WorkflowEventSequenceBuilder 应负责补齐计划编译事件。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "AddIfMissing(events, new ExecutionCompletedDomainEvent(",
-    "WorkflowEventSequenceBuilder 应负责补齐执行完成事件。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "AddIfMissing(events, new VerificationEvidenceCollectedDomainEvent(",
-    "WorkflowEventSequenceBuilder 应负责补齐证据收集事件。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "AddIfMissing(events, new RunReportGeneratedDomainEvent(",
-    "WorkflowEventSequenceBuilder 应负责补齐运行报告事件。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "runReportAssembler",
-    "WorkflowEventSequenceBuilder 应保持事件序列职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "rewritePlanExecutor",
-    "WorkflowEventSequenceBuilder 应保持事件序列职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
-    "impactPropagator",
-    "WorkflowEventSequenceBuilder 应保持事件序列职责边界。");
-Assert(
-    typeof(IDomainEventRecorder).GetMethods().Length == 7,
-    "IDomainEventRecorder 应保持最小记录器接口面。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "InMemoryDomainEventRecorder.cs"),
-    "recordedEvents.RemoveAll(",
-    "InMemoryDomainEventRecorder 应支持按关联标识清理事件。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "InMemoryDomainEventRecorder.cs"),
-    "return recordedEvents.AsReadOnly();",
-    "InMemoryDomainEventRecorder 应提供全量只读视图。");
-AssertFileSourceContains(
-    Path.Combine("src", "Logic", "Workflow", "Events", "InMemoryDomainEventRecorder.cs"),
-    ".OrderBy(item => item.Sequence)",
-    "InMemoryDomainEventRecorder 应按序号返回关联事件。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "Events", "InMemoryDomainEventRecorder.cs"),
-    "BuildEvents(",
-    "InMemoryDomainEventRecorder 应保持记录器职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStageResult.cs"),
-    "BuildEvents(",
-    "RewriteWorkflowReportStageResult 应保持阶段结果职责边界。");
-AssertFileSourceDoesNotContain(
-    Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStageResult.cs"),
-    "domainEventRecorder",
-    "RewriteWorkflowReportStageResult 应保持阶段结果职责边界。");
-Assert(
-    typeof(IRewriteWorkflowArtifactAssembler)
-        .GetMethods()
-        .Count(static method => string.Equals(method.Name, nameof(IRewriteWorkflowArtifactAssembler.Assemble), StringComparison.Ordinal)) == 1,
-    "IRewriteWorkflowArtifactAssembler 应只暴露单一工作流装配入口，阶段拆分细节应留在 Logic.Workflow 内部。");
+    AssertApplicationServicesDoNotCreateForbiddenTypes(
+        applicationCompilation,
+        Path.Combine("src", "Application", "Services"),
+        "Logic.Marking.RuleTargetCandidateBuildInput",
+        "Domain.Rules.EnabledRule",
+        "Domain.Rules.RuleScope",
+        "Domain.Rules.RuleExecutionPolicy");
+    AssertApplicationServicesDoNotReferenceForbiddenTypes(
+        applicationCompilation,
+        Path.Combine("src", "Application", "Services"),
+        "Application.Abstractions.IAnalysisAppService",
+        "Application.Abstractions.IAnalysisCpgAppService",
+        "Application.Abstractions.ICodeIsolationAppService",
+        "Application.Abstractions.IDecisionAppService",
+        "Application.Abstractions.IPropagationAppService",
+        "Application.Abstractions.IRewriteWorkflowAppService",
+        "Application.Abstractions.IRuleTargetAppService",
+        "Application.Abstractions.IWorkspaceContextAppService",
+        "Application.Services.AnalysisAppService",
+        "Application.Services.AnalysisCpgAppService",
+        "Application.Services.CodeIsolationAppService",
+        "Application.Services.DecisionAppService",
+        "Application.Services.PropagationAppService",
+        "Application.Services.RewriteWorkflowAppService",
+        "Application.Services.RuleTargetAppService",
+        "Application.Services.WorkspaceContextAppService",
+        "Logic.Workspaces.IWorkspaceRuleDefaultsBuilder",
+        "Domain.Decision.RewriteDecisionResolutionInput",
+        "Domain.Decision.RewriteDecisionOutcome",
+        "Domain.Decision.RewriteDecisionResolutionPolicy",
+        "Logic.Workflow.RewriteWorkflowPlanStageInput",
+        "Logic.Workflow.RewriteWorkflowExecutionStageInput",
+        "Logic.Workflow.RewriteWorkflowEvidenceStageInput",
+        "Logic.Workflow.RewriteWorkflowReportStageInput",
+        "Logic.Workflow.RewriteWorkflowEventStageInput");
+    AssertFileDoesNotReferenceForbiddenTypes(
+        applicationCompilation,
+        Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
+        "Logic.Propagation.IImpactPropagator",
+        "Logic.Decision.IRewriteDecisionAssessmentBuilder",
+        "Logic.Decision.IRewriteDecisionMaker");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workspaces", "WorkspaceRuleDefaultsBuilder.cs"),
+        "RulePriority.Normal",
+        "WorkspaceRuleDefaultsBuilder 不应继续硬编码规则优先级。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workspaces", "WorkspaceRuleDefaultsBuilder.cs"),
+        "new RuleScope(",
+        "WorkspaceRuleDefaultsBuilder 不应继续硬编码 RuleScope。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workspaces", "WorkspaceRuleDefaultsBuilder.cs"),
+        "new RuleExecutionPolicy(",
+        "WorkspaceRuleDefaultsBuilder 不应继续硬编码 RuleExecutionPolicy。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workspaces", "WorkspaceContextBuilder.cs"),
+        "workflow.rule",
+        "WorkspaceContextBuilder 不应继续硬编码 workspace 默认规则码。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Marking", "RuleTargetCandidateBuilder.cs"),
+        "new RuleExecutionPolicy(",
+        "RuleTargetCandidateBuilder 不应继续局部 new 默认 RuleExecutionPolicy。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Marking", "RuleTargetCandidateBuilder.cs"),
+        "new EnabledRule(",
+        "RuleTargetCandidateBuilder 不应继续局部 new EnabledRule。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Marking", "RuleTargetCandidateBuilder.cs"),
+        "enabledRuleFactory.Create(",
+        "RuleTargetCandidateBuilder 应通过统一规则工厂构造启用规则。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowMarkingPreparer.cs"),
+        "\"workflow-marking\"",
+        "RewriteWorkflowMarkingPreparer 不应继续硬编码 workflow 规则集名称。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowMarkingPreparer.cs"),
+        "rewriteWorkflowRulePreset.GetMarkingRuleSetName()",
+        "RewriteWorkflowMarkingPreparer 应通过 RewriteWorkflowRulePreset 获取规则集名称。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
+        "rewriteWorkflowRulePreset.ResolveMarkingRuleCode(",
+        "RewriteWorkflowAppService 应通过 RewriteWorkflowRulePreset 解析 workflow 规则码。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
+        "rewriteWorkflowRulePreset.NormalizeProtectionRules(",
+        "RewriteWorkflowAppService 应通过 RewriteWorkflowRulePreset 规范化保护规则。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "PropagationAppService.cs"),
+        "propagationRulePreset.ResolveRuleCode(",
+        "PropagationAppService 应通过 PropagationRulePreset 解析传播规则码。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RuleTargetAppService.cs"),
+        "markingRulePreset.ResolveRuleCode(",
+        "RuleTargetAppService 应通过 MarkingRulePreset 解析规则码。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
+        "RuleCode.Create(",
+        "RewriteWorkflowAppService 不应继续直接调用 RuleCode.Create，稳定规则码解析应走 preset。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Application", "Services", "PropagationAppService.cs"),
+        "RuleCode.Create(request.RuleCode)",
+        "PropagationAppService 不应继续局部解析请求传播规则码。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Application", "Services", "RuleTargetAppService.cs"),
+        "RuleCode.Create(request.RuleCode)",
+        "RuleTargetAppService 不应继续局部解析请求规则码。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Application", "Services", "WorkspaceContextAppService.cs"),
+        "RuleCode.Create(",
+        "WorkspaceContextAppService 不应继续直接解析稳定规则码，默认装配应停留在 Logic.Workspaces。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Domain", "Workspaces", "WorkspaceContext.cs"),
+        "RuleBoundary.CurrentWorkspace",
+        "WorkspaceContext.Create 不应重新吸收策略型规则边界默认值。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Domain", "Workspaces", "WorkspaceContext.cs"),
+        "RuleTargetKind.",
+        "WorkspaceContext.Create 不应重新吸收策略型规则目标默认值。");
+    AssertApplicationServicesDoNotInvokeForbiddenMethods(
+        applicationCompilation,
+        Path.Combine("src", "Application", "Services"),
+        ("Application.Services.RewriteWorkflowAppService", "BuildMarkingCandidates"));
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
+        "new RewriteWorkflowPropagationStageInput",
+        "RewriteWorkflowAppService 应通过阶段输入构造函数封装编排，不应直接手写 new RewriteWorkflowPropagationStageInput。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
+        "new RewriteWorkflowDecisionStageInput",
+        "RewriteWorkflowAppService 应通过阶段输入构造函数封装编排，不应直接手写 new RewriteWorkflowDecisionStageInput。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "rewriteWorkflowPlanStage.BuildPlan(",
+        "RewriteWorkflowArtifactAssembler 应委派计划阶段。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "rewriteWorkflowExecutionStage.ExecutePlan(",
+        "RewriteWorkflowArtifactAssembler 应委派执行阶段。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "rewriteWorkflowEvidenceStage.BuildEvidence(",
+        "RewriteWorkflowArtifactAssembler 应委派证据阶段。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "rewriteWorkflowReportStage.BuildReport(",
+        "RewriteWorkflowArtifactAssembler 应委派报告阶段。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "rewriteWorkflowEventStage.RecordEvents(",
+        "RewriteWorkflowArtifactAssembler 应委派事件阶段。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "new RewritePlanCompilationInput",
+        "RewriteWorkflowArtifactAssembler 应保持阶段组装职责，计划输入细节留在 PlanStage。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "new RewritePlanExecutionInput",
+        "RewriteWorkflowArtifactAssembler 应保持阶段组装职责，执行输入细节留在 ExecutionStage。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "VerificationEvidence.Create(",
+        "RewriteWorkflowArtifactAssembler 应保持阶段组装职责，证据构造留在 EvidenceStage。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
+        "new RunReportAssemblyInput",
+        "RewriteWorkflowArtifactAssembler 应保持阶段组装职责，报告装配输入留在 ReportStage。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPlanStage.cs"),
+        "rewritePlanCompiler.Compile(",
+        "RewriteWorkflowPlanStage 应委派 IRewritePlanCompiler。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPlanStage.cs"),
+        "runReportAssembler",
+        "RewriteWorkflowPlanStage 应保持计划职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPlanStage.cs"),
+        "EvidenceCollector",
+        "RewriteWorkflowPlanStage 应保持计划职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionStage.cs"),
+        "rewritePlanExecutor.Execute(",
+        "RewriteWorkflowExecutionStage 应委派 IRewritePlanExecutor。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionStage.cs"),
+        "VerificationEvidence.Create(",
+        "RewriteWorkflowExecutionStage 应保持执行职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionStage.cs"),
+        "runReportAssembler",
+        "RewriteWorkflowExecutionStage 应保持执行职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEvidenceStage.cs"),
+        "compilationEvidenceCollector.Collect(",
+        "RewriteWorkflowEvidenceStage 应收集编译证据。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEvidenceStage.cs"),
+        "staticReasoningEvidenceCollector.Collect(",
+        "RewriteWorkflowEvidenceStage 应收集静态推理证据。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEvidenceStage.cs"),
+        "behaviorEvidenceCollector.Collect(",
+        "RewriteWorkflowEvidenceStage 应收集行为证据。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEvidenceStage.cs"),
+        "runReportAssembler.Assemble(",
+        "RewriteWorkflowEvidenceStage 应保持证据职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
+        "runReportAssembler.Assemble(",
+        "RewriteWorkflowReportStage 应委派 IRunReportAssembler。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
+        "compilationEvidenceCollector",
+        "RewriteWorkflowReportStage 应保持报告职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
+        "staticReasoningEvidenceCollector",
+        "RewriteWorkflowReportStage 应保持报告职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
+        "behaviorEvidenceCollector",
+        "RewriteWorkflowReportStage 应保持报告职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStage.cs"),
+        "rewritePlanExecutor.Execute(",
+        "RewriteWorkflowReportStage 应保持报告职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPropagationStage.cs"),
+        "impactPropagator.Propagate(",
+        "RewriteWorkflowPropagationStage 应委派 IImpactPropagator。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPropagationStage.cs"),
+        "rewriteDecisionMaker",
+        "RewriteWorkflowPropagationStage 应保持传播职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPropagationStage.cs"),
+        "runReportAssembler",
+        "RewriteWorkflowPropagationStage 应保持传播职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowDecisionStage.cs"),
+        "rewriteDecisionAssessmentBuilder.Build(",
+        "RewriteWorkflowDecisionStage 应委派 IRewriteDecisionAssessmentBuilder。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowDecisionStage.cs"),
+        "rewriteDecisionMaker.Make(",
+        "RewriteWorkflowDecisionStage 应委派 IRewriteDecisionMaker。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowDecisionStage.cs"),
+        "impactPropagator",
+        "RewriteWorkflowDecisionStage 应保持决策职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowDecisionStage.cs"),
+        "runReportAssembler",
+        "RewriteWorkflowDecisionStage 应保持决策职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewritePlanCompiler.cs"),
+        "RewritePlan.Create(",
+        "RewritePlanCompiler 应负责创建 RewritePlan。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewritePlanCompiler.cs"),
+        "plan.ApplyDecisionOutcome(",
+        "RewritePlanCompiler 应负责把决策结果编译进计划。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewritePlanCompiler.cs"),
+        "rewritePlanExecutor",
+        "RewritePlanCompiler 应保持计划编译职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewritePlanCompiler.cs"),
+        "VerificationEvidence",
+        "RewritePlanCompiler 应保持计划编译职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RunReportAssembler.cs"),
+        "RunReport.CreateFromExecutionOutcome(",
+        "RunReportAssembler 应通过统一运行报告工厂装配报告。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RunReportAssembler.cs"),
+        "CompilationEvidenceCollector",
+        "RunReportAssembler 应保持报告装配职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RunReportAssembler.cs"),
+        "rewritePlanExecutor",
+        "RunReportAssembler 应保持报告装配职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "public RewriteWorkflowPlanStageInput ToPlanStageInput()",
+        "RewriteWorkflowAssemblyInput 应显式提供 PlanStage 输入映射。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "public RewriteWorkflowExecutionStageInput ToExecutionStageInput()",
+        "RewriteWorkflowAssemblyInput 应显式提供 ExecutionStage 输入映射。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "public RewriteWorkflowEvidenceStageInput ToEvidenceStageInput()",
+        "RewriteWorkflowAssemblyInput 应显式提供 EvidenceStage 输入映射。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "public RewriteWorkflowReportStageInput ToReportStageInput()",
+        "RewriteWorkflowAssemblyInput 应显式提供 ReportStage 输入映射。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "public RewriteWorkflowEventStageInput ToEventStageInput()",
+        "RewriteWorkflowAssemblyInput 应显式提供 EventStage 输入映射。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "domainEventRecorder",
+        "RewriteWorkflowAssemblyInput 应保持输入映射职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "BuildEvents(",
+        "RewriteWorkflowAssemblyInput 应保持输入映射职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowPlanStageInput.cs"),
+        "BuildEvents(",
+        "RewriteWorkflowPlanStageInput 应保持纯输入模型职责。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionStageInput.cs"),
+        "Propagate(",
+        "RewriteWorkflowExecutionStageInput 应保持纯输入模型职责。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStageInput.cs"),
+        "Make(",
+        "RewriteWorkflowEventStageInput 应保持纯输入模型职责。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
+        "workflowEventSequenceBuilder.BuildEvents(",
+        "RewriteWorkflowEventStage 应委派 WorkflowEventSequenceBuilder 生成事件序列。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
+        "domainEventRecorder.RecordRange(",
+        "RewriteWorkflowEventStage 应通过 DomainEventRecorder 记录缺失事件。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
+        "domainEventRecorder.GetRecordedEvents(",
+        "RewriteWorkflowEventStage 应从 DomainEventRecorder 返回已记录事件。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
+        "runReportAssembler",
+        "RewriteWorkflowEventStage 应保持事件职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowEventStage.cs"),
+        "rewritePlanExecutor",
+        "RewriteWorkflowEventStage 应保持事件职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStageResult.cs"),
+        "public RewriteWorkflowArtifacts ToArtifacts(",
+        "RewriteWorkflowReportStageResult 应提供统一 artifacts 回传入口。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "public IReadOnlyCollection<IDomainEvent> BuildEvents(",
+        "WorkflowEventSequenceBuilder 应显式提供事件序列构造入口。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "AddIfMissing(events, new DecisionCompletedDomainEvent(",
+        "WorkflowEventSequenceBuilder 应负责补齐决策完成事件。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "AddIfMissing(events, new RewritePlanCompiledDomainEvent(",
+        "WorkflowEventSequenceBuilder 应负责补齐计划编译事件。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "AddIfMissing(events, new ExecutionCompletedDomainEvent(",
+        "WorkflowEventSequenceBuilder 应负责补齐执行完成事件。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "AddIfMissing(events, new VerificationEvidenceCollectedDomainEvent(",
+        "WorkflowEventSequenceBuilder 应负责补齐证据收集事件。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "AddIfMissing(events, new RunReportGeneratedDomainEvent(",
+        "WorkflowEventSequenceBuilder 应负责补齐运行报告事件。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "runReportAssembler",
+        "WorkflowEventSequenceBuilder 应保持事件序列职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "rewritePlanExecutor",
+        "WorkflowEventSequenceBuilder 应保持事件序列职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "impactPropagator",
+        "WorkflowEventSequenceBuilder 应保持事件序列职责边界。");
+    Assert(
+        typeof(IDomainEventRecorder).GetMethods().Length == 7,
+        "IDomainEventRecorder 应保持最小记录器接口面。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "InMemoryDomainEventRecorder.cs"),
+        "recordedEvents.RemoveAll(",
+        "InMemoryDomainEventRecorder 应支持按关联标识清理事件。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "InMemoryDomainEventRecorder.cs"),
+        "return recordedEvents.AsReadOnly();",
+        "InMemoryDomainEventRecorder 应提供全量只读视图。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "InMemoryDomainEventRecorder.cs"),
+        ".OrderBy(item => item.Sequence)",
+        "InMemoryDomainEventRecorder 应按序号返回关联事件。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "Events", "InMemoryDomainEventRecorder.cs"),
+        "BuildEvents(",
+        "InMemoryDomainEventRecorder 应保持记录器职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStageResult.cs"),
+        "BuildEvents(",
+        "RewriteWorkflowReportStageResult 应保持阶段结果职责边界。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowReportStageResult.cs"),
+        "domainEventRecorder",
+        "RewriteWorkflowReportStageResult 应保持阶段结果职责边界。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        "https://learn.microsoft.com/en-us/azure/architecture/microservices/model/tactical-domain-driven-design",
+        "DDD 权威资料证据清单必须保留 Tactical DDD 的权威来源。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        "https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/domain-events-design-implementation",
+        "DDD 权威资料证据清单必须保留 Domain Events 的权威来源。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        "https://martinfowler.com/bliki/BoundedContext.html",
+        "DDD 权威资料证据清单必须保留 Bounded Context 的权威来源。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        "https://martinfowler.com/bliki/DDD_Aggregate.html",
+        "DDD 权威资料证据清单必须保留 Aggregate 的权威来源。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        "https://www.writethedocs.org/guide/docs-as-code.html",
+        "DDD 权威资料证据清单必须保留 Docs as Code 的权威来源。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        @"C:\Users\shan\Downloads\api开源教程学习",
+        "DDD 权威资料证据清单必须回链本地开源项目学习目录。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        "tests/ArchitectureTests/Program.cs",
+        "DDD 权威资料证据清单必须把 ArchitectureTests 作为 docs-as-code 测试锚点。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "约束", "项目代码设计取舍指导.md"),
+        "docs/plans/2026-04-21-DDD权威资料证据清单与热点批次计划.md",
+        "项目代码设计取舍指导必须回链 DDD 权威资料证据清单。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-Isolation目录整改计划与ArchitectureTests补强清单.md"),
+        "docs/plans/2026-04-21-DDD权威资料证据清单与热点批次计划.md",
+        "目录整改计划必须回链 DDD 权威资料证据清单。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        "src/Application/Services",
+        "DDD 权威资料证据清单必须显式盘点 Application.Services 热点。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
+        "src/Logic/Workflow",
+        "DDD 权威资料证据清单必须显式盘点 Logic.Workflow 热点。");
+    Assert(
+        typeof(IRewriteWorkflowArtifactAssembler)
+            .GetMethods()
+            .Count(static method => string.Equals(method.Name, nameof(IRewriteWorkflowArtifactAssembler.Assemble), StringComparison.Ordinal)) == 1,
+        "IRewriteWorkflowArtifactAssembler 应只暴露单一工作流装配入口，阶段拆分细节应留在 Logic.Workflow 内部。");
 
-AssertSharedKernelMatrix(
-    typeof(RuleCode),
-    typeof(RuleSet),
-    typeof(EnabledRule),
-    typeof(RulePriority),
-    typeof(RuleScope),
-    typeof(RuleExecutionPolicy));
+    AssertSharedKernelMatrix(
+        typeof(RuleCode),
+        typeof(RuleSet),
+        typeof(EnabledRule),
+        typeof(RulePriority),
+        typeof(RuleScope),
+        typeof(RuleExecutionPolicy));
 
-AssertMapperSplit(repositoryRoot,
-    "ContractMapper.cs",
-    "ContractMapper.Workspaces.cs",
-    "ContractMapper.Analysis.cs",
-    "ContractMapper.MarkingPropagation.cs",
-    "ContractMapper.RewriteArtifacts.cs",
-    "ContractMapper.DecisionExecution.cs",
-    "ContractMapper.Output.cs",
-    "ContractMapper.Workflow.cs");
+    AssertMapperSplit(repositoryRoot,
+        "ContractMapper.cs",
+        "ContractMapper.Workspaces.cs",
+        "ContractMapper.Analysis.cs",
+        "ContractMapper.MarkingPropagation.cs",
+        "ContractMapper.RewriteArtifacts.cs",
+        "ContractMapper.DecisionExecution.cs",
+        "ContractMapper.Output.cs",
+        "ContractMapper.Workflow.cs");
 
     Console.WriteLine("ArchitectureTests: PASS");
 }

@@ -19,10 +19,21 @@
 本文的直接依据：
 
 - `docs/DDD/外部项目文件组织与模块划分学习-2026-04.md`
+- `docs/plans/2026-04-21-DDD权威资料证据清单与热点批次计划.md`
 - `docs/约束/项目代码设计取舍指导.md`
 - `tests/ArchitectureTests/Program.cs`
 - `src/Application/Services/*`
 - `src/Logic/Workflow/*`
+
+在继续执行目录整改或补 `ArchitectureTests` 前，默认先回看：
+
+- 证据清单
+- 热点盘点
+- 批次计划
+
+统一入口：
+
+- `docs/plans/2026-04-21-DDD权威资料证据清单与热点批次计划.md`
 
 ## 2. 现状判断
 
