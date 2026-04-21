@@ -67,32 +67,13 @@ internal sealed class RewriteWorkflowUseCase
         cancellationToken.ThrowIfCancellationRequested();
 
         RewriteWorkflowRunContext runContext = await PrepareRunContextAsync(request, cancellationToken);
-        PropagationResolution propagationResolution = rewriteWorkflowPropagationStage.Propagate(
-            RewriteWorkflowStageInputFactory.BuildPropagation(
-                request,
-                runContext.WorkflowRuleCode,
-                runContext.AnalysisSnapshot,
-                runContext.MarkingCandidate)).Resolution;
-
-        PublishPropagation(
-            runContext.RunCorrelationId,
-            runContext.PropagationWorkspaceContextId,
-            propagationResolution);
-
-        RewriteDecisionResolution decisionResolution = rewriteWorkflowDecisionStage.Decide(
-            RewriteWorkflowStageInputFactory.BuildDecision(
-                request,
-                propagationResolution,
-                rewriteWorkflowRulePreset)).Resolution;
-
-        RewriteWorkflowArtifacts workflowArtifacts = rewriteWorkflowArtifactAssembler.Assemble(
-            RewriteWorkflowStageInputFactory.BuildAssembly(
-                request,
-                runContext.WorkflowRuleCode,
-                runContext.RunCorrelationId,
-                runContext.WorkspaceContext,
-                propagationResolution,
-                decisionResolution));
+        PropagationResolution propagationResolution = ExecutePropagation(request, runContext);
+        RewriteDecisionResolution decisionResolution = ExecuteDecision(request, propagationResolution);
+        RewriteWorkflowArtifacts workflowArtifacts = AssembleArtifacts(
+            request,
+            runContext,
+            propagationResolution,
+            decisionResolution);
 
         return new RewriteWorkflowRunState(
             request,
@@ -135,6 +116,52 @@ internal sealed class RewriteWorkflowUseCase
             analysisSnapshot,
             markingCandidate,
             workflowRuleCode);
+    }
+
+    private PropagationResolution ExecutePropagation(
+        RunRewriteWorkflowRequest request,
+        RewriteWorkflowRunContext runContext)
+    {
+        PropagationResolution propagationResolution = rewriteWorkflowPropagationStage.Propagate(
+            RewriteWorkflowStageInputFactory.BuildPropagation(
+                request,
+                runContext.WorkflowRuleCode,
+                runContext.AnalysisSnapshot,
+                runContext.MarkingCandidate)).Resolution;
+
+        PublishPropagation(
+            runContext.RunCorrelationId,
+            runContext.PropagationWorkspaceContextId,
+            propagationResolution);
+
+        return propagationResolution;
+    }
+
+    private RewriteDecisionResolution ExecuteDecision(
+        RunRewriteWorkflowRequest request,
+        PropagationResolution propagationResolution)
+    {
+        return rewriteWorkflowDecisionStage.Decide(
+            RewriteWorkflowStageInputFactory.BuildDecision(
+                request,
+                propagationResolution,
+                rewriteWorkflowRulePreset)).Resolution;
+    }
+
+    private RewriteWorkflowArtifacts AssembleArtifacts(
+        RunRewriteWorkflowRequest request,
+        RewriteWorkflowRunContext runContext,
+        PropagationResolution propagationResolution,
+        RewriteDecisionResolution decisionResolution)
+    {
+        return rewriteWorkflowArtifactAssembler.Assemble(
+            RewriteWorkflowStageInputFactory.BuildAssembly(
+                request,
+                runContext.WorkflowRuleCode,
+                runContext.RunCorrelationId,
+                runContext.WorkspaceContext,
+                propagationResolution,
+                decisionResolution));
     }
 
     private async Task<AnalysisCpgSnapshot?> PublishAnalysisSnapshotAsync(
