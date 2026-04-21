@@ -703,8 +703,48 @@ public class PlayerTools
         "RewriteWorkflowAppService 应通过阶段输入构造函数封装编排，不应直接手写 new RewriteWorkflowDecisionStageInput。");
     AssertFileSourceContains(
         Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowUseCase.cs"),
+        "PrepareRunContextAsync(",
+        "RewriteWorkflowUseCase 应显式收口 run context 准备步骤。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowUseCase.cs"),
+        "ExecutePropagation(",
+        "RewriteWorkflowUseCase 应显式收口 propagation 编排步骤。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowUseCase.cs"),
+        "ExecuteDecision(",
+        "RewriteWorkflowUseCase 应显式收口 decision 编排步骤。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowUseCase.cs"),
+        "AssembleArtifacts(",
+        "RewriteWorkflowUseCase 应显式收口 artifact assemble 步骤。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowUseCase.cs"),
         "rewriteWorkflowRulePreset.ResolveMarkingRuleCode(",
         "RewriteWorkflowUseCase 应承担 workflow 规则码解析。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "public RewriteWorkflowTargetDescriptor Target { get; init; } = new();",
+        "RewriteWorkflowAssemblyInput 应通过 Target descriptor 收口目标字段簇。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowAssemblyInput.cs"),
+        "public RewriteWorkflowExecutionDescriptor Execution { get; init; } = new();",
+        "RewriteWorkflowAssemblyInput 应通过 Execution descriptor 收口执行字段簇。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowStageInputFactory.cs"),
+        "Target = new RewriteWorkflowTargetDescriptor",
+        "RewriteWorkflowStageInputFactory 应集中构造 Target descriptor。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowStageInputFactory.cs"),
+        "Execution = new RewriteWorkflowExecutionDescriptor",
+        "RewriteWorkflowStageInputFactory 应集中构造 Execution descriptor。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowTargetDescriptor.cs"),
+        "public sealed record RewriteWorkflowTargetDescriptor",
+        "RewriteWorkflowTargetDescriptor 必须存在并承担目标字段簇。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowExecutionDescriptor.cs"),
+        "public sealed record RewriteWorkflowExecutionDescriptor",
+        "RewriteWorkflowExecutionDescriptor 必须存在并承担执行字段簇。");
     AssertFileSourceContains(
         Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowUseCase.cs"),
         "rewriteWorkflowArtifactAssembler.Assemble(",
@@ -1072,6 +1112,14 @@ public class PlayerTools
         Path.Combine("docs", "plans", "2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md"),
         "src/Logic/Workflow/RewriteWorkflowAssemblyInput.cs",
         "2026-04-22 DDD 资料适配文档必须显式盘点 RewriteWorkflowAssemblyInput 热点。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md"),
+        "RewriteWorkflowTargetDescriptor",
+        "2026-04-22 DDD 资料适配文档必须同步 descriptor 收口事实。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "约束", "局部代码设计取舍指导.md"),
+        "RewriteWorkflowTargetDescriptor",
+        "局部代码设计取舍指导必须同步 descriptor 收口事实。");
     AssertFileSourceContains(
         Path.Combine("docs", "约束", "项目代码设计取舍指导.md"),
         "docs/plans/2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md",
