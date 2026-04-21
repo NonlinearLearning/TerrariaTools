@@ -334,14 +334,14 @@ RewriteDecisionDto rewriteDecisionDto = ContractMapper.Map(rewriteDecision);
 RewritePlanDto rewritePlanDto = ContractMapper.Map(rewritePlan);
 RewriteResultDto rewriteResultDto = ContractMapper.Map(rewriteResult);
 VerificationEvidenceDto verificationEvidenceDto = ContractMapper.Map(verificationEvidence);
-RunReportDto rsnReportDto = ContractMapper.Map(rsnReport);
+RunReportDto runReportDto = ContractMapper.Map(rsnReport);
 Assert(changeCandidateDto.ScenarioTags.Contains(ContractScenarioTag.MinimalRuntimeClosure), "候选 DTO 应映射场景标签。");
 Assert(rewriteDecisionDto.Protections.Count == 1, "决策 DTO 应映射保护项。");
 Assert(rewritePlanDto.ChangeItems.Count == 1, "计划 DTO 应映射计划项。");
 Assert(rewriteResultDto.ExecutionFailures.Count == 1, "结果 DTO 应映射执行失败。");
 Assert(verificationEvidenceDto.RiskSummary.RequiresManualReview, "证据 DTO 应映射风险摘要。");
-Assert(rsnReportDto.VerificationEvidenceId == verificationEvidence.Id, "运行报告 DTO 应映射证据标识。");
-Assert(rsnReportDto.AuditConclusion == ContractAuditConclusion.RequiresManualReview, "运行报告 DTO 应映射审计结论。");
+Assert(runReportDto.VerificationEvidenceId == verificationEvidence.Id, "运行报告 DTO 应映射证据标识。");
+Assert(runReportDto.AuditConclusion == ContractAuditConclusion.RequiresManualReview, "运行报告 DTO 应映射审计结论。");
 
 PropagationAppService propagationAppService = new(new ImpactPropagator(), new PropagationRulePreset(), analysisSnapshotRepository);
 PropagationResultDto propagationResult = await propagationAppService.PropagateAsync(new BuildPropagationRequest
