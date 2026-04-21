@@ -158,6 +158,27 @@ public sealed class NamingGovernanceConventionsTests
     }
 
     [Fact]
+    public void Application_contract_public_type_names_follow_role_naming()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string contractsRoot = Path.Combine(repositoryRoot, "src", "Application", "Contracts");
+
+        string[] unexpectedTypes = Directory
+            .EnumerateFiles(contractsRoot, "*.cs", SearchOption.AllDirectories)
+            .Select(path => CreateFileShape(repositoryRoot, path))
+            .SelectMany(shape => shape.TypeNames.Select(typeName => $"{shape.RelativePath} => {typeName}"))
+            .Where(item =>
+            {
+                string typeName = item.Split(" => ", StringSplitOptions.None)[1];
+                return !IsApprovedContractTypeName(typeName);
+            })
+            .OrderBy(item => item, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Empty(unexpectedTypes);
+    }
+
+    [Fact]
     public void Domain_multi_type_files_stay_within_governed_allowlists()
     {
         string repositoryRoot = FindRepositoryRoot();
@@ -313,6 +334,17 @@ public sealed class NamingGovernanceConventionsTests
                typeName.EndsWith("Info", StringComparison.Ordinal) ||
                typeName.EndsWith("Model", StringComparison.Ordinal) ||
                typeName.EndsWith("MetaData", StringComparison.Ordinal);
+    }
+
+    private static bool IsApprovedContractTypeName(string typeName)
+    {
+        return typeName.StartsWith("Contract", StringComparison.Ordinal) ||
+               typeName.EndsWith("Dto", StringComparison.Ordinal) ||
+               typeName.EndsWith("Request", StringComparison.Ordinal) ||
+               typeName.EndsWith("Response", StringComparison.Ordinal) ||
+               typeName.EndsWith("Command", StringComparison.Ordinal) ||
+               typeName.EndsWith("Query", StringComparison.Ordinal) ||
+               typeName.EndsWith("AppService", StringComparison.Ordinal);
     }
 
     private static IReadOnlyList<string> GetPublicTopLevelTypeNames(string filePath)
