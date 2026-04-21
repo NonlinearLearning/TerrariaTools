@@ -1,0 +1,39 @@
+using Application.Contracts;
+
+namespace Application.Contracts.Output.Audit;
+
+/// <summary>
+/// 运行报告 DTO。
+/// </summary>
+public sealed class RunReportDto
+{
+    public Guid Id { get; set; }
+
+    public Guid WorkspaceContextId { get; set; }
+
+    public Guid RewriteDecisionId { get; set; }
+
+    public Guid RewritePlanId { get; set; }
+
+    public Guid RewriteResultId { get; set; }
+
+    public Guid? VerificationEvidenceId { get; set; }
+
+    public ReportSummaryDto ReportSummary { get; set; } = new();
+
+    public ContractAuditConclusion AuditConclusion { get; set; }
+}
+
+/// <summary>
+/// 报告摘要 DTO。
+/// </summary>
+public sealed class ReportSummaryDto
+{
+    public int ApprovedCount { get; set; }
+
+    public int RejectedCount { get; set; }
+
+    public int FailureCount { get; set; }
+
+    public string Highlights { get; set; } = string.Empty;
+}
