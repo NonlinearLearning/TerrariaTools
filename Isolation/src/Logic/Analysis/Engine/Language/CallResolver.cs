@@ -6,9 +6,10 @@ namespace Logic.Analysis.Engine.Language;
 /// <summary>
 /// 对应 Joern semanticcpg/language/ICallResolver.scala。
 ///
+/// C# 侧使用 <see cref="CallResolver"/> 命名，避免把 `I` 前缀误读为接口。
 /// 该文件提供 C# 查询 DSL 的一个命名入口，避免调用方直接操作字符串属性和边集合。
 /// </summary>
-public static class ICallResolver
+public static class CallResolver
 {
     /// <summary>
     /// 从当前遍历中选择该文件负责的节点集合。

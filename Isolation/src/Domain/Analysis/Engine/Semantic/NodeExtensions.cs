@@ -8,7 +8,7 @@ namespace Domain.Analysis.Engine.Semantic;
 /// Joern 的 `NodeExtension.scala` 是一个节点扩展标记 trait。
 /// C# 版没有 Scala trait 机制，因此这里落成节点扩展方法集合。
 /// </summary>
-public static class NodeExtension
+public static class NodeExtensions
 {
     /// <summary>
     /// 读取节点的字符串属性，缺失时返回空字符串。

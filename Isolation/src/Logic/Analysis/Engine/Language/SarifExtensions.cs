@@ -6,9 +6,10 @@ namespace Logic.Analysis.Engine.Language;
 /// <summary>
 /// 对应 Joern semanticcpg/language/SarifExtension.scala。
 ///
+/// C# 侧使用复数命名，明确这里是 SARIF 查询扩展方法集合。
 /// 该文件提供 C# 查询 DSL 的一个命名入口，避免调用方直接操作字符串属性和边集合。
 /// </summary>
-public static class SarifExtension
+public static class SarifExtensions
 {
     /// <summary>
     /// 从当前遍历中选择该文件负责的节点集合。

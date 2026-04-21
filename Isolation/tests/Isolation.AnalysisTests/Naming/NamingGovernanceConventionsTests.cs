@@ -275,41 +275,41 @@ public sealed class NamingGovernanceConventionsTests
     }
 
     [Fact]
-    public void Generic_technical_suffixes_stay_confined_to_known_hotspots()
+    public void Public_non_interface_types_do_not_use_interface_prefixes()
     {
         string repositoryRoot = FindRepositoryRoot();
         string sourceRoot = Path.Combine(repositoryRoot, "src");
 
-        FileShape[] hotspotFiles = Directory
+        string[] offenders = Directory
             .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
-            .Select(path => CreateFileShape(repositoryRoot, path))
-            .Select(shape => new FileShape(
-                shape.RelativePath,
-                shape.FileBaseName,
-                shape.TypeNames.Where(IsGenericTechnicalSuffixTypeName).ToArray()))
-            .Where(shape => shape.TypeNames.Count > 0)
-            .OrderBy(shape => shape.RelativePath, StringComparer.Ordinal)
+            .Where(path => !IsBuildArtifactFile(path))
+            .SelectMany(path => CreatePublicTypeShapes(repositoryRoot, path))
+            .Where(shape => !shape.IsInterface)
+            .Where(shape => shape.TypeName.Length > 1 && shape.TypeName[0] == 'I' && char.IsUpper(shape.TypeName[1]))
+            .Select(shape => $"{shape.RelativePath} => {shape.TypeName}")
+            .OrderBy(item => item, StringComparer.Ordinal)
             .ToArray();
 
-        string[] unexpectedFiles = hotspotFiles
-            .Where(shape => !ApprovedGenericTechnicalSuffixHotspots.ContainsKey(shape.RelativePath))
-            .Select(shape => $"{shape.RelativePath} => {string.Join(", ", shape.TypeNames)}")
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
+    public void Public_static_extension_containers_use_plural_extension_suffixes()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string sourceRoot = Path.Combine(repositoryRoot, "src");
+
+        string[] offenders = Directory
+            .EnumerateFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
+            .Where(path => !IsBuildArtifactFile(path))
+            .SelectMany(path => CreatePublicTypeShapes(repositoryRoot, path))
+            .Where(shape => shape.IsStatic)
+            .Where(shape => shape.TypeName.EndsWith("Extension", StringComparison.Ordinal))
+            .Select(shape => $"{shape.RelativePath} => {shape.TypeName}")
+            .OrderBy(item => item, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Empty(unexpectedFiles);
-
-        foreach (FileShape hotspot in hotspotFiles)
-        {
-            string[] approvedTypes = ApprovedGenericTechnicalSuffixHotspots[hotspot.RelativePath];
-            string[] unexpectedTypes = hotspot.TypeNames
-                .Where(typeName => !approvedTypes.Contains(typeName, StringComparer.Ordinal))
-                .ToArray();
-
-            Assert.Empty(unexpectedTypes);
-            Assert.True(
-                hotspot.TypeNames.Count <= approvedTypes.Length,
-                $"{hotspot.RelativePath} 的技术债命名范围扩大了：{string.Join(", ", hotspot.TypeNames)}");
-        }
+        Assert.Empty(offenders);
     }
 
     private static FileShape CreateFileShape(string repositoryRoot, string filePath)
@@ -318,6 +318,14 @@ public sealed class NamingGovernanceConventionsTests
         string fileBaseName = Path.GetFileNameWithoutExtension(filePath);
         string[] typeNames = GetPublicTopLevelTypeNames(filePath).ToArray();
         return new FileShape(relativePath, fileBaseName, typeNames);
+    }
+
+    private static IReadOnlyList<PublicTypeShape> CreatePublicTypeShapes(string repositoryRoot, string filePath)
+    {
+        string relativePath = NormalizeRelativePath(repositoryRoot, filePath);
+        return GetPublicTopLevelTypeShapes(filePath)
+            .Select(shape => shape with { RelativePath = relativePath })
+            .ToArray();
     }
 
     private static bool IsQueryRoleTypeName(string typeName)
@@ -357,6 +365,16 @@ public sealed class NamingGovernanceConventionsTests
         return names;
     }
 
+    private static IReadOnlyList<PublicTypeShape> GetPublicTopLevelTypeShapes(string filePath)
+    {
+        CompilationUnitSyntax root = CSharpSyntaxTree
+            .ParseText(File.ReadAllText(filePath), path: filePath)
+            .GetCompilationUnitRoot();
+        List<PublicTypeShape> shapes = [];
+        CollectPublicTopLevelTypeShapes(root.Members, shapes);
+        return shapes;
+    }
+
     private static void CollectPublicTopLevelTypeNames(
         SyntaxList<MemberDeclarationSyntax> members,
         List<string> names)
@@ -372,6 +390,32 @@ public sealed class NamingGovernanceConventionsTests
                     when typeDeclaration.Modifiers.Any(
                         modifier => modifier.IsKind(SyntaxKind.PublicKeyword)):
                     names.Add(typeDeclaration.Identifier.Text);
+                    break;
+            }
+        }
+    }
+
+    private static void CollectPublicTopLevelTypeShapes(
+        SyntaxList<MemberDeclarationSyntax> members,
+        List<PublicTypeShape> shapes)
+    {
+        foreach (MemberDeclarationSyntax member in members)
+        {
+            switch (member)
+            {
+                case BaseNamespaceDeclarationSyntax namespaceDeclaration:
+                    CollectPublicTopLevelTypeShapes(namespaceDeclaration.Members, shapes);
+                    break;
+                case BaseTypeDeclarationSyntax typeDeclaration
+                    when typeDeclaration.Modifiers.Any(
+                        modifier => modifier.IsKind(SyntaxKind.PublicKeyword)):
+                    shapes.Add(
+                        new PublicTypeShape(
+                            RelativePath: string.Empty,
+                            TypeName: typeDeclaration.Identifier.Text,
+                            IsInterface: typeDeclaration is InterfaceDeclarationSyntax,
+                            IsStatic: typeDeclaration.Modifiers.Any(
+                                modifier => modifier.IsKind(SyntaxKind.StaticKeyword))));
                     break;
             }
         }
@@ -419,5 +463,11 @@ public sealed class NamingGovernanceConventionsTests
         string RelativePath,
         string FileBaseName,
         IReadOnlyList<string> TypeNames);
+
+    private sealed record PublicTypeShape(
+        string RelativePath,
+        string TypeName,
+        bool IsInterface,
+        bool IsStatic);
 }
 
