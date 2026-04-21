@@ -36,11 +36,7 @@ public sealed class WorkflowEventSequenceBuilder
         VerificationEvidence evidence = artifacts.Evidence;
         RunReport report = artifacts.Report;
 
-        Guid correlationId = input.RunCorrelationId != Guid.Empty
-            ? input.RunCorrelationId
-            : input.WorkspaceContextId != Guid.Empty
-            ? input.WorkspaceContextId
-            : input.WorkspaceContext.Id;
+        Guid correlationId = RewriteWorkflowCorrelationResolver.Resolve(input);
         List<IDomainEvent> events = domainEventRecorder?.GetRecordedEvents(correlationId)
             .Select(item => item.DomainEvent)
             .ToList() ?? [];

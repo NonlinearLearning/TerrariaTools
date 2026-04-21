@@ -961,6 +961,10 @@ public class PlayerTools
         Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
         "AddIfMissing(events, new RunReportGeneratedDomainEvent(",
         "WorkflowEventSequenceBuilder 应负责补齐运行报告事件。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
+        "RewriteWorkflowCorrelationResolver.Resolve(input)",
+        "WorkflowEventSequenceBuilder 应复用统一 correlation resolver，避免重复维护回退逻辑。");
     AssertFileSourceDoesNotContain(
         Path.Combine("src", "Logic", "Workflow", "Events", "WorkflowEventSequenceBuilder.cs"),
         "runReportAssembler",
