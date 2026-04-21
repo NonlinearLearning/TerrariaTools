@@ -56,11 +56,10 @@ When work in this repository depends on local constraints, treat the following d
   - `docs/约束/局部代码设计取舍指导.md`
   - `docs/约束/Google-CSharp-Style-Guide-约束.md`
   - `docs/约束/GPT-5.4黑话与冗词抑制约束.md`
-  - `docs\约束\测试代码与xUnit约束.md`
+  - `docs/约束/测试代码与xUnit约束.md`
   - `docs/约束/代码对齐文档约束.md`
   - `docs/约束/文档对齐代码约束.md`
   - `docs/约束/教 AI 怎么搜准.md`
-  - `docs/约束/长任务主代理网络搜索与并行编排提示词优化建议.md`
 
 ### 2. `.codex/skills/`
 
@@ -119,7 +118,6 @@ Additional rules:
 - When drafting user-facing output, treat `docs/约束/GPT-5.4黑话与冗词抑制约束.md` as the repo-local anti-slop reference and load it whenever the response shape or wording quality is material to the task.
 - When the task is about code/doc drift, docs-as-code, keeping docs in sync with code, or keeping code aligned to repository docs, load `docs/约束/代码对齐文档约束.md` and `docs/约束/文档对齐代码约束.md`.
 - When the task is about web search, how to teach AI to search accurately, how to write research prompts, how to narrow web search prompts, or how to search for official/authoritative materials, load `docs/约束/教 AI 怎么搜准.md`.
-- When the task is about long-running main-agent execution that combines local material scanning, web search, task decomposition, subagent parallelism, manager review, conflict arbitration, iterative dispatch, or stop conditions, load `docs/约束/长任务主代理网络搜索与并行编排提示词优化建议.md`. Treat that file as the execution-shape authority for phased manager orchestration, evidence-based coverage, source priority, subagent I/O contracts, and checkable stop rules.
 - Do not bulk-load `C:\Users\shan\.codex\prompts\`; load only the explicitly requested prompt file.
 - Treat external prompt files as reversible response-shape overlays; they must not silently override repository safety, verification, or architecture constraints.
 
@@ -140,5 +138,4 @@ Additional rules:
 - Prohibited anti-slop patterns include at least: filler openings, summary-label closings, conditional follow-up menus, question restatement, negation-based contrastive phrasing, repeated plain-language restatements, and decorative over-structuring when the content is simple.
 - When the user asks any variant of `代码对齐文档`、`文档对齐代码`、`文档漂移`、`代码文档同步`、`docs as code`、`code/doc drift`, automatically load `docs/约束/代码对齐文档约束.md` and `docs/约束/文档对齐代码约束.md` as task-specific rule files.
 - When the user asks any variant of `网络搜索`、`网络搜索资料`, automatically load `docs/约束/教 AI 怎么搜准.md` as the task-specific rule file.
-- When the user asks any variant of `长任务`、`长时间任务`、`主代理`、`主 AI`、`manager agent`、`并行编排`、`子代理并行`、`冲突审核`、`持续派发`、`停机条件`, automatically load `docs/约束/长任务主代理网络搜索与并行编排提示词优化建议.md` as the task-specific rule file. In that mode, structure the work as phased manager orchestration with explicit local-scan scope, web-search scope, source priority, task-list fields, subagent return fields, conflict-escalation rules, anti-idle output rules, and checkable stop conditions.
 - Unless the user explicitly asks to install/update/uninstall a prompt or skill, do not modify `C:\Users\shan\.codex\prompts\` or global prompt files as part of normal task execution.

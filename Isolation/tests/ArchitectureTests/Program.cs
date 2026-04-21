@@ -643,12 +643,12 @@ public class PlayerTools
         "RewriteWorkflowMarkingPreparer 应通过 RewriteWorkflowRulePreset 获取规则集名称。");
     AssertFileSourceContains(
         Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
-        "rewriteWorkflowRulePreset.ResolveMarkingRuleCode(",
-        "RewriteWorkflowAppService 应通过 RewriteWorkflowRulePreset 解析 workflow 规则码。");
+        "RewriteWorkflowUseCase",
+        "RewriteWorkflowAppService 应委派 RewriteWorkflowUseCase，而不是继续承担全部 workflow 编排。");
     AssertFileSourceContains(
         Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
-        "rewriteWorkflowRulePreset.NormalizeProtectionRules(",
-        "RewriteWorkflowAppService 应通过 RewriteWorkflowRulePreset 规范化保护规则。");
+        "RewriteWorkflowRunDtoAssembler.Map(state)",
+        "RewriteWorkflowAppService 应通过专用 assembler 回填 DTO。");
     AssertFileSourceContains(
         Path.Combine("src", "Application", "Services", "PropagationAppService.cs"),
         "propagationRulePreset.ResolveRuleCode(",
@@ -661,6 +661,14 @@ public class PlayerTools
         Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
         "RuleCode.Create(",
         "RewriteWorkflowAppService 不应继续直接调用 RuleCode.Create，稳定规则码解析应走 preset。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
+        "rewriteWorkflowRulePreset.ResolveMarkingRuleCode(",
+        "RewriteWorkflowAppService 不应继续直接承担 workflow 规则码解析。");
+    AssertFileSourceDoesNotContain(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
+        "rewriteWorkflowRulePreset.NormalizeProtectionRules(",
+        "RewriteWorkflowAppService 不应继续直接承担保护规则归一化。");
     AssertFileSourceDoesNotContain(
         Path.Combine("src", "Application", "Services", "PropagationAppService.cs"),
         "RuleCode.Create(request.RuleCode)",
@@ -693,6 +701,26 @@ public class PlayerTools
         Path.Combine("src", "Application", "Services", "RewriteWorkflowAppService.cs"),
         "new RewriteWorkflowDecisionStageInput",
         "RewriteWorkflowAppService 应通过阶段输入构造函数封装编排，不应直接手写 new RewriteWorkflowDecisionStageInput。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowUseCase.cs"),
+        "rewriteWorkflowRulePreset.ResolveMarkingRuleCode(",
+        "RewriteWorkflowUseCase 应承担 workflow 规则码解析。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowUseCase.cs"),
+        "rewriteWorkflowArtifactAssembler.Assemble(",
+        "RewriteWorkflowUseCase 应承担工作流主编排。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowStageInputFactory.cs"),
+        "RewriteWorkflowPropagationStageInput.Create(",
+        "RewriteWorkflowStageInputFactory 应集中构造传播阶段输入。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowStageInputFactory.cs"),
+        "RewriteWorkflowDecisionStageInput.Create(",
+        "RewriteWorkflowStageInputFactory 应集中构造决策阶段输入。");
+    AssertFileSourceContains(
+        Path.Combine("src", "Application", "Services", "RewriteWorkflow", "RewriteWorkflowRunDtoAssembler.cs"),
+        "ContractMapper.Map(state.Artifacts.Plan)",
+        "RewriteWorkflowRunDtoAssembler 应集中承担工作流输出 DTO 回填。");
     AssertFileSourceContains(
         Path.Combine("src", "Logic", "Workflow", "RewriteWorkflowArtifactAssembler.cs"),
         "rewriteWorkflowPlanStage.BuildPlan(",
@@ -1016,6 +1044,38 @@ public class PlayerTools
         Path.Combine("docs", "plans", "2026-04-21-DDD权威资料证据清单与热点批次计划.md"),
         "src/Logic/Workflow",
         "DDD 权威资料证据清单必须显式盘点 Logic.Workflow 热点。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md"),
+        "https://martinfowler.com/bliki/BoundedContext.html",
+        "2026-04-22 DDD 资料适配文档必须保留 Bounded Context 的权威来源。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md"),
+        "https://abp.io/docs/latest/framework/architecture/best-practices/module-architecture",
+        "2026-04-22 DDD 资料适配文档必须保留 ABP 模块架构来源。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md"),
+        "https://www.writethedocs.org/guide/docs-as-code/",
+        "2026-04-22 DDD 资料适配文档必须保留 Docs as Code 来源。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md"),
+        "src/Application/Services/RewriteWorkflowAppService.cs",
+        "2026-04-22 DDD 资料适配文档必须显式盘点 RewriteWorkflowAppService 热点。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md"),
+        "src/Application/Services/RewriteWorkflow/RewriteWorkflowUseCase.cs",
+        "2026-04-22 DDD 资料适配文档必须同步批次 A 的层内垂直切片结果。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "plans", "2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md"),
+        "src/Logic/Workflow/RewriteWorkflowAssemblyInput.cs",
+        "2026-04-22 DDD 资料适配文档必须显式盘点 RewriteWorkflowAssemblyInput 热点。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "约束", "项目代码设计取舍指导.md"),
+        "docs/plans/2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md",
+        "项目代码设计取舍指导必须回链 2026-04-22 DDD 资料适配与落地批次文档。");
+    AssertFileSourceContains(
+        Path.Combine("docs", "约束", "局部代码设计取舍指导.md"),
+        "docs/plans/2026-04-22-DDD架构-模块设计-类设计-资料适配与落地批次.md",
+        "局部代码设计取舍指导必须回链 2026-04-22 DDD 资料适配与落地批次文档。");
     Assert(
         typeof(IRewriteWorkflowArtifactAssembler)
             .GetMethods()
