@@ -86,16 +86,22 @@ internal static class RewriteWorkflowStageInputFactory
             ReasonCount = propagation.Candidate.Reasons.Count,
             MaxDepth = request.MaxDepth,
             ConflictTargetCount = request.ConflictTargets.Count,
-            TargetName = request.TargetName,
-            DocumentPath = request.DocumentPath,
-            MemberSignature = request.MemberSignature,
-            AnchorText = request.AnchorText,
+            Target = new RewriteWorkflowTargetDescriptor
+            {
+                TargetName = request.TargetName,
+                DocumentPath = request.DocumentPath,
+                MemberSignature = request.MemberSignature,
+                AnchorText = request.AnchorText,
+            },
             PlanAction = ContractMapper.Map(request.PlanAction),
             PropagationTargets = request.PropagationTargets,
-            SourceCode = request.SourceCode,
-            ClassName = request.ClassName,
-            MethodName = request.MethodName,
-            ParameterCount = request.ParameterCount,
+            Execution = new RewriteWorkflowExecutionDescriptor
+            {
+                SourceCode = request.SourceCode,
+                ClassName = request.ClassName,
+                MethodName = request.MethodName,
+                ParameterCount = request.ParameterCount,
+            },
         };
     }
 }

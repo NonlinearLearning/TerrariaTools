@@ -71,24 +71,50 @@ public sealed class RewriteWorkflowAssemblyInput
     public int ConflictTargetCount { get; init; }
 
     /// <summary>
+    /// 获取或初始化目标描述。
+    /// </summary>
+    public RewriteWorkflowTargetDescriptor Target { get; init; } = new();
+
+    /// <summary>
+    /// 获取或初始化执行描述。
+    /// </summary>
+    public RewriteWorkflowExecutionDescriptor Execution { get; init; } = new();
+
+    /// <summary>
     /// 获取或初始化目标名称。
     /// </summary>
-    public string TargetName { get; init; } = string.Empty;
+    public string TargetName
+    {
+        get => Target.TargetName;
+        init => Target = Target with { TargetName = value };
+    }
 
     /// <summary>
     /// 获取或初始化文档路径。
     /// </summary>
-    public string DocumentPath { get; init; } = string.Empty;
+    public string DocumentPath
+    {
+        get => Target.DocumentPath;
+        init => Target = Target with { DocumentPath = value };
+    }
 
     /// <summary>
     /// 获取或初始化成员签名。
     /// </summary>
-    public string? MemberSignature { get; init; }
+    public string? MemberSignature
+    {
+        get => Target.MemberSignature;
+        init => Target = Target with { MemberSignature = value };
+    }
 
     /// <summary>
     /// 获取或初始化锚点文本。
     /// </summary>
-    public string? AnchorText { get; init; }
+    public string? AnchorText
+    {
+        get => Target.AnchorText;
+        init => Target = Target with { AnchorText = value };
+    }
 
     /// <summary>
     /// 获取或初始化计划动作。
@@ -100,13 +126,29 @@ public sealed class RewriteWorkflowAssemblyInput
     /// </summary>
     public IReadOnlyCollection<string> PropagationTargets { get; init; } = Array.Empty<string>();
 
-    public string SourceCode { get; init; } = string.Empty;
+    public string SourceCode
+    {
+        get => Execution.SourceCode;
+        init => Execution = Execution with { SourceCode = value };
+    }
 
-    public string ClassName { get; init; } = string.Empty;
+    public string ClassName
+    {
+        get => Execution.ClassName;
+        init => Execution = Execution with { ClassName = value };
+    }
 
-    public string? MethodName { get; init; }
+    public string? MethodName
+    {
+        get => Execution.MethodName;
+        init => Execution = Execution with { MethodName = value };
+    }
 
-    public int? ParameterCount { get; init; }
+    public int? ParameterCount
+    {
+        get => Execution.ParameterCount;
+        init => Execution = Execution with { ParameterCount = value };
+    }
 
     public RewriteWorkflowPlanStageInput ToPlanStageInput() => new()
     {
@@ -114,10 +156,10 @@ public sealed class RewriteWorkflowAssemblyInput
         WorkspaceContext = WorkspaceContext,
         CandidateId = CandidateId,
         Decision = Decision,
-        TargetName = TargetName,
-        DocumentPath = DocumentPath,
-        MemberSignature = MemberSignature,
-        AnchorText = AnchorText,
+        TargetName = Target.TargetName,
+        DocumentPath = Target.DocumentPath,
+        MemberSignature = Target.MemberSignature,
+        AnchorText = Target.AnchorText,
         PlanAction = PlanAction,
     };
 
@@ -125,16 +167,16 @@ public sealed class RewriteWorkflowAssemblyInput
     {
         RunCorrelationId = RunCorrelationId,
         WorkspaceContext = WorkspaceContext,
-        SourceCode = SourceCode,
-        ClassName = ClassName,
-        MethodName = MethodName,
-        ParameterCount = ParameterCount,
+        SourceCode = Execution.SourceCode,
+        ClassName = Execution.ClassName,
+        MethodName = Execution.MethodName,
+        ParameterCount = Execution.ParameterCount,
     };
 
     public RewriteWorkflowEvidenceStageInput ToEvidenceStageInput() => new()
     {
         RunCorrelationId = RunCorrelationId,
-        TargetName = TargetName,
+        TargetName = Target.TargetName,
         PlanAction = PlanAction,
         PropagationTargets = PropagationTargets,
     };
@@ -166,8 +208,8 @@ public sealed class RewriteWorkflowAssemblyInput
         ReasonCount = ReasonCount,
         MaxDepth = MaxDepth,
         ConflictTargetCount = ConflictTargetCount,
-        TargetName = TargetName,
-        DocumentPath = DocumentPath,
+        TargetName = Target.TargetName,
+        DocumentPath = Target.DocumentPath,
         PlanAction = PlanAction,
         PropagationTargets = PropagationTargets,
     };
