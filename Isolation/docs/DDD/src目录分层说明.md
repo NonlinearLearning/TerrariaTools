@@ -66,10 +66,10 @@
 
 本文属于：DDD / 领域设计文档。
 
-### Prompt Spec 对齐要求
+### 文档编写与锚点约束
 
-- 维护本文时，显式加载 `ai-rules/common/prompt-spec-writing.mdc`。
-- 本文中的目标、边界、主流程、默认值、允许 / 禁止事项、边缘场景、交付物、验收标准，统一按 prompt spec 规格语言书写。
+- 本文不得把仓库内不存在的 authoring sidecar（例如 `ai-rules/`、`.codex/skills/`、`.agents/skills/`）写成硬前置条件。
+- 本文中的目标、边界、主流程、默认值、允许 / 禁止事项、边缘场景、交付物、验收标准，统一按同一套规格语言书写。
 - 本文里的关键结论必须绑定真实代码路径、真实类型名、真实测试路径；禁止保留空泛愿景式表述。
 - 本文如果描述 `RewriteWorkflow`、规则传播、决策、计划、执行、证据、报告，优先绑定：
   - `src/Application/Services/RewriteWorkflowAppService.cs`
@@ -79,8 +79,10 @@
   - `src/Domain/Execution/*.cs`
   - `src/Domain/Output/**/*.cs`
   - `tests/ArchitectureTests/Program.cs`
+  - `tests/Isolation.AnalysisTests/Documentation/DocsAsCodeAlignmentTests.cs`
   - `tests/Isolation.AnalysisTests/**`
-- 本文更新后，默认同步检查 `ai-rules/`、`.codex/skills/`、`.agents/skills/` 是否仍与本文口径一致。
+- 本轮 DDD / docs-as-code 证据清单、热点盘点与批次计划见：
+  - `docs/plans/2026-04-21-worker3-ddd-docs-as-code-evidence-plan.md`
 
 ### 代码对齐文档要求
 
