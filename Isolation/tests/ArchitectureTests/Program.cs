@@ -54,6 +54,7 @@ try
     string repositoryRoot = Directory.GetCurrentDirectory();
     RegisterAnalysisDependencyResolver(repositoryRoot);
     CSharpCompilation applicationCompilation = BuildApplicationCompilation(repositoryRoot);
+    AssertDocsAsCodeEvidenceAndAnchors(repositoryRoot);
     AssertServiceRegistrations(repositoryRoot);
 
     InMemoryWorkspaceContextRepository workspaceRepository = new();
@@ -1145,6 +1146,80 @@ static void AssertServiceRegistrations(string repositoryRoot)
             ruleCatalog.Contains(ruleCode),
             $"Marking 默认规则必须先在 RuleCatalog 注册：{ruleCode.Value}");
     }
+}
+
+static void AssertDocsAsCodeEvidenceAndAnchors(string repositoryRoot)
+{
+    string evidencePlanRelativePath = Path.Combine("docs", "plans", "2026-04-21-DDD证据清单-热点盘点-批次计划.md");
+    string evidencePlanPath = Path.Combine(repositoryRoot, evidencePlanRelativePath);
+    Assert(File.Exists(evidencePlanPath), "当前批次必须先落地 DDD 证据 / 热点 / 批次计划文档。");
+
+    string evidencePlan = File.ReadAllText(evidencePlanPath);
+    string normalizedEvidencePlan = evidencePlan.Replace("\\", "/", StringComparison.Ordinal);
+    string[] requiredSections =
+    [
+        "## 2. 证据清单",
+        "## 3. 热点盘点",
+        "## 4. 批次计划"
+    ];
+
+    foreach (string requiredSection in requiredSections)
+    {
+        Assert(
+            evidencePlan.Contains(requiredSection, StringComparison.Ordinal),
+            $"{evidencePlanRelativePath} 必须保留章节：{requiredSection}");
+    }
+
+    string[] requiredReferences =
+    [
+        "https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/ddd-oriented-microservice",
+        "https://abp.io/docs/latest/framework/architecture/best-practices/application-services",
+        "https://www.writethedocs.org/guide/docs-as-code/",
+        "https://docs.gitlab.com/development/documentation/workflow/",
+        "https://learn.microsoft.com/en-us/contribute/content/code-in-docs"
+    ];
+
+    foreach (string requiredReference in requiredReferences)
+    {
+        Assert(
+            evidencePlan.Contains(requiredReference, StringComparison.Ordinal),
+            $"{evidencePlanRelativePath} 必须保留外部权威资料引用：{requiredReference}");
+    }
+
+    string[] requiredAnchors =
+    [
+        "src/Application/Services/RewriteWorkflowAppService.cs",
+        "src/Logic/Workflow/RewriteWorkflowArtifactAssembler.cs",
+        "src/Logic/Workflow/Events/WorkflowEventSequenceBuilder.cs",
+        "tests/ArchitectureTests/Program.cs",
+        "tests/Isolation.AnalysisTests/Workflow/RewriteWorkflowAppServiceCorrelationTests.cs"
+    ];
+
+    foreach (string requiredAnchor in requiredAnchors)
+    {
+        Assert(
+            normalizedEvidencePlan.Contains(requiredAnchor, StringComparison.Ordinal),
+            $"{evidencePlanRelativePath} 必须绑定真实代码或测试锚点：{requiredAnchor}");
+
+        string absoluteAnchorPath = Path.Combine(repositoryRoot, requiredAnchor.Replace('/', Path.DirectorySeparatorChar));
+        Assert(
+            File.Exists(absoluteAnchorPath),
+            $"关键 docs-as-code 锚点路径必须存在：{requiredAnchor}");
+    }
+
+    string codeAlignConstraint = Path.Combine(repositoryRoot, "docs", "约束", "代码对齐文档约束.md");
+    Assert(File.Exists(codeAlignConstraint), "代码对齐文档约束必须存在。");
+    string codeAlignSource = File.ReadAllText(codeAlignConstraint);
+    Assert(
+        codeAlignSource.Contains("2026-04-21-DDD证据清单-热点盘点-批次计划.md", StringComparison.Ordinal),
+        "代码对齐文档约束应写回当前 docs-as-code 计划文档锚点。");
+
+    string docAlignConstraint = Path.Combine(repositoryRoot, "docs", "约束", "文档对齐代码约束.md");
+    Assert(File.Exists(docAlignConstraint), "文档对齐代码约束必须存在。");
+    string docAlignSource = File.ReadAllText(docAlignConstraint);
+    Assert(
+        docAlignSource.Contains("2026-04-21-DDD证据清单-热点盘点-批次计划.md", StringComparison.Ordinal),
+        "文档对齐代码约束应写回当前 docs-as-code 计划文档锚点。");
 }
 
 static void AssertFileSourceDoesNotContain(string relativeFilePath, string forbiddenText, string message)
