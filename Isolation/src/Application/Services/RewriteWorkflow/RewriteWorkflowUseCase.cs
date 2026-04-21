@@ -66,6 +66,46 @@ internal sealed class RewriteWorkflowUseCase
     {
         cancellationToken.ThrowIfCancellationRequested();
 
+        RewriteWorkflowRunContext runContext = await PrepareRunContextAsync(request, cancellationToken);
+        PropagationResolution propagationResolution = rewriteWorkflowPropagationStage.Propagate(
+            RewriteWorkflowStageInputFactory.BuildPropagation(
+                request,
+                runContext.WorkflowRuleCode,
+                runContext.AnalysisSnapshot,
+                runContext.MarkingCandidate)).Resolution;
+
+        PublishPropagation(
+            runContext.RunCorrelationId,
+            runContext.PropagationWorkspaceContextId,
+            propagationResolution);
+
+        RewriteDecisionResolution decisionResolution = rewriteWorkflowDecisionStage.Decide(
+            RewriteWorkflowStageInputFactory.BuildDecision(
+                request,
+                propagationResolution,
+                rewriteWorkflowRulePreset)).Resolution;
+
+        RewriteWorkflowArtifacts workflowArtifacts = rewriteWorkflowArtifactAssembler.Assemble(
+            RewriteWorkflowStageInputFactory.BuildAssembly(
+                request,
+                runContext.WorkflowRuleCode,
+                runContext.RunCorrelationId,
+                runContext.WorkspaceContext,
+                propagationResolution,
+                decisionResolution));
+
+        return new RewriteWorkflowRunState(
+            request,
+            runContext.RunCorrelationId,
+            propagationResolution,
+            decisionResolution,
+            workflowArtifacts);
+    }
+
+    private async Task<RewriteWorkflowRunContext> PrepareRunContextAsync(
+        RunRewriteWorkflowRequest request,
+        CancellationToken cancellationToken)
+    {
         Guid runCorrelationId = request.RunCorrelationId != Guid.Empty
             ? request.RunCorrelationId
             : Guid.NewGuid();
@@ -88,39 +128,13 @@ internal sealed class RewriteWorkflowUseCase
         RuleCode workflowRuleCode = rewriteWorkflowRulePreset.ResolveMarkingRuleCode(
             request.RuleCode,
             ruleTarget?.RuleCode);
-        PropagationResolution propagationResolution = rewriteWorkflowPropagationStage.Propagate(
-            RewriteWorkflowStageInputFactory.BuildPropagation(
-                request,
-                workflowRuleCode,
-                analysisSnapshot,
-                markingCandidate)).Resolution;
 
-        PublishPropagation(
+        return new RewriteWorkflowRunContext(
             runCorrelationId,
-            analysisSnapshot?.WorkspaceContextId ?? request.WorkspaceContextId,
-            propagationResolution);
-
-        RewriteDecisionResolution decisionResolution = rewriteWorkflowDecisionStage.Decide(
-            RewriteWorkflowStageInputFactory.BuildDecision(
-                request,
-                propagationResolution,
-                rewriteWorkflowRulePreset)).Resolution;
-
-        RewriteWorkflowArtifacts workflowArtifacts = rewriteWorkflowArtifactAssembler.Assemble(
-            RewriteWorkflowStageInputFactory.BuildAssembly(
-                request,
-                workflowRuleCode,
-                runCorrelationId,
-                workspaceContext,
-                propagationResolution,
-                decisionResolution));
-
-        return new RewriteWorkflowRunState(
-            request,
-            runCorrelationId,
-            propagationResolution,
-            decisionResolution,
-            workflowArtifacts);
+            workspaceContext,
+            analysisSnapshot,
+            markingCandidate,
+            workflowRuleCode);
     }
 
     private async Task<AnalysisCpgSnapshot?> PublishAnalysisSnapshotAsync(
@@ -210,5 +224,15 @@ internal sealed class RewriteWorkflowUseCase
             WorkspaceContextId = workspaceContextId,
             Resolution = propagationResolution,
         });
+    }
+
+    private readonly record struct RewriteWorkflowRunContext(
+        Guid RunCorrelationId,
+        WorkspaceContext WorkspaceContext,
+        AnalysisCpgSnapshot? AnalysisSnapshot,
+        ChangeCandidate? MarkingCandidate,
+        RuleCode WorkflowRuleCode)
+    {
+        public Guid PropagationWorkspaceContextId => AnalysisSnapshot?.WorkspaceContextId ?? WorkspaceContext.Id;
     }
 }
