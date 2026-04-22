@@ -5,7 +5,8 @@
 ai-rules
 !.gitignore
 *.log
+*.binlog
+log/
 .omx
 .VSCodeCounter
 .docs\plans
-.log #这git东西被追踪了
