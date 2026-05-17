@@ -1,0 +1,93 @@
+{
+  "$schema": "./openspec/schemas/change.schema.json",
+  "lastUpdated": "2026-05-02",
+  "features": [
+    {
+      "id": "minimal-roslyn-cpg-core",
+      "title": "Build a Roslyn-native minimal CPG core under src/MinimalRoslynCpg",
+      "status": "in_progress",
+      "definition_of_done": [
+        "The repo contains a compilable src/MinimalRoslynCpg/MinimalRoslynCpg.csproj project.",
+        "The graph includes syntax, symbol, operation, TypeDecl, TypeRef, Reference, and CallSite abstractions.",
+        "The builder produces method-local CFG and intraprocedural reaching-def style DataFlow on sample inputs.",
+        "The graph includes stable method signatures and a first member-access linking abstraction.",
+        "The graph includes a first dynamic call-target expansion and minimal break/continue-aware CFG behavior.",
+        "The graph includes first switch and try/catch/finally CFG structure edges.",
+        "The graph includes first DDG-style edges for assignment, invocation, return, field, and property flows.",
+        "The graph includes stronger method identity normalization and narrower hierarchy-based dynamic call candidates.",
+        "The graph includes first dispatch-kind annotation, extension-method canonicalization, and minimal external fallback behavior.",
+        "The graph includes a finer dispatch-kind taxonomy and clearer call-target fallback ordering.",
+        "The sample coverage now includes multiple extension-method shapes, including generic receiver extension calls.",
+        "The graph now includes a first superclass fallback stage and a more stable generic instantiation key for method identity.",
+        "The graph now separates method-definition dispatch metadata from callsite dispatch metadata and indexes methods for stronger fallback lookup.",
+        "The graph now caches inheritance traversal and applies receiver-aware filtering for extension-method candidates.",
+        "The graph now ranks call targets explicitly instead of returning raw internal/external groups.",
+        "The graph now distinguishes internal/external dispatch semantics and includes sample coverage for external call paths.",
+        "The graph now includes Method and MethodParameter abstractions plus synthetic MethodEntry and MethodExit nodes.",
+        "The graph now links invocation arguments to internal target parameters and internal method exits back to call sites.",
+        "The graph now includes MethodReturn abstractions and routes internal return values back to call sites through them.",
+        "The graph now maps extension-method receivers to the first parameter abstraction and carries minimal finally-aware return CFG behavior.",
+        "The graph now threads MethodEntry through formal parameters before entering method bodies and routes explicit or implicit method completion through MethodReturn before MethodExit."
+      ],
+      "verification": [
+        "dotnet build .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj",
+        "dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj",
+        "dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj .\\src\\MinimalRoslynCpg\\samples\\analysis-sample.cs"
+      ],
+      "notes": "Current scope is a Roslyn-model-first minimal CPG rather than a direct joern schema clone. This now includes TypeDecl/TypeRef/Reference/CallSite abstractions, method-local operation-based CFG, intraprocedural reaching-def style DataFlow, method full-name plus signature normalization, a first MemberAccess plus Ref chain for field/property access inspired by joern FieldAccessLinkerPass, a first hierarchy-based dynamic call-target expansion inspired by DynamicCallLinker, minimal break/continue-aware loop CFG behavior inspired by CfgCreator, first switch plus try/catch/finally CFG structure edges, first DDG-style edges for assignment/invocation/return/property/field propagation inspired by ReachingDefProblem and DdgGenerator, stronger method identity normalization for constructors/generics/explicit-interface methods with narrower dynamic candidate filtering, first dispatch-kind annotation plus extension-method canonicalization with minimal external fallback behavior, a finer dispatch-kind taxonomy with clearer internal/external/target fallback ordering, broader extension-method sample coverage including generic receiver extension calls, a first superclass fallback stage plus a more stable generic instantiation key for method identity, a separation between method-definition dispatch metadata and callsite dispatch metadata backed by method lookup indexes, cached inheritance traversal plus receiver-aware filtering for extension-method candidates, explicit call-target ranking across internal/external/fallback candidates, explicit internal/external dispatch semantics validated with external call-path sample coverage, a first method abstraction layer with synthetic entry/exit plus minimal argument-to-parameter and exit-to-callsite flow links for internal methods, a follow-up return abstraction layer with MethodReturn nodes, receiver-aware extension parameter mapping, and minimal finally-aware return CFG behavior, plus a joern-inspired method-boundary CFG skeleton that threads MethodEntry through formal parameters and funnels completion through MethodReturn before MethodExit."
+    },
+    {
+      "id": "minimal-roslyn-cpg-next-analysis-gap",
+      "title": "Close the next highest-value analysis gaps against joern-master",
+      "status": "todo",
+      "definition_of_done": [
+        "Method identity is normalized across overload, generic, and extension-method cases with more precise instantiation keys and receiver-aware extension handling.",
+        "Call linking covers dynamic dispatch candidates across inheritance and interface hierarchies with stronger override, fallback, caching, and richer dispatch-kind behavior.",
+        "Member linking is stable for field/property access beyond the current minimal cases.",
+        "CFG covers more complete switch/try semantics beyond the current minimal structure edges and first synthetic entry/exit support.",
+        "DataFlow moves from first DDG-style edges, MethodReturn abstractions, and minimal internal call semantics toward a more realistic CFG-sensitive DDG with richer kill/gen and call semantics."
+      ],
+      "verification": [
+        "dotnet build .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj",
+        "dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj .\\src\\MinimalRoslynCpg\\samples\\analysis-sample.cs"
+      ],
+      "notes": "Reference files for this next step are joern-master/x2cpg StaticCallLinker, DynamicCaller, FieldAccessLinkerPass, and the controlflow/dataflow passes already identified in progress.md. The latest increments aligned member-family structure more closely with joern's field-access shape by making field/property receivers explicit via OpInstance and property/indexer parameters explicit via OpArgument, then tightened member owner normalization so field/property/indexer accesses prefer exact symbol owner, then exact receiver type, then inheritance-compatible declared types instead of relying on same-name matches alone. The newest follow-ups keep MemberAccess.FullName closer to the access-site receiver view for compatible conditional/member chains while preserving Ref edges to the resolved underlying symbol owner, upgrade DataFlow from plain source-order propagation to a minimal CFG-sensitive reaching-definition pass driven by explicit CFG edges, refine kill/gen with receiver-sensitive definition facts for field/property/call families instead of treating every definition as a plain symbol, add first container/part/alias-style matching on those facts inspired by joern's usage analyzer, let plain local/parameter rebinding kill dependent member-family facts that share the same receiver root, add first getter-like and setter-like property summary paths through internal accessor methods, parameters, MethodReturn nodes, and property assignment targets, expose property accesses as accessor-like callsites with CallTargets so member and call semantics start to converge, route property summary flow through those same accessor-like callsites, improve try/catch/finally terminal CFG propagation so exception-path DDG sees more realistic finally sequencing, align accessor-like property callsites with the same candidate/ranking/dispatch/fallback pipeline as ordinary calls, let those accessor callsites collect receiver-hierarchy override or implementation candidates instead of staying on a weaker exact/super-only path, also route property/indexer arguments into accessor parameter flow so indexer-like accesses participate in the same summary semantics as ordinary calls, add first explicit switch-case fallthrough propagation so CFG and CFG-sensitive DDG see more realistic case-to-case control flow, and now also propagate non-terminating try/catch bodies to the post-try successor when no finally exists while distinguishing property and indexer accessor dispatch semantics more explicitly." 
+    },
+    {
+      "id": "repo-health-check-alignment",
+      "title": "Realign repo health check scripts with the active code path",
+      "status": "done",
+      "definition_of_done": [
+        "init.ps1 no longer hard-fails on a missing NewJoern/NewJoern.csproj when MinimalRoslynCpg is the active executable project.",
+        "The root progress and feature state files describe the same active implementation track.",
+        "A fresh session can discover the real build/run entrypoint without relying on stale history."
+      ],
+      "verification": [
+        "pwsh -File .\\init.ps1"
+      ],
+      "notes": "init.ps1 now probes the active executable project in priority order and successfully runs the MinimalRoslynCpg build health check, so fresh sessions no longer fail immediately on the stale NewJoern path."
+    },
+    {
+      "id": "roslyn-deletion-prototype",
+      "title": "Validate the Roslyn-first deletion-rule redesign under src/RoslynPrototype",
+      "status": "in_progress",
+      "definition_of_done": [
+        "The repo contains a compilable src/RoslynPrototype/RoslynPrototype.csproj prototype project.",
+        "The prototype includes the minimal redesign objects RuleMetadata, RuleContext, RuleHitNode, RuleDecision, and RewriteEdit.",
+        "The prototype includes a minimal application-layer orchestration file that composes argument parsing, analyzer invocation, and result formatting.",
+        "The prototype exposes a single-rule-entry model through IDeletionRule instead of separate mark/propagation/decision interfaces.",
+        "The prototype validates an s-rooted expression rule directly on Roslyn SyntaxNode, SemanticModel, and IOperation facts.",
+        "The prototype validates an unreachable-method rule at least at the current configured-name level and rewrites whole method declarations.",
+        "The prototype can produce executable rewrite output for both the s-object sample and the unreachable-method sample.",
+        "The repo contains a runnable end-to-end test project for the prototype covering both current sample flows."
+      ],
+      "verification": [
+        "dotnet build .\\src\\RoslynPrototype\\RoslynPrototype.csproj",
+        "dotnet run --project .\\src\\RoslynPrototype\\RoslynPrototype.csproj .\\src\\RoslynPrototype\\samples\\delete-s-object-sample.cs --target-name s",
+        "dotnet run --project .\\src\\RoslynPrototype\\RoslynPrototype.csproj .\\src\\RoslynPrototype\\samples\\unreachable-method-sample.cs --unreachable-methods DeadA,DeadB",
+        "dotnet test .\\tests\\RoslynDeletionPrototype.Tests\\RoslynDeletionPrototype.Tests.csproj"
+      ],
+      "notes": "Current scope is design validation for the Roslyn-first deletion-rule redesign in 设计docs/2026-05-02-删除规则-Roslyn-first-一般重设计.md plus the marking/propagation freeze in 设计docs/2026-05-04-RoslynDeletionPrototype-标记与传播设计冻结版.md, not a production deletion engine. The prototype now keeps RuleHitNode as a pure binding object, splits direct and propagated marks into MarkRecord and PropagatedMarkRecord, exposes IRuleMarker and IRulePropagator through IDeletionRule, and lets DeletionApplicationService directly orchestrate the current five-stage flow: 分析 -> 标记 -> 传播 -> 决策 -> 改写. The analysis stage still builds RoslynCpgGraph, SyntaxTree, SemanticModel, and RuleContext from the incoming source in one place before stage execution starts. The current s-object rule still uses direct Roslyn SyntaxNode/SemanticModel/IOperation facts, and now also performs a minimal syntax-tree propagation step that can raise direct expression marks to logical binary hosts and then to immediate statement or control-structure hosts. The current decision engine no longer only escalates to structural hosts; it now supports a minimal two-layer decision structure of RuleDecisionEngine -> ISyntaxNodeDecisionBehavior[] -> IDecisionBehaviorArbiter, with the first behavior set covering logical binary reduction plus default delete fallback. LogicalAndExpression and LogicalOrExpression can now emit Replace decisions for surviving operands, while overlap and skip handling remains temporarily internal to the arbiter rather than a separate coverage policy. The unreachable-method rule has been migrated to the new two-phase rule contract, but its propagation path is still empty and its CLI sample currently has no real entry point because samples/unreachable-method-sample.cs uses MainEntry instead of Main. The prototype still uses SyntaxEditor-based rewriting, now covering delete, skip, and minimal replace actions, and the executable xUnit test project covers the s-object flow, the unreachable-method flow, the logical-and reduction flow, and the SyntaxKind allowlist guard."
+    }
+  ]
+}

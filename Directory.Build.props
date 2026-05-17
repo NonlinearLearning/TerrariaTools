@@ -1,0 +1,15 @@
+<Project>
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\bin\**;$(MSBuildProjectDirectory)\obj\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/src/'))">
+    <BaseOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\src\</BaseOutputPath>
+    <BaseIntermediateOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\src\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/tests/'))">
+    <BaseOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\test\</BaseOutputPath>
+    <BaseIntermediateOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\test\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+</Project>

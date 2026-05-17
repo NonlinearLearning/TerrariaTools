@@ -1,0 +1,5 @@
+.opencode/
+.nuget/
+.dotnet/
+.joern-master/
+Build/
