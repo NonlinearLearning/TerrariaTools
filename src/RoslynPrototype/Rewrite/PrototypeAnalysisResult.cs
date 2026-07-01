@@ -5,11 +5,35 @@ using RoslynPrototype.Decision;
 
 namespace RoslynPrototype.Rewrite;
 
+/// <summary>
+/// 封装删除原型一次完整分析与改写流程的输出结果。
+/// </summary>
 public sealed record PrototypeAnalysisResult(
+  /// <summary>
+  /// 标记阶段直接命中的种子标记。
+  /// </summary>
   IReadOnlyList<MarkRecord> SeedMarks,
+  /// <summary>
+  /// 传播阶段派生出的传播标记。
+  /// </summary>
   IReadOnlyList<PropagatedMarkRecord> PropagatedMarks,
+  /// <summary>
+  /// 决策阶段产出的最终改写决策。
+  /// </summary>
   IReadOnlyList<RuleDecision> Decisions,
+  /// <summary>
+  /// 改写阶段实际产生的文本编辑。
+  /// </summary>
   IReadOnlyList<RewriteEdit> Edits,
+  /// <summary>
+  /// 应用所有编辑后的完整源码文本。
+  /// </summary>
   string RewrittenSource,
+  /// <summary>
+  /// 面向调试和落盘的文本差异摘要。
+  /// </summary>
   string DiffText,
+  /// <summary>
+  /// 若已落盘差异文件，则保存其路径；否则为空。
+  /// </summary>
   string? DiffFilePath);

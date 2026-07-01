@@ -10,6 +10,9 @@ namespace RoslynPrototype.Rewrite;
 
 public sealed class PrototypeRewriter
 {
+  /// <summary>
+  /// 根据决策列表对语法树执行删除或替换，并产出最终源码与编辑记录。
+  /// </summary>
   public PrototypeRewriteResult Rewrite(
     SyntaxNode root,
     SemanticModel semanticModel,
@@ -36,6 +39,7 @@ public sealed class PrototypeRewriter
         continue;
       }
 
+      // 表达式删除当前不直接挖空，而是降级成 default(...) 替换，避免生成明显非法的源码。
       if (decision.FinalNode is ExpressionSyntax expression) {
         var replacement = CreateReplacementExpression(expression, semanticModel);
         editor.ReplaceNode(expression, replacement);
@@ -52,6 +56,9 @@ public sealed class PrototypeRewriter
     return new PrototypeRewriteResult(rewrittenSource, edits, BuildDiffText(edits));
   }
 
+  /// <summary>
+  /// 为表达式删除场景构造一个类型兼容的占位替换表达式。
+  /// </summary>
   private static ExpressionSyntax CreateReplacementExpression(
     ExpressionSyntax expression,
     SemanticModel semanticModel)
@@ -65,6 +72,9 @@ public sealed class PrototypeRewriter
     return SyntaxFactory.DefaultExpression(SyntaxFactory.ParseTypeName(targetType.ToDisplayString()));
   }
 
+  /// <summary>
+  /// 为替换型改写生成一条可追踪的编辑记录。
+  /// </summary>
   private static RewriteEdit CreateEdit(SyntaxNode originalNode, SyntaxNode replacementNode)
   {
     return new RewriteEdit(
@@ -74,6 +84,9 @@ public sealed class PrototypeRewriter
       replacementNode.NormalizeWhitespace().ToFullString());
   }
 
+  /// <summary>
+  /// 为删除型改写生成一条可追踪的编辑记录。
+  /// </summary>
   private static RewriteEdit CreateDeleteEdit(SyntaxNode originalNode)
   {
     return new RewriteEdit(
@@ -83,6 +96,9 @@ public sealed class PrototypeRewriter
       string.Empty);
   }
 
+  /// <summary>
+  /// 把编辑记录格式化成便于查看和落盘的文本差异摘要。
+  /// </summary>
   public string BuildDiffText(IReadOnlyList<RewriteEdit> edits)
   {
     if (edits.Count == 0) {

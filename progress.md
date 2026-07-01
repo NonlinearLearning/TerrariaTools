@@ -76,9 +76,23 @@
   - 一个 `s` 对象端到端流程测试
   - 一个不可达函数端到端流程测试
   - 一个 `LogicalAndExpression` 规约到幸存操作数的端到端流程测试
+  - 一组从 `TerrariaTools` MRU / upward propagation / 条件重写测试提炼出的复杂决策样例：
+    - 链式 `&&` 只移除目标操作数，保留其余幸存条件
+    - 链式 `||` 只移除目标操作数，保留其余幸存条件
+    - 父级控制流宿主删除时折叠内部子决策，避免同一子树重复改写
   - 一个违规规则命中未声明 `SyntaxKind` 时抛异常的约束测试
   - 当前测试通过 `DeletionApplicationService` 校验 `seed marks`、`propagated marks`、`decisions`、`edits`、`RewrittenSource` 和规则节点 kind 白名单约束
+  - 当前新增 `TestCodeSet` 反射覆盖守门测试，会枚举 `tests/RoslynDeletionPrototype.Tests/TestCodeSet` 下所有 `public const string` 源码样例，并逐个走 `RoslynCpgBuilder.BuildFromSource(...)` 与 `DeletionApplicationService.Analyze(...)`
+- 当前决策修复：
+  - `DeleteSObjectExpressionRule` 的逻辑二元规约已从“保留另一侧”改为同类逻辑链扁平化后只移除命中的目标操作数，避免 `(ready && s.IsReady) && enabled` 被误写成 `enabled`
+  - `DeletionApplicationService.FilterNestedDeleteDecisions` 现在会过滤被 `Replace` 决策覆盖的 `Delete` 决策，避免 `SyntaxEditor` 对同一父子子树重复编辑
 - 本次已把删除原型里的 `RuleMatch` 命名统一改为 `RuleHitNode`，代码、测试和仓库级状态文件已同步。
+- 本次已把 `src/Rules/Implementations` 下两条规则的 `Mark` / `Propagate` / `Propose` 接口继续对齐到 `src/MinimalRoslynCpg/Analysis`：
+  - 新增 `RuleAnalysisHelpers`，规则侧统一通过 `BinaryExpressionAnalyzer`、`CallAndAccessStructureAnalyzer`、`LoopStructureAnalyzer`、`DefinitionStructureAnalyzer` 读取结构信息
+  - `DeleteSObjectExpressionRule.Mark` 不再直接裸扫全部表达式后只靠 kind 过滤，而是先经过 Analysis helper 枚举可分析候选
+  - `DeleteSObjectExpressionRule.Propagate` 的逻辑宿主和结构宿主提升改由 Analysis helper 统一判断
+  - `DeleteSObjectExpressionRule.Propose` 和 `DeleteUnreachableMethodRule.Propose` 复用统一 delete decision 构造
+  - `DeleteUnreachableMethodRule.Mark` 的方法候选枚举改走 `DefinitionStructureAnalyzer`
 - 当前明确还没做：
   - 基于真实调用图的不可达性求解
   - 基于真实 CPG fact 的 rule matching
@@ -325,12 +339,27 @@
 - 已继续补 property-aware candidate ranking：
   - 当调用候选落在 property/indexer accessor 上时，当前排序会额外考虑 associated property 的名称、签名和 receiver 接近度
   - 这让 accessor-like callsites 在 override/indexer 场景下更容易把最合理的 property accessor 顶到前面
+- 已新增首个局部 CPG 视图能力：
+  - CLI 现在支持 `--view local`
+  - 当前可按 `--anchor-id`、`--anchor-full-name` 或 `--anchor-name` 选择唯一锚点
+  - 当前会按 hop 数做 breadth-first 子图扩展
+  - 当前支持 `--direction both|incoming|outgoing`
+  - 当前支持 `--edge-kinds` 限制参与扩展的边种类
+  - 当前支持 `--json-out` 导出局部子图 JSON 载荷
+- 已把删除原型里的 `DecisionFragment` / `DecisionRelation` / `DecisionUnit` 收拢到 CPG 抽象表示：
+  - `DecisionFragment` 现在不再是独立 record 类型，改为 `RoslynCpgNodeKind.DecisionFragment`
+  - `DecisionRelation` 现在不再是独立 record 类型，改为 `RoslynCpgEdgeKind.DecisionRelation`
+  - `DecisionUnit` 现在以 `RoslynCpgNodeKind.DecisionUnit` 作为单元锚点，并显式持有 fragment 节点、relation 边和最小 syntax binding
+  - 删除规则当前通过 `DecisionCpgFactory` 产出决策层 CPG 抽象，而不是再维护一套平行的 fragment/relation record
 - 本轮没有回退或修改用户未要求的其他路径。
 
 ## Latest Verification
 
 - `dotnet build .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj`：通过，`0` warning，`0` error
+- `dotnet build .\src\RoslynPrototype\RoslynPrototype.csproj`：通过，`0` warning，`0` error
 - `pwsh -File .\init.ps1`：通过，已自动定位 `src\MinimalRoslynCpg\MinimalRoslynCpg.csproj`
+- `dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --filter DecisionComplexTests --no-restore`：通过，`3/3`
+- `dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-restore --no-build`：通过，`55/55`
 - 默认样例运行结果：
   - `Nodes: 87`
   - `Edges: 161`
@@ -354,6 +383,7 @@
   - `OpCatch: 1`
   - `OpAssignment: 9`
   - `OpPropertyReference: 9`
+- 局部视图 CLI 还未写入这里的新验证结果，待本轮 build/run 后补齐
 
 ## Known Blockers
 
@@ -364,11 +394,17 @@
 - 当前 member linking 只覆盖 Roslyn 已解析出的 field/property access，尚未扩到更完整的 joern-style field access family。
 - 当前 `switch` 和 `try/catch/finally` 已补最小 finally-aware return 路径，但还没有 joern `CfgCreator` 那种更完整的 fringe/jump/case/default 细节和异常传播建模。
 - 当前 `DataFlow` 已从最小 local/parameter use-def 扩到 assignment/call/return/property/field 传播，并补了 argument-to-parameter / method-return-to-callsite 的最小源码内 call semantics；方法边界骨架也开始按 `joern` 的 `METHOD/PARAM/METHOD_RETURN` 组织，但还不是完整 DDG，也还没有 CFG-sensitive 求解、kill/gen 精化和更完整 interprocedural 语义。
+- 当前局部视图还只是节点锚点 + hop 扩展，不带更高层 query DSL、稳定序列化 schema 或按 span 自动寻锚。
+- 当前删除原型的决策层虽然已改用 CPG 抽象表示，但 rewrite 最终仍通过 syntax binding 回落到 Roslyn `SyntaxNode` 执行，还没有把决策层完整并入统一图查询与统一导出面。
 
 ## Next Safe Tasks
 
 - 继续补方法身份归一：
   - extension-receiver 特化
+- 在局部视图之上继续补：
+  - 按 span 自动寻锚
+  - 更细的输出格式
+  - 面向 method / callsite / member access 的预置 view
 - 基于类型层和继承链补动态调用候选，向 `DynamicCallLinker` 靠近。
 - 继续把动态调用候选从“最小可用”推进到更接近 `DynamicCallLinker`：
   - 更细的 external fallback

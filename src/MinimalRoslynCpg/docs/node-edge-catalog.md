@@ -88,6 +88,30 @@ This minimal graph intentionally does not model:
 
 It is a Roslyn-native minimal graph, not a full joern schema clone.
 
+## Local View
+
+The CLI now supports a first local CPG view expanded from a single anchor node.
+
+Example:
+
+```powershell
+dotnet run --project .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj `
+  .\src\MinimalRoslynCpg\samples\analysis-sample.cs `
+  --view local `
+  --anchor-full-name 'Demo.App.StepNormalizer.Normalize:int(int)' `
+  --hops 1 `
+  --direction both
+```
+
+Current local-view behavior:
+
+- exactly one anchor selector is required: `--anchor-id`, `--anchor-full-name`, or `--anchor-name`
+- traversal is breadth-first by hop count
+- traversal can be limited to `incoming`, `outgoing`, or `both`
+- traversal can be filtered by `--edge-kinds`
+- the extracted view includes only nodes and edges that remain inside the visited subgraph
+- `--json-out` writes the local-view payload as a small JSON artifact for downstream inspection
+
 ## Current Analysis Guarantees
 
 - CFG is now method-local and operation-oriented for blocks, conditionals, loops, returns, sequential statements, synthetic method entry/exit, switch-case fallthrough including empty-case forwarding, and a first terminal propagation for try/catch paths with or without finally blocks, including empty-try to finally forwarding.

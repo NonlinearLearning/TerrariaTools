@@ -6,6 +6,16 @@
 dotnet run --project .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj .\src\MinimalRoslynCpg\samples\analysis-sample.cs
 ```
 
+## Run a local CPG view
+
+```powershell
+dotnet run --project .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj `
+  .\src\MinimalRoslynCpg\samples\analysis-sample.cs `
+  --view local `
+  --anchor-name Normalize `
+  --hops 1
+```
+
 The sample includes:
 
 - field access

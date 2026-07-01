@@ -1,0 +1,432 @@
+using System.Text.Json;
+using MinimalRoslynCpg.Builder;
+using MinimalRoslynCpg.Contracts;
+using MinimalRoslynCpg.Model;
+
+namespace MinimalRoslynCpg.Cli;
+
+public sealed class MinimalRoslynCpgCli
+{
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+    };
+
+    public int Run(string[] args)
+    {
+        var options = Parse(args);
+        if (options.ShowHelp)
+        {
+            WriteHelp();
+            return 0;
+        }
+
+        var source = options.InputPath is not null && File.Exists(options.InputPath)
+          ? File.ReadAllText(options.InputPath)
+          : DefaultSource;
+        var filePath = options.InputPath ?? "demo.cs";
+        var graph = new RoslynCpgBuilder().BuildFromSource(source, filePath);
+
+        if (options.LocalView is null)
+        {
+            WriteGraphStats(graph);
+            return 0;
+        }
+
+        var anchorMatches = ResolveAnchorMatches(graph, options.LocalView.AnchorSelector);
+        if (anchorMatches.Count == 0)
+        {
+            Console.Error.WriteLine($"No node matched {DescribeAnchor(options.LocalView.AnchorSelector)}.");
+            return 1;
+        }
+
+        if (anchorMatches.Count > 1)
+        {
+            Console.Error.WriteLine($"Anchor {DescribeAnchor(options.LocalView.AnchorSelector)} matched multiple nodes:");
+            foreach (var node in anchorMatches.OrderBy(node => node.Id, StringComparer.Ordinal))
+            {
+                Console.Error.WriteLine($"- {FormatNode(node)}");
+            }
+
+            return 1;
+        }
+
+        var localView = graph.ExtractLocalView(
+          anchorMatches[0].Id,
+          options.LocalView.Hops,
+          options.LocalView.Direction,
+          options.LocalView.EdgeKinds);
+        if (options.JsonOutPath is not null)
+        {
+            WriteLocalViewJson(localView, options.JsonOutPath);
+        }
+
+        WriteLocalViewSummary(localView, options.LocalView.Direction, options.LocalView.EdgeKinds);
+        return 0;
+    }
+
+    private static CliOptions Parse(IReadOnlyList<string> args)
+    {
+        string? inputPath = null;
+        string? view = null;
+        string? anchorId = null;
+        string? anchorFullName = null;
+        string? anchorName = null;
+        string? jsonOutPath = null;
+        var hops = 1;
+        var direction = RoslynCpgViewDirection.Both;
+        HashSet<RoslynCpgEdgeKind>? edgeKinds = null;
+        var showHelp = false;
+
+        for (var index = 0; index < args.Count; index += 1)
+        {
+            var arg = args[index];
+            switch (arg)
+            {
+                case "--help":
+                case "-h":
+                    showHelp = true;
+                    break;
+                case "--view":
+                    view = ReadRequiredValue(args, ref index, "--view");
+                    break;
+                case "--anchor-id":
+                    anchorId = ReadRequiredValue(args, ref index, "--anchor-id");
+                    break;
+                case "--anchor-full-name":
+                    anchorFullName = ReadRequiredValue(args, ref index, "--anchor-full-name");
+                    break;
+                case "--anchor-name":
+                    anchorName = ReadRequiredValue(args, ref index, "--anchor-name");
+                    break;
+                case "--hops":
+                    hops = ParsePositiveInt(ReadRequiredValue(args, ref index, "--hops"), "--hops");
+                    break;
+                case "--direction":
+                    direction = ParseDirection(ReadRequiredValue(args, ref index, "--direction"));
+                    break;
+                case "--edge-kinds":
+                    edgeKinds = ParseEdgeKinds(ReadRequiredValue(args, ref index, "--edge-kinds"));
+                    break;
+                case "--json-out":
+                    jsonOutPath = ReadRequiredValue(args, ref index, "--json-out");
+                    break;
+                default:
+                    if (arg.StartsWith("--", StringComparison.Ordinal))
+                    {
+                        throw new ArgumentException($"Unknown option: {arg}");
+                    }
+
+                    if (inputPath is not null)
+                    {
+                        throw new ArgumentException($"Unexpected positional argument: {arg}");
+                    }
+
+                    inputPath = arg;
+                    break;
+            }
+        }
+
+        LocalViewOptions? localView = null;
+        if (view is not null)
+        {
+            if (!string.Equals(view, "local", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"Unsupported view: {view}");
+            }
+
+            var selector = BuildAnchorSelector(anchorId, anchorFullName, anchorName);
+            localView = new LocalViewOptions(selector, hops, direction, edgeKinds);
+        }
+        else if (anchorId is not null || anchorFullName is not null || anchorName is not null)
+        {
+            throw new ArgumentException("Anchor options require --view local.");
+        }
+
+        if (jsonOutPath is not null && localView is null)
+        {
+            throw new ArgumentException("--json-out currently requires --view local.");
+        }
+
+        return new CliOptions(inputPath, localView, jsonOutPath, showHelp);
+    }
+
+    private static string ReadRequiredValue(IReadOnlyList<string> args, ref int index, string optionName)
+    {
+        var valueIndex = index + 1;
+        if (valueIndex >= args.Count)
+        {
+            throw new ArgumentException($"Missing value for {optionName}.");
+        }
+
+        index = valueIndex;
+        return args[valueIndex];
+    }
+
+    private static int ParsePositiveInt(string value, string optionName)
+    {
+        if (!int.TryParse(value, out var parsed) || parsed < 0)
+        {
+            throw new ArgumentException($"{optionName} must be a non-negative integer.");
+        }
+
+        return parsed;
+    }
+
+    private static RoslynCpgViewDirection ParseDirection(string value)
+    {
+        return value.ToLowerInvariant() switch
+        {
+            "both" => RoslynCpgViewDirection.Both,
+            "in" or "incoming" => RoslynCpgViewDirection.Incoming,
+            "out" or "outgoing" => RoslynCpgViewDirection.Outgoing,
+            _ => throw new ArgumentException($"Unsupported direction: {value}"),
+        };
+    }
+
+    private static HashSet<RoslynCpgEdgeKind> ParseEdgeKinds(string value)
+    {
+        var kinds = new HashSet<RoslynCpgEdgeKind>();
+        foreach (var rawKind in value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!Enum.TryParse<RoslynCpgEdgeKind>(rawKind, ignoreCase: true, out var edgeKind))
+            {
+                throw new ArgumentException($"Unsupported edge kind: {rawKind}");
+            }
+
+            kinds.Add(edgeKind);
+        }
+
+        if (kinds.Count == 0)
+        {
+            throw new ArgumentException("--edge-kinds must include at least one value.");
+        }
+
+        return kinds;
+    }
+
+    private static AnchorSelector BuildAnchorSelector(
+      string? anchorId,
+      string? anchorFullName,
+      string? anchorName)
+    {
+        var providedCount = 0;
+        providedCount += anchorId is null ? 0 : 1;
+        providedCount += anchorFullName is null ? 0 : 1;
+        providedCount += anchorName is null ? 0 : 1;
+        if (providedCount != 1)
+        {
+            throw new ArgumentException(
+              "Exactly one anchor selector is required: --anchor-id, --anchor-full-name, or --anchor-name.");
+        }
+
+        if (anchorId is not null)
+        {
+            return new AnchorSelector(AnchorSelectorKind.Id, anchorId);
+        }
+
+        if (anchorFullName is not null)
+        {
+            return new AnchorSelector(AnchorSelectorKind.FullName, anchorFullName);
+        }
+
+        return new AnchorSelector(AnchorSelectorKind.Name, anchorName!);
+    }
+
+    private static IReadOnlyList<RoslynCpgNode> ResolveAnchorMatches(
+      RoslynCpgGraph graph,
+      AnchorSelector selector)
+    {
+        return selector.Kind switch
+        {
+            AnchorSelectorKind.Id => graph.Nodes
+              .Where(node => string.Equals(node.Id, selector.Value, StringComparison.Ordinal))
+              .ToList(),
+            AnchorSelectorKind.FullName => graph.Nodes
+              .Where(node => string.Equals(node.FullName, selector.Value, StringComparison.Ordinal))
+              .ToList(),
+            AnchorSelectorKind.Name => graph.Nodes
+              .Where(node => string.Equals(node.Name, selector.Value, StringComparison.Ordinal))
+              .ToList(),
+            _ => throw new ArgumentOutOfRangeException(nameof(selector)),
+        };
+    }
+
+    private static string DescribeAnchor(AnchorSelector selector)
+    {
+        return selector.Kind switch
+        {
+            AnchorSelectorKind.Id => $"id '{selector.Value}'",
+            AnchorSelectorKind.FullName => $"fullName '{selector.Value}'",
+            AnchorSelectorKind.Name => $"name '{selector.Value}'",
+            _ => selector.Value,
+        };
+    }
+
+    private static void WriteGraphStats(RoslynCpgGraph graph)
+    {
+        Console.WriteLine($"Nodes: {graph.Nodes.Count}");
+        Console.WriteLine($"Edges: {graph.Edges.Count}");
+
+        foreach (var kind in Enum.GetValues<RoslynCpgNodeKind>())
+        {
+            var count = graph.Nodes.Count(node => node.Kind == kind);
+            if (count > 0)
+            {
+                Console.WriteLine($"{kind}: {count}");
+            }
+        }
+    }
+
+    private static void WriteLocalViewJson(RoslynCpgLocalView localView, string outputPath)
+    {
+        var directoryPath = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrEmpty(directoryPath))
+        {
+            Directory.CreateDirectory(directoryPath);
+        }
+
+        var payload = new
+        {
+            Anchor = new
+            {
+                localView.Anchor.Id,
+                Kind = localView.Anchor.Kind.ToString(),
+                localView.Anchor.DisplayKind,
+                localView.Anchor.Name,
+                localView.Anchor.FullName,
+                localView.Anchor.FilePath,
+                localView.Anchor.SpanStart,
+                localView.Anchor.SpanEnd,
+            },
+            localView.Hops,
+            Nodes = localView.Nodes
+              .OrderBy(node => node.Id, StringComparer.Ordinal)
+              .Select(node => new
+              {
+                  node.Id,
+                  Kind = node.Kind.ToString(),
+                  node.DisplayKind,
+                  node.Name,
+                  node.FullName,
+                  node.Signature,
+                  node.DispatchKind,
+                  node.TypeFullName,
+                  node.FilePath,
+                  node.SpanStart,
+                  node.SpanEnd,
+                  node.IsImplicit,
+              }),
+            Edges = localView.Edges
+              .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
+              .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
+              .ThenBy(edge => edge.TargetId, StringComparer.Ordinal)
+              .Select(edge => new
+              {
+                  edge.SourceId,
+                  Kind = edge.Kind.ToString(),
+                  edge.TargetId,
+              }),
+        };
+
+        File.WriteAllText(outputPath, JsonSerializer.Serialize(payload, JsonOptions));
+        Console.WriteLine($"Wrote local view JSON: {outputPath}");
+    }
+
+    private static void WriteLocalViewSummary(
+      RoslynCpgLocalView localView,
+      RoslynCpgViewDirection direction,
+      IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds)
+    {
+        Console.WriteLine($"Anchor: {FormatNode(localView.Anchor)}");
+        Console.WriteLine($"Hops: {localView.Hops}");
+        Console.WriteLine($"Direction: {direction}");
+        Console.WriteLine($"EdgeKinds: {FormatEdgeKinds(edgeKinds)}");
+        Console.WriteLine($"LocalNodes: {localView.Nodes.Count}");
+        Console.WriteLine($"LocalEdges: {localView.Edges.Count}");
+
+        foreach (var kindGroup in localView.Nodes
+                   .GroupBy(node => node.Kind)
+                   .OrderBy(group => group.Key.ToString(), StringComparer.Ordinal))
+        {
+            Console.WriteLine($"{kindGroup.Key}: {kindGroup.Count()}");
+        }
+
+        Console.WriteLine("Nodes");
+        foreach (var node in localView.Nodes.OrderBy(node => node.Id, StringComparer.Ordinal))
+        {
+            Console.WriteLine($"- {FormatNode(node)}");
+        }
+
+        Console.WriteLine("Edges");
+        foreach (var edge in localView.Edges
+                   .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
+                   .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
+                   .ThenBy(edge => edge.TargetId, StringComparer.Ordinal))
+        {
+            Console.WriteLine($"- {edge.SourceId} -[{edge.Kind}]-> {edge.TargetId}");
+        }
+    }
+
+    private static string FormatNode(RoslynCpgNode node)
+    {
+        var identity = node.FullName ?? node.Name ?? node.Text ?? node.DisplayKind;
+        return $"{node.Id} | {node.Kind} | {identity}";
+    }
+
+    private static string FormatEdgeKinds(IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds)
+    {
+        return edgeKinds is null || edgeKinds.Count == 0
+          ? "all"
+          : string.Join(",", edgeKinds.OrderBy(kind => kind.ToString(), StringComparer.Ordinal));
+    }
+
+    private static void WriteHelp()
+    {
+        Console.WriteLine("MinimalRoslynCpg");
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path]");
+        Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path] --view local --anchor-id <id> [options]");
+        Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path] --view local --anchor-full-name <fullName> [options]");
+        Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path] --view local --anchor-name <name> [options]");
+        Console.WriteLine("Options:");
+        Console.WriteLine("  --hops <n>                 Expand local view by n hops. Default: 1.");
+        Console.WriteLine("  --direction <both|in|out> Limit traversal direction. Default: both.");
+        Console.WriteLine("  --edge-kinds <csv>         Limit traversal to selected edge kinds.");
+        Console.WriteLine("  --json-out <path>          Write local view payload to JSON.");
+        Console.WriteLine("  --help                     Show this help.");
+    }
+
+    private const string DefaultSource =
+      """
+      namespace Demo;
+
+      public sealed class Sample {
+        public int Add(int left, int right) {
+          var sum = left + right;
+          return sum;
+        }
+      }
+      """;
+
+    private sealed record CliOptions(
+      string? InputPath,
+      LocalViewOptions? LocalView,
+      string? JsonOutPath,
+      bool ShowHelp);
+
+    private sealed record LocalViewOptions(
+      AnchorSelector AnchorSelector,
+      int Hops,
+      RoslynCpgViewDirection Direction,
+      IReadOnlyCollection<RoslynCpgEdgeKind>? EdgeKinds);
+
+    private sealed record AnchorSelector(AnchorSelectorKind Kind, string Value);
+
+    private enum AnchorSelectorKind
+    {
+        Id,
+        FullName,
+        Name,
+    }
+}

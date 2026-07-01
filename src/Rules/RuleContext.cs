@@ -1,24 +1,38 @@
 using Microsoft.CodeAnalysis;
+using MinimalRoslynCpg.Analysis;
 using MinimalRoslynCpg.Model;
 
 namespace Rules;
 
+/// <summary>
+/// 规则执行时共享的最小上下文。
+/// </summary>
 public sealed class RuleContext
 {
-  public RoslynCpgGraph Graph { get; }
-  public SemanticModel SemanticModel { get; }
-  public SyntaxNode Root { get; }
+  public CpgAnalysisContext AnalysisContext { get; }
+
+  /// <summary>
+  /// 与当前源码对应的最小 CPG 图。
+  /// </summary>
+  public RoslynCpgGraph Graph => AnalysisContext.Graph;
+
+  /// <summary>
+  /// 当前源码的 Roslyn 语义模型。
+  /// </summary>
+  public SemanticModel SemanticModel => AnalysisContext.SemanticModel;
+
+  /// <summary>
+  /// 当前分析源码的语法树根节点。
+  /// </summary>
+  public SyntaxNode Root => AnalysisContext.CompilationRoot;
+
   public IReadOnlyDictionary<string, string> Options { get; }
 
   public RuleContext(
-    RoslynCpgGraph graph,
-    SemanticModel semanticModel,
-    SyntaxNode root,
+    CpgAnalysisContext analysisContext,
     IReadOnlyDictionary<string, string> options)
   {
-    Graph = graph;
-    SemanticModel = semanticModel;
-    Root = root;
+    AnalysisContext = analysisContext;
     Options = options;
   }
 

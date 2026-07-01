@@ -6,13 +6,17 @@
 src/MinimalRoslynCpg/
   MinimalRoslynCpg.csproj
   Program.cs
+  Cli/
+    MinimalRoslynCpgCli.cs
   Contracts/
     RoslynCpgNodeKind.cs
     RoslynCpgEdgeKind.cs
+    RoslynCpgViewDirection.cs
   Model/
     RoslynCpgNode.cs
     RoslynCpgEdge.cs
     RoslynCpgGraph.cs
+    RoslynCpgLocalView.cs
   Builder/
     RoslynCpgBuilder.cs
   docs/
@@ -22,11 +26,17 @@ src/MinimalRoslynCpg/
 
 ## First Batch Classes
 
+### `Cli/MinimalRoslynCpgCli.cs`
+Thin CLI surface that keeps default graph stats output and adds node-anchor local-view extraction.
+
 ### `Contracts/RoslynCpgNodeKind.cs`
 Defines the minimal Roslyn-native node taxonomy.
 
 ### `Contracts/RoslynCpgEdgeKind.cs`
 Defines syntax, semantic, operation, and minimal analysis edges.
+
+### `Contracts/RoslynCpgViewDirection.cs`
+Defines local-view traversal direction for node-anchor expansion.
 
 ### `Model/RoslynCpgNode.cs`
 Single immutable node record for all graph layers.
@@ -35,7 +45,10 @@ Single immutable node record for all graph layers.
 Single immutable edge record.
 
 ### `Model/RoslynCpgGraph.cs`
-Minimal graph storage with deduplicated nodes and edges.
+Minimal graph storage with deduplicated nodes and edges, plus node-anchor local-view extraction.
+
+### `Model/RoslynCpgLocalView.cs`
+Immutable result payload for a local node-anchor subgraph view.
 
 ### `Builder/RoslynCpgBuilder.cs`
 Main builder that:
@@ -50,7 +63,7 @@ Main builder that:
 8. emits intraprocedural local/parameter reaching-definition style data flow
 
 ### `Program.cs`
-Tiny executable entrypoint that builds a graph from a file path or an inline demo source and prints node counts.
+Tiny executable entrypoint that delegates to the CLI surface.
 
 ## Deliberate Omissions
 

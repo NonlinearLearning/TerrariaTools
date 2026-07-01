@@ -3,3 +3,17 @@
 .dotnet/
 joern-master/
 Build/
+设计问题报告/
+.editorconfig
+.vscode
+tmp
+设计docs
+.sisyphus
+.agents
+.githooks
+init.ps1
+progress.md
+模板md
+忽略
+约束
+feature_list.json
