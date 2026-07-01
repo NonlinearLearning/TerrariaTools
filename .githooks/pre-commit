@@ -1,8 +1,0 @@
-#!/usr/bin/env pwsh
-$ErrorActionPreference = "Stop"
-
-$hookPath = $MyInvocation.MyCommand.Path
-$hookDir = Split-Path -Parent $hookPath
-$repoRoot = Split-Path -Parent $hookDir
-
-pwsh -File (Join-Path $repoRoot "scripts/check-harness-consistency.ps1")
