@@ -5,6 +5,9 @@ using MinimalRoslynCpg.Model;
 
 namespace MinimalRoslynCpg.Cli;
 
+/// <summary>
+/// 提供最小 Roslyn CPG 的命令行入口与局部视图查询能力。
+/// </summary>
 public sealed class MinimalRoslynCpgCli
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -12,6 +15,9 @@ public sealed class MinimalRoslynCpgCli
         WriteIndented = true,
     };
 
+    /// <summary>
+    /// 解析参数、构图，并输出图统计或局部视图。
+    /// </summary>
     public int Run(string[] args)
     {
         var options = Parse(args);
@@ -25,6 +31,7 @@ public sealed class MinimalRoslynCpgCli
           ? File.ReadAllText(options.InputPath)
           : DefaultSource;
         var filePath = options.InputPath ?? "demo.cs";
+        // CLI 自身不持有分析逻辑，只负责编排构图与输出。
         var graph = new RoslynCpgBuilder().BuildFromSource(source, filePath);
 
         if (options.LocalView is null)
@@ -65,6 +72,9 @@ public sealed class MinimalRoslynCpgCli
         return 0;
     }
 
+    /// <summary>
+    /// 将原始命令行参数解析成一个已校验的选项对象。
+    /// </summary>
     private static CliOptions Parse(IReadOnlyList<string> args)
     {
         string? inputPath = null;
@@ -205,6 +215,9 @@ public sealed class MinimalRoslynCpgCli
         return kinds;
     }
 
+    /// <summary>
+    /// 解析唯一有效的锚点选择器，并拒绝歧义输入。
+    /// </summary>
     private static AnchorSelector BuildAnchorSelector(
       string? anchorId,
       string? anchorFullName,
@@ -233,6 +246,9 @@ public sealed class MinimalRoslynCpgCli
         return new AnchorSelector(AnchorSelectorKind.Name, anchorName!);
     }
 
+    /// <summary>
+    /// 按锚点模式在图中查找匹配节点。
+    /// </summary>
     private static IReadOnlyList<RoslynCpgNode> ResolveAnchorMatches(
       RoslynCpgGraph graph,
       AnchorSelector selector)
@@ -381,6 +397,9 @@ public sealed class MinimalRoslynCpgCli
           : string.Join(",", edgeKinds.OrderBy(kind => kind.ToString(), StringComparer.Ordinal));
     }
 
+    /// <summary>
+    /// 输出当前支持的命令行契约。
+    /// </summary>
     private static void WriteHelp()
     {
         Console.WriteLine("MinimalRoslynCpg");

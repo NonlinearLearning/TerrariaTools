@@ -16,7 +16,10 @@ public sealed class MarkingEngine
     /// <param name="root">待分析源码的语法树根节点。</param>
     /// <param name="rules">参与当前分析的删除规则集合。</param>
     /// <returns>去重后的种子标记集合。</returns>
-    public IReadOnlyList<MarkRecord> Run(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinition> rules)
+    public IReadOnlyList<MarkRecord> Run(
+      RuleContext context,
+      SyntaxNode root,
+      IReadOnlyList<RuleDefinitionMark> rules)
     {
         var seedMarks = new List<MarkRecord>();
 
@@ -25,20 +28,20 @@ public sealed class MarkingEngine
             foreach (var mark in rule.Mark(context, root))
             {
                 ValidateMarkNode(rule, mark.SyntaxNode);
-                seedMarks.Add(BindMarkRecord(context, mark));
+                seedMarks.Add(BindMarkRecord(context, mark, rule.GroupKey));
             }
         }
 
         // 同一规则可能通过多条路径命中同一个语法节点，这里按规则和语法位置去重。
         return seedMarks
-        .DistinctBy(mark => (mark.RuleId, mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length))
+        .DistinctBy(mark => (GetGroupKey(mark), mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length))
         .ToList();
     }
 
     /// <summary>
     /// 校验标记阶段产出的命中节点是否落在规则声明允许的语法种类范围内。
     /// </summary>
-    internal static void ValidateMarkNode(RuleDefinition rule, SyntaxNode syntaxNode)
+    internal static void ValidateMarkNode(RuleDefinitionMark rule, SyntaxNode syntaxNode)
     {
         var nodeKind = (SyntaxKind)syntaxNode.RawKind;
         if (rule.AllowedMarkNodeKinds.Contains(nodeKind))
@@ -54,7 +57,7 @@ public sealed class MarkingEngine
     /// <summary>
     /// 校验传播阶段产出的命中节点是否落在规则声明允许的语法种类范围内。
     /// </summary>
-    internal static void ValidatePropagateNode(RuleDefinition rule, SyntaxNode syntaxNode)
+    internal static void ValidatePropagateNode(RuleDefinitionPropagate rule, SyntaxNode syntaxNode)
     {
         var nodeKind = (SyntaxKind)syntaxNode.RawKind;
         if (rule.AllowedPropagateNodeKinds.Contains(nodeKind))
@@ -70,7 +73,10 @@ public sealed class MarkingEngine
     /// <summary>
     /// 为命中记录补齐缺失的语法注解与主图节点绑定。
     /// </summary>
-    internal static MarkRecord BindMarkRecord(RuleContext context, MarkRecord candidate)
+    internal static MarkRecord BindMarkRecord(
+      RuleContext context,
+      MarkRecord candidate,
+      string? groupKey = null)
     {
         var annotation = candidate.Annotation ?? new SyntaxAnnotation("RuleHitNode", Guid.NewGuid().ToString("N"));
         var primaryGraphNode = candidate.PrimaryGraphNode ?? ResolvePrimaryGraphNode(context.Graph, candidate.SyntaxNode);
@@ -80,19 +86,41 @@ public sealed class MarkingEngine
               $"Could not bind syntax node '{candidate.SyntaxNode.Kind()}' to a graph node.");
         }
 
-        return candidate with { Annotation = annotation, PrimaryGraphNode = primaryGraphNode };
+        return candidate with
+        {
+            Annotation = annotation,
+            PrimaryGraphNode = primaryGraphNode,
+            GroupKey = candidate.GroupKey ?? groupKey
+        };
     }
 
     /// <summary>
     /// 为传播记录中的命中标记和源标记分别补齐绑定信息。
     /// </summary>
-    internal static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate)
+    internal static PropagatedMarkRecord BindPropagatedMarkRecord(
+      RuleContext context,
+      PropagatedMarkRecord candidate,
+      string? groupKey = null)
     {
         return candidate with
         {
-            Mark = BindMarkRecord(context, candidate.Mark),
-            SourceMark = BindMarkRecord(context, candidate.SourceMark)
+            Mark = BindMarkRecord(context, candidate.Mark, groupKey),
+            SourceMark = BindMarkRecord(context, candidate.SourceMark, groupKey),
+            GroupKey = candidate.GroupKey ?? groupKey
         };
+    }
+
+    internal static string GetGroupKey(MarkRecord mark)
+    {
+        return mark.GroupKey ?? mark.RuleId;
+    }
+
+    internal static string GetGroupKey(PropagatedMarkRecord propagatedMark)
+    {
+        return propagatedMark.GroupKey ??
+          propagatedMark.Mark.GroupKey ??
+          propagatedMark.SourceMark.GroupKey ??
+          propagatedMark.RuleId;
     }
 
     /// <summary>

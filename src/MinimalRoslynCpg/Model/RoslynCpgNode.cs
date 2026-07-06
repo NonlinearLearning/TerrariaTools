@@ -2,6 +2,9 @@ using MinimalRoslynCpg.Contracts;
 
 namespace MinimalRoslynCpg.Model;
 
+/// <summary>
+/// 表示最小 Roslyn CPG 中的一个节点。
+/// </summary>
 public sealed record RoslynCpgNode(
   string Id,
   RoslynCpgNodeKind Kind,

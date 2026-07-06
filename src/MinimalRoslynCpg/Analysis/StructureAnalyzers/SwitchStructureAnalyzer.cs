@@ -13,12 +13,18 @@ public sealed record SwitchStructureAnalysis(IReadOnlyList<SyntaxNode> AffectedS
 /// </summary>
 public sealed class SwitchStructureAnalyzer
 {
+    private sealed record SwitchStructure(
+        SyntaxNode Root,
+        IReadOnlyList<SyntaxNode> Members);
+
     /// <summary>
     /// 返回 switch 控制表达式、case/default 标签、语句块或表达式 arms。
     /// </summary>
     public SwitchStructureAnalysis Analyze(SyntaxNode root, CpgAnalysisContext context)
     {
-        var affectedNodes = root switch
+        _ = context;
+
+        var structure = root switch
         {
             SwitchStatementSyntax switchStatement => AnalyzeSwitchStatement(switchStatement),
             SwitchExpressionSyntax switchExpression => AnalyzeSwitchExpression(switchExpression),
@@ -26,10 +32,10 @@ public sealed class SwitchStructureAnalyzer
         };
 
         return new SwitchStructureAnalysis(
-            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(root, affectedNodes));
+            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(structure.Root, structure.Members));
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeSwitchStatement(SwitchStatementSyntax root)
+    private static SwitchStructure AnalyzeSwitchStatement(SwitchStatementSyntax root)
     {
         var nodes = new List<SyntaxNode> { root, root.Expression };
 
@@ -40,10 +46,10 @@ public sealed class SwitchStructureAnalyzer
             nodes.AddRange(section.Statements);
         }
 
-        return nodes;
+        return new SwitchStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeSwitchExpression(SwitchExpressionSyntax root)
+    private static SwitchStructure AnalyzeSwitchExpression(SwitchExpressionSyntax root)
     {
         var nodes = new List<SyntaxNode> { root, root.GoverningExpression };
 
@@ -55,6 +61,6 @@ public sealed class SwitchStructureAnalyzer
             nodes.Add(arm.Expression);
         }
 
-        return nodes;
+        return new SwitchStructure(root, nodes);
     }
 }

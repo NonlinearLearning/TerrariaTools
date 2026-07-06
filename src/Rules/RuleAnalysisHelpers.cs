@@ -14,7 +14,7 @@ internal static class RuleAnalysisHelpers
     IReadOnlyCollection<SyntaxKind> allowedKinds,
     CpgAnalysisContext context)
   {
-    foreach (var expression in root.DescendantNodes().OfType<ExpressionSyntax>()) {
+    foreach (var expression in new AtomicExpressionAnalyzer().Analyze(root)) {
       if (!allowedKinds.Contains(expression.Kind())) {
         continue;
       }
@@ -84,11 +84,35 @@ internal static class RuleAnalysisHelpers
     return expression.FirstAncestorOrSelf<StatementSyntax>();
   }
 
+  public static SyntaxNode? FindAssignmentOrDefinitionHost(
+    ExpressionSyntax expression,
+    CpgAnalysisContext context)
+  {
+    _ = context;
+
+    foreach (var ancestor in expression.Ancestors()) {
+      if (ancestor is AssignmentExpressionSyntax assignmentExpression &&
+          (assignmentExpression.Right.Span.Contains(expression.Span) ||
+           assignmentExpression.Left.Span.Contains(expression.Span))) {
+        return assignmentExpression;
+      }
+
+      if (ancestor is EqualsValueClauseSyntax equalsValueClause &&
+          equalsValueClause.Value.Span.Contains(expression.Span) &&
+          equalsValueClause.Parent is VariableDeclaratorSyntax variableDeclarator) {
+        return variableDeclarator;
+      }
+    }
+
+    return null;
+  }
+
   public static DecisionUnit CreateDeleteDecision(
     string ruleId,
     SyntaxNode anchorNode,
     string reason,
-    SyntaxNode? sourceNode = null)
+    SyntaxNode? sourceNode = null,
+    string? conflictKey = null)
   {
     var anchorFragment = CreateFragment(anchorNode, "anchor", DecisionActionKind.Delete);
     var fragments = new List<MinimalRoslynCpg.Model.RoslynCpgNode> { anchorFragment };
@@ -110,7 +134,7 @@ internal static class RuleAnalysisHelpers
       DecisionActionKind.Delete,
       anchorFragment,
       reason: reason,
-      conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode));
+      conflictKey: conflictKey ?? DecisionCpgFactory.BuildNodeKey(anchorNode));
     relations.Insert(0, DecisionCpgFactory.CreateContainment(unitNode, anchorFragment));
     if (fragments.Count > 1) {
       relations.Insert(1, DecisionCpgFactory.CreateContainment(unitNode, fragments[1]));
@@ -123,7 +147,7 @@ internal static class RuleAnalysisHelpers
       fragments,
       relations,
       DecisionCpgFactory.CreateSyntaxBindings(bindings.ToArray()),
-      conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
+      conflictKey: conflictKey ?? DecisionCpgFactory.BuildNodeKey(anchorNode),
       reason: reason);
   }
 
@@ -146,6 +170,16 @@ internal static class RuleAnalysisHelpers
       case BinaryExpressionSyntax binaryExpression:
         affectedNodes = new BinaryExpressionAnalyzer()
           .Analyze(binaryExpression, binaryExpression.Left, context)
+          .AffectedSyntaxTree;
+        return true;
+      case AssignmentExpressionSyntax assignmentExpression:
+        affectedNodes = new AssignmentExpressionAnalyzer()
+          .Analyze(assignmentExpression, context)
+          .AffectedSyntaxTree;
+        return true;
+      case PrefixUnaryExpressionSyntax prefixUnaryExpression:
+        affectedNodes = new UnaryExpressionAnalyzer()
+          .Analyze(prefixUnaryExpression, context)
           .AffectedSyntaxTree;
         return true;
       case InvocationExpressionSyntax:
@@ -187,6 +221,14 @@ internal static class RuleAnalysisHelpers
         var loopAnalysis = new LoopStructureAnalyzer().Analyze((StatementSyntax)ancestor, context);
         if (loopAnalysis.AffectedSyntaxTree.Any(node => ReferenceEquals(node, expression))) {
           host = ancestor;
+          return true;
+        }
+
+        return false;
+      case SwitchStatementSyntax switchStatement when ReferenceEquals(switchStatement.Expression, expression):
+        var switchAnalysis = new SwitchStructureAnalyzer().Analyze(switchStatement, context);
+        if (switchAnalysis.AffectedSyntaxTree.Any(node => ReferenceEquals(node, expression))) {
+          host = switchStatement;
           return true;
         }
 

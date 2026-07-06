@@ -1,30 +1,70 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using RoslynPrototype.Decision;
+using RoslynPrototype.Lifting;
 using RoslynPrototype.Marking;
 using RoslynPrototype.Propagation;
 
 namespace Rules;
 
-public interface RuleDefinition
+public abstract class RuleDefinitionMark
 {
-    string RuleId { get; }
+    public abstract string RuleId { get; }
 
-    string Name { get; }
+    public virtual string GroupKey => RuleId;
 
-    IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; }
+    public abstract string Name { get; }
 
-    IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; }
+    public abstract IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; }
 
-    IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds { get; }
+    public abstract IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root);
+}
 
-    IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; }
+public abstract class RuleDefinitionPropagate
+{
+    public abstract string RuleId { get; }
 
-    IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root);
+    public virtual string GroupKey => RuleId;
 
-    IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks);
+    public abstract string Name { get; }
 
-    IEnumerable<DecisionUnit> Propose(
+    public abstract IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; }
+
+    public abstract IEnumerable<PropagatedMarkRecord> Propagate(
+      RuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks);
+}
+
+public abstract class RuleDefinitionPropose
+{
+    public abstract string RuleId { get; }
+
+    public virtual string GroupKey => RuleId;
+
+    public abstract string Name { get; }
+
+    public abstract IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds { get; }
+
+    public abstract IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; }
+
+    public abstract IEnumerable<DecisionUnit> Propose(
+      RuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> liftedMarks);
+}
+
+public abstract class RuleDefinitionLift
+{
+    public abstract string RuleId { get; }
+
+    public virtual string GroupKey => RuleId;
+
+    public abstract string Name { get; }
+
+    public abstract IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; }
+
+    public abstract IEnumerable<LiftedMarkRecord> Lift(
       RuleContext context,
       IReadOnlyList<MarkRecord> seedMarks,
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks);

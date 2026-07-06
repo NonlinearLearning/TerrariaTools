@@ -7,6 +7,9 @@ using MinimalRoslynCpg.Model;
 
 namespace MinimalRoslynCpg.Builder;
 
+/// <summary>
+/// 从单个源码文件构建最小 Roslyn 风格代码属性图。
+/// </summary>
 public sealed class RoslynCpgBuilder
 {
     private readonly Dictionary<SyntaxNode, RoslynCpgNode> _syntaxNodes = new(ReferenceEqualityComparer.Instance);
@@ -32,7 +35,25 @@ public sealed class RoslynCpgBuilder
     private sealed record LoopControlTargets(IOperation? ContinueTarget, IOperation? BreakTarget);
     private sealed record DefinitionFact(string LocationKey, string? BaseKey, string Category, string? PathKey = null);
 
+    /// <summary>
+    /// 解析源码、收集语法和操作，再补 CFG 与 DataFlow 叠加层。
+    /// </summary>
     public RoslynCpgGraph BuildFromSource(string source, string filePath = "input.cs")
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(source, path: filePath);
+        var compilation = CSharpCompilation.Create(
+          assemblyName: Path.GetFileNameWithoutExtension(filePath),
+          syntaxTrees: new[] { syntaxTree },
+          references: CreateMetadataReferences());
+        var semanticModel = compilation.GetSemanticModel(syntaxTree, ignoreAccessibility: true);
+        return BuildFromSemanticModel(semanticModel, syntaxTree.GetRoot(), source, filePath);
+    }
+
+    public RoslynCpgGraph BuildFromSemanticModel(
+      SemanticModel semanticModel,
+      SyntaxNode root,
+      string source,
+      string filePath)
     {
         _syntaxNodes.Clear();
         _symbolNodes.Clear();
@@ -53,15 +74,7 @@ public sealed class RoslynCpgBuilder
         _typeReferenceSequence = 0;
         _callSiteSequence = 0;
         _memberAccessSequence = 0;
-
-        var syntaxTree = CSharpSyntaxTree.ParseText(source, path: filePath);
-        var compilation = CSharpCompilation.Create(
-          assemblyName: Path.GetFileNameWithoutExtension(filePath),
-          syntaxTrees: new[] { syntaxTree },
-          references: CreateMetadataReferences());
-        var semanticModel = compilation.GetSemanticModel(syntaxTree, ignoreAccessibility: true);
         var graph = new RoslynCpgGraph();
-        var root = syntaxTree.GetRoot();
 
         var syntaxTreeNode = graph.AddNode(new RoslynCpgNode(
           Id: $"tree:{Path.GetFullPath(filePath)}",
@@ -74,6 +87,7 @@ public sealed class RoslynCpgBuilder
           SpanEnd: source.Length,
           Text: source));
 
+        // 构图按三段执行：先建语法/符号层，再建操作层，最后补控制流和数据流。
         VisitSyntax(root, syntaxTreeNode, graph, semanticModel, filePath);
         VisitOperationRoots(root, graph, semanticModel);
         AddMethodLevelControlFlow(graph);
@@ -81,6 +95,9 @@ public sealed class RoslynCpgBuilder
         return graph;
     }
 
+    /// <summary>
+    /// 遍历语法树，建立语法节点、token、声明绑定和引用绑定。
+    /// </summary>
     private void VisitSyntax(
       SyntaxNode syntax,
       RoslynCpgNode parent,
@@ -132,6 +149,9 @@ public sealed class RoslynCpgBuilder
         }
     }
 
+    /// <summary>
+    /// 以方法、accessor 和全局语句为根，启动 Roslyn operation 树采集。
+    /// </summary>
     private void VisitOperationRoots(SyntaxNode root, RoslynCpgGraph graph, SemanticModel semanticModel)
     {
         foreach (var method in root.DescendantNodes().OfType<BaseMethodDeclarationSyntax>())
@@ -175,6 +195,9 @@ public sealed class RoslynCpgBuilder
         }
     }
 
+    /// <summary>
+    /// 递归挂入 Roslyn operation，并把它反绑到语法节点和符号节点。
+    /// </summary>
     private void AddOperationTree(IOperation? operation, IOperation? parentOperation, IMethodSymbol? owningMethod, RoslynCpgGraph graph)
     {
         if (operation is null)

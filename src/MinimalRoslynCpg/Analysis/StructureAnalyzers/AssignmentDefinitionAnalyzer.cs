@@ -13,6 +13,13 @@ public sealed record AssignmentDefinitionAnalysis(IReadOnlyList<SyntaxNode> Affe
 /// </summary>
 public sealed class AssignmentDefinitionAnalyzer
 {
+    private sealed record AssignmentDefinitionStructure(
+        SyntaxNode Root,
+        SyntaxNode? Declaration,
+        SyntaxNode? Type,
+        SyntaxNode Initializer,
+        SyntaxNode Value);
+
     /// <summary>
     /// 返回变量定义、类型、初始化子句和初始化表达式组成的受影响语法树。
     /// </summary>
@@ -23,16 +30,32 @@ public sealed class AssignmentDefinitionAnalyzer
             throw new ArgumentException("Variable declarator must have an initializer.", nameof(root));
         }
 
-        var affectedNodes = new List<SyntaxNode> { root, root.Initializer, root.Initializer.Value };
+        _ = context;
 
-        if (root.Parent is VariableDeclarationSyntax declaration)
+        var structure = new AssignmentDefinitionStructure(
+            GetAnalysisRoot(root),
+            root.Parent,
+            root.Parent is VariableDeclarationSyntax declaration ? declaration.Type : null,
+            root.Initializer,
+            root.Initializer.Value);
+        var affectedNodes = new List<SyntaxNode>
         {
-            affectedNodes.Add(declaration);
-            affectedNodes.Add(declaration.Type);
+            structure.Root,
+            structure.Initializer,
+            structure.Value
+        };
+
+        if (structure.Declaration is VariableDeclarationSyntax variableDeclaration)
+        {
+            affectedNodes.Add(variableDeclaration);
+            if (structure.Type is not null)
+            {
+                affectedNodes.Add(structure.Type);
+            }
         }
 
         return new AssignmentDefinitionAnalysis(
-            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(GetAnalysisRoot(root), affectedNodes));
+            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(structure.Root, affectedNodes));
     }
 
     private static SyntaxNode GetAnalysisRoot(VariableDeclaratorSyntax root)

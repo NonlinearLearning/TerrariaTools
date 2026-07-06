@@ -21,4 +21,12 @@ public sealed record PropagatedMarkRecord(
   /// <summary>
   /// 从源种子标记传播到当前标记的层级深度。
   /// </summary>
-    int Depth);
+    int Depth,
+  /// <summary>
+  /// 阶段之间共享的规则分组键；为空时回退到 RuleId。
+  /// </summary>
+    string? GroupKey = null,
+  /// <summary>
+  /// 传播阶段额外收集的结构化中间事实；为空时表示只有简单传播标记。
+  /// </summary>
+    object? Payload = null);

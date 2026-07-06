@@ -10,6 +10,7 @@ namespace Rules;
 public sealed class RuleContext
 {
   public CpgAnalysisContext AnalysisContext { get; }
+  public RoslynCpgStructureView? StructureView { get; }
 
   /// <summary>
   /// 与当前源码对应的最小 CPG 图。
@@ -30,14 +31,21 @@ public sealed class RuleContext
 
   public RuleContext(
     CpgAnalysisContext analysisContext,
-    IReadOnlyDictionary<string, string> options)
+    IReadOnlyDictionary<string, string> options,
+    RoslynCpgStructureView? structureView = null)
   {
     AnalysisContext = analysisContext;
     Options = options;
+    StructureView = structureView;
   }
 
   public bool TryGetOption(string key, out string value)
   {
     return Options.TryGetValue(key, out value!);
+  }
+
+  public RuleContext WithStructureView(RoslynCpgStructureView structureView)
+  {
+    return new RuleContext(AnalysisContext, Options, structureView);
   }
 }

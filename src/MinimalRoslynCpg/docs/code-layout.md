@@ -19,6 +19,10 @@ src/MinimalRoslynCpg/
     RoslynCpgLocalView.cs
   Builder/
     RoslynCpgBuilder.cs
+  Analysis/
+    View/
+      RoslynCpgStructureView.cs
+      RoslynCpgStructureViewBuilder.cs
   docs/
     node-edge-catalog.md
     code-layout.md
@@ -49,6 +53,11 @@ Minimal graph storage with deduplicated nodes and edges, plus node-anchor local-
 
 ### `Model/RoslynCpgLocalView.cs`
 Immutable result payload for a local node-anchor subgraph view.
+
+### `Analysis/View/RoslynCpgStructureViewBuilder.cs`
+Builds an analysis-time CPG view from one or more Roslyn syntax fragments. The view copies
+matching nodes and edges from the main graph, then connects fragment groups with shortest
+undirected paths across all CPG edge kinds.
 
 ### `Builder/RoslynCpgBuilder.cs`
 Main builder that:

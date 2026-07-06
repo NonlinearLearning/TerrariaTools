@@ -22,9 +22,9 @@ public sealed class DecisionComplexTests
         Assert.Contains(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Replace &&
           IsNodeKind(decision.FinalNode, SyntaxKind.LogicalAndExpression));
-        Assert.Contains("if (ready && enabled)", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("s.IsReady", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("if (enabled)", result.RewrittenSource, StringComparison.Ordinal);
+        TextDiffAssert.Contains("if (ready && enabled)", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("if (enabled)", result.RewrittenSource, result.DiffText);
     }
 
     [Fact]
@@ -40,9 +40,9 @@ public sealed class DecisionComplexTests
         Assert.Contains(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Replace &&
           IsNodeKind(decision.FinalNode, SyntaxKind.LogicalOrExpression));
-        Assert.Contains("if (ready || fallback)", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("s.IsReady", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("if (fallback)", result.RewrittenSource, StringComparison.Ordinal);
+        TextDiffAssert.Contains("if (ready || fallback)", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("if (fallback)", result.RewrittenSource, result.DiffText);
     }
 
     [Fact]
@@ -59,9 +59,9 @@ public sealed class DecisionComplexTests
         var decision = result.Decisions[0];
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.True(IsNodeKind(decision.FinalNode, SyntaxKind.IfStatement));
-        Assert.DoesNotContain("if (s.IsReady)", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("s.Touch();", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.Contains("return 0;", result.RewrittenSource, StringComparison.Ordinal);
+        TextDiffAssert.DoesNotContain("if (s.IsReady)", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("s.Touch();", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("return 0;", result.RewrittenSource, result.DiffText);
     }
 
     private static DeletionApplicationService CreateApplication()

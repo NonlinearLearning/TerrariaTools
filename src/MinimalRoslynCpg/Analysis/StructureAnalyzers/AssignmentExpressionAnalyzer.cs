@@ -13,19 +13,27 @@ public sealed record AssignmentExpressionAnalysis(IReadOnlyList<SyntaxNode> Affe
 /// </summary>
 public sealed class AssignmentExpressionAnalyzer
 {
+    private sealed record AssignmentStructure(
+        AssignmentExpressionSyntax Root,
+        SyntaxNode Left,
+        SyntaxNode Right);
+
     /// <summary>
     /// 返回赋值表达式本身、左侧目标和右侧值表达式。
     /// </summary>
     public AssignmentExpressionAnalysis Analyze(AssignmentExpressionSyntax root, CpgAnalysisContext context)
     {
+        _ = context;
+
+        var structure = new AssignmentStructure(root, root.Left, root.Right);
         var affectedNodes = new SyntaxNode[]
         {
-            root,
-            root.Left,
-            root.Right
+            structure.Root,
+            structure.Left,
+            structure.Right
         };
 
         return new AssignmentExpressionAnalysis(
-            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(root, affectedNodes));
+            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(structure.Root, affectedNodes));
     }
 }

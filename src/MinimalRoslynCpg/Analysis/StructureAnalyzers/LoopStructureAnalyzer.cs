@@ -13,12 +13,18 @@ public sealed record LoopStructureAnalysis(IReadOnlyList<SyntaxNode> AffectedSyn
 /// </summary>
 public sealed class LoopStructureAnalyzer
 {
+    private sealed record LoopStructure(
+        StatementSyntax Root,
+        IReadOnlyList<SyntaxNode> Members);
+
     /// <summary>
     /// 返回循环头部、条件、迭代器、集合表达式和循环体等关键语法节点。
     /// </summary>
     public LoopStructureAnalysis Analyze(StatementSyntax root, CpgAnalysisContext context)
     {
-        var affectedNodes = root switch
+        _ = context;
+
+        var structure = root switch
         {
             ForStatementSyntax forStatement => AnalyzeForStatement(forStatement),
             ForEachStatementSyntax forEachStatement => AnalyzeForEachStatement(forEachStatement),
@@ -29,10 +35,10 @@ public sealed class LoopStructureAnalyzer
         };
 
         return new LoopStructureAnalysis(
-            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(root, affectedNodes));
+            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(structure.Root, structure.Members));
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeForStatement(ForStatementSyntax root)
+    private static LoopStructure AnalyzeForStatement(ForStatementSyntax root)
     {
         var nodes = new List<SyntaxNode> { root };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Declaration);
@@ -40,48 +46,56 @@ public sealed class LoopStructureAnalyzer
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Condition);
         nodes.AddRange(root.Incrementors);
         nodes.Add(root.Statement);
-        return nodes;
+        return new LoopStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeForEachStatement(ForEachStatementSyntax root)
+    private static LoopStructure AnalyzeForEachStatement(ForEachStatementSyntax root)
     {
-        return new SyntaxNode[]
+        return new LoopStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Type,
             root.Expression,
             root.Statement
-        };
+        });
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeForEachVariableStatement(ForEachVariableStatementSyntax root)
+    private static LoopStructure AnalyzeForEachVariableStatement(ForEachVariableStatementSyntax root)
     {
-        return new SyntaxNode[]
+        return new LoopStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Variable,
             root.Expression,
             root.Statement
-        };
+        });
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeWhileStatement(WhileStatementSyntax root)
+    private static LoopStructure AnalyzeWhileStatement(WhileStatementSyntax root)
     {
-        return new SyntaxNode[]
+        return new LoopStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Condition,
             root.Statement
-        };
+        });
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeDoStatement(DoStatementSyntax root)
+    private static LoopStructure AnalyzeDoStatement(DoStatementSyntax root)
     {
-        return new SyntaxNode[]
+        return new LoopStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Statement,
             root.Condition
-        };
+        });
     }
 }

@@ -26,4 +26,8 @@ public sealed record MarkRecord(
   /// <summary>
   /// 说明本次命中的原因，供调试和结果输出使用。
   /// </summary>
-  string Reason);
+  string Reason,
+  /// <summary>
+  /// 阶段之间共享的规则分组键；为空时回退到 RuleId。
+  /// </summary>
+  string? GroupKey = null);

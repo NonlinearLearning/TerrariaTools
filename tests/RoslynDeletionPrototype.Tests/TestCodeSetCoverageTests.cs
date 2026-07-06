@@ -3,6 +3,7 @@ using MinimalRoslynCpg.Builder;
 using RoslynPrototype.Application;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Common;
+using RoslynPrototype.Tests.TestCodeSet.DeleteClass;
 using RoslynPrototype.Tests.TestCodeSet.Decision;
 using RoslynPrototype.Tests.TestCodeSet.Reachability;
 using RoslynPrototype.Tests.TestCodeSet.Rewrite;
@@ -37,6 +38,7 @@ public sealed class TestCodeSetCoverageTests
     Assert.False(string.IsNullOrWhiteSpace(result.RewrittenSource));
     Assert.All(result.SeedMarks, mark => Assert.NotNull(mark.PrimaryGraphNode));
     Assert.All(result.PropagatedMarks, mark => Assert.NotNull(mark.Mark.PrimaryGraphNode));
+    Assert.All(result.LiftedMarks, mark => Assert.NotNull(mark.Mark.PrimaryGraphNode));
     Assert.True(
       result.SeedMarks.Count >= testCase.MinimumSeedMarks,
       $"{testCase.CaseName} expected at least {testCase.MinimumSeedMarks} seed marks.");
@@ -48,6 +50,7 @@ public sealed class TestCodeSetCoverageTests
   private static IEnumerable<Type> SourceTypes()
   {
     yield return typeof(CliInputSources);
+    yield return typeof(DeleteClassLargeSources);
     yield return typeof(MinimalSources);
     yield return typeof(DecisionComplexSources);
     yield return typeof(ReachabilitySources);
@@ -74,10 +77,7 @@ public sealed class TestCodeSetCoverageTests
 
   private static TestSourceCase CreateSourceCase(string caseName, string source)
   {
-    var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-      ["target-name"] = "s"
-    };
+    var options = CreateOptions(caseName);
 
     var expectedMarks = GetMinimumSeedMarks(caseName);
     var expectedDecisions = GetMinimumDecisions(caseName);
@@ -106,9 +106,43 @@ public sealed class TestCodeSetCoverageTests
       };
     }
 
-    return caseName.StartsWith("RewriteSources.", StringComparison.Ordinal)
+      return caseName.StartsWith("RewriteSources.", StringComparison.Ordinal)
       ? 0
       : 1;
+  }
+
+  private static IReadOnlyDictionary<string, string> CreateOptions(string caseName)
+  {
+    if (caseName.StartsWith("DeleteClassLargeSources.", StringComparison.Ordinal))
+    {
+      return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+      {
+        ["delete-class"] = "PlayerInput"
+      };
+    }
+
+    return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+      ["target-name"] = ResolveTargetName(caseName)
+    };
+  }
+
+  private static string ResolveTargetName(string caseName)
+  {
+    return caseName switch
+    {
+      "SObjectLogicalSources.LogicalMixedPrecedenceSource" => "b",
+      "SObjectLogicalSources.LogicalMixedPrecedenceWithParenthesesSource" => "b",
+      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase1Source" => "b",
+      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase2Source" => "b",
+      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase3Source" => "b",
+      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase4Source" => "b",
+      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase5Source" => "b",
+      "SObjectLogicalSources.LogicalMultiTargetGroupFiveHitsSource" => "b,c,d,e,f",
+      "SObjectExpressionSources.ConditionalAccessInvokeSource" => "Invoke",
+      "SObjectExpressionSources.PropertyAccessDefinitionSource" => "Seed",
+      _ => "s"
+    };
   }
 
   private static int GetMinimumDecisions(string caseName)

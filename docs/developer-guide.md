@@ -12,6 +12,7 @@
 2. 已看过 `docs/quick-start.md`
 3. 已读 `AGENTS.md`
 4. 已知道当前主要有 `MinimalRoslynCpg` 和 `RoslynPrototype` 两条主线
+5. 已知道当前设计入口在 `设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
 
 ## 你会学到什么
 
@@ -91,10 +92,33 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj .\src\RoslynPr
 优先读这些位置：
 
 1. `src/Application/DeletionApplicationService.cs`
-2. `src/Analysis/`
-3. `src/Rules/`
-4. `src/Model/`
-5. `tests/RoslynDeletionPrototype.Tests/`
+2. `设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+3. `约束/删除规则分阶段分析约束.md`
+4. `设计docs/2026-07-06-RoslynDeletionPrototype-Propose下沉Propagate提案.md`
+5. `设计docs/2026-07-06-RoslynDeletionPrototype-DeleteClass组件盘点.md`
+6. `设计docs/2026-07-06-RoslynDeletionPrototype-DeleteClass传播设计.md`
+7. `设计docs/2026-07-06-RoslynDeletionPrototype-Decision模型与冲突裁决.md`
+8. `设计docs/2026-07-06-RoslynDeletionPrototype-FastPath规则边界.md`
+9. `设计docs/2026-07-06-MinimalRoslynCpg-当前分析边界.md`
+10. `设计docs/2026-07-06-RoslynDeletionPrototype-测试分层设计.md`
+11. `设计docs/2026-07-03-RoslynDeletionPrototype-原子表达式Mark设计.md`
+12. `设计docs/README.md`
+13. `src/Rules/`
+14. `tests/RoslynDeletionPrototype.Tests/`
+
+如果你改的是删除规则架构，先分清楚当前逻辑属于哪一层：
+
+1. `Mark`：原子命中
+2. `Propagate`：语义扩展和中间态收集
+3. `Lift`：父级结构提升
+4. `Propose`：最终 `Delete / Replace / Skip` 决策
+
+当前默认要求是：
+
+1. 不要把 compilation-wide 调用点扫描继续堆进 `Propose`
+2. 不要把最终 replacement syntax 提前塞进 `Propagate`
+3. 参数收缩、delegate 使用形态、调用点同步这类“中间计划”优先落到 `Propagate`
+4. 某个专题设计稿如果还没独立落盘，先以项目级 PRD 和 `设计docs/README.md` 为准，不要凭空补引用
 
 ## 4. 测试怎么写
 
@@ -123,6 +147,7 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj .\src\RoslynPr
 3. 页面要有边界
 4. 示例要可复制、可运行、可定位
 5. 版本边界要显式
+6. 涉及删除规则分层时，同步检查 `约束/删除规则分阶段分析约束.md` 和最新设计提案是否仍与代码一致
 
 ## 6. 常见开发路径
 

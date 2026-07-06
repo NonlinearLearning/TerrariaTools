@@ -194,9 +194,9 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 
 建议优先看：
 
-1. `2026-05-02-删除规则-Roslyn-first-一般重设计.md`
-2. `2026-05-04-RoslynDeletionPrototype-标记与传播设计冻结版.md`
-3. `2026-04-29-内部模型总览.md`
+1. `2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+2. `README.md`
+3. `2026-07-03-RoslynDeletionPrototype-原子表达式Mark设计.md`
 
 ## 从哪里开始读代码
 
@@ -307,7 +307,7 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 优先看：
 
 1. `设计docs/2026-05-02-删除规则-Roslyn-first-一般重设计.md`
-2. `设计docs/2026-05-04-RoslynDeletionPrototype-标记与传播设计冻结版.md`
+2. `设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
 3. `progress.md`
 4. `feature_list.json`
 
@@ -326,8 +326,8 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 优先入口：
 
 1. `设计docs/2026-05-02-删除规则-Roslyn-first-一般重设计.md`
-2. `设计docs/2026-05-04-RoslynDeletionPrototype-标记与传播设计冻结版.md`
-3. `设计docs/2026-04-29-内部模型总览.md`
+2. `设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+3. `设计docs/README.md`
 
 ### 当前状态与执行约束
 
@@ -383,7 +383,7 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 
 1. 想先跑仓库：看上面的“快速开始”
 2. 想理解删除原型：看 `设计docs/2026-05-02-删除规则-Roslyn-first-一般重设计.md`
-3. 想理解标记与传播：看 `设计docs/2026-05-04-RoslynDeletionPrototype-标记与传播设计冻结版.md`
+3. 想理解当前分层与历史设计：先看 `设计docs/README.md`，再按索引进入 `设计docs/历史设计/`
 4. 想理解当前事实和待办：看 `progress.md` 与 `feature_list.json`
 5. 想直接看实现：从 `src/Application/DeletionApplicationService.cs` 开始
 6. 想确认测试基线：跑 `tests/RoslynDeletionPrototype.Tests`

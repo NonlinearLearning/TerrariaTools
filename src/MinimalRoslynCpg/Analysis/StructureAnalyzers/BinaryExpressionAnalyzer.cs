@@ -14,18 +14,29 @@ public sealed record BinaryExpressionAnalysis(IReadOnlyList<SyntaxNode> Affected
 /// </summary>
 public sealed class BinaryExpressionAnalyzer
 {
+    private sealed record BinaryExpressionStructure(
+        BinaryExpressionSyntax Root,
+        SyntaxKind OperatorKind,
+        IReadOnlyList<BinaryExpressionSyntax> BinaryExpressions,
+        IReadOnlyList<ExpressionSyntax> Operands);
+
     /// <summary>
     /// 返回同类二元表达式层级和最终操作数组成的受影响语法树。
     /// </summary>
-    public BinaryExpressionAnalysis Analyze(BinaryExpressionSyntax root, ExpressionSyntax operand, CpgAnalysisContext Context)
+    public BinaryExpressionAnalysis Analyze(BinaryExpressionSyntax root, ExpressionSyntax operand, CpgAnalysisContext context)
     {
         if (!root.Span.Contains(operand.Span))
         {
             throw new ArgumentException("Operand must be inside the binary expression root.", nameof(operand));
         }
 
-        var (binaryExpressions, operands) = BuildLevels(root, root.Kind());
-        var affectedSyntaxTree = BuildAffectedSyntaxTree(root, binaryExpressions, operands);
+        _ = context;
+
+        var structure = BuildStructure(root);
+        var affectedSyntaxTree = BuildAffectedSyntaxTree(
+            structure.Root,
+            structure.BinaryExpressions,
+            structure.Operands);
         return new BinaryExpressionAnalysis(affectedSyntaxTree);
     }
 
@@ -48,6 +59,16 @@ public sealed class BinaryExpressionAnalyzer
           .OrderBy(node => node.SpanStart)
           .ThenBy(node => node.Span.Length)
           .ToList();
+    }
+
+    private static BinaryExpressionStructure BuildStructure(BinaryExpressionSyntax root)
+    {
+        var (binaryExpressions, operands) = BuildLevels(root, root.Kind());
+        return new BinaryExpressionStructure(
+            root,
+            root.Kind(),
+            binaryExpressions,
+            operands);
     }
 
     /// <summary>

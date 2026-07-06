@@ -13,12 +13,18 @@ public sealed record CallAndAccessStructureAnalysis(IReadOnlyList<SyntaxNode> Af
 /// </summary>
 public sealed class CallAndAccessStructureAnalyzer
 {
+    private sealed record CallAndAccessStructure(
+        SyntaxNode Root,
+        IReadOnlyList<SyntaxNode> Components);
+
     /// <summary>
     /// 根据表达式实际 Roslyn 节点类型，返回该调用或访问结构的关键语法节点。
     /// </summary>
     public CallAndAccessStructureAnalysis Analyze(ExpressionSyntax root, CpgAnalysisContext context)
     {
-        var affectedNodes = root switch
+        _ = context;
+
+        var structure = root switch
         {
             InvocationExpressionSyntax invocation => AnalyzeInvocation(invocation),
             ObjectCreationExpressionSyntax objectCreation => AnalyzeObjectCreation(objectCreation),
@@ -31,71 +37,81 @@ public sealed class CallAndAccessStructureAnalyzer
         };
 
         return new CallAndAccessStructureAnalysis(
-            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(root, affectedNodes));
+            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(structure.Root, structure.Components));
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeInvocation(InvocationExpressionSyntax root)
+    private static CallAndAccessStructure AnalyzeInvocation(InvocationExpressionSyntax root)
     {
-        return new SyntaxNode[]
+        return new CallAndAccessStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Expression,
             root.ArgumentList
-        };
+        });
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeObjectCreation(ObjectCreationExpressionSyntax root)
+    private static CallAndAccessStructure AnalyzeObjectCreation(ObjectCreationExpressionSyntax root)
     {
         var nodes = new List<SyntaxNode> { root, root.Type };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.ArgumentList);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Initializer);
-        return nodes;
+        return new CallAndAccessStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeImplicitObjectCreation(
+    private static CallAndAccessStructure AnalyzeImplicitObjectCreation(
         ImplicitObjectCreationExpressionSyntax root)
     {
         var nodes = new List<SyntaxNode> { root, root.ArgumentList };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Initializer);
-        return nodes;
+        return new CallAndAccessStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeMemberAccess(MemberAccessExpressionSyntax root)
+    private static CallAndAccessStructure AnalyzeMemberAccess(MemberAccessExpressionSyntax root)
     {
-        return new SyntaxNode[]
+        return new CallAndAccessStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Expression,
             root.Name
-        };
+        });
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeMemberBinding(MemberBindingExpressionSyntax root)
+    private static CallAndAccessStructure AnalyzeMemberBinding(MemberBindingExpressionSyntax root)
     {
-        return new SyntaxNode[]
+        return new CallAndAccessStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Name
-        };
+        });
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeElementAccess(ElementAccessExpressionSyntax root)
+    private static CallAndAccessStructure AnalyzeElementAccess(ElementAccessExpressionSyntax root)
     {
-        return new SyntaxNode[]
+        return new CallAndAccessStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Expression,
             root.ArgumentList
-        };
+        });
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeConditionalAccess(ConditionalAccessExpressionSyntax root)
+    private static CallAndAccessStructure AnalyzeConditionalAccess(ConditionalAccessExpressionSyntax root)
     {
-        return new SyntaxNode[]
+        return new CallAndAccessStructure(
+            root,
+            new SyntaxNode[]
         {
             root,
             root.Expression,
             root.WhenNotNull
-        };
+        });
     }
 }

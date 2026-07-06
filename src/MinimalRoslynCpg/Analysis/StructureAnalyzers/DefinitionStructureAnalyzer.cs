@@ -13,12 +13,18 @@ public sealed record DefinitionStructureAnalysis(IReadOnlyList<SyntaxNode> Affec
 /// </summary>
 public sealed class DefinitionStructureAnalyzer
 {
+    private sealed record DefinitionStructure(
+        SyntaxNode Root,
+        IReadOnlyList<SyntaxNode> Members);
+
     /// <summary>
     /// 返回定义节点及其关键组成部分，例如类型、参数列表、继承列表、成员和初始化器。
     /// </summary>
     public DefinitionStructureAnalysis Analyze(SyntaxNode root, CpgAnalysisContext context)
     {
-        var affectedNodes = root switch
+        _ = context;
+
+        var structure = root switch
         {
             VariableDeclarationSyntax declaration => AnalyzeVariableDeclaration(declaration),
             VariableDeclaratorSyntax declarator => AnalyzeVariableDeclarator(declarator),
@@ -35,93 +41,93 @@ public sealed class DefinitionStructureAnalyzer
         };
 
         return new DefinitionStructureAnalysis(
-            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(root, affectedNodes));
+            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(structure.Root, structure.Members));
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeVariableDeclaration(VariableDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeVariableDeclaration(VariableDeclarationSyntax root)
     {
         var nodes = new List<SyntaxNode> { root, root.Type };
         nodes.AddRange(root.Variables);
-        return nodes;
+        return new DefinitionStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeVariableDeclarator(VariableDeclaratorSyntax root)
+    private static DefinitionStructure AnalyzeVariableDeclarator(VariableDeclaratorSyntax root)
     {
         var nodes = new List<SyntaxNode> { root };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.ArgumentList);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Initializer);
-        return nodes;
+        return new DefinitionStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeParameter(ParameterSyntax root)
+    private static DefinitionStructure AnalyzeParameter(ParameterSyntax root)
     {
         var nodes = new List<SyntaxNode> { root };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Type);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Default);
-        return nodes;
+        return new DefinitionStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeField(FieldDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeField(FieldDeclarationSyntax root)
     {
-        return new SyntaxNode[] { root, root.Declaration };
+        return new DefinitionStructure(root, new SyntaxNode[] { root, root.Declaration });
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeProperty(PropertyDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeProperty(PropertyDeclarationSyntax root)
     {
         var nodes = new List<SyntaxNode> { root, root.Type };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.AccessorList);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.ExpressionBody);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Initializer);
-        return nodes;
+        return new DefinitionStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeMethod(MethodDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeMethod(MethodDeclarationSyntax root)
     {
         var nodes = new List<SyntaxNode> { root, root.ReturnType, root.ParameterList };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.TypeParameterList);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.ConstraintClauses.FirstOrDefault());
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Body);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.ExpressionBody);
-        return nodes;
+        return new DefinitionStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeConstructor(ConstructorDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeConstructor(ConstructorDeclarationSyntax root)
     {
         var nodes = new List<SyntaxNode> { root, root.ParameterList };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Initializer);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Body);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.ExpressionBody);
-        return nodes;
+        return new DefinitionStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeClass(ClassDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeClass(ClassDeclarationSyntax root)
     {
         return AnalyzeTypeDeclaration(root);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeStruct(StructDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeStruct(StructDeclarationSyntax root)
     {
         return AnalyzeTypeDeclaration(root);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeInterface(InterfaceDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeInterface(InterfaceDeclarationSyntax root)
     {
         return AnalyzeTypeDeclaration(root);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeRecord(RecordDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeRecord(RecordDeclarationSyntax root)
     {
-        var nodes = AnalyzeTypeDeclaration(root).ToList();
+        var nodes = AnalyzeTypeDeclaration(root).Members.ToList();
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.ParameterList);
-        return nodes;
+        return new DefinitionStructure(root, nodes);
     }
 
-    private static IReadOnlyList<SyntaxNode> AnalyzeTypeDeclaration(TypeDeclarationSyntax root)
+    private static DefinitionStructure AnalyzeTypeDeclaration(TypeDeclarationSyntax root)
     {
         var nodes = new List<SyntaxNode> { root };
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.TypeParameterList);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.BaseList);
         nodes.AddRange(root.Members);
-        return nodes;
+        return new DefinitionStructure(root, nodes);
     }
 }

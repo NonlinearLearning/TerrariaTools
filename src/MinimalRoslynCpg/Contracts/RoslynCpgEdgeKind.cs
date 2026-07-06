@@ -1,5 +1,8 @@
 namespace MinimalRoslynCpg.Contracts;
 
+/// <summary>
+/// 枚举最小 Roslyn CPG builder 产出的边种类。
+/// </summary>
 public enum RoslynCpgEdgeKind
 {
     SyntaxChild,

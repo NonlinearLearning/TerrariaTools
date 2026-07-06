@@ -2,6 +2,9 @@ using MinimalRoslynCpg.Contracts;
 
 namespace MinimalRoslynCpg.Model;
 
+/// <summary>
+/// 管理最小 Roslyn CPG 的内存节点集和边集。
+/// </summary>
 public sealed class RoslynCpgGraph
 {
     private readonly Dictionary<string, RoslynCpgNode> _nodes = new(StringComparer.Ordinal);
@@ -11,6 +14,9 @@ public sealed class RoslynCpgGraph
 
     public IReadOnlyCollection<RoslynCpgEdge> Edges => _edges;
 
+    /// <summary>
+    /// 新增节点；如果同 id 已存在则直接返回已有节点。
+    /// </summary>
     public RoslynCpgNode AddNode(RoslynCpgNode node)
     {
         if (!_nodes.TryGetValue(node.Id, out var existing))
@@ -22,6 +28,9 @@ public sealed class RoslynCpgGraph
         return existing;
     }
 
+    /// <summary>
+    /// 在确保端点节点已注册后，补上一条带类型边。
+    /// </summary>
     public void AddEdge(
       RoslynCpgNode source,
       RoslynCpgNode target,
@@ -33,16 +42,25 @@ public sealed class RoslynCpgGraph
         _edges.Add(new RoslynCpgEdge(source.Id, target.Id, kind, label));
     }
 
+    /// <summary>
+    /// 返回指定节点种类的全部节点。
+    /// </summary>
     public IEnumerable<RoslynCpgNode> NodesByKind(RoslynCpgNodeKind kind)
     {
         return _nodes.Values.Where(node => node.Kind == kind);
     }
 
+    /// <summary>
+    /// 按稳定图 id 查找节点。
+    /// </summary>
     public RoslynCpgNode? GetNode(string nodeId)
     {
         return _nodes.TryGetValue(nodeId, out var node) ? node : null;
     }
 
+    /// <summary>
+    /// 围绕指定锚点提取一个 hop 有界的局部视图。
+    /// </summary>
     public RoslynCpgLocalView ExtractLocalView(
       string anchorNodeId,
       int hops,
@@ -62,6 +80,7 @@ public sealed class RoslynCpgGraph
         var allowedKinds = edgeKinds is null
           ? null
           : new HashSet<RoslynCpgEdgeKind>(edgeKinds);
+        // 两个方向的邻接表只建一次，后续 BFS 扩展就不必重复扫描全量边。
         var outgoingEdges = BuildAdjacencyMap(useOutgoingEdges: true, allowedKinds);
         var incomingEdges = BuildAdjacencyMap(useOutgoingEdges: false, allowedKinds);
         var visitedNodeIds = new HashSet<string>(StringComparer.Ordinal) { anchorNodeId };
@@ -98,6 +117,9 @@ public sealed class RoslynCpgGraph
         return new RoslynCpgLocalView(anchor, hops, localNodes, localEdges);
     }
 
+    /// <summary>
+    /// 按源或目标 id 组织邻接表，供局部视图遍历使用。
+    /// </summary>
     private Dictionary<string, List<RoslynCpgEdge>> BuildAdjacencyMap(
       bool useOutgoingEdges,
       HashSet<RoslynCpgEdgeKind>? allowedKinds)
@@ -123,6 +145,9 @@ public sealed class RoslynCpgGraph
         return adjacency;
     }
 
+    /// <summary>
+    /// 按请求方向扩展一个 BFS 前沿节点。
+    /// </summary>
     private static void ExpandFrom(
       string nodeId,
       RoslynCpgViewDirection direction,
@@ -142,6 +167,9 @@ public sealed class RoslynCpgGraph
         }
     }
 
+    /// <summary>
+    /// 将尚未访问的相邻节点加入下一轮 BFS 前沿。
+    /// </summary>
     private static void ExpandNeighbors(
       string nodeId,
       IReadOnlyDictionary<string, List<RoslynCpgEdge>> adjacency,

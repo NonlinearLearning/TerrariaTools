@@ -3,9 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
-using RoslynPrototype.Decision;
 using RoslynPrototype.Marking;
-using RoslynPrototype.Propagation;
 using Rules;
 
 namespace Rules;
@@ -13,46 +11,28 @@ namespace Rules;
 /// <summary>
 /// 基于最小调用图可达性，命中从入口点不可达的方法声明。
 /// </summary>
-public sealed class DeleteUnreachableMethodRule : RuleDefinition
+public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
 {
     /// <summary>
     /// 规则稳定标识。
     /// </summary>
-    public string RuleId { get; } = "DEL-DEAD-001";
+    public override string RuleId { get; } = "DEL-DEAD-001";
 
     /// <summary>
     /// 规则的人类可读名称。
     /// </summary>
-    public string Name { get; } = "Match unreachable methods by graph reachability";
+    public override string Name { get; } = "Match unreachable methods by graph reachability";
 
     /// <summary>
     /// 标记阶段允许产出的语法节点种类。
     /// </summary>
-    public IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+    public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
       new[] { SyntaxKind.MethodDeclaration };
-
-    /// <summary>
-    /// 传播阶段允许产出的语法节点种类。
-    /// </summary>
-    public IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
-      new[] { SyntaxKind.MethodDeclaration };
-
-    /// <summary>
-    /// 不可达方法规则的核心决策冲突节点。
-    /// </summary>
-    public IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds { get; } =
-      new[] { SyntaxKind.MethodDeclaration };
-
-    /// <summary>
-    /// 不可达方法规则几乎不需要做局部合并。
-    /// </summary>
-    public IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
-      Array.Empty<SyntaxKind>();
 
     /// <summary>
     /// 从入口点出发计算可达方法集合，并命中剩余不可达的方法声明。
     /// </summary>
-    public IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+    public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
     {
         if (context.SemanticModel.Compilation.GetEntryPoint(CancellationToken.None) is null)
         {
@@ -83,33 +63,6 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinition
               null,
               methodNode,
               "Method is unreachable from the discovered entry point.");
-        }
-    }
-
-    /// <summary>
-    /// 当前不可达方法规则暂不执行额外传播。
-    /// </summary>
-    public IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
-    {
-        return Enumerable.Empty<PropagatedMarkRecord>();
-    }
-
-    /// <summary>
-    /// 直接把不可达方法命中转成删除决策。
-    /// </summary>
-    public IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
-    {
-        foreach (var seedMark in seedMarks)
-        {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
-              RuleId,
-              seedMark.SyntaxNode,
-              seedMark.Reason);
         }
     }
 

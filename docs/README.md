@@ -1,50 +1,49 @@
 # 文档入口
 
-这组文档是本仓库的项目文档入口，不是设计稿，不是过程笔记。
+这组文档负责把读者分流到正确入口，不承担完整设计历史。
 
-它们的目标是把读者快速分流到正确的位置：
+## 先看什么
 
-1. `quick-start.md`：先跑起来
-2. `developer-guide.md`：准备开发和修改代码
-3. `roslyn-prototype-code-model.md`：理解 `src/RoslynPrototype` 的代码模型
-4. `README.md`：仓库总入口
-
-## 读者应该怎么走
-
-### 如果你第一次进仓库
-
-先看：
+### 第一次进仓库
 
 1. 根目录 `README.md`
 2. `docs/quick-start.md`
-3. `docs/roslyn-prototype-code-model.md`
+3. `docs/developer-guide.md`
+4. `../设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
 
-### 如果你准备改代码
+### 准备改代码
 
-先看：
+1. `AGENTS.md`
+2. `progress.md`
+3. `feature_list.json`
+4. `docs/developer-guide.md`
+5. `../设计docs/README.md`
 
-1. 根目录 `README.md`
-2. `docs/developer-guide.md`
-3. `docs/roslyn-prototype-code-model.md`
-4. 对应项目代码和测试
+### 只想看当前设计口径
 
-### 如果你只是想确认仓库在做什么
+1. `../设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+2. `../设计docs/README.md`
+3. `../约束/删除规则分阶段分析约束.md`
 
-先看：
+## 删除规则架构入口
 
-1. 根目录 `README.md`
-2. `docs/quick-start.md`
-3. `docs/roslyn-prototype-code-model.md`
+如果你关注 `RoslynPrototype` 的规则分层，按这个顺序读：
+
+1. `../设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+2. `../约束/删除规则分阶段分析约束.md`
+3. `../设计docs/2026-07-06-RoslynDeletionPrototype-Propose下沉Propagate提案.md`
+4. `../设计docs/2026-07-06-RoslynDeletionPrototype-DeleteClass组件盘点.md`
+5. `../设计docs/2026-07-06-RoslynDeletionPrototype-DeleteClass传播设计.md`
+6. `../设计docs/2026-07-06-RoslynDeletionPrototype-Decision模型与冲突裁决.md`
+7. `../设计docs/2026-07-06-RoslynDeletionPrototype-FastPath规则边界.md`
+8. `../设计docs/2026-07-06-MinimalRoslynCpg-当前分析边界.md`
+9. `../设计docs/2026-07-06-RoslynDeletionPrototype-测试分层设计.md`
+10. `../设计docs/2026-07-03-RoslynDeletionPrototype-原子表达式Mark设计.md`
+11. `../设计docs/README.md`
 
 ## 这组文档不负责什么
 
 1. 不替代设计文档
-2. 不展开全部内部模型
-3. 不记录实验过程的全部细节
-4. 不充当 API Reference
-
-## 下一步
-
-1. 看 `quick-start.md`
-2. 看 `developer-guide.md`
-3. 看 `roslyn-prototype-code-model.md`
+2. 不记录实验过程流水账
+3. 不充当完整 API Reference
+4. 不替代仓库级事实入口

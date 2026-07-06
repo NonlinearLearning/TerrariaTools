@@ -1,23 +1,41 @@
 namespace Demo.App;
 
+/// <summary>
+/// 样例图使用的最小归一化接口。
+/// </summary>
 public interface INormalizer
 {
+    /// <summary>
+    /// 归一化一个整数输入。
+    /// </summary>
     int Normalize(int value);
 }
 
+/// <summary>
+/// 用于覆盖扩展方法调用场景的样例扩展集合。
+/// </summary>
 public static class NormalizerExtensions
 {
+    /// <summary>
+    /// 在归一化结果上叠加外部种子值。
+    /// </summary>
     public static int AddSeed(this INormalizer normalizer, int value, int seed)
     {
         return normalizer.Normalize(value) + seed;
     }
 
+    /// <summary>
+    /// 生成一个简单字符串投影，覆盖泛型扩展调用。
+    /// </summary>
     public static string Describe<T>(this T value)
     {
         return value?.ToString() ?? string.Empty;
     }
 }
 
+/// <summary>
+/// 提供虚方法、属性和泛型方法，供派发与属性流样例复用。
+/// </summary>
 public class BaseNormalizer : INormalizer
 {
     public virtual string Label => nameof(BaseNormalizer);
@@ -39,6 +57,9 @@ public class BaseNormalizer : INormalizer
     }
 }
 
+/// <summary>
+/// 具体实现体，覆盖循环、switch、override 和泛型调用样例。
+/// </summary>
 public sealed class StepNormalizer : BaseNormalizer
 {
     public override string Label => nameof(StepNormalizer);
@@ -47,6 +68,7 @@ public sealed class StepNormalizer : BaseNormalizer
     public override int Normalize(int value)
     {
         var current = value;
+        // 故意保留 continue 和 break，方便 CFG 构图覆盖循环跳转边。
         while (current > 0)
         {
             if (current == 2)
@@ -66,6 +88,9 @@ public sealed class StepNormalizer : BaseNormalizer
         return current;
     }
 
+    /// <summary>
+    /// 生成一个小型 switch 控制流样例。
+    /// </summary>
     public int NormalizeWithSwitch(int value)
     {
         switch (value)
@@ -83,6 +108,9 @@ public sealed class StepNormalizer : BaseNormalizer
         return value;
     }
 
+    /// <summary>
+    /// 泛型回声方法，用于调用图与返回流样例。
+    /// </summary>
     public T Echo<T>(T value)
     {
         return value;
@@ -94,8 +122,14 @@ public sealed class StepNormalizer : BaseNormalizer
     }
 }
 
+/// <summary>
+/// 轻量标签类型，用于属性、成员访问和可空链样例。
+/// </summary>
 public sealed class LabelInfo
 {
+    /// <summary>
+    /// 创建一个标签包装对象。
+    /// </summary>
     public LabelInfo(string text)
     {
         Text = text;
@@ -104,6 +138,9 @@ public sealed class LabelInfo
     public string Text { get; }
 }
 
+/// <summary>
+/// 聚合 CLI 默认样例里的控制流、调用图和数据流场景。
+/// </summary>
 public sealed class Calculator
 {
     private int _seed = 1;
@@ -143,6 +180,9 @@ public sealed class Calculator
         }
     }
 
+    /// <summary>
+    /// 在一个方法体内串联算术、派发、属性、异常和数据流样例。
+    /// </summary>
     public int Compute(int left, int right)
     {
         var sum = left + right;

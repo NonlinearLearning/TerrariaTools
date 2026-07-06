@@ -20,9 +20,11 @@ public sealed class DeletionApplicationServiceFlowTests
 
         Assert.Equal(2, result.SeedMarks.Count);
         Assert.Contains(result.SeedMarks, mark =>
-          IsNodeKind(mark.SyntaxNode, SyntaxKind.AddExpression));
+          IsNodeKind(mark.SyntaxNode, SyntaxKind.SimpleMemberAccessExpression));
         Assert.Contains(result.SeedMarks, mark =>
           IsNodeKind(mark.SyntaxNode, SyntaxKind.MethodDeclaration));
+        Assert.Contains(EnumerateEffectiveNodes(result), node =>
+          IsNodeKind(node, SyntaxKind.LocalDeclarationStatement));
         Assert.Contains(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Delete &&
           IsNodeKind(decision.FinalNode, SyntaxKind.LocalDeclarationStatement));
@@ -30,10 +32,10 @@ public sealed class DeletionApplicationServiceFlowTests
           decision.Action == DecisionActionKind.Delete &&
           IsNodeKind(decision.FinalNode, SyntaxKind.MethodDeclaration));
         Assert.Equal(2, result.Edits.Count);
-        Assert.DoesNotContain("var value = s.Seed + 1;", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("public static void Dead()", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.Contains("public static void Main()", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.Contains("public static int Live(Box s)", result.RewrittenSource, StringComparison.Ordinal);
+        TextDiffAssert.DoesNotContain("var value = s.Seed + 1;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public static void Main()", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public static int Live(Box s)", result.RewrittenSource, result.DiffText);
     }
 
     [Fact]
@@ -50,9 +52,9 @@ public sealed class DeletionApplicationServiceFlowTests
         Assert.All(result.SeedMarks, mark =>
           Assert.Equal(SyntaxKind.MethodDeclaration, (SyntaxKind)mark.SyntaxNode.RawKind));
         Assert.Single(result.Decisions);
-        Assert.DoesNotContain("public static void Dead()", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.Contains("public static void Live()", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.Contains("public static void Helper()", result.RewrittenSource, StringComparison.Ordinal);
+        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public static void Live()", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public static void Helper()", result.RewrittenSource, result.DiffText);
     }
 
     [Fact]
@@ -69,8 +71,8 @@ public sealed class DeletionApplicationServiceFlowTests
         Assert.Contains(result.SeedMarks, mark =>
           IsNodeKind(mark.SyntaxNode, SyntaxKind.MethodDeclaration));
         Assert.Single(result.Decisions);
-        Assert.DoesNotContain("public static void Dead()", result.RewrittenSource, StringComparison.Ordinal);
-        Assert.Contains("var value = s.Seed + 1;", result.RewrittenSource, StringComparison.Ordinal);
+        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("var value = s.Seed + 1;", result.RewrittenSource, result.DiffText);
     }
 
     private static DeletionApplicationService CreateApplication()
@@ -99,5 +101,14 @@ public sealed class DeletionApplicationServiceFlowTests
     private static bool IsNodeKind(Microsoft.CodeAnalysis.SyntaxNode node, SyntaxKind kind)
     {
         return node.RawKind == (int)kind;
+    }
+
+    private static IEnumerable<Microsoft.CodeAnalysis.SyntaxNode> EnumerateEffectiveNodes(
+      RoslynPrototype.Rewrite.PrototypeAnalysisResult result)
+    {
+        return result.SeedMarks
+          .Select(mark => mark.SyntaxNode)
+          .Concat(result.PropagatedMarks.Select(mark => mark.Mark.SyntaxNode))
+          .Concat(result.LiftedMarks.Select(mark => mark.Mark.SyntaxNode));
     }
 }

@@ -13,20 +13,33 @@ public sealed record ConditionalExpressionAnalysis(IReadOnlyList<SyntaxNode> Aff
 /// </summary>
 public sealed class ConditionalExpressionAnalyzer
 {
+    private sealed record ConditionalExpressionStructure(
+        ConditionalExpressionSyntax Root,
+        SyntaxNode Condition,
+        SyntaxNode WhenTrue,
+        SyntaxNode WhenFalse);
+
     /// <summary>
     /// 返回条件、真分支和假分支表达式。
     /// </summary>
     public ConditionalExpressionAnalysis Analyze(ConditionalExpressionSyntax root, CpgAnalysisContext context)
     {
-        var affectedNodes = new SyntaxNode[]
-        {
+        _ = context;
+
+        var structure = new ConditionalExpressionStructure(
             root,
             root.Condition,
             root.WhenTrue,
-            root.WhenFalse
+            root.WhenFalse);
+        var affectedNodes = new SyntaxNode[]
+        {
+            structure.Root,
+            structure.Condition,
+            structure.WhenTrue,
+            structure.WhenFalse
         };
 
         return new ConditionalExpressionAnalysis(
-            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(root, affectedNodes));
+            AnalysisSyntaxNodeCollector.BuildAffectedSyntaxTree(structure.Root, affectedNodes));
     }
 }

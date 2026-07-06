@@ -1,3 +1,4 @@
+using MinimalRoslynCpg.Analysis;
 using RoslynPrototype.Marking;
 using Rules;
 
@@ -5,6 +6,8 @@ namespace RoslynPrototype.Propagation;
 
 public sealed class PropagationEngine
 {
+    private readonly RoslynCpgStructureViewBuilder _structureViewBuilder = new();
+
     /// <summary>
     /// 按规则分别执行传播，只允许规则扩展自己产出的种子标记。
     /// </summary>
@@ -12,31 +15,80 @@ public sealed class PropagationEngine
     /// <param name="seedMarks">标记阶段直接命中的种子标记集合。</param>
     /// <param name="rules">参与当前分析的删除规则集合。</param>
     /// <returns>去重后的传播标记集合。</returns>
-    public IReadOnlyList<PropagatedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<RuleDefinition> rules)
+    public IReadOnlyList<PropagatedMarkRecord> Run(
+      RuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<RuleDefinitionPropagate> rules)
     {
         var propagatedMarks = new List<PropagatedMarkRecord>();
-        // 传播按规则隔离执行，避免不同规则之间互相消费对方的种子标记。
-        var seedMarksByRuleId = seedMarks
-        .GroupBy(mark => mark.RuleId, StringComparer.Ordinal)
-        .ToDictionary(group => group.Key, group => (IReadOnlyList<MarkRecord>)group.ToList(), StringComparer.Ordinal);
+        // 传播按 GroupKey 分组。组间隔离，组内按注册顺序串行，让后续规则能消费前序规则产物。
+        var seedMarksByGroupKey = seedMarks
+          .GroupBy(MarkingEngine.GetGroupKey, StringComparer.Ordinal)
+          .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        var rulesByGroupKey = rules
+          .GroupBy(rule => rule.GroupKey, StringComparer.Ordinal)
+          .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
 
-        foreach (var rule in rules)
+        foreach (var (groupKey, groupRules) in rulesByGroupKey)
         {
-            if (!seedMarksByRuleId.TryGetValue(rule.RuleId, out var ruleSeedMarks) || ruleSeedMarks.Count == 0)
+            if (!seedMarksByGroupKey.TryGetValue(groupKey, out var groupSeedMarks) || groupSeedMarks.Count == 0)
             {
                 continue;
             }
 
-            foreach (var propagatedMark in rule.Propagate(context, ruleSeedMarks))
+            var groupMarks = new List<MarkRecord>(groupSeedMarks);
+            foreach (var rule in groupRules)
             {
-                MarkingEngine.ValidatePropagateNode(rule, propagatedMark.Mark.SyntaxNode);
-                propagatedMarks.Add(MarkingEngine.BindPropagatedMarkRecord(context, propagatedMark));
+                var ruleContext = BuildRuleContext(context, groupMarks);
+                var producedMarks = new List<PropagatedMarkRecord>();
+                foreach (var propagatedMark in rule.Propagate(ruleContext, groupMarks))
+                {
+                    MarkingEngine.ValidatePropagateNode(rule, propagatedMark.Mark.SyntaxNode);
+                    var boundMark = MarkingEngine.BindPropagatedMarkRecord(ruleContext, propagatedMark, rule.GroupKey);
+                    producedMarks.Add(boundMark);
+                    propagatedMarks.Add(boundMark);
+                }
+
+                foreach (var producedMark in producedMarks)
+                {
+                    if (groupMarks.Any(existing =>
+                          existing.SyntaxNode.SpanStart == producedMark.Mark.SyntaxNode.SpanStart &&
+                          existing.SyntaxNode.Span.Length == producedMark.Mark.SyntaxNode.Span.Length &&
+                          existing.SyntaxNode.RawKind == producedMark.Mark.SyntaxNode.RawKind))
+                    {
+                        continue;
+                    }
+
+                    groupMarks.Add(producedMark.Mark);
+                }
             }
         }
 
         // 不同传播路径可能命中同一个语法节点，这里按规则和语法位置收口去重。
         return propagatedMarks
-        .DistinctBy(mark => (mark.RuleId, mark.Mark.SyntaxNode.SpanStart, mark.Mark.SyntaxNode.Span.Length))
+        .DistinctBy(mark => (
+          MarkingEngine.GetGroupKey(mark),
+          mark.RuleId,
+          mark.Mark.SyntaxNode.SpanStart,
+          mark.Mark.SyntaxNode.Span.Length,
+          mark.Mark.SyntaxNode.RawKind))
         .ToList();
+    }
+
+    private RuleContext BuildRuleContext(
+      RuleContext context,
+      IReadOnlyList<MarkRecord> marks)
+    {
+        var fragments = marks
+          .Select(mark => mark.SyntaxNode)
+          .Distinct()
+          .ToList();
+        if (fragments.Count == 0)
+        {
+            return context;
+        }
+
+        var structureView = _structureViewBuilder.Build(fragments, context.AnalysisContext);
+        return context.WithStructureView(structureView);
     }
 }

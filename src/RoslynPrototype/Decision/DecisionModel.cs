@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
+using RoslynPrototype.Lifting;
 using RoslynPrototype.Marking;
 using RoslynPrototype.Propagation;
 using Rules;
@@ -125,6 +126,8 @@ public sealed record DecisionUnit
     /// </summary>
     public string Reason { get; init; }
 
+    public string? GroupKey { get; init; }
+
     public DecisionUnit(
       string ruleId,
       DecisionActionKind action,
@@ -134,7 +137,8 @@ public sealed record DecisionUnit
       IReadOnlyDictionary<string, SyntaxNode> syntaxBindings,
       string? conflictKey = null,
       string? mergeKey = null,
-      string reason = "")
+      string reason = "",
+      string? groupKey = null)
     {
         RuleId = ruleId;
         Action = action;
@@ -145,6 +149,7 @@ public sealed record DecisionUnit
         ConflictKey = conflictKey;
         MergeKey = mergeKey;
         Reason = reason;
+        GroupKey = groupKey;
     }
 }
 
@@ -286,7 +291,8 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
           syntaxBindings,
           conflictKey: coveringRoot.ConflictKey,
           mergeKey: coveringRoot.MergeKey,
-          reason: reason);
+          reason: reason,
+          groupKey: coveringRoot.GroupKey);
     }
 
     private static SyntaxNode? TryResolveAnchorNode(DecisionUnit unit)
@@ -345,28 +351,37 @@ public sealed class RuleDecisionEngine
       RuleContext context,
       IReadOnlyList<MarkRecord> seedMarks,
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<RuleDefinition> rules)
+      IReadOnlyList<LiftedMarkRecord> liftedMarks,
+      IReadOnlyList<RuleDefinitionPropose> rules)
     {
         var units = new List<DecisionUnit>();
 
         // 先按规则分桶，避免每条规则在 Propose 阶段重复扫描全量 marks。
-        var seedMarksByRuleId = seedMarks
-          .GroupBy(mark => mark.RuleId, StringComparer.Ordinal)
+        var seedMarksByGroupKey = seedMarks
+          .GroupBy(MarkingEngine.GetGroupKey, StringComparer.Ordinal)
           .ToDictionary(group => group.Key, group => (IReadOnlyList<MarkRecord>)group.ToList(), StringComparer.Ordinal);
-        var propagatedMarksByRuleId = propagatedMarks
-          .GroupBy(mark => mark.RuleId, StringComparer.Ordinal)
+        var propagatedMarksByGroupKey = propagatedMarks
+          .GroupBy(MarkingEngine.GetGroupKey, StringComparer.Ordinal)
           .ToDictionary(group => group.Key, group => (IReadOnlyList<PropagatedMarkRecord>)group.ToList(), StringComparer.Ordinal);
+        var liftedMarksByGroupKey = liftedMarks
+          .GroupBy(mark => mark.GroupKey ?? mark.RuleId, StringComparer.Ordinal)
+          .ToDictionary(group => group.Key, group => (IReadOnlyList<LiftedMarkRecord>)group.ToList(), StringComparer.Ordinal);
 
         foreach (var rule in rules)
         {
             // 每条规则只消费自己的 seed/propagated marks，然后产出局部 decision units。
-            seedMarksByRuleId.TryGetValue(rule.RuleId, out var ruleSeedMarks);
-            propagatedMarksByRuleId.TryGetValue(rule.RuleId, out var rulePropagatedMarks);
+            seedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleSeedMarks);
+            propagatedMarksByGroupKey.TryGetValue(rule.GroupKey, out var rulePropagatedMarks);
+            liftedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleLiftedMarks);
 
             units.AddRange(rule.Propose(
               context,
               ruleSeedMarks ?? Array.Empty<MarkRecord>(),
-              rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>()));
+              rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>(),
+              ruleLiftedMarks ?? Array.Empty<LiftedMarkRecord>())
+              .Select(unit => unit.GroupKey is null
+                ? unit with { GroupKey = rule.GroupKey }
+                : unit));
         }
 
         var decisions = new List<RuleDecision>();
@@ -407,9 +422,10 @@ public sealed class RuleDecisionEngine
               }
 
               return !replaceAnchors.Any(replaceAnchor =>
-                  !ReferenceEquals(anchorNode, replaceAnchor) &&
-                  anchorNode.Span.Contains(replaceAnchor.Span) &&
-                  replaceAnchor.Ancestors().Any(ancestor => ReferenceEquals(ancestor, anchorNode)));
+                  ReferenceEquals(anchorNode, replaceAnchor) ||
+                  (!ReferenceEquals(anchorNode, replaceAnchor) &&
+                   anchorNode.Span.Contains(replaceAnchor.Span) &&
+                   replaceAnchor.Ancestors().Any(ancestor => ReferenceEquals(ancestor, anchorNode))));
           })
           .ToList();
     }
@@ -420,20 +436,25 @@ public sealed class RuleDecisionEngine
     /// </summary>
     private static string BuildConflictGroupKey(
       DecisionUnit unit,
-      IReadOnlyList<RuleDefinition> rules)
+      IReadOnlyList<RuleDefinitionPropose> rules)
     {
+        if (!string.IsNullOrWhiteSpace(unit.ConflictKey))
+        {
+            return unit.ConflictKey;
+        }
+
         // 约定第一个片段始终是决策锚点，冲突域也从它开始向外推导。
         var anchorFragment = unit.Fragments[0];
         if (!unit.SyntaxBindings.TryGetValue(anchorFragment.Id, out var anchorNode))
         {
-            return unit.ConflictKey ?? DecisionCpgFactory.BuildNodeKey(anchorFragment);
+            return DecisionCpgFactory.BuildNodeKey(anchorFragment);
         }
 
         var rule = rules.FirstOrDefault(candidate => string.Equals(candidate.RuleId, unit.RuleId, StringComparison.Ordinal));
         if (rule is null)
         {
             // 找不到规则定义时，退化回显式 conflict key 或节点键，保证引擎仍可工作。
-            return unit.ConflictKey ?? DecisionCpgFactory.BuildNodeKey(anchorFragment);
+            return DecisionCpgFactory.BuildNodeKey(anchorFragment);
         }
 
         // Replace 决策必须绑定到当前替换锚点，不能再向外层结构合并，否则会丢掉局部规约语义。
@@ -465,7 +486,7 @@ public sealed class RuleDecisionEngine
         }
 
         // 再找不到更合理的宿主时，回退到单元自身给出的冲突键或锚点键。
-        return unit.ConflictKey ?? DecisionCpgFactory.BuildNodeKey(anchorFragment);
+        return DecisionCpgFactory.BuildNodeKey(anchorFragment);
     }
 
     private static SyntaxNode? TryResolveAnchorNode(DecisionUnit unit)
