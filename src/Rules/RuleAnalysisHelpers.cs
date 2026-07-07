@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Analysis;
+using RoslynPrototype.Analysis;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Marking;
 
@@ -9,10 +9,7 @@ namespace Rules;
 
 internal static class RuleAnalysisHelpers
 {
-  public static IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(
-    SyntaxNode root,
-    IReadOnlyCollection<SyntaxKind> allowedKinds,
-    CpgAnalysisContext context)
+  public static IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(SyntaxNode root, IReadOnlyCollection<SyntaxKind> allowedKinds, CpgAnalysisContext context)
   {
     foreach (var expression in new AtomicExpressionAnalyzer().Analyze(root)) {
       if (!allowedKinds.Contains(expression.Kind())) {
@@ -27,9 +24,7 @@ internal static class RuleAnalysisHelpers
     }
   }
 
-  public static IEnumerable<MethodDeclarationSyntax> EnumerateMethodDeclarations(
-    SyntaxNode root,
-    CpgAnalysisContext context)
+  public static IEnumerable<MethodDeclarationSyntax> EnumerateMethodDeclarations(SyntaxNode root, CpgAnalysisContext context)
   {
     foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>()) {
       var analysis = new DefinitionStructureAnalyzer().Analyze(method, context);
@@ -39,9 +34,7 @@ internal static class RuleAnalysisHelpers
     }
   }
 
-  public static ExpressionSyntax? FindLogicalHost(
-    ExpressionSyntax expression,
-    CpgAnalysisContext context)
+  public static ExpressionSyntax? FindLogicalHost(ExpressionSyntax expression, CpgAnalysisContext context)
   {
     ExpressionSyntax? logicalHost = null;
 
@@ -67,9 +60,7 @@ internal static class RuleAnalysisHelpers
     return logicalHost;
   }
 
-  public static SyntaxNode? FindStructuralHost(
-    ExpressionSyntax expression,
-    CpgAnalysisContext context)
+  public static SyntaxNode? FindStructuralHost(ExpressionSyntax expression, CpgAnalysisContext context)
   {
     foreach (var ancestor in expression.Ancestors()) {
       if (TryResolveStructuralHost(ancestor, expression, context, out var host)) {
@@ -84,9 +75,7 @@ internal static class RuleAnalysisHelpers
     return expression.FirstAncestorOrSelf<StatementSyntax>();
   }
 
-  public static SyntaxNode? FindAssignmentOrDefinitionHost(
-    ExpressionSyntax expression,
-    CpgAnalysisContext context)
+  public static SyntaxNode? FindAssignmentOrDefinitionHost(ExpressionSyntax expression, CpgAnalysisContext context)
   {
     _ = context;
 
@@ -107,12 +96,7 @@ internal static class RuleAnalysisHelpers
     return null;
   }
 
-  public static DecisionUnit CreateDeleteDecision(
-    string ruleId,
-    SyntaxNode anchorNode,
-    string reason,
-    SyntaxNode? sourceNode = null,
-    string? conflictKey = null)
+  public static DecisionUnit CreateDeleteDecision(string ruleId, SyntaxNode anchorNode, string reason, SyntaxNode? sourceNode = null, string? conflictKey = null)
   {
     var anchorFragment = CreateFragment(anchorNode, "anchor", DecisionActionKind.Delete);
     var fragments = new List<MinimalRoslynCpg.Model.RoslynCpgNode> { anchorFragment };
@@ -151,18 +135,12 @@ internal static class RuleAnalysisHelpers
       reason: reason);
   }
 
-  public static MarkRecord CreateMark(
-    string ruleId,
-    SyntaxNode syntaxNode,
-    string reason)
+  public static MarkRecord CreateMark(string ruleId, SyntaxNode syntaxNode, string reason)
   {
     return new MarkRecord(ruleId, syntaxNode, null, null, reason);
   }
 
-  private static bool TryAnalyzeExpression(
-    ExpressionSyntax expression,
-    CpgAnalysisContext context,
-    out IReadOnlyList<SyntaxNode> affectedNodes)
+  private static bool TryAnalyzeExpression(ExpressionSyntax expression, CpgAnalysisContext context, out IReadOnlyList<SyntaxNode> affectedNodes)
   {
     affectedNodes = Array.Empty<SyntaxNode>();
 
@@ -202,11 +180,7 @@ internal static class RuleAnalysisHelpers
     }
   }
 
-  private static bool TryResolveStructuralHost(
-    SyntaxNode ancestor,
-    ExpressionSyntax expression,
-    CpgAnalysisContext context,
-    out SyntaxNode? host)
+  private static bool TryResolveStructuralHost(SyntaxNode ancestor, ExpressionSyntax expression, CpgAnalysisContext context, out SyntaxNode? host)
   {
     host = null;
 
@@ -238,10 +212,7 @@ internal static class RuleAnalysisHelpers
     }
   }
 
-  private static MinimalRoslynCpg.Model.RoslynCpgNode CreateFragment(
-    SyntaxNode node,
-    string role,
-    DecisionActionKind? localAction = null)
+  private static MinimalRoslynCpg.Model.RoslynCpgNode CreateFragment(SyntaxNode node, string role, DecisionActionKind? localAction = null)
   {
     return DecisionCpgFactory.CreateFragment(
       $"frag:{DecisionCpgFactory.BuildNodeKey(node)}",

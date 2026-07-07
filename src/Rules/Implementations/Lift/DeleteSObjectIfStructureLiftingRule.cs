@@ -16,10 +16,7 @@ public sealed class DeleteSObjectIfStructureLiftingRule : RuleDefinitionLift
     public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
       DeleteSObjectLiftingCommon.AllowedLiftNodeKinds;
 
-    public override IEnumerable<LiftedMarkRecord> Lift(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         return DeleteSObjectIfStructureLiftingHelpers.BuildIfStructureLiftedMarks(
           context,

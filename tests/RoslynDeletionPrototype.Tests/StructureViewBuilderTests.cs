@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Analysis;
+using RoslynPrototype.Analysis;
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Contracts;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
@@ -167,9 +167,7 @@ public sealed class StructureViewBuilderTests
         Assert.Equal(IfSectionKind.Else, analysis.TailSection!.Kind);
     }
 
-    private static (CpgAnalysisContext Context, SyntaxNode Root) CreateAnalysisContext(
-        string source,
-        string filePath)
+    private static (CpgAnalysisContext Context, SyntaxNode Root) CreateAnalysisContext(string source, string filePath)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
         var root = tree.GetRoot();
@@ -199,10 +197,7 @@ public sealed class StructureViewBuilderTests
             .ToHashSet(StringComparer.Ordinal);
     }
 
-    private static bool HasUndirectedPath(
-        RoslynCpgStructureView view,
-        IReadOnlySet<string> sourceNodeIds,
-        IReadOnlySet<string> targetNodeIds)
+    private static bool HasUndirectedPath(RoslynCpgStructureView view, IReadOnlySet<string> sourceNodeIds, IReadOnlySet<string> targetNodeIds)
     {
         var adjacency = new Dictionary<string, List<string>>(StringComparer.Ordinal);
         foreach (var edge in view.Edges)
@@ -238,10 +233,7 @@ public sealed class StructureViewBuilderTests
         return false;
     }
 
-    private static void AddNeighbor(
-        IDictionary<string, List<string>> adjacency,
-        string sourceId,
-        string targetId)
+    private static void AddNeighbor(IDictionary<string, List<string>> adjacency, string sourceId, string targetId)
     {
         if (!adjacency.TryGetValue(sourceId, out var neighbors))
         {

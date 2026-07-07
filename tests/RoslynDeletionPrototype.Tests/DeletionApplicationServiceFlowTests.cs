@@ -80,9 +80,7 @@ public sealed class DeletionApplicationServiceFlowTests
         return new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
     }
 
-    private static Dictionary<string, string> CreateOptions(
-      string? targetName = null,
-      string? unreachableMethods = null)
+    private static Dictionary<string, string> CreateOptions(string? targetName = null, string? unreachableMethods = null)
     {
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(targetName))
@@ -103,8 +101,7 @@ public sealed class DeletionApplicationServiceFlowTests
         return node.RawKind == (int)kind;
     }
 
-    private static IEnumerable<Microsoft.CodeAnalysis.SyntaxNode> EnumerateEffectiveNodes(
-      RoslynPrototype.Rewrite.PrototypeAnalysisResult result)
+    private static IEnumerable<Microsoft.CodeAnalysis.SyntaxNode> EnumerateEffectiveNodes(RoslynPrototype.Rewrite.PrototypeAnalysisResult result)
     {
         return result.SeedMarks
           .Select(mark => mark.SyntaxNode)

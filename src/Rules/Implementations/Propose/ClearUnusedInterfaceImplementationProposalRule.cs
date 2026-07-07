@@ -23,11 +23,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
   public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
     Array.Empty<SyntaxKind>();
 
-  public override IEnumerable<DecisionUnit> Propose(
-    RuleContext context,
-    IReadOnlyList<MarkRecord> seedMarks,
-    IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-    IReadOnlyList<LiftedMarkRecord> liftedMarks)
+  public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
   {
     _ = propagatedMarks;
     _ = liftedMarks;
@@ -50,10 +46,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
     }
   }
 
-  private static bool TryBuildReplacementMethod(
-    MethodDeclarationSyntax method,
-    IMethodSymbol methodSymbol,
-    out MethodDeclarationSyntax replacementMethod)
+  private static bool TryBuildReplacementMethod(MethodDeclarationSyntax method, IMethodSymbol methodSymbol, out MethodDeclarationSyntax replacementMethod)
   {
     replacementMethod = method;
     if (method.Body is null && method.ExpressionBody is null)
@@ -127,11 +120,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
         member.DeclaredAccessibility == Accessibility.Public);
   }
 
-  private static DecisionUnit CreateMethodReplaceDecision(
-    string ruleId,
-    MethodDeclarationSyntax anchorNode,
-    MethodDeclarationSyntax replacementNode,
-    string reason)
+  private static DecisionUnit CreateMethodReplaceDecision(string ruleId, MethodDeclarationSyntax anchorNode, MethodDeclarationSyntax replacementNode, string reason)
   {
     var anchorFragment = CreateFragment(anchorNode, "anchor", DecisionActionKind.Replace);
     var replacementFragment = CreateFragment(
@@ -165,10 +154,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
       reason: reason);
   }
 
-  private static RoslynCpgNode CreateFragment(
-    SyntaxNode node,
-    string role,
-    DecisionActionKind action)
+  private static RoslynCpgNode CreateFragment(SyntaxNode node, string role, DecisionActionKind action)
   {
     return DecisionCpgFactory.CreateFragment(
       $"frag:{DecisionCpgFactory.BuildNodeKey(node)}",

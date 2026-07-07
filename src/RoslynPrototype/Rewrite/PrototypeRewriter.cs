@@ -13,10 +13,7 @@ public sealed class PrototypeRewriter
   /// <summary>
   /// 根据决策列表对语法树执行删除或替换，并产出最终源码与编辑记录。
   /// </summary>
-  public PrototypeRewriteResult Rewrite(
-    SyntaxNode root,
-    SemanticModel semanticModel,
-    IEnumerable<RuleDecision> decisions)
+  public PrototypeRewriteResult Rewrite(SyntaxNode root, SemanticModel semanticModel, IEnumerable<RuleDecision> decisions)
   {
     var workspace = new AdhocWorkspace();
     var editor = new SyntaxEditor(root, workspace.Services);
@@ -122,9 +119,7 @@ public sealed class PrototypeRewriter
   /// <summary>
   /// 为表达式删除场景构造一个类型兼容的占位替换表达式。
   /// </summary>
-  private static ExpressionSyntax CreateReplacementExpression(
-    ExpressionSyntax expression,
-    SemanticModel semanticModel)
+  private static ExpressionSyntax CreateReplacementExpression(ExpressionSyntax expression, SemanticModel semanticModel)
   {
     var typeInfo = semanticModel.GetTypeInfo(expression);
     var targetType = typeInfo.ConvertedType ?? typeInfo.Type;
@@ -147,9 +142,7 @@ public sealed class PrototypeRewriter
       GetDisplayText(replacementNode));
   }
 
-  private static RewriteEdit CreateStatementDisplayEdit(
-    StatementSyntax originalStatement,
-    StatementSyntax replacementStatement)
+  private static RewriteEdit CreateStatementDisplayEdit(StatementSyntax originalStatement, StatementSyntax replacementStatement)
   {
     if (originalStatement is IfStatementSyntax &&
         replacementStatement is BlockSyntax replacementBlock &&

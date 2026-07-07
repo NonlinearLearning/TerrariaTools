@@ -31,11 +31,7 @@ public sealed class RoslynCpgGraph
     /// <summary>
     /// 在确保端点节点已注册后，补上一条带类型边。
     /// </summary>
-    public void AddEdge(
-      RoslynCpgNode source,
-      RoslynCpgNode target,
-      RoslynCpgEdgeKind kind,
-      string? label = null)
+    public void AddEdge(RoslynCpgNode source, RoslynCpgNode target, RoslynCpgEdgeKind kind, string? label = null)
     {
         AddNode(source);
         AddNode(target);
@@ -61,11 +57,7 @@ public sealed class RoslynCpgGraph
     /// <summary>
     /// 围绕指定锚点提取一个 hop 有界的局部视图。
     /// </summary>
-    public RoslynCpgLocalView ExtractLocalView(
-      string anchorNodeId,
-      int hops,
-      RoslynCpgViewDirection direction = RoslynCpgViewDirection.Both,
-      IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds = null)
+    public RoslynCpgLocalView ExtractLocalView(string anchorNodeId, int hops, RoslynCpgViewDirection direction = RoslynCpgViewDirection.Both, IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds = null)
     {
         if (hops < 0)
         {
@@ -120,9 +112,7 @@ public sealed class RoslynCpgGraph
     /// <summary>
     /// 按源或目标 id 组织邻接表，供局部视图遍历使用。
     /// </summary>
-    private Dictionary<string, List<RoslynCpgEdge>> BuildAdjacencyMap(
-      bool useOutgoingEdges,
-      HashSet<RoslynCpgEdgeKind>? allowedKinds)
+    private Dictionary<string, List<RoslynCpgEdge>> BuildAdjacencyMap(bool useOutgoingEdges, HashSet<RoslynCpgEdgeKind>? allowedKinds)
     {
         var adjacency = new Dictionary<string, List<RoslynCpgEdge>>(StringComparer.Ordinal);
         foreach (var edge in _edges)
@@ -148,13 +138,7 @@ public sealed class RoslynCpgGraph
     /// <summary>
     /// 按请求方向扩展一个 BFS 前沿节点。
     /// </summary>
-    private static void ExpandFrom(
-      string nodeId,
-      RoslynCpgViewDirection direction,
-      IReadOnlyDictionary<string, List<RoslynCpgEdge>> outgoingEdges,
-      IReadOnlyDictionary<string, List<RoslynCpgEdge>> incomingEdges,
-      ISet<string> visitedNodeIds,
-      ISet<string> nextFrontierNodeIds)
+    private static void ExpandFrom(string nodeId, RoslynCpgViewDirection direction, IReadOnlyDictionary<string, List<RoslynCpgEdge>> outgoingEdges, IReadOnlyDictionary<string, List<RoslynCpgEdge>> incomingEdges, ISet<string> visitedNodeIds, ISet<string> nextFrontierNodeIds)
     {
         if (direction is RoslynCpgViewDirection.Both or RoslynCpgViewDirection.Outgoing)
         {
@@ -170,12 +154,7 @@ public sealed class RoslynCpgGraph
     /// <summary>
     /// 将尚未访问的相邻节点加入下一轮 BFS 前沿。
     /// </summary>
-    private static void ExpandNeighbors(
-      string nodeId,
-      IReadOnlyDictionary<string, List<RoslynCpgEdge>> adjacency,
-      bool useOutgoingTarget,
-      ISet<string> visitedNodeIds,
-      ISet<string> nextFrontierNodeIds)
+    private static void ExpandNeighbors(string nodeId, IReadOnlyDictionary<string, List<RoslynCpgEdge>> adjacency, bool useOutgoingTarget, ISet<string> visitedNodeIds, ISet<string> nextFrontierNodeIds)
     {
         if (!adjacency.TryGetValue(nodeId, out var edges))
         {

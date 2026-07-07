@@ -370,10 +370,7 @@ public sealed class PropagationRuleExpansionTests
         AssertContainsPropagated(result, SyntaxKind.IdentifierName, "value");
     }
 
-    private static PrototypeAnalysisResult Analyze(
-      string source,
-      string filePath,
-      string targetName)
+    private static PrototypeAnalysisResult Analyze(string source, string filePath, string targetName)
     {
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
         return application.Analyze(
@@ -385,19 +382,12 @@ public sealed class PropagationRuleExpansionTests
           });
     }
 
-    private static PrototypeAnalysisResult AnalyzeWithSeed(
-      string source,
-      string filePath,
-      SyntaxKind seedKind,
-      string seedText)
+    private static PrototypeAnalysisResult AnalyzeWithSeed(string source, string filePath, SyntaxKind seedKind, string seedText)
     {
         return AnalyzeWithSeeds(source, filePath, (seedKind, seedText));
     }
 
-    private static PrototypeAnalysisResult AnalyzeWithSeeds(
-      string source,
-      string filePath,
-      params (SyntaxKind Kind, string Text)[] seeds)
+    private static PrototypeAnalysisResult AnalyzeWithSeeds(string source, string filePath, params (SyntaxKind Kind, string Text)[] seeds)
     {
         var application = new DeletionApplicationService(
           new RuleDefinitionMark[] { new ExactSyntaxSeedRule(seeds) },
@@ -417,40 +407,28 @@ public sealed class PropagationRuleExpansionTests
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
     }
 
-    private static void AssertContainsPropagated(
-      PrototypeAnalysisResult result,
-      SyntaxKind kind,
-      string expectedText)
+    private static void AssertContainsPropagated(PrototypeAnalysisResult result, SyntaxKind kind, string expectedText)
     {
         Assert.Contains(EnumerateEffectiveNodes(result), node =>
           node.RawKind == (int)kind &&
           string.Equals(node.ToString(), expectedText, StringComparison.Ordinal));
     }
 
-    private static void AssertContainsPropagatedText(
-      PrototypeAnalysisResult result,
-      SyntaxKind kind,
-      string expectedText)
+    private static void AssertContainsPropagatedText(PrototypeAnalysisResult result, SyntaxKind kind, string expectedText)
     {
         Assert.Contains(EnumerateEffectiveNodes(result), node =>
           node.RawKind == (int)kind &&
           node.ToString().Contains(expectedText, StringComparison.Ordinal));
     }
 
-    private static void AssertContainsEffective(
-      PrototypeAnalysisResult result,
-      SyntaxKind kind,
-      string expectedText)
+    private static void AssertContainsEffective(PrototypeAnalysisResult result, SyntaxKind kind, string expectedText)
     {
         Assert.Contains(EnumerateEffectiveNodes(result), node =>
           node.RawKind == (int)kind &&
           string.Equals(node.ToString(), expectedText, StringComparison.Ordinal));
     }
 
-    private static void AssertContainsEffectiveText(
-      PrototypeAnalysisResult result,
-      SyntaxKind kind,
-      string expectedText)
+    private static void AssertContainsEffectiveText(PrototypeAnalysisResult result, SyntaxKind kind, string expectedText)
     {
         Assert.Contains(EnumerateEffectiveNodes(result), node =>
           node.RawKind == (int)kind &&

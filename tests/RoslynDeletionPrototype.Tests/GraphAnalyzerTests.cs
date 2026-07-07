@@ -762,9 +762,7 @@ public sealed class GraphAnalyzerTests
         return node.RawKind == (int)kind;
     }
 
-    private static void AssertContainsPropagatedKind(
-      PrototypeAnalysisResult result,
-      SyntaxKind kind)
+    private static void AssertContainsPropagatedKind(PrototypeAnalysisResult result, SyntaxKind kind)
     {
         Assert.Contains(EnumerateEffectiveNodes(result), node => IsNodeKind(node, kind));
     }
@@ -801,10 +799,7 @@ public sealed class GraphAnalyzerTests
         }
     }
 
-    private static string ExtractDiffSection(
-      string diffText,
-      string startMarker,
-      string? endMarker)
+    private static string ExtractDiffSection(string diffText, string startMarker, string? endMarker)
     {
         var startIndex = diffText.IndexOf(startMarker, StringComparison.Ordinal);
         Assert.True(startIndex >= 0, $"Diff text must contain marker '{startMarker}'.");

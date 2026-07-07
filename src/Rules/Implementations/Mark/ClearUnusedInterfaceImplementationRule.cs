@@ -69,8 +69,7 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
       !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
   }
 
-  private static Dictionary<IMethodSymbol, IReadOnlyList<IMethodSymbol>> BuildInterfaceImplementations(
-    Compilation compilation)
+  private static Dictionary<IMethodSymbol, IReadOnlyList<IMethodSymbol>> BuildInterfaceImplementations(Compilation compilation)
   {
     var implementations = new Dictionary<IMethodSymbol, List<IMethodSymbol>>(
       SymbolEqualityComparer.Default);

@@ -61,8 +61,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
       !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
   }
 
-  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildCandidateMap(
-    Compilation compilation)
+  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildCandidateMap(Compilation compilation)
   {
     var candidates = new Dictionary<IMethodSymbol, MethodDeclarationSyntax>(
       SymbolEqualityComparer.Default);
@@ -86,9 +85,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
     return candidates;
   }
 
-  private static Dictionary<IMethodSymbol, ReferenceFacts> BuildReferenceFacts(
-    Compilation compilation,
-    IEnumerable<IMethodSymbol> candidates)
+  private static Dictionary<IMethodSymbol, ReferenceFacts> BuildReferenceFacts(Compilation compilation, IEnumerable<IMethodSymbol> candidates)
   {
     var candidateSet = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
     foreach (var candidate in candidates)

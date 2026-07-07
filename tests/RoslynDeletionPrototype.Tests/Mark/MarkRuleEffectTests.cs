@@ -800,11 +800,7 @@ public sealed class MarkRuleEffectTests : IDisposable
 
     [Theory]
     [MemberData(nameof(LargeParenthesizedLogicalEffectCases))]
-    public void AnalyzeFromArgs_LargeParenthesizedCases_ProduceSingleLogicalOrMark(
-        string caseName,
-        string source,
-        string expectedMarkedText,
-        string expectedReplacementText)
+    public void AnalyzeFromArgs_LargeParenthesizedCases_ProduceSingleLogicalOrMark(string caseName, string source, string expectedMarkedText, string expectedReplacementText)
     {
         var filePath = WriteSourceFile(
             $"{caseName}.cs",
@@ -885,11 +881,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         return filePath;
     }
 
-    private static object[] CreateEffectCase(
-        string caseName,
-        string source,
-        string expectedMarkedText,
-        string expectedReplacementText)
+    private static object[] CreateEffectCase(string caseName, string source, string expectedMarkedText, string expectedReplacementText)
     {
         return new object[] { caseName, source, expectedMarkedText, expectedReplacementText };
     }
@@ -899,9 +891,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         return node.RawKind == (int)kind;
     }
 
-    private static void AssertContainsPropagatedKind(
-        PrototypeAnalysisResult result,
-        SyntaxKind kind)
+    private static void AssertContainsPropagatedKind(PrototypeAnalysisResult result, SyntaxKind kind)
     {
         Assert.Contains(EnumerateEffectiveNodes(result), node => IsNodeKind(node, kind));
     }
@@ -914,9 +904,7 @@ public sealed class MarkRuleEffectTests : IDisposable
             .Concat(result.LiftedMarks.Select(mark => mark.Mark.SyntaxNode));
     }
 
-    private static Microsoft.CodeAnalysis.SyntaxNode AssertSinglePropagatedLogicalOr(
-        PrototypeAnalysisResult result,
-        string expectedText)
+    private static Microsoft.CodeAnalysis.SyntaxNode AssertSinglePropagatedLogicalOr(PrototypeAnalysisResult result, string expectedText)
     {
         var exactLogicalMarks = result.PropagatedMarks
             .Where(mark => IsNodeKind(mark.Mark.SyntaxNode, SyntaxKind.LogicalOrExpression))

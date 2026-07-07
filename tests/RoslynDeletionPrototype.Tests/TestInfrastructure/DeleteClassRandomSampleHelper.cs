@@ -42,8 +42,7 @@ internal static class DeleteClassRandomSampleHelper
 {
     private const int DefaultFixedSeed = 20260706;
 
-    public static DeleteClassRandomSampleRunResult Execute(
-      DeleteClassRandomSampleRequest request)
+    public static DeleteClassRandomSampleRunResult Execute(DeleteClassRandomSampleRequest request)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(request.SourceDirectory);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.DeleteClassTarget);
@@ -152,10 +151,7 @@ internal static class DeleteClassRandomSampleHelper
           segments.Contains("obj", StringComparer.OrdinalIgnoreCase);
     }
 
-    private static IReadOnlyList<string> SelectRelativePaths(
-      IReadOnlyList<string> candidates,
-      int sampleCount,
-      int seed)
+    private static IReadOnlyList<string> SelectRelativePaths(IReadOnlyList<string> candidates, int sampleCount, int seed)
     {
         var pool = candidates.ToList();
         var random = new Random(seed);
@@ -196,11 +192,7 @@ internal static class DeleteClassRandomSampleHelper
         return new string(builder);
     }
 
-    private static IReadOnlyList<DeleteClassRandomSampleFileResult> BuildFileResults(
-      string sourceDirectory,
-      string copiedSourceRoot,
-      string diffRoot,
-      IReadOnlyList<string> selectedRelativePaths)
+    private static IReadOnlyList<DeleteClassRandomSampleFileResult> BuildFileResults(string sourceDirectory, string copiedSourceRoot, string diffRoot, IReadOnlyList<string> selectedRelativePaths)
     {
         var results = new List<DeleteClassRandomSampleFileResult>(selectedRelativePaths.Count);
         foreach (var relativePath in selectedRelativePaths)
@@ -221,14 +213,7 @@ internal static class DeleteClassRandomSampleHelper
         return results;
     }
 
-    private static void WriteManifest(
-      string manifestPath,
-      DeleteClassRandomSampleRequest request,
-      int effectiveSeed,
-      string copiedSourceRoot,
-      string diffRoot,
-      IReadOnlyList<string> selectedRelativePaths,
-      IReadOnlyList<DeleteClassRandomSampleFileResult> fileResults)
+    private static void WriteManifest(string manifestPath, DeleteClassRandomSampleRequest request, int effectiveSeed, string copiedSourceRoot, string diffRoot, IReadOnlyList<string> selectedRelativePaths, IReadOnlyList<DeleteClassRandomSampleFileResult> fileResults)
     {
         var manifest = new
         {

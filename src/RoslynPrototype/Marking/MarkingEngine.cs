@@ -16,10 +16,7 @@ public sealed class MarkingEngine
     /// <param name="root">待分析源码的语法树根节点。</param>
     /// <param name="rules">参与当前分析的删除规则集合。</param>
     /// <returns>去重后的种子标记集合。</returns>
-    public IReadOnlyList<MarkRecord> Run(
-      RuleContext context,
-      SyntaxNode root,
-      IReadOnlyList<RuleDefinitionMark> rules)
+    public IReadOnlyList<MarkRecord> Run(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
     {
         var seedMarks = new List<MarkRecord>();
 
@@ -73,10 +70,7 @@ public sealed class MarkingEngine
     /// <summary>
     /// 为命中记录补齐缺失的语法注解与主图节点绑定。
     /// </summary>
-    internal static MarkRecord BindMarkRecord(
-      RuleContext context,
-      MarkRecord candidate,
-      string? groupKey = null)
+    internal static MarkRecord BindMarkRecord(RuleContext context, MarkRecord candidate, string? groupKey = null)
     {
         var annotation = candidate.Annotation ?? new SyntaxAnnotation("RuleHitNode", Guid.NewGuid().ToString("N"));
         var primaryGraphNode = candidate.PrimaryGraphNode ?? ResolvePrimaryGraphNode(context.Graph, candidate.SyntaxNode);
@@ -97,10 +91,7 @@ public sealed class MarkingEngine
     /// <summary>
     /// 为传播记录中的命中标记和源标记分别补齐绑定信息。
     /// </summary>
-    internal static PropagatedMarkRecord BindPropagatedMarkRecord(
-      RuleContext context,
-      PropagatedMarkRecord candidate,
-      string? groupKey = null)
+    internal static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate, string? groupKey = null)
     {
         return candidate with
         {

@@ -21,11 +21,7 @@ public sealed class IfStructureProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;

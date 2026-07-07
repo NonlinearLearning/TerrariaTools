@@ -21,9 +21,7 @@ public sealed class DeleteClassObjectCreationDeclarationPropagationRule : RuleDe
         SyntaxKind.VariableDeclarator
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         _ = context;
         foreach (var seedMark in seedMarks)
@@ -81,9 +79,7 @@ public sealed class DeleteClassSymbolReferencePropagationRule : RuleDefinitionPr
         SyntaxKind.IdentifierName
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var markedSymbols = BuildMarkedLocalDefinitions(context, seedMarks);
         if (markedSymbols.Count == 0)
@@ -117,9 +113,7 @@ public sealed class DeleteClassSymbolReferencePropagationRule : RuleDefinitionPr
         }
     }
 
-    private static Dictionary<ISymbol, MarkRecord> BuildMarkedLocalDefinitions(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> marks)
+    private static Dictionary<ISymbol, MarkRecord> BuildMarkedLocalDefinitions(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var symbols = new Dictionary<ISymbol, MarkRecord>(SymbolEqualityComparer.Default);
         foreach (var mark in marks)
@@ -149,9 +143,7 @@ public sealed class DeleteClassSymbolReferencePropagationRule : RuleDefinitionPr
             StringComparison.Ordinal);
     }
 
-    private static ISymbol? ResolveDeclaredLocalSymbol(
-      RuleContext context,
-      SyntaxNode node)
+    private static ISymbol? ResolveDeclaredLocalSymbol(RuleContext context, SyntaxNode node)
     {
         var symbol = node is VariableDeclaratorSyntax variableDeclarator
           ? context.SemanticModel.GetDeclaredSymbol(variableDeclarator)
@@ -160,9 +152,7 @@ public sealed class DeleteClassSymbolReferencePropagationRule : RuleDefinitionPr
         return symbol is ILocalSymbol ? symbol : null;
     }
 
-    private static ISymbol? ResolveReferencedSymbol(
-      RuleContext context,
-      IdentifierNameSyntax identifierName)
+    private static ISymbol? ResolveReferencedSymbol(RuleContext context, IdentifierNameSyntax identifierName)
     {
         var symbol = context.SemanticModel.GetSymbolInfo(identifierName).Symbol;
         return symbol is ILocalSymbol ? symbol : null;
@@ -213,9 +203,7 @@ public sealed class DeleteClassMethodParameterUsagePropagationRule : RuleDefinit
         SyntaxKind.InvocationExpression
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var seedMark in seedMarks)
@@ -258,10 +246,7 @@ public sealed class DeleteClassMethodParameterUsagePropagationRule : RuleDefinit
         }
     }
 
-    private bool TryBuildPayload(
-      RuleContext context,
-      MarkRecord seedMark,
-      out MethodParameterUsagePayload payload)
+    private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out MethodParameterUsagePayload payload)
     {
         payload = null!;
         if (!string.Equals(seedMark.RuleId, DeleteClassRuleIds.TypeSyntaxMarkRuleId, StringComparison.Ordinal) ||
@@ -323,11 +308,7 @@ public sealed class DeleteClassMethodParameterUsagePropagationRule : RuleDefinit
         return false;
     }
 
-    private static MethodParameterUsagePayload CreatePayload(
-      TypeSyntax typeSyntax,
-      MethodDeclarationSyntax method,
-      MethodParameterUsageMode mode,
-      IReadOnlyList<InvocationRewrite> invocationRewrites)
+    private static MethodParameterUsagePayload CreatePayload(TypeSyntax typeSyntax, MethodDeclarationSyntax method, MethodParameterUsageMode mode, IReadOnlyList<InvocationRewrite> invocationRewrites)
     {
         var parameterIndex = method.ParameterList.Parameters
           .Select((parameter, index) => new { parameter, index })
@@ -358,9 +339,7 @@ public sealed class DeleteClassLocalFunctionParameterUsagePropagationRule : Rule
         SyntaxKind.InvocationExpression
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var seedMark in seedMarks)
@@ -403,10 +382,7 @@ public sealed class DeleteClassLocalFunctionParameterUsagePropagationRule : Rule
         }
     }
 
-    private bool TryBuildPayload(
-      RuleContext context,
-      MarkRecord seedMark,
-      out LocalFunctionParameterUsagePayload payload)
+    private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out LocalFunctionParameterUsagePayload payload)
     {
         payload = null!;
         if (!string.Equals(seedMark.RuleId, DeleteClassRuleIds.TypeSyntaxMarkRuleId, StringComparison.Ordinal) ||
@@ -448,11 +424,7 @@ public sealed class DeleteClassLocalFunctionParameterUsagePropagationRule : Rule
         return false;
     }
 
-    private static LocalFunctionParameterUsagePayload CreatePayload(
-      TypeSyntax typeSyntax,
-      LocalFunctionStatementSyntax localFunction,
-      LocalFunctionParameterUsageMode mode,
-      IReadOnlyList<InvocationRewrite> invocationRewrites)
+    private static LocalFunctionParameterUsagePayload CreatePayload(TypeSyntax typeSyntax, LocalFunctionStatementSyntax localFunction, LocalFunctionParameterUsageMode mode, IReadOnlyList<InvocationRewrite> invocationRewrites)
     {
         var parameterIndex = localFunction.ParameterList.Parameters
           .Select((parameter, index) => new { parameter, index })
@@ -483,9 +455,7 @@ public sealed class DeleteClassIndexerParameterUsagePropagationRule : RuleDefini
         SyntaxKind.ElementAccessExpression
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var seedMark in seedMarks)
@@ -528,10 +498,7 @@ public sealed class DeleteClassIndexerParameterUsagePropagationRule : RuleDefini
         }
     }
 
-    private bool TryBuildPayload(
-      RuleContext context,
-      MarkRecord seedMark,
-      out IndexerParameterUsagePayload payload)
+    private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out IndexerParameterUsagePayload payload)
     {
         payload = null!;
         if (!string.Equals(seedMark.RuleId, DeleteClassRuleIds.TypeSyntaxMarkRuleId, StringComparison.Ordinal) ||
@@ -563,11 +530,7 @@ public sealed class DeleteClassIndexerParameterUsagePropagationRule : RuleDefini
         return false;
     }
 
-    private static IndexerParameterUsagePayload CreatePayload(
-      TypeSyntax typeSyntax,
-      IndexerDeclarationSyntax indexer,
-      IndexerParameterUsageMode mode,
-      IReadOnlyList<ElementAccessRewrite> accessRewrites)
+    private static IndexerParameterUsagePayload CreatePayload(TypeSyntax typeSyntax, IndexerDeclarationSyntax indexer, IndexerParameterUsageMode mode, IReadOnlyList<ElementAccessRewrite> accessRewrites)
     {
         var parameterIndex = indexer.ParameterList.Parameters
           .Select((parameter, index) => new { parameter, index })
@@ -603,9 +566,7 @@ public sealed class DeleteClassDelegateUsageClassificationPropagationRule : Rule
         SyntaxKind.InvocationExpression
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var seedMark in seedMarks)
@@ -702,10 +663,7 @@ public sealed class DeleteClassDelegateUsageClassificationPropagationRule : Rule
         }
     }
 
-    private bool TryBuildPayload(
-      RuleContext context,
-      MarkRecord seedMark,
-      out DelegateUsagePayload payload)
+    private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out DelegateUsagePayload payload)
     {
         payload = null!;
         if (!string.Equals(seedMark.RuleId, DeleteClassRuleIds.TypeSyntaxMarkRuleId, StringComparison.Ordinal) ||
@@ -793,12 +751,7 @@ public sealed class DeleteClassDelegateUsageClassificationPropagationRule : Rule
         return false;
     }
 
-    private static DelegateUsagePayload CreatePayload(
-      DelegateDeclarationSyntax delegateDeclaration,
-      ParameterSyntax parameter,
-      int parameterIndex,
-      DelegateUsageMode mode,
-      DelegateUsageSummary usageSummary)
+    private static DelegateUsagePayload CreatePayload(DelegateDeclarationSyntax delegateDeclaration, ParameterSyntax parameter, int parameterIndex, DelegateUsageMode mode, DelegateUsageSummary usageSummary)
     {
         return new DelegateUsagePayload(
           delegateDeclaration,
@@ -829,9 +782,7 @@ public sealed class DeleteClassExtensionMethodMappedCallsitePropagationRule : Ru
         SyntaxKind.InvocationExpression
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (var seedMark in seedMarks)
@@ -874,10 +825,7 @@ public sealed class DeleteClassExtensionMethodMappedCallsitePropagationRule : Ru
         }
     }
 
-    private bool TryBuildPayload(
-      RuleContext context,
-      MarkRecord seedMark,
-      out ExtensionMethodMappedCallsitePayload payload)
+    private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out ExtensionMethodMappedCallsitePayload payload)
     {
         payload = null!;
         if (!string.Equals(seedMark.RuleId, DeleteClassRuleIds.TypeSyntaxMarkRuleId, StringComparison.Ordinal) ||
@@ -923,9 +871,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         SyntaxKind.SimpleBaseType
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         _ = context;
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -954,10 +900,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         }
     }
 
-    private static bool TryBuildPayload(
-      MarkRecord seedMark,
-      out DeclarationHostPayload payload,
-      out string reason)
+    private static bool TryBuildPayload(MarkRecord seedMark, out DeclarationHostPayload payload, out string reason)
     {
         payload = null!;
         reason = string.Empty;
@@ -1054,9 +997,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return false;
     }
 
-    private static bool TryResolveFieldDeclaration(
-      TypeSyntax typeSyntax,
-      out FieldDeclarationSyntax fieldDeclaration)
+    private static bool TryResolveFieldDeclaration(TypeSyntax typeSyntax, out FieldDeclarationSyntax fieldDeclaration)
     {
         fieldDeclaration = typeSyntax.Ancestors()
           .OfType<FieldDeclarationSyntax>()
@@ -1064,9 +1005,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return fieldDeclaration is not null;
     }
 
-    private static bool TryResolvePropertyDeclaration(
-      TypeSyntax typeSyntax,
-      out PropertyDeclarationSyntax propertyDeclaration)
+    private static bool TryResolvePropertyDeclaration(TypeSyntax typeSyntax, out PropertyDeclarationSyntax propertyDeclaration)
     {
         propertyDeclaration = typeSyntax.Ancestors()
           .OfType<PropertyDeclarationSyntax>()
@@ -1075,9 +1014,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
           propertyDeclaration.Parent is not InterfaceDeclarationSyntax;
     }
 
-    private static bool TryResolvePrivateMethodReturn(
-      TypeSyntax typeSyntax,
-      out MethodDeclarationSyntax methodDeclaration)
+    private static bool TryResolvePrivateMethodReturn(TypeSyntax typeSyntax, out MethodDeclarationSyntax methodDeclaration)
     {
         methodDeclaration = typeSyntax.Ancestors()
           .OfType<MethodDeclarationSyntax>()
@@ -1086,9 +1023,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
           DeleteClassMethodProposalSafety.IsSafePrivateMethod(methodDeclaration);
     }
 
-    private static bool TryResolveNonPrivateMethodReturn(
-      TypeSyntax typeSyntax,
-      out MethodDeclarationSyntax methodDeclaration)
+    private static bool TryResolveNonPrivateMethodReturn(TypeSyntax typeSyntax, out MethodDeclarationSyntax methodDeclaration)
     {
         methodDeclaration = typeSyntax.Ancestors()
           .OfType<MethodDeclarationSyntax>()
@@ -1097,9 +1032,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
           DeleteClassMethodProposalSafety.IsSafeNonPrivateMethod(methodDeclaration);
     }
 
-    private static bool TryResolveInterfaceMethod(
-      TypeSyntax typeSyntax,
-      out MethodDeclarationSyntax methodDeclaration)
+    private static bool TryResolveInterfaceMethod(TypeSyntax typeSyntax, out MethodDeclarationSyntax methodDeclaration)
     {
         methodDeclaration = typeSyntax.Ancestors()
           .OfType<MethodDeclarationSyntax>()
@@ -1109,9 +1042,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return methodDeclaration?.Parent is InterfaceDeclarationSyntax;
     }
 
-    private static bool TryResolveInterfaceProperty(
-      TypeSyntax typeSyntax,
-      out PropertyDeclarationSyntax propertyDeclaration)
+    private static bool TryResolveInterfaceProperty(TypeSyntax typeSyntax, out PropertyDeclarationSyntax propertyDeclaration)
     {
         propertyDeclaration = typeSyntax.Ancestors()
           .OfType<PropertyDeclarationSyntax>()
@@ -1119,9 +1050,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return propertyDeclaration?.Parent is InterfaceDeclarationSyntax;
     }
 
-    private static bool TryResolveInterfaceEvent(
-      TypeSyntax typeSyntax,
-      out SyntaxNode eventDeclaration)
+    private static bool TryResolveInterfaceEvent(TypeSyntax typeSyntax, out SyntaxNode eventDeclaration)
     {
         var explicitEvent = typeSyntax.Ancestors()
           .OfType<EventDeclarationSyntax>()
@@ -1145,9 +1074,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return false;
     }
 
-    private static bool TryResolveInterfaceIndexer(
-      TypeSyntax typeSyntax,
-      out IndexerDeclarationSyntax indexerDeclaration)
+    private static bool TryResolveInterfaceIndexer(TypeSyntax typeSyntax, out IndexerDeclarationSyntax indexerDeclaration)
     {
         indexerDeclaration = typeSyntax.Ancestors()
           .OfType<IndexerDeclarationSyntax>()
@@ -1157,9 +1084,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return indexerDeclaration?.Parent is InterfaceDeclarationSyntax;
     }
 
-    private static bool TryResolveDelegateReturn(
-      TypeSyntax typeSyntax,
-      out DelegateDeclarationSyntax delegateDeclaration)
+    private static bool TryResolveDelegateReturn(TypeSyntax typeSyntax, out DelegateDeclarationSyntax delegateDeclaration)
     {
         delegateDeclaration = typeSyntax.Ancestors()
           .OfType<DelegateDeclarationSyntax>()
@@ -1167,9 +1092,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return delegateDeclaration is not null;
     }
 
-    private static bool TryResolveExtensionMethodFromReceiver(
-      TypeSyntax typeSyntax,
-      out MethodDeclarationSyntax methodDeclaration)
+    private static bool TryResolveExtensionMethodFromReceiver(TypeSyntax typeSyntax, out MethodDeclarationSyntax methodDeclaration)
     {
         methodDeclaration = null!;
         var parameter = typeSyntax.Ancestors()
@@ -1188,9 +1111,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return DeleteClassMethodProposalSafety.IsSafeExtensionReceiverMethod(methodDeclaration);
     }
 
-    private static bool TryResolveBaseDeletionTarget(
-      TypeSyntax typeSyntax,
-      out SyntaxNode deletionTarget)
+    private static bool TryResolveBaseDeletionTarget(TypeSyntax typeSyntax, out SyntaxNode deletionTarget)
     {
         var simpleBaseType = typeSyntax.Ancestors()
           .OfType<SimpleBaseTypeSyntax>()
@@ -1207,9 +1128,7 @@ public sealed class DeleteClassDeclarationHostPropagationRule : RuleDefinitionPr
         return true;
     }
 
-    private static bool TryResolveGenericLocalDeclaration(
-      TypeSyntax typeSyntax,
-      out LocalDeclarationStatementSyntax localDeclaration)
+    private static bool TryResolveGenericLocalDeclaration(TypeSyntax typeSyntax, out LocalDeclarationStatementSyntax localDeclaration)
     {
         localDeclaration = null!;
         if (!typeSyntax.Ancestors().OfType<TypeArgumentListSyntax>().Any())
@@ -1271,9 +1190,7 @@ public sealed class DeleteClassIfStructureCompletionPropagationRule : RuleDefini
         SyntaxKind.ReturnStatement
       };
 
-    public override IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks)
+    public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         return DeleteSObjectPropagationHelpers.EnumerateIfStructureCompletionPropagations(
           context,

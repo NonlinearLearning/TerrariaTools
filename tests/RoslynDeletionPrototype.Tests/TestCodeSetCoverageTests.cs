@@ -25,8 +25,7 @@ public sealed class TestCodeSetCoverageTests
 
   [Theory]
   [MemberData(nameof(AllSourceCases))]
-  public void Analyze_AllTestCodeSetSources_BuildsGraphAndRunsApplicationPipeline(
-    TestSourceCase testCase)
+  public void Analyze_AllTestCodeSetSources_BuildsGraphAndRunsApplicationPipeline(TestSourceCase testCase)
   {
     var graph = new RoslynCpgBuilder().BuildFromSource(testCase.Source, testCase.FilePath);
     var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());

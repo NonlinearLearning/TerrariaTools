@@ -69,9 +69,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 从入口方法出发，沿调用图做最小广度优先遍历，收集可达方法。
     /// </summary>
-    private static HashSet<string> FindReachableMethodIds(
-      RuleContext context,
-      IReadOnlyDictionary<string, MethodDeclarationSyntax> methodSyntaxById)
+    private static HashSet<string> FindReachableMethodIds(RuleContext context, IReadOnlyDictionary<string, MethodDeclarationSyntax> methodSyntaxById)
     {
         var graph = context.Graph;
         var reachable = new HashSet<string>(StringComparer.Ordinal);
@@ -132,9 +130,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 把方法符号节点映射回对应的方法抽象节点，便于沿调用目标回到方法级可达性。
     /// </summary>
-    private static IReadOnlyDictionary<string, RoslynCpgNode> BuildSymbolMethodMap(
-      RoslynCpgGraph graph,
-      IReadOnlyList<RoslynCpgNode> methodNodes)
+    private static IReadOnlyDictionary<string, RoslynCpgNode> BuildSymbolMethodMap(RoslynCpgGraph graph, IReadOnlyList<RoslynCpgNode> methodNodes)
     {
         var methodByLocation = methodNodes
           .Where(node => node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
@@ -150,9 +146,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 找出方法体范围内的所有调用点节点。
     /// </summary>
-    private static IEnumerable<RoslynCpgNode> GetCallSitesForMethod(
-      RoslynCpgGraph graph,
-      MethodDeclarationSyntax methodSyntax)
+    private static IEnumerable<RoslynCpgNode> GetCallSitesForMethod(RoslynCpgGraph graph, MethodDeclarationSyntax methodSyntax)
     {
         foreach (var callSite in graph.NodesByKind(RoslynCpgNodeKind.CallSite))
         {
@@ -166,10 +160,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 读取某个图节点沿指定边种类指向的所有目标节点。
     /// </summary>
-    private static IEnumerable<RoslynCpgNode> GetOutgoingTargets(
-      RoslynCpgGraph graph,
-      string sourceId,
-      RoslynCpgEdgeKind edgeKind)
+    private static IEnumerable<RoslynCpgNode> GetOutgoingTargets(RoslynCpgGraph graph, string sourceId, RoslynCpgEdgeKind edgeKind)
     {
         var targetIds = graph.Edges
           .Where(edge => edge.SourceId == sourceId && edge.Kind == edgeKind)
@@ -239,9 +230,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 为每个方法抽象节点建立到源码方法声明的映射。
     /// </summary>
-    private static IReadOnlyDictionary<string, MethodDeclarationSyntax> BuildMethodSyntaxMap(
-      RuleContext context,
-      SyntaxNode root)
+    private static IReadOnlyDictionary<string, MethodDeclarationSyntax> BuildMethodSyntaxMap(RuleContext context, SyntaxNode root)
     {
         var map = new Dictionary<string, MethodDeclarationSyntax>(StringComparer.Ordinal);
         foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
@@ -273,9 +262,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 基于源码位置，把方法符号节点对齐回方法抽象节点。
     /// </summary>
-    private static RoslynCpgNode? ResolveMethodNode(
-      RoslynCpgNode symbolNode,
-      IReadOnlyDictionary<string, RoslynCpgNode> methodByLocation)
+    private static RoslynCpgNode? ResolveMethodNode(RoslynCpgNode symbolNode, IReadOnlyDictionary<string, RoslynCpgNode> methodByLocation)
     {
         if (symbolNode.FilePath is null || symbolNode.SpanStart is null || symbolNode.SpanEnd is null)
         {

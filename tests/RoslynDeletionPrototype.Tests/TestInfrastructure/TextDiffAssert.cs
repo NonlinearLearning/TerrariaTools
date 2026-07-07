@@ -5,11 +5,7 @@ namespace RoslynPrototype.Tests;
 
 internal static class TextDiffAssert
 {
-    public static void Contains(
-      string expectedFragment,
-      string actualText,
-      string? diffText = null,
-      string? because = null)
+    public static void Contains(string expectedFragment, string actualText, string? diffText = null, string? because = null)
     {
         if (actualText.Contains(expectedFragment, StringComparison.Ordinal))
         {
@@ -24,11 +20,7 @@ internal static class TextDiffAssert
           because));
     }
 
-    public static void DoesNotContain(
-      string unexpectedFragment,
-      string actualText,
-      string? diffText = null,
-      string? because = null)
+    public static void DoesNotContain(string unexpectedFragment, string actualText, string? diffText = null, string? because = null)
     {
         if (!actualText.Contains(unexpectedFragment, StringComparison.Ordinal))
         {
@@ -43,11 +35,7 @@ internal static class TextDiffAssert
           because));
     }
 
-    public static void Equal(
-      string expectedText,
-      string? actualText,
-      string? diffText = null,
-      string? because = null)
+    public static void Equal(string expectedText, string? actualText, string? diffText = null, string? because = null)
     {
         if (string.Equals(expectedText, actualText, StringComparison.Ordinal))
         {
@@ -61,12 +49,7 @@ internal static class TextDiffAssert
           because));
     }
 
-    private static string BuildContainsFailureMessage(
-      string expectation,
-      string fragment,
-      string actualText,
-      string? diffText,
-      string? because)
+    private static string BuildContainsFailureMessage(string expectation, string fragment, string actualText, string? diffText, string? because)
     {
         var builder = new StringBuilder();
         builder.Append("Expected text to ");
@@ -87,11 +70,7 @@ internal static class TextDiffAssert
         return builder.ToString();
     }
 
-    private static string BuildEqualityFailureMessage(
-      string expectedText,
-      string? actualText,
-      string? diffText,
-      string? because)
+    private static string BuildEqualityFailureMessage(string expectedText, string? actualText, string? diffText, string? because)
     {
         var builder = new StringBuilder();
         builder.Append("Expected text to match exactly.");

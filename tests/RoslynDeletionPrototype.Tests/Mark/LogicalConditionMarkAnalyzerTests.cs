@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Analysis;
+using RoslynPrototype.Analysis;
 using MinimalRoslynCpg.Builder;
 using RoslynPrototype.Application;
 using RoslynPrototype.Marking;
@@ -408,10 +408,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
 
     [Theory]
     [MemberData(nameof(LargeParenthesizedLogicalCases))]
-    public void Analyze_LargeParenthesizedCases_CollectDirectAndNegatedHits(
-        string caseName,
-        string source,
-        string expectedMarkedText)
+    public void Analyze_LargeParenthesizedCases_CollectDirectAndNegatedHits(string caseName, string source, string expectedMarkedText)
     {
         var (context, root) = CreateAnalysisContext(source, "logical-large-parenthesized.cs");
         var directIdentifier = root.DescendantNodes()
@@ -436,10 +433,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
 
     [Theory]
     [MemberData(nameof(LargeParenthesizedLogicalCases))]
-    public void Mark_LargeParenthesizedCases_EmitAtomicSeedsAndPropagateLogicalOr(
-        string caseName,
-        string source,
-        string expectedMarkedText)
+    public void Mark_LargeParenthesizedCases_EmitAtomicSeedsAndPropagateLogicalOr(string caseName, string source, string expectedMarkedText)
     {
         var (context, root) = CreateRuleContext(
             source,
@@ -455,10 +449,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
         Assert.False(string.IsNullOrWhiteSpace(caseName));
     }
 
-    private static IReadOnlyList<MarkRecord> BuildEffectiveMarks(
-        RuleContext context,
-        IReadOnlyList<MarkRecord> marks,
-        IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    private static IReadOnlyList<MarkRecord> BuildEffectiveMarks(RuleContext context, IReadOnlyList<MarkRecord> marks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var liftedMarks = new RuleDefinitionLift[]
             {
@@ -474,9 +465,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
             .ToList();
     }
 
-    private static void AssertContainsLogicalAnd(
-        IReadOnlyList<MarkRecord> marks,
-        string expectedMarkedText)
+    private static void AssertContainsLogicalAnd(IReadOnlyList<MarkRecord> marks, string expectedMarkedText)
     {
         Assert.Contains(marks, mark =>
             mark.SyntaxNode is BinaryExpressionSyntax binaryExpression &&
@@ -484,9 +473,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
             string.Equals(mark.SyntaxNode.ToString(), expectedMarkedText, StringComparison.Ordinal));
     }
 
-    private static void AssertContainsLogicalOr(
-        IReadOnlyList<MarkRecord> marks,
-        string expectedMarkedText)
+    private static void AssertContainsLogicalOr(IReadOnlyList<MarkRecord> marks, string expectedMarkedText)
     {
         Assert.Contains(marks, mark =>
             mark.SyntaxNode is BinaryExpressionSyntax binaryExpression &&
@@ -499,9 +486,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
         return new object[] { caseName, source, expectedMarkedText };
     }
 
-    private static (CpgAnalysisContext Context, SyntaxNode Root) CreateAnalysisContext(
-        string source,
-        string filePath)
+    private static (CpgAnalysisContext Context, SyntaxNode Root) CreateAnalysisContext(string source, string filePath)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
         var root = tree.GetRoot();
@@ -511,10 +496,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
         return (new CpgAnalysisContext(graph, semanticModel, root), root);
     }
 
-    private static (RuleContext Context, SyntaxNode Root) CreateRuleContext(
-        string source,
-        string filePath,
-        string targetName)
+    private static (RuleContext Context, SyntaxNode Root) CreateRuleContext(string source, string filePath, string targetName)
     {
         var (analysisContext, root) = CreateAnalysisContext(source, filePath);
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -533,9 +515,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
             .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(
-        RuleContext context,
-        IReadOnlyList<MarkRecord> marks)
+    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var rules = RuleRegistry.CreateDefaultRules();
         return new PropagationEngine()

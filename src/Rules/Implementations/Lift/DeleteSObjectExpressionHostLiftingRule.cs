@@ -16,10 +16,7 @@ public sealed class DeleteSObjectExpressionHostLiftingRule : RuleDefinitionLift
     public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
       DeleteSObjectLiftingCommon.AllowedLiftNodeKinds;
 
-    public override IEnumerable<LiftedMarkRecord> Lift(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         return DeleteSObjectHostLiftingHelpers.BuildHostLiftedMarks(
           context,

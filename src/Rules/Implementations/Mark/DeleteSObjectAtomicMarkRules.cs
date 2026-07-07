@@ -4,24 +4,6 @@ using RoslynPrototype.Marking;
 
 namespace Rules;
 
-public abstract class DeleteSObjectAtomicExpressionMarkRuleBase : RuleDefinitionMark
-{
-    public override string GroupKey { get; } = DeleteSObjectRuleIds.GroupKey;
-
-    protected abstract SyntaxKind MarkKind { get; }
-
-    public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => new[] { MarkKind };
-
-    public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
-    {
-        return DeleteSObjectMarkRuleHelpers.BuildExpressionMarks(
-          context,
-          root,
-          RuleId,
-          AllowedMarkNodeKinds);
-    }
-}
-
 public sealed class DeleteSObjectIdentifierNameMarkRule : DeleteSObjectAtomicExpressionMarkRuleBase
 {
     public override string RuleId { get; } = DeleteSObjectRuleIds.IdentifierNameMarkRuleId;

@@ -68,8 +68,7 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
     return FindUnreferencedMethodsByDeletionIteration(candidates, references);
   }
 
-  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildCandidateMethodMap(
-    Compilation compilation)
+  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildCandidateMethodMap(Compilation compilation)
   {
     var candidates = new Dictionary<IMethodSymbol, MethodDeclarationSyntax>(
       SymbolEqualityComparer.Default);
@@ -92,9 +91,7 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
     return candidates;
   }
 
-  private static MethodReferenceIndex BuildMethodReferenceIndex(
-    Compilation compilation,
-    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+  private static MethodReferenceIndex BuildMethodReferenceIndex(Compilation compilation, IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
   {
     var incomingCandidateCallers = CreateCandidateSetMap(candidates.Keys);
     var candidateCallees = CreateCandidateSetMap(candidates.Keys);
@@ -134,9 +131,7 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
       externallyReferencedMethods);
   }
 
-  private static HashSet<IMethodSymbol> FindUnreferencedMethodsByDeletionIteration(
-    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates,
-    MethodReferenceIndex references)
+  private static HashSet<IMethodSymbol> FindUnreferencedMethodsByDeletionIteration(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
   {
     var deletedMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
     var pendingScan = new HashSet<IMethodSymbol>(
@@ -183,10 +178,7 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
     return deletedMethods;
   }
 
-  private static bool HasRemainingReferences(
-    IMethodSymbol method,
-    IReadOnlySet<IMethodSymbol> deletedMethods,
-    MethodReferenceIndex references)
+  private static bool HasRemainingReferences(IMethodSymbol method, IReadOnlySet<IMethodSymbol> deletedMethods, MethodReferenceIndex references)
   {
     if (references.ExternallyReferencedMethods.Contains(method))
     {
@@ -197,9 +189,7 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
       .Any(caller => !deletedMethods.Contains(caller));
   }
 
-  private static HashSet<IMethodSymbol> FindExternallyReferencedClosure(
-    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates,
-    MethodReferenceIndex references)
+  private static HashSet<IMethodSymbol> FindExternallyReferencedClosure(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
   {
     var retained = new HashSet<IMethodSymbol>(
       references.ExternallyReferencedMethods,
@@ -226,8 +216,7 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
     return retained;
   }
 
-  private static Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> CreateCandidateSetMap(
-    IEnumerable<IMethodSymbol> candidates)
+  private static Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> CreateCandidateSetMap(IEnumerable<IMethodSymbol> candidates)
   {
     var map = new Dictionary<IMethodSymbol, HashSet<IMethodSymbol>>(
       SymbolEqualityComparer.Default);
@@ -239,10 +228,7 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
     return map;
   }
 
-  private static IMethodSymbol? GetContainingCandidateMethod(
-    SemanticModel model,
-    SyntaxNode node,
-    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+  private static IMethodSymbol? GetContainingCandidateMethod(SemanticModel model, SyntaxNode node, IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
   {
     var containingMethodSyntax = node.FirstAncestorOrSelf<MethodDeclarationSyntax>();
     if (containingMethodSyntax is null ||
@@ -293,9 +279,7 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
     return method.ReducedFrom?.OriginalDefinition ?? method.OriginalDefinition;
   }
 
-  private static RoslynCpgNode CreateMethodGraphNode(
-    IMethodSymbol methodSymbol,
-    MethodDeclarationSyntax method)
+  private static RoslynCpgNode CreateMethodGraphNode(IMethodSymbol methodSymbol, MethodDeclarationSyntax method)
   {
     return new RoslynCpgNode(
       Id: $"fast-method:{method.SyntaxTree.FilePath}:{method.SpanStart}:{method.Span.End}",

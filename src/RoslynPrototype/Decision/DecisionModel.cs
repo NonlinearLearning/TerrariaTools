@@ -61,12 +61,7 @@ public sealed record RuleDecision
     /// </summary>
     public SyntaxNode? ReplacementNode { get; init; }
 
-    public RuleDecision(
-      SyntaxNode originalNode,
-      SyntaxNode finalNode,
-      DecisionActionKind action,
-      string reason,
-      SyntaxNode? replacementNode = null)
+    public RuleDecision(SyntaxNode originalNode, SyntaxNode finalNode, DecisionActionKind action, string reason, SyntaxNode? replacementNode = null)
     {
         OriginalNode = originalNode;
         FinalNode = finalNode;
@@ -128,17 +123,7 @@ public sealed record DecisionUnit
 
     public string? GroupKey { get; init; }
 
-    public DecisionUnit(
-      string ruleId,
-      DecisionActionKind action,
-      RoslynCpgNode unitNode,
-      IReadOnlyList<RoslynCpgNode> fragments,
-      IReadOnlyList<RoslynCpgEdge> relations,
-      IReadOnlyDictionary<string, SyntaxNode> syntaxBindings,
-      string? conflictKey = null,
-      string? mergeKey = null,
-      string reason = "",
-      string? groupKey = null)
+    public DecisionUnit(string ruleId, DecisionActionKind action, RoslynCpgNode unitNode, IReadOnlyList<RoslynCpgNode> fragments, IReadOnlyList<RoslynCpgEdge> relations, IReadOnlyDictionary<string, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "", string? groupKey = null)
     {
         RuleId = ruleId;
         Action = action;
@@ -197,9 +182,7 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
         return new RuleDecision(node, node, winner.Action, winner.Reason);
     }
 
-    internal DecisionUnit ResolveToUnitForTesting(
-      RuleContext context,
-      IReadOnlyList<DecisionUnit> units)
+    internal DecisionUnit ResolveToUnitForTesting(RuleContext context, IReadOnlyList<DecisionUnit> units)
     {
         _ = context;
         return ResolveUnit(units);
@@ -347,12 +330,7 @@ public sealed class RuleDecisionEngine
     /// <summary>
     /// 汇总所有规则的候选决策，并按冲突域收口为最终决策列表。
     /// </summary>
-    public IReadOnlyList<RuleDecision> Decide(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks,
-      IReadOnlyList<RuleDefinitionPropose> rules)
+    public IReadOnlyList<RuleDecision> Decide(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks, IReadOnlyList<RuleDefinitionPropose> rules)
     {
         var units = new List<DecisionUnit>();
 
@@ -434,9 +412,7 @@ public sealed class RuleDecisionEngine
     /// 为一个决策单元确定冲突域键。
     /// 目标不是完整建模 CPG，而是用最小语法结构把明显互斥的候选收口到一起。
     /// </summary>
-    private static string BuildConflictGroupKey(
-      DecisionUnit unit,
-      IReadOnlyList<RuleDefinitionPropose> rules)
+    private static string BuildConflictGroupKey(DecisionUnit unit, IReadOnlyList<RuleDefinitionPropose> rules)
     {
         if (!string.IsNullOrWhiteSpace(unit.ConflictKey))
         {
@@ -507,11 +483,7 @@ public static class DecisionCpgFactory
     /// <param name="role">片段在决策单元中的角色，例如 anchor 或 replacement。</param>
     /// <param name="localAction">片段局部动作；若为空则表示仅承担结构角色。</param>
     /// <returns>对应的决策片段 CPG 节点。</returns>
-    public static RoslynCpgNode CreateFragment(
-      string fragmentId,
-      SyntaxNode node,
-      string role,
-      DecisionActionKind? localAction = null)
+    public static RoslynCpgNode CreateFragment(string fragmentId, SyntaxNode node, string role, DecisionActionKind? localAction = null)
     {
         return new RoslynCpgNode(
           Id: fragmentId,
@@ -536,13 +508,7 @@ public static class DecisionCpgFactory
     /// <param name="conflictKey">显式冲突域键。</param>
     /// <param name="mergeKey">显式合并域键。</param>
     /// <returns>对应的决策单元 CPG 节点。</returns>
-    public static RoslynCpgNode CreateUnit(
-      string ruleId,
-      DecisionActionKind action,
-      RoslynCpgNode anchorFragment,
-      string reason,
-      string? conflictKey = null,
-      string? mergeKey = null)
+    public static RoslynCpgNode CreateUnit(string ruleId, DecisionActionKind action, RoslynCpgNode anchorFragment, string reason, string? conflictKey = null, string? mergeKey = null)
     {
         return new RoslynCpgNode(
           Id: $"decision-unit:{ruleId}:{anchorFragment.Id}:{action}",
@@ -575,10 +541,7 @@ public static class DecisionCpgFactory
     /// <param name="fromFragment">关系起点片段。</param>
     /// <param name="toFragment">关系终点片段。</param>
     /// <returns>表示片段语义关系的决策边。</returns>
-    public static RoslynCpgEdge CreateRelation(
-      string kind,
-      RoslynCpgNode fromFragment,
-      RoslynCpgNode toFragment)
+    public static RoslynCpgEdge CreateRelation(string kind, RoslynCpgNode fromFragment, RoslynCpgNode toFragment)
     {
         return new RoslynCpgEdge(
           fromFragment.Id,
@@ -592,8 +555,7 @@ public static class DecisionCpgFactory
     /// </summary>
     /// <param name="bindings">片段节点与语法节点的绑定对集合。</param>
     /// <returns>以片段节点 id 为键的语法绑定表。</returns>
-    public static Dictionary<string, SyntaxNode> CreateSyntaxBindings(
-      params (RoslynCpgNode Fragment, SyntaxNode Node)[] bindings)
+    public static Dictionary<string, SyntaxNode> CreateSyntaxBindings(params (RoslynCpgNode Fragment, SyntaxNode Node)[] bindings)
     {
         return bindings.ToDictionary(binding => binding.Fragment.Id, binding => binding.Node, StringComparer.Ordinal);
     }

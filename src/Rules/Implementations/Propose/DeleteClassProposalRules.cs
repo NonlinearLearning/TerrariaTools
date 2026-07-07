@@ -23,11 +23,7 @@ public sealed class DeleteClassDefaultDeleteProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
 
@@ -96,11 +92,7 @@ public sealed class DeleteClassControlStructureDeleteProposalRule : RuleDefiniti
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -142,11 +134,7 @@ public sealed class DeleteClassTypeSyntaxDeclarationProposalRule : RuleDefinitio
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -176,100 +164,6 @@ public sealed class DeleteClassTypeSyntaxDeclarationProposalRule : RuleDefinitio
     }
 }
 
-internal static class DeleteClassTypeSyntaxProposalHelpers
-{
-    internal static IEnumerable<DecisionUnit> CreateDeleteDecisions<TNode>(
-      string ruleId,
-      string reason,
-      IReadOnlyList<MarkRecord> seedMarks,
-      Func<TypeSyntax, TNode?> resolver)
-      where TNode : SyntaxNode
-    {
-        var handledNodes = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var seedMark in seedMarks)
-        {
-            if (!string.Equals(seedMark.RuleId, DeleteClassRuleIds.TypeSyntaxMarkRuleId, StringComparison.Ordinal) ||
-                seedMark.SyntaxNode is not TypeSyntax typeSyntax)
-            {
-                continue;
-            }
-
-            var resolvedNode = resolver(typeSyntax);
-            if (resolvedNode is null)
-            {
-                continue;
-            }
-
-            var nodeKey = DecisionCpgFactory.BuildNodeKey(resolvedNode);
-            if (!handledNodes.Add(nodeKey))
-            {
-                continue;
-            }
-
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
-              ruleId,
-              resolvedNode,
-              reason,
-              typeSyntax,
-              nodeKey);
-        }
-    }
-}
-
-internal static class DeleteClassMethodProposalSafety
-{
-    internal static bool IsSafePrivateMethod(MethodDeclarationSyntax method)
-    {
-        if (method.ExplicitInterfaceSpecifier is not null)
-        {
-            return false;
-        }
-
-        return method.Modifiers.Any(SyntaxKind.PrivateKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.PublicKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.ProtectedKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.InternalKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.OverrideKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.AbstractKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.VirtualKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.ExternKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.PartialKeyword);
-    }
-
-    internal static bool IsSafeExtensionReceiverMethod(MethodDeclarationSyntax method)
-    {
-        if (method.ExplicitInterfaceSpecifier is not null)
-        {
-            return false;
-        }
-
-        return method.Modifiers.Any(SyntaxKind.StaticKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.OverrideKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.AbstractKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.VirtualKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.ExternKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.PartialKeyword);
-    }
-
-    internal static bool IsSafeNonPrivateMethod(MethodDeclarationSyntax method)
-    {
-        if (method.ExplicitInterfaceSpecifier is not null)
-        {
-            return false;
-        }
-
-        return !method.Modifiers.Any(SyntaxKind.PrivateKeyword) &&
-          (method.Modifiers.Any(SyntaxKind.PublicKeyword) ||
-           method.Modifiers.Any(SyntaxKind.ProtectedKeyword) ||
-           method.Modifiers.Any(SyntaxKind.InternalKeyword)) &&
-          !method.Modifiers.Any(SyntaxKind.OverrideKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.AbstractKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.VirtualKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.ExternKeyword) &&
-          !method.Modifiers.Any(SyntaxKind.PartialKeyword);
-    }
-}
-
 public sealed class DeleteClassMethodReturnTypeProposalRule : RuleDefinitionPropose
 {
     public override string RuleId { get; } = DeleteClassRuleIds.MethodReturnTypeProposalRuleId;
@@ -287,11 +181,7 @@ public sealed class DeleteClassMethodReturnTypeProposalRule : RuleDefinitionProp
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -333,11 +223,7 @@ public sealed class DeleteClassPublicMethodReturnTypeProposalRule : RuleDefiniti
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -379,11 +265,7 @@ public sealed class DeleteClassParameterProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = propagatedMarks;
@@ -411,11 +293,7 @@ public sealed class DeleteClassPrivateMethodParameterShrinkProposalRule : RuleDe
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -467,11 +345,7 @@ public sealed class DeleteClassNamedArgumentMethodParameterShrinkProposalRule : 
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -523,11 +397,7 @@ public sealed class DeleteClassOptionalParameterDefaultedMethodShrinkProposalRul
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -578,11 +448,7 @@ public sealed class DeleteClassPublicParameterProposalRule : RuleDefinitionPropo
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = propagatedMarks;
@@ -591,9 +457,7 @@ public sealed class DeleteClassPublicParameterProposalRule : RuleDefinitionPropo
         yield break;
     }
 
-    private static bool TryResolveNonPrivateMethodFromParameter(
-      TypeSyntax typeSyntax,
-      out MethodDeclarationSyntax method)
+    private static bool TryResolveNonPrivateMethodFromParameter(TypeSyntax typeSyntax, out MethodDeclarationSyntax method)
     {
         var parameter = typeSyntax.Ancestors()
           .OfType<ParameterSyntax>()
@@ -626,11 +490,7 @@ public sealed class DeleteClassParamsMethodParameterShrinkProposalRule : RuleDef
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -674,11 +534,7 @@ public sealed class DeleteClassPublicMethodParameterShrinkProposalRule : RuleDef
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -730,11 +586,7 @@ public sealed class DeleteClassNamedArgumentLocalFunctionParameterShrinkProposal
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -786,11 +638,7 @@ public sealed class DeleteClassOptionalParameterDefaultedLocalFunctionShrinkProp
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -842,11 +690,7 @@ public sealed class DeleteClassLocalFunctionParameterShrinkProposalRule : RuleDe
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -898,11 +742,7 @@ public sealed class DeleteClassNamedArgumentIndexerParameterShrinkProposalRule :
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -954,11 +794,7 @@ public sealed class DeleteClassIndexerParameterShrinkProposalRule : RuleDefiniti
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -1009,11 +845,7 @@ public sealed class DeleteClassDelegateParameterShrinkProposalRule : RuleDefinit
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1059,11 +891,7 @@ public sealed class DeleteClassMethodGroupDelegateParameterShrinkProposalRule : 
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -1169,11 +997,7 @@ public sealed class DeleteClassLambdaDelegateParameterShrinkProposalRule : RuleD
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -1260,11 +1084,7 @@ public sealed class DeleteClassDelegateInvocationChainParameterShrinkProposalRul
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -1329,11 +1149,7 @@ public sealed class DeleteClassExtensionReceiverNonFirstParameterShrinkProposalR
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
         _ = liftedMarks;
@@ -1383,11 +1199,7 @@ public sealed class DeleteClassInterfaceMethodProposalRule : RuleDefinitionPropo
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1428,11 +1240,7 @@ public sealed class DeleteClassInterfacePropertyProposalRule : RuleDefinitionPro
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1469,11 +1277,7 @@ public sealed class DeleteClassInterfaceEventProposalRule : RuleDefinitionPropos
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1509,11 +1313,7 @@ public sealed class DeleteClassInterfaceIndexerProposalRule : RuleDefinitionProp
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1549,11 +1349,7 @@ public sealed class DeleteClassDelegateProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1594,11 +1390,7 @@ public sealed class DeleteClassExtensionReceiverProposalRule : RuleDefinitionPro
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1640,11 +1432,7 @@ public sealed class DeleteClassBaseTypeProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1680,11 +1468,7 @@ public sealed class DeleteClassGenericTypeArgumentProposalRule : RuleDefinitionP
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
@@ -1717,11 +1501,7 @@ public sealed class DeleteClassIfStructureProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;

@@ -20,11 +20,7 @@ public sealed class DeleteUnreferencedMethodProposalRule : RuleDefinitionPropose
   public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
     Array.Empty<SyntaxKind>();
 
-  public override IEnumerable<DecisionUnit> Propose(
-    RuleContext context,
-    IReadOnlyList<MarkRecord> seedMarks,
-    IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-    IReadOnlyList<LiftedMarkRecord> liftedMarks)
+  public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
   {
     _ = context;
     _ = propagatedMarks;

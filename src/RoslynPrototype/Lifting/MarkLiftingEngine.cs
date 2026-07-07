@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using MinimalRoslynCpg.Analysis;
+using RoslynPrototype.Analysis;
 using RoslynPrototype.Marking;
 using RoslynPrototype.Propagation;
 using Rules;
@@ -11,11 +11,7 @@ public sealed class MarkLiftingEngine
 {
     private readonly RoslynCpgStructureViewBuilder _structureViewBuilder = new();
 
-    public IReadOnlyList<LiftedMarkRecord> Run(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<RuleDefinitionLift> rules)
+    public IReadOnlyList<LiftedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<RuleDefinitionLift> rules)
     {
         var liftedMarks = new List<LiftedMarkRecord>();
         var liftEligiblePropagatedMarks = propagatedMarks
@@ -67,10 +63,7 @@ public sealed class MarkLiftingEngine
           .ToList();
     }
 
-    private RuleContext BuildRuleContext(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    private RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var fragments = seedMarks
           .Select(mark => mark.SyntaxNode)
@@ -99,10 +92,7 @@ public sealed class MarkLiftingEngine
           $"Rule '{rule.RuleId}' emitted unsupported lift node kind '{nodeKind}'. Allowed lift node kinds: {allowedKinds}.");
     }
 
-    internal static LiftedMarkRecord BindLiftedMarkRecord(
-      RuleContext context,
-      LiftedMarkRecord candidate,
-      string? groupKey = null)
+    internal static LiftedMarkRecord BindLiftedMarkRecord(RuleContext context, LiftedMarkRecord candidate, string? groupKey = null)
     {
         return candidate with
         {

@@ -1,5 +1,5 @@
 using Microsoft.CodeAnalysis;
-using MinimalRoslynCpg.Analysis;
+using RoslynPrototype.Analysis;
 using MinimalRoslynCpg.Model;
 
 namespace Rules;
@@ -29,10 +29,7 @@ public sealed class RuleContext
 
   public IReadOnlyDictionary<string, string> Options { get; }
 
-  public RuleContext(
-    CpgAnalysisContext analysisContext,
-    IReadOnlyDictionary<string, string> options,
-    RoslynCpgStructureView? structureView = null)
+  public RuleContext(CpgAnalysisContext analysisContext, IReadOnlyDictionary<string, string> options, RoslynCpgStructureView? structureView = null)
   {
     AnalysisContext = analysisContext;
     Options = options;

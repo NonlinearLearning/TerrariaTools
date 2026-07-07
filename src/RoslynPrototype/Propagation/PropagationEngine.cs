@@ -1,4 +1,4 @@
-using MinimalRoslynCpg.Analysis;
+using RoslynPrototype.Analysis;
 using RoslynPrototype.Marking;
 using Rules;
 
@@ -15,10 +15,7 @@ public sealed class PropagationEngine
     /// <param name="seedMarks">标记阶段直接命中的种子标记集合。</param>
     /// <param name="rules">参与当前分析的删除规则集合。</param>
     /// <returns>去重后的传播标记集合。</returns>
-    public IReadOnlyList<PropagatedMarkRecord> Run(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<RuleDefinitionPropagate> rules)
+    public IReadOnlyList<PropagatedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<RuleDefinitionPropagate> rules)
     {
         var propagatedMarks = new List<PropagatedMarkRecord>();
         // 传播按 GroupKey 分组。组间隔离，组内按注册顺序串行，让后续规则能消费前序规则产物。
@@ -75,9 +72,7 @@ public sealed class PropagationEngine
         .ToList();
     }
 
-    private RuleContext BuildRuleContext(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> marks)
+    private RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var fragments = marks
           .Select(mark => mark.SyntaxNode)

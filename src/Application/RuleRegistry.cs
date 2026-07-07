@@ -11,8 +11,7 @@ public sealed record RuleRegistrySet(
 
 public static class RuleRegistry
 {
-    public static RuleRegistrySet CreateDefaultRules(
-      IEnumerable<string>? disabledRuleTypes = null)
+    public static RuleRegistrySet CreateDefaultRules(IEnumerable<string>? disabledRuleTypes = null)
     {
         var disabledTypeNames = (disabledRuleTypes ?? Array.Empty<string>())
           .Where(name => !string.IsNullOrWhiteSpace(name))

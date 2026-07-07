@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Analysis;
+using RoslynPrototype.Analysis;
 using RoslynPrototype.Application;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Lifting;
@@ -4090,9 +4090,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.VariableDeclarator };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(
-          RuleContext context,
-          IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             _ = context;
             foreach (var seedMark in seedMarks)
@@ -4135,9 +4133,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IdentifierName };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(
-          RuleContext context,
-          IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             var declaratorMark = seedMarks.FirstOrDefault(mark =>
               mark.SyntaxNode is VariableDeclaratorSyntax variableDeclarator &&
@@ -4192,9 +4188,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IfStatement };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(
-          RuleContext context,
-          IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             var structureView = context.StructureView;
             Assert.NotNull(structureView);
@@ -4226,10 +4220,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
             new[] { SyntaxKind.ReturnStatement };
 
-        public override IEnumerable<LiftedMarkRecord> Lift(
-          RuleContext context,
-          IReadOnlyList<MarkRecord> seedMarks,
-          IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+        public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
         {
             var structureView = context.StructureView;
             Assert.NotNull(structureView);
@@ -4256,9 +4247,7 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private static void AssertEquivalentAnalysisResults(
-      PrototypeAnalysisResult expected,
-      PrototypeAnalysisResult actual)
+    private static void AssertEquivalentAnalysisResults(PrototypeAnalysisResult expected, PrototypeAnalysisResult actual)
     {
         Assert.Equal(expected.SeedMarks.Count, actual.SeedMarks.Count);
         Assert.Equal(expected.PropagatedMarks.Count, actual.PropagatedMarks.Count);

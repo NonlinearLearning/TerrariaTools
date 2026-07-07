@@ -20,11 +20,7 @@ public sealed class DefaultDeleteProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<Microsoft.CodeAnalysis.CSharp.SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
-    public override IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
 

@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Analysis;
+using RoslynPrototype.Analysis;
 using MinimalRoslynCpg.Builder;
 using System.Diagnostics;
 using System.Text;
@@ -32,11 +32,7 @@ public sealed class DeletionApplicationService
     {
     }
 
-    public DeletionApplicationService(
-      IReadOnlyList<RuleDefinitionMark> markers,
-      IReadOnlyList<RuleDefinitionPropagate> propagators,
-      IReadOnlyList<RuleDefinitionLift> lifters,
-      IReadOnlyList<RuleDefinitionPropose> proposers)
+    public DeletionApplicationService(IReadOnlyList<RuleDefinitionMark> markers, IReadOnlyList<RuleDefinitionPropagate> propagators, IReadOnlyList<RuleDefinitionLift> lifters, IReadOnlyList<RuleDefinitionPropose> proposers)
     {
         _markers = markers;
         _propagators = propagators;
@@ -49,10 +45,7 @@ public sealed class DeletionApplicationService
         _rewriter = new PrototypeRewriter();
     }
 
-    public PrototypeAnalysisResult Analyze(
-      string source,
-      string filePath,
-      IReadOnlyDictionary<string, string> options)
+    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options)
     {
         return RunAnalysis(source, filePath, options);
     }
@@ -105,21 +98,13 @@ public sealed class DeletionApplicationService
         return result with { DiffFilePath = diffPath };
     }
 
-    private PrototypeAnalysisResult RunAnalysis(
-      string source,
-      string filePath,
-      IReadOnlyDictionary<string, string> options)
+    private PrototypeAnalysisResult RunAnalysis(string source, string filePath, IReadOnlyDictionary<string, string> options)
     {
         var analysisContext = BuildAnalysisContext(source, filePath, options);
         return RunAnalysis(analysisContext);
     }
 
-    private PrototypeAnalysisResult RunAnalysis(
-      string source,
-      string filePath,
-      IReadOnlyDictionary<string, string> options,
-      SemanticModel semanticModel,
-      SyntaxNode root)
+    private PrototypeAnalysisResult RunAnalysis(string source, string filePath, IReadOnlyDictionary<string, string> options, SemanticModel semanticModel, SyntaxNode root)
     {
         var analysisContext = BuildAnalysisContext(source, filePath, options, semanticModel, root);
         return RunAnalysis(analysisContext);
@@ -191,9 +176,7 @@ public sealed class DeletionApplicationService
         return lines;
     }
 
-    private static string ResolveDiffPath(
-      string inputPath,
-      IReadOnlyDictionary<string, string> options)
+    private static string ResolveDiffPath(string inputPath, IReadOnlyDictionary<string, string> options)
     {
         if (options.TryGetValue("diff-out", out var explicitPath) &&
             !string.IsNullOrWhiteSpace(explicitPath))
@@ -206,9 +189,7 @@ public sealed class DeletionApplicationService
         return Path.Combine(directory, $"{fileName}.rewrite.diff");
     }
 
-    private static string ResolveDirectoryDiffRoot(
-      string inputPath,
-      IReadOnlyDictionary<string, string> options)
+    private static string ResolveDirectoryDiffRoot(string inputPath, IReadOnlyDictionary<string, string> options)
     {
         if (options.TryGetValue("diff-out", out var explicitPath) &&
             !string.IsNullOrWhiteSpace(explicitPath))
@@ -219,10 +200,7 @@ public sealed class DeletionApplicationService
         return inputPath;
     }
 
-    private static string ResolveFileDiffPath(
-      string inputRootPath,
-      string filePath,
-      string diffRootPath)
+    private static string ResolveFileDiffPath(string inputRootPath, string filePath, string diffRootPath)
     {
         var relativePath = Path.GetRelativePath(inputRootPath, filePath);
         var relativeDirectory = Path.GetDirectoryName(relativePath);
@@ -258,9 +236,7 @@ public sealed class DeletionApplicationService
         return options;
     }
 
-    private static bool TryParseDisabledRuleTypes(
-      IReadOnlyDictionary<string, string> options,
-      out IReadOnlyList<string> disabledRuleTypes)
+    private static bool TryParseDisabledRuleTypes(IReadOnlyDictionary<string, string> options, out IReadOnlyList<string> disabledRuleTypes)
     {
         disabledRuleTypes = Array.Empty<string>();
         if (!options.TryGetValue("disabled-rule-types", out var rawValue) ||
@@ -312,9 +288,7 @@ public sealed class DeletionApplicationService
           : node.RawKind.ToString();
     }
 
-    private PrototypeAnalysisResult AnalyzeDirectory(
-      string directoryPath,
-      IReadOnlyDictionary<string, string> options)
+    private PrototypeAnalysisResult AnalyzeDirectory(string directoryPath, IReadOnlyDictionary<string, string> options)
     {
         if (ShouldUseUnreferencedMethodFastPath(options))
         {
@@ -458,9 +432,7 @@ public sealed class DeletionApplicationService
           Diagnostics: diagnostics);
     }
 
-    private PrototypeAnalysisResult AnalyzeDirectoryForUnreferencedMethods(
-      string directoryPath,
-      IReadOnlyDictionary<string, string> options)
+    private PrototypeAnalysisResult AnalyzeDirectoryForUnreferencedMethods(string directoryPath, IReadOnlyDictionary<string, string> options)
     {
         var stopwatch = Stopwatch.StartNew();
         var filePaths = EnumerateSourceFiles(directoryPath).ToList();
@@ -519,10 +491,7 @@ public sealed class DeletionApplicationService
             stopwatch.ElapsedMilliseconds));
     }
 
-    private PrototypeAnalysisResult AnalyzeSingleFileForUnreferencedMethods(
-      SemanticModel semanticModel,
-      SyntaxNode root,
-      IReadOnlyList<MethodDeclarationSyntax> methodsToDelete)
+    private PrototypeAnalysisResult AnalyzeSingleFileForUnreferencedMethods(SemanticModel semanticModel, SyntaxNode root, IReadOnlyList<MethodDeclarationSyntax> methodsToDelete)
     {
         var seedMarks = methodsToDelete
           .Select(method => new MarkRecord(
@@ -576,8 +545,7 @@ public sealed class DeletionApplicationService
         return BuildUnreferencedMethodCandidateMap(compilation).Count;
     }
 
-    private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildUnreferencedMethodCandidateMap(
-      Compilation compilation)
+    private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildUnreferencedMethodCandidateMap(Compilation compilation)
     {
         var candidates = new Dictionary<IMethodSymbol, MethodDeclarationSyntax>(
           SymbolEqualityComparer.Default);
@@ -600,9 +568,7 @@ public sealed class DeletionApplicationService
         return candidates;
     }
 
-    private static MethodReferenceIndex BuildUnreferencedMethodReferenceIndex(
-      Compilation compilation,
-      IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+    private static MethodReferenceIndex BuildUnreferencedMethodReferenceIndex(Compilation compilation, IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
     {
         var incomingCandidateCallers = CreateMethodReferenceSetMap(candidates.Keys);
         var candidateCallees = CreateMethodReferenceSetMap(candidates.Keys);
@@ -642,9 +608,7 @@ public sealed class DeletionApplicationService
           externallyReferencedMethods);
     }
 
-    private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> FindUnreferencedMethodsByDeletionIteration(
-      IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates,
-      MethodReferenceIndex references)
+    private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> FindUnreferencedMethodsByDeletionIteration(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
     {
         var deletedMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
         var pendingScan = new HashSet<IMethodSymbol>(candidates.Keys, SymbolEqualityComparer.Default);
@@ -691,10 +655,7 @@ public sealed class DeletionApplicationService
         return unreferencedMethods;
     }
 
-    private static bool HasRemainingReferences(
-      IMethodSymbol method,
-      IReadOnlySet<IMethodSymbol> deletedMethods,
-      MethodReferenceIndex references)
+    private static bool HasRemainingReferences(IMethodSymbol method, IReadOnlySet<IMethodSymbol> deletedMethods, MethodReferenceIndex references)
     {
         if (references.ExternallyReferencedMethods.Contains(method))
         {
@@ -705,9 +666,7 @@ public sealed class DeletionApplicationService
           .Any(caller => !deletedMethods.Contains(caller));
     }
 
-    private static HashSet<IMethodSymbol> FindExternallyReferencedClosure(
-      IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates,
-      MethodReferenceIndex references)
+    private static HashSet<IMethodSymbol> FindExternallyReferencedClosure(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
     {
         var retained = new HashSet<IMethodSymbol>(
           references.ExternallyReferencedMethods,
@@ -734,8 +693,7 @@ public sealed class DeletionApplicationService
         return retained;
     }
 
-    private static Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> CreateMethodReferenceSetMap(
-      IEnumerable<IMethodSymbol> candidates)
+    private static Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> CreateMethodReferenceSetMap(IEnumerable<IMethodSymbol> candidates)
     {
         var map = new Dictionary<IMethodSymbol, HashSet<IMethodSymbol>>(
           SymbolEqualityComparer.Default);
@@ -747,10 +705,7 @@ public sealed class DeletionApplicationService
         return map;
     }
 
-    private static IMethodSymbol? GetContainingCandidateMethod(
-      SemanticModel model,
-      SyntaxNode node,
-      IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+    private static IMethodSymbol? GetContainingCandidateMethod(SemanticModel model, SyntaxNode node, IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
     {
         var containingMethodSyntax = node.FirstAncestorOrSelf<MethodDeclarationSyntax>();
         if (containingMethodSyntax is null ||
@@ -766,9 +721,7 @@ public sealed class DeletionApplicationService
           : null;
     }
 
-    private static IMethodSymbol? GetReferencedCandidateMethod(
-      SemanticModel model,
-      SyntaxNode node)
+    private static IMethodSymbol? GetReferencedCandidateMethod(SemanticModel model, SyntaxNode node)
     {
         var symbol = model.GetSymbolInfo(node, CancellationToken.None).Symbol;
         return symbol switch
@@ -798,12 +751,7 @@ public sealed class DeletionApplicationService
         return method.ReducedFrom?.OriginalDefinition ?? method.OriginalDefinition;
     }
 
-    private static PrototypeAnalysisResult[] AnalyzeFilesInParallel(
-      IReadOnlyList<string> filePaths,
-      IReadOnlyDictionary<string, SyntaxTree> trees,
-      CSharpCompilation compilation,
-      IReadOnlyDictionary<string, string> options,
-      Func<string, SyntaxTree, SemanticModel, SyntaxNode, PrototypeAnalysisResult> analyzeFile)
+    private static PrototypeAnalysisResult[] AnalyzeFilesInParallel(IReadOnlyList<string> filePaths, IReadOnlyDictionary<string, SyntaxTree> trees, CSharpCompilation compilation, IReadOnlyDictionary<string, string> options, Func<string, SyntaxTree, SemanticModel, SyntaxNode, PrototypeAnalysisResult> analyzeFile)
     {
         var fileResults = new PrototypeAnalysisResult[filePaths.Count];
         var parallelOptions = new ParallelOptions
@@ -827,8 +775,7 @@ public sealed class DeletionApplicationService
         return fileResults;
     }
 
-    private static int ResolveMaxDegreeOfParallelism(
-      IReadOnlyDictionary<string, string> options)
+    private static int ResolveMaxDegreeOfParallelism(IReadOnlyDictionary<string, string> options)
     {
         if (!options.TryGetValue("max-degree-of-parallelism", out var rawValue) ||
             string.IsNullOrWhiteSpace(rawValue))
@@ -844,12 +791,7 @@ public sealed class DeletionApplicationService
         return Math.Max(1, parsedValue);
     }
 
-    private PrototypeAnalysisResult FinalizeDirectoryResults(
-      string directoryPath,
-      IReadOnlyDictionary<string, string> options,
-      IReadOnlyList<string> filePaths,
-      IReadOnlyList<PrototypeAnalysisResult> fileResults,
-      AnalysisStats? stats = null)
+    private PrototypeAnalysisResult FinalizeDirectoryResults(string directoryPath, IReadOnlyDictionary<string, string> options, IReadOnlyList<string> filePaths, IReadOnlyList<PrototypeAnalysisResult> fileResults, AnalysisStats? stats = null)
     {
         var seedMarks = new List<MarkRecord>();
         var propagatedMarks = new List<PropagatedMarkRecord>();
@@ -973,10 +915,7 @@ public sealed class DeletionApplicationService
         return result with { Diagnostics = diagnostics };
     }
 
-    private DeletionAnalysisContext BuildAnalysisContext(
-      string source,
-      string filePath,
-      IReadOnlyDictionary<string, string> options)
+    private DeletionAnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
         var root = tree.GetRoot();
@@ -985,12 +924,7 @@ public sealed class DeletionApplicationService
         return BuildAnalysisContext(source, filePath, options, semanticModel, root);
     }
 
-    private DeletionAnalysisContext BuildAnalysisContext(
-      string source,
-      string filePath,
-      IReadOnlyDictionary<string, string> options,
-      SemanticModel semanticModel,
-      SyntaxNode root)
+    private DeletionAnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, SemanticModel semanticModel, SyntaxNode root)
     {
         var graph = ShouldUseUnreferencedMethodFastPath(options)
           ? new MinimalRoslynCpg.Model.RoslynCpgGraph()
@@ -1005,8 +939,7 @@ public sealed class DeletionApplicationService
         return new DeletionAnalysisContext(root, semanticModel, ruleContext);
     }
 
-    private static IReadOnlyList<RuleDecision> FilterNestedDeleteDecisions(
-      IReadOnlyList<RuleDecision> decisions)
+    private static IReadOnlyList<RuleDecision> FilterNestedDeleteDecisions(IReadOnlyList<RuleDecision> decisions)
     {
         var ordered = decisions
           .OrderByDescending(decision => decision.FinalNode.Span.Length)
@@ -1040,9 +973,7 @@ public sealed class DeletionApplicationService
         return filtered;
     }
 
-    private static bool IsCoveredByReplaceDecision(
-      RuleDecision deleteDecision,
-      IReadOnlyList<RuleDecision> decisions)
+    private static bool IsCoveredByReplaceDecision(RuleDecision deleteDecision, IReadOnlyList<RuleDecision> decisions)
     {
         return decisions.Any(decision =>
           decision.Action == DecisionActionKind.Replace &&
@@ -1061,16 +992,13 @@ public sealed class DeletionApplicationService
           !IsTrueOption(options, "skip-diff");
     }
 
-    private static bool IsTrueOption(
-      IReadOnlyDictionary<string, string> options,
-      string key)
+    private static bool IsTrueOption(IReadOnlyDictionary<string, string> options, string key)
     {
         return options.TryGetValue(key, out var rawValue) &&
           string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool ShouldUseUnreferencedMethodFastPath(
-      IReadOnlyDictionary<string, string> options)
+    private static bool ShouldUseUnreferencedMethodFastPath(IReadOnlyDictionary<string, string> options)
     {
         return IsTrueOption(options, "delete-unreferenced-methods") &&
           !options.ContainsKey("target-name") &&
@@ -1080,15 +1008,13 @@ public sealed class DeletionApplicationService
           !IsTrueOption(options, "privatize-internal-only-public-methods");
     }
 
-    private static bool ShouldUseDeleteClassUsingCleanup(
-      IReadOnlyDictionary<string, string> options)
+    private static bool ShouldUseDeleteClassUsingCleanup(IReadOnlyDictionary<string, string> options)
     {
         return options.ContainsKey("delete-class") &&
           !IsTrueOption(options, "fast-delete-class-directory");
     }
 
-    private static bool ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(
-      IReadOnlyDictionary<string, string> options)
+    private static bool ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(IReadOnlyDictionary<string, string> options)
     {
         return options.ContainsKey("delete-class") &&
           IsTrueOption(options, "fast-delete-class-directory");
@@ -1129,10 +1055,7 @@ public sealed class DeletionApplicationService
           references: references);
     }
 
-    private PrototypeAnalysisResult ApplyDeleteClassUsingCleanup(
-      string filePath,
-      PrototypeAnalysisResult result,
-      Dictionary<string, string> projectSourcesByPath)
+    private PrototypeAnalysisResult ApplyDeleteClassUsingCleanup(string filePath, PrototypeAnalysisResult result, Dictionary<string, string> projectSourcesByPath)
     {
         var currentSource = result.RewrittenSource;
         var cleanupEdits = new List<RewriteEdit>();
@@ -1202,10 +1125,7 @@ public sealed class DeletionApplicationService
         };
     }
 
-    private PrototypeAnalysisResult ApplyDeleteClassEmptyNamespaceCleanup(
-      string filePath,
-      PrototypeAnalysisResult result,
-      Dictionary<string, string> projectSourcesByPath)
+    private PrototypeAnalysisResult ApplyDeleteClassEmptyNamespaceCleanup(string filePath, PrototypeAnalysisResult result, Dictionary<string, string> projectSourcesByPath)
     {
         var currentSource = result.RewrittenSource;
         var cleanupEdits = new List<RewriteEdit>();
@@ -1276,9 +1196,7 @@ public sealed class DeletionApplicationService
         };
     }
 
-    private static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(
-      string filePath,
-      string rewrittenSource)
+    private static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(string filePath, string rewrittenSource)
     {
         var sourcesByPath = new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -1287,9 +1205,7 @@ public sealed class DeletionApplicationService
         return GetRewriteDiagnostics(sourcesByPath, sourcesByPath);
     }
 
-    private static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(
-      IReadOnlyDictionary<string, string> originalSourcesByPath,
-      IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
+    private static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(IReadOnlyDictionary<string, string> originalSourcesByPath, IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
     {
         var trees = originalSourcesByPath
           .Select(pair =>
@@ -1309,8 +1225,7 @@ public sealed class DeletionApplicationService
           .ToList();
     }
 
-    private static HashSet<string> GetStableErrorDiagnosticKeys(
-      IReadOnlyDictionary<string, string> sourcesByPath)
+    private static HashSet<string> GetStableErrorDiagnosticKeys(IReadOnlyDictionary<string, string> sourcesByPath)
     {
         var trees = sourcesByPath
           .Select(pair => CSharpSyntaxTree.ParseText(pair.Value, path: pair.Key))

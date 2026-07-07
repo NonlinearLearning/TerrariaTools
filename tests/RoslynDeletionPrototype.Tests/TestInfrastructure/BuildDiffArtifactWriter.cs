@@ -9,9 +9,7 @@ internal static class BuildDiffArtifactWriter
     private static readonly HashSet<string> InitializedPaths =
         new(StringComparer.OrdinalIgnoreCase);
 
-    public static string GetDiffFilePath(
-        string testCodeFileName,
-        params string[] mirroredSegments)
+    public static string GetDiffFilePath(string testCodeFileName, params string[] mirroredSegments)
     {
         var directoryPath = Path.Combine(
             ResolveRepositoryRoot(),
@@ -42,10 +40,7 @@ internal static class BuildDiffArtifactWriter
         }
     }
 
-    public static void AppendDiffFragment(
-        string diffFilePath,
-        string unitTestName,
-        string diffText)
+    public static void AppendDiffFragment(string diffFilePath, string unitTestName, string diffText)
     {
         lock (Sync)
         {

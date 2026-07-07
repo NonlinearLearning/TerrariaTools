@@ -218,10 +218,7 @@ public sealed class MinimalRoslynCpgCli
     /// <summary>
     /// 解析唯一有效的锚点选择器，并拒绝歧义输入。
     /// </summary>
-    private static AnchorSelector BuildAnchorSelector(
-      string? anchorId,
-      string? anchorFullName,
-      string? anchorName)
+    private static AnchorSelector BuildAnchorSelector(string? anchorId, string? anchorFullName, string? anchorName)
     {
         var providedCount = 0;
         providedCount += anchorId is null ? 0 : 1;
@@ -249,9 +246,7 @@ public sealed class MinimalRoslynCpgCli
     /// <summary>
     /// 按锚点模式在图中查找匹配节点。
     /// </summary>
-    private static IReadOnlyList<RoslynCpgNode> ResolveAnchorMatches(
-      RoslynCpgGraph graph,
-      AnchorSelector selector)
+    private static IReadOnlyList<RoslynCpgNode> ResolveAnchorMatches(RoslynCpgGraph graph, AnchorSelector selector)
     {
         return selector.Kind switch
         {
@@ -349,10 +344,7 @@ public sealed class MinimalRoslynCpgCli
         Console.WriteLine($"Wrote local view JSON: {outputPath}");
     }
 
-    private static void WriteLocalViewSummary(
-      RoslynCpgLocalView localView,
-      RoslynCpgViewDirection direction,
-      IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds)
+    private static void WriteLocalViewSummary(RoslynCpgLocalView localView, RoslynCpgViewDirection direction, IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds)
     {
         Console.WriteLine($"Anchor: {FormatNode(localView.Anchor)}");
         Console.WriteLine($"Hops: {localView.Hops}");
