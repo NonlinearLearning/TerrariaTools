@@ -6,7 +6,9 @@ namespace RoslynPrototype.Marking;
 
 public abstract class DeleteSObjectAtomicExpressionMarkRuleBase : RuleDefinitionMark
 {
-    public override string GroupKey { get; } = DeleteSObjectRuleIds.GroupKey;
+    private const string DeleteSObjectGroupKey = "DEL-SOBJ";
+
+    public override string GroupKey { get; } = DeleteSObjectGroupKey;
 
     protected abstract SyntaxKind MarkKind { get; }
 

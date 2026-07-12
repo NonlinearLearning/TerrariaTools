@@ -1,8 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
-using RoslynPrototype.Propagation;
 using Rules;
 
 namespace RoslynPrototype.Marking;
@@ -31,7 +28,10 @@ public sealed class MarkingEngine
 
         // 同一规则可能通过多条路径命中同一个语法节点，这里按规则和语法位置去重。
         return seedMarks
-        .DistinctBy(mark => (GetGroupKey(mark), mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length))
+        .DistinctBy(mark => (
+          RuleStageGroupKey.Get(mark),
+          mark.SyntaxNode.SpanStart,
+          mark.SyntaxNode.Span.Length))
         .ToList();
     }
 
@@ -73,7 +73,12 @@ public sealed class MarkingEngine
     internal static MarkRecord BindMarkRecord(RuleContext context, MarkRecord candidate, string? groupKey = null)
     {
         var annotation = candidate.Annotation ?? new SyntaxAnnotation("RuleHitNode", Guid.NewGuid().ToString("N"));
-        var primaryGraphNode = candidate.PrimaryGraphNode ?? ResolvePrimaryGraphNode(context.Graph, candidate.SyntaxNode);
+        var primaryGraphNode = candidate.PrimaryGraphNode;
+        if (primaryGraphNode is null)
+        {
+            context.GraphBinding.TryResolvePrimaryGraphNode(candidate.SyntaxNode, out primaryGraphNode);
+        }
+
         if (primaryGraphNode is null)
         {
             throw new InvalidOperationException(
@@ -85,78 +90,6 @@ public sealed class MarkingEngine
             Annotation = annotation,
             PrimaryGraphNode = primaryGraphNode,
             GroupKey = candidate.GroupKey ?? groupKey
-        };
-    }
-
-    /// <summary>
-    /// 为传播记录中的命中标记和源标记分别补齐绑定信息。
-    /// </summary>
-    internal static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate, string? groupKey = null)
-    {
-        return candidate with
-        {
-            Mark = BindMarkRecord(context, candidate.Mark, groupKey),
-            SourceMark = BindMarkRecord(context, candidate.SourceMark, groupKey),
-            GroupKey = candidate.GroupKey ?? groupKey
-        };
-    }
-
-    internal static string GetGroupKey(MarkRecord mark)
-    {
-        return mark.GroupKey ?? mark.RuleId;
-    }
-
-    internal static string GetGroupKey(PropagatedMarkRecord propagatedMark)
-    {
-        return propagatedMark.GroupKey ??
-          propagatedMark.Mark.GroupKey ??
-          propagatedMark.SourceMark.GroupKey ??
-          propagatedMark.RuleId;
-    }
-
-    /// <summary>
-    /// 根据文件路径与跨度，从图中找出最适合作为主绑定的节点。
-    /// </summary>
-    private static RoslynCpgNode? ResolvePrimaryGraphNode(RoslynCpgGraph graph, SyntaxNode syntaxNode)
-    {
-        var filePath = syntaxNode.SyntaxTree.FilePath;
-        if (string.IsNullOrWhiteSpace(filePath))
-        {
-            return null;
-        }
-
-        return graph.Nodes
-          .Where(node =>
-            !node.IsImplicit &&
-            string.Equals(node.FilePath, filePath, StringComparison.Ordinal) &&
-            node.SpanStart == syntaxNode.SpanStart &&
-            node.SpanEnd == syntaxNode.Span.End)
-          .OrderBy(GetBindingPriority)
-          .FirstOrDefault();
-    }
-
-    /// <summary>
-    /// 当同一语法跨度对应多个图节点时，定义主绑定节点的优先级。
-    /// </summary>
-    private static int GetBindingPriority(RoslynCpgNode node)
-    {
-        return node.Kind switch
-        {
-            RoslynCpgNodeKind.Method => 0,
-            RoslynCpgNodeKind.MethodParameter => 1,
-            RoslynCpgNodeKind.CallSite => 2,
-            RoslynCpgNodeKind.MemberAccess => 3,
-            RoslynCpgNodeKind.Reference => 4,
-            RoslynCpgNodeKind.Operation => 5,
-            RoslynCpgNodeKind.OpInvocation => 6,
-            RoslynCpgNodeKind.OpBinary => 7,
-            RoslynCpgNodeKind.OpAssignment => 8,
-            RoslynCpgNodeKind.OpLocalReference => 9,
-            RoslynCpgNodeKind.OpParameterReference => 10,
-            RoslynCpgNodeKind.OpFieldReference => 11,
-            RoslynCpgNodeKind.OpPropertyReference => 12,
-            RoslynCpgNodeKind.SyntaxNode => 13,
-            _ => 14
         };
     }
 }

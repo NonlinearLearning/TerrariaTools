@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.14.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Analysis\**\*.cs" />
+    <Compile Include="Decision\**\*.cs" />
+    <Compile Include="Lifting\**\*.cs" />
+    <Compile Include="Marking\**\*.cs" />
+    <Compile Include="Propagation\**\*.cs" />
+    <Compile Include="Properties\**\*.cs" />
+    <Compile Include="Rewrite\**\*.cs" />
+    <Compile Include="RuleServices\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
+  </ItemGroup>
+</Project>

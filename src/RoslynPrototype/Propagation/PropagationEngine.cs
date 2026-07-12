@@ -20,7 +20,7 @@ public sealed class PropagationEngine
         var propagatedMarks = new List<PropagatedMarkRecord>();
         // 传播按 GroupKey 分组。组间隔离，组内按注册顺序串行，让后续规则能消费前序规则产物。
         var seedMarksByGroupKey = seedMarks
-          .GroupBy(MarkingEngine.GetGroupKey, StringComparer.Ordinal)
+          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
           .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
         var rulesByGroupKey = rules
           .GroupBy(rule => rule.GroupKey, StringComparer.Ordinal)
@@ -41,7 +41,7 @@ public sealed class PropagationEngine
                 foreach (var propagatedMark in rule.Propagate(ruleContext, groupMarks))
                 {
                     MarkingEngine.ValidatePropagateNode(rule, propagatedMark.Mark.SyntaxNode);
-                    var boundMark = MarkingEngine.BindPropagatedMarkRecord(ruleContext, propagatedMark, rule.GroupKey);
+                    var boundMark = BindPropagatedMarkRecord(ruleContext, propagatedMark, rule.GroupKey);
                     producedMarks.Add(boundMark);
                     propagatedMarks.Add(boundMark);
                 }
@@ -64,7 +64,7 @@ public sealed class PropagationEngine
         // 不同传播路径可能命中同一个语法节点，这里按规则和语法位置收口去重。
         return propagatedMarks
         .DistinctBy(mark => (
-          MarkingEngine.GetGroupKey(mark),
+          RuleStageGroupKey.Get(mark),
           mark.RuleId,
           mark.Mark.SyntaxNode.SpanStart,
           mark.Mark.SyntaxNode.Span.Length,
@@ -72,6 +72,18 @@ public sealed class PropagationEngine
         .ToList();
     }
 
+    private static PropagatedMarkRecord BindPropagatedMarkRecord(
+        RuleContext context,
+        PropagatedMarkRecord candidate,
+        string? groupKey = null)
+    {
+        return candidate with
+        {
+            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark, groupKey),
+            SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark, groupKey),
+            GroupKey = candidate.GroupKey ?? groupKey
+        };
+    }
     private RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var fragments = marks
@@ -83,7 +95,7 @@ public sealed class PropagationEngine
             return context;
         }
 
-        var structureView = _structureViewBuilder.Build(fragments, context.AnalysisContext);
-        return context.WithStructureView(structureView);
+        var structureView = context.StructureViews.BuildStructureView(fragments);
+        return context.StructureViews.WithStructureView(structureView);
     }
 }

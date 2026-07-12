@@ -3826,11 +3826,12 @@ public sealed class PipelineComponentTests : IDisposable
     public void RuleRegistry_CreateDefaultRules_ReturnsStableRuleSet()
     {
         var rules = RuleRegistry.CreateDefaultRules();
-        var assembly = typeof(RuleRegistry).Assembly;
-        var markRuleType = assembly.GetType("Rules.RuleDefinitionMark");
-        var propagateRuleType = assembly.GetType("Rules.RuleDefinitionPropagate");
-        var liftRuleType = assembly.GetType("Rules.RuleDefinitionLift");
-        var proposeRuleType = assembly.GetType("Rules.RuleDefinitionPropose");
+        var contractAssembly = typeof(RuleDefinitionMark).Assembly;
+        var implementationAssembly = typeof(DeleteSObjectIdentifierNameMarkRule).Assembly;
+        var markRuleType = contractAssembly.GetType("Rules.RuleDefinitionMark");
+        var propagateRuleType = contractAssembly.GetType("Rules.RuleDefinitionPropagate");
+        var liftRuleType = contractAssembly.GetType("Rules.RuleDefinitionLift");
+        var proposeRuleType = contractAssembly.GetType("Rules.RuleDefinitionPropose");
 
         Assert.NotNull(markRuleType);
         Assert.NotNull(propagateRuleType);
@@ -3840,6 +3841,8 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.True(propagateRuleType!.IsClass);
         Assert.True(liftRuleType!.IsClass);
         Assert.True(proposeRuleType!.IsClass);
+        Assert.NotSame(typeof(RuleRegistry).Assembly, implementationAssembly);
+        Assert.NotSame(contractAssembly, implementationAssembly);
 
         Assert.True(rules.Markers.Count >= 10);
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "DeleteSObjectIdentifierNameMarkRule", StringComparison.Ordinal));
@@ -3936,10 +3939,10 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_WhenDisabledRuleTypeProvided_DisablesOnlyMatchingClass()
     {
-        var application = new DeletionApplicationService(
+        var host = new DeletionCommandHost(
           RuleRegistry.CreateDefaultRules(new[] { "DeleteSObjectMemberAccessMarkRule" }));
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = host.AnalyzeFromArgs(new[]
         {
           "--target-name",
           "s"
@@ -4019,7 +4022,7 @@ public sealed class PipelineComponentTests : IDisposable
           new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
-    private static IReadOnlyList<RuleDefinitionMark> GetDeleteSObjectMarkRules(RuleRegistrySet? rules = null)
+    private static IReadOnlyList<RuleDefinitionMark> GetDeleteSObjectMarkRules(DeletionRulePipeline? rules = null)
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
@@ -4027,7 +4030,7 @@ public sealed class PipelineComponentTests : IDisposable
           .ToList();
     }
 
-    private static IReadOnlyList<RuleDefinitionMark> GetDeleteClassMarkRules(RuleRegistrySet? rules = null)
+    private static IReadOnlyList<RuleDefinitionMark> GetDeleteClassMarkRules(DeletionRulePipeline? rules = null)
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules

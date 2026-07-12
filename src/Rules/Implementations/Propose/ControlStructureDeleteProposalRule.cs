@@ -34,7 +34,7 @@ public sealed class ControlStructureDeleteProposalRule : RuleDefinitionPropose
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               mark.SyntaxNode,
               mark.Reason,

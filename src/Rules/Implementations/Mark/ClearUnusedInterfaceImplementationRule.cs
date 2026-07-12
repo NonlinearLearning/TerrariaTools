@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using RoslynPrototype.Analysis;
 using RoslynPrototype.Marking;
 
 namespace Rules;
@@ -34,9 +35,7 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
     }
 
     var referencedMethods = FindReferencedMethods(compilation);
-    foreach (var method in RuleAnalysisHelpers.EnumerateMethodDeclarations(
-               root,
-               context.AnalysisContext))
+    foreach (var method in context.EnumerateMethodDeclarations(root))
     {
       if (context.SemanticModel.GetDeclaredSymbol(method, CancellationToken.None)
           is not IMethodSymbol methodSymbol)
@@ -56,7 +55,7 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
         continue;
       }
 
-      yield return RuleAnalysisHelpers.CreateMark(
+      yield return MarkRecordFactory.Create(
         RuleId,
         method,
         "Interface implementation is not referenced through its interface member or implementation method.");

@@ -116,7 +116,7 @@ public sealed class DecisionStructureValidationTests
                 node.IsKind(SyntaxKind.LogicalAndExpression));
     }
 
-    private static (Rules.RuleContext Context, SyntaxNode Root, RuleRegistrySet Rules) CreateContextAndRules(string source, string? targetName = null)
+    private static (Rules.RuleContext Context, SyntaxNode Root, DeletionRulePipeline Rules) CreateContextAndRules(string source, string? targetName = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
         var root = tree.GetRoot();
@@ -152,12 +152,12 @@ public sealed class DecisionStructureValidationTests
         return Assert.IsType<DecisionUnit>(merged);
     }
 
-    private static IReadOnlyList<LiftedMarkRecord> Lift(Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, RuleRegistrySet rules)
+    private static IReadOnlyList<LiftedMarkRecord> Lift(Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, DeletionRulePipeline rules)
     {
         return new MarkLiftingEngine().Run(context, seedMarks, propagatedMarks, rules.Lifters);
     }
 
-    private static List<MarkRecord> RunDeleteSObjectMarks(Rules.RuleContext context, SyntaxNode root, RuleRegistrySet rules)
+    private static List<MarkRecord> RunDeleteSObjectMarks(Rules.RuleContext context, SyntaxNode root, DeletionRulePipeline rules)
     {
         return new MarkingEngine()
           .Run(context, root, rules.Markers)
@@ -165,7 +165,7 @@ public sealed class DecisionStructureValidationTests
           .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, RuleRegistrySet rules)
+    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, DeletionRulePipeline rules)
     {
         return new PropagationEngine()
           .Run(

@@ -1,0 +1,14 @@
+namespace Rules;
+
+public static partial class DeleteClassRuleIds
+{
+  public const string ObjectCreationDeclarationPropagationRuleId = DeleteClassRuleMetadata.ObjectCreationDeclarationPropagationRuleId;
+  public const string LocalReferencePropagationRuleId = DeleteClassRuleMetadata.LocalReferencePropagationRuleId;
+  public const string MethodParameterUsagePropagationRuleId = DeleteClassRuleMetadata.MethodParameterUsagePropagationRuleId;
+  public const string LocalFunctionParameterUsagePropagationRuleId = DeleteClassRuleMetadata.LocalFunctionParameterUsagePropagationRuleId;
+  public const string IndexerParameterUsagePropagationRuleId = DeleteClassRuleMetadata.IndexerParameterUsagePropagationRuleId;
+  public const string DelegateUsageClassificationPropagationRuleId = DeleteClassRuleMetadata.DelegateUsageClassificationPropagationRuleId;
+  public const string ExtensionMethodMappedCallsitePropagationRuleId = DeleteClassRuleMetadata.ExtensionMethodMappedCallsitePropagationRuleId;
+  public const string DeclarationHostPropagationRuleId = DeleteClassRuleMetadata.DeclarationHostPropagationRuleId;
+  public const string IfStructureCompletionPropagationRuleId = DeleteClassRuleMetadata.IfStructureCompletionPropagationRuleId;
+}

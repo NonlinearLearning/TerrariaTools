@@ -36,7 +36,7 @@ public sealed class DeleteClassDefaultDeleteProposalRule : RuleDefinitionPropose
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               mark.SyntaxNode,
               mark.Reason,
@@ -53,7 +53,7 @@ public sealed class DeleteClassDefaultDeleteProposalRule : RuleDefinitionPropose
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               seedMark.SyntaxNode,
               seedMark.Reason);
@@ -107,7 +107,7 @@ public sealed class DeleteClassControlStructureDeleteProposalRule : RuleDefiniti
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               mark.SyntaxNode,
               mark.Reason,
@@ -144,7 +144,7 @@ public sealed class DeleteClassTypeSyntaxDeclarationProposalRule : RuleDefinitio
                      propagatedMarks,
                      DeclarationHostKind.FieldDeclaration))
         {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Declaration type references the delete-class target.",
@@ -155,7 +155,7 @@ public sealed class DeleteClassTypeSyntaxDeclarationProposalRule : RuleDefinitio
                      propagatedMarks,
                      DeclarationHostKind.PropertyDeclaration))
         {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Declaration type references the delete-class target.",
@@ -197,7 +197,7 @@ public sealed class DeleteClassMethodReturnTypeProposalRule : RuleDefinitionProp
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               method,
               "Private method return type references the delete-class target.",
@@ -239,7 +239,7 @@ public sealed class DeleteClassPublicMethodReturnTypeProposalRule : RuleDefiniti
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               method,
               "Non-private method return type references the delete-class target.",
@@ -1214,7 +1214,7 @@ public sealed class DeleteClassInterfaceMethodProposalRule : RuleDefinitionPropo
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               method,
               "Interface method signature references the delete-class target.",
@@ -1250,7 +1250,7 @@ public sealed class DeleteClassInterfacePropertyProposalRule : RuleDefinitionPro
                      propagatedMarks,
                      DeclarationHostKind.InterfaceProperty))
         {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Interface property signature references the delete-class target.",
@@ -1287,7 +1287,7 @@ public sealed class DeleteClassInterfaceEventProposalRule : RuleDefinitionPropos
                      propagatedMarks,
                      DeclarationHostKind.InterfaceEvent))
         {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Interface event signature references the delete-class target.",
@@ -1323,7 +1323,7 @@ public sealed class DeleteClassInterfaceIndexerProposalRule : RuleDefinitionProp
                      propagatedMarks,
                      DeclarationHostKind.InterfaceIndexer))
         {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Interface indexer signature references the delete-class target.",
@@ -1364,7 +1364,7 @@ public sealed class DeleteClassDelegateProposalRule : RuleDefinitionPropose
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               delegateDeclaration,
               "Delegate signature references the delete-class target.",
@@ -1405,7 +1405,7 @@ public sealed class DeleteClassExtensionReceiverProposalRule : RuleDefinitionPro
                 continue;
             }
 
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               method,
               "Extension method receiver type references the delete-class target.",
@@ -1442,7 +1442,7 @@ public sealed class DeleteClassBaseTypeProposalRule : RuleDefinitionPropose
                      propagatedMarks,
                      DeclarationHostKind.BaseType))
         {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Base type references the delete-class target.",
@@ -1478,7 +1478,7 @@ public sealed class DeleteClassGenericTypeArgumentProposalRule : RuleDefinitionP
                      propagatedMarks,
                      DeclarationHostKind.LocalGenericTypeArgument))
         {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Local declaration type argument references the delete-class target.",

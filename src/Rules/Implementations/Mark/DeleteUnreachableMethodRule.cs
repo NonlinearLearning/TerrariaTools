@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
+using RoslynPrototype.Analysis;
 using RoslynPrototype.Marking;
 using Rules;
 
@@ -42,16 +43,14 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
         var methodSyntaxById = BuildMethodSyntaxMap(context, root);
         var reachableMethods = FindReachableMethodIds(context, methodSyntaxById);
 
-        foreach (var method in RuleAnalysisHelpers.EnumerateMethodDeclarations(
-                   root,
-                   context.AnalysisContext))
+        foreach (var method in context.EnumerateMethodDeclarations(root))
         {
             if (context.SemanticModel.GetDeclaredSymbol(method, CancellationToken.None) is not IMethodSymbol methodSymbol)
             {
                 continue;
             }
 
-            var methodNode = FindMethodNodeBySymbol(context.Graph, methodSymbol);
+            var methodNode = FindMethodNodeBySymbol(context, methodSymbol);
             if (methodNode is null || reachableMethods.Contains(methodNode.Id))
             {
                 continue;
@@ -71,16 +70,15 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// </summary>
     private static HashSet<string> FindReachableMethodIds(RuleContext context, IReadOnlyDictionary<string, MethodDeclarationSyntax> methodSyntaxById)
     {
-        var graph = context.Graph;
         var reachable = new HashSet<string>(StringComparer.Ordinal);
         var worklist = new Queue<RoslynCpgNode>();
-        var methodNodes = graph.NodesByKind(RoslynCpgNodeKind.Method).ToList();
-        var symbolMethodToMethod = BuildSymbolMethodMap(graph, methodNodes);
+        var methodNodes = context.GetGraphNodesByKind(RoslynCpgNodeKind.Method);
+        var symbolMethodToMethod = BuildSymbolMethodMap(context, methodNodes);
 
         var entrySymbol = context.SemanticModel.Compilation.GetEntryPoint(CancellationToken.None);
         if (entrySymbol is not null)
         {
-            var entryNode = FindMethodNodeBySymbol(graph, entrySymbol);
+            var entryNode = FindMethodNodeBySymbol(context, entrySymbol);
             if (entryNode is not null && reachable.Add(entryNode.Id))
             {
                 worklist.Enqueue(entryNode);
@@ -106,9 +104,9 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
                 continue;
             }
 
-            foreach (var callSiteNode in GetCallSitesForMethod(graph, methodSyntax))
+            foreach (var callSiteNode in GetCallSitesForMethod(context, methodSyntax))
             {
-                foreach (var targetSymbolNode in GetOutgoingTargets(graph, callSiteNode.Id, RoslynCpgEdgeKind.CallTargets)
+                foreach (var targetSymbolNode in GetOutgoingTargets(context, callSiteNode.Id, RoslynCpgEdgeKind.CallTargets)
                            .Where(node => node.Kind == RoslynCpgNodeKind.SymbolMethod))
                 {
                     if (!symbolMethodToMethod.TryGetValue(targetSymbolNode.Id, out var targetMethodNode))
@@ -130,13 +128,13 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 把方法符号节点映射回对应的方法抽象节点，便于沿调用目标回到方法级可达性。
     /// </summary>
-    private static IReadOnlyDictionary<string, RoslynCpgNode> BuildSymbolMethodMap(RoslynCpgGraph graph, IReadOnlyList<RoslynCpgNode> methodNodes)
+    private static IReadOnlyDictionary<string, RoslynCpgNode> BuildSymbolMethodMap(RuleContext context, IReadOnlyList<RoslynCpgNode> methodNodes)
     {
         var methodByLocation = methodNodes
           .Where(node => node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
           .ToDictionary(node => BuildLocationKey(node.FilePath!, node.SpanStart!.Value, node.SpanEnd!.Value), StringComparer.Ordinal);
 
-        return graph.NodesByKind(RoslynCpgNodeKind.SymbolMethod)
+        return context.GetGraphNodesByKind(RoslynCpgNodeKind.SymbolMethod)
           .Where(node => node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
           .Select(node => new { SymbolNode = node, MethodNode = ResolveMethodNode(node, methodByLocation) })
           .Where(item => item.MethodNode is not null)
@@ -146,9 +144,9 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 找出方法体范围内的所有调用点节点。
     /// </summary>
-    private static IEnumerable<RoslynCpgNode> GetCallSitesForMethod(RoslynCpgGraph graph, MethodDeclarationSyntax methodSyntax)
+    private static IEnumerable<RoslynCpgNode> GetCallSitesForMethod(RuleContext context, MethodDeclarationSyntax methodSyntax)
     {
-        foreach (var callSite in graph.NodesByKind(RoslynCpgNodeKind.CallSite))
+        foreach (var callSite in context.GetGraphNodesByKind(RoslynCpgNodeKind.CallSite))
         {
             if (IsInsideMethod(callSite, methodSyntax))
             {
@@ -160,16 +158,16 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 读取某个图节点沿指定边种类指向的所有目标节点。
     /// </summary>
-    private static IEnumerable<RoslynCpgNode> GetOutgoingTargets(RoslynCpgGraph graph, string sourceId, RoslynCpgEdgeKind edgeKind)
+    private static IEnumerable<RoslynCpgNode> GetOutgoingTargets(RuleContext context, string sourceId, RoslynCpgEdgeKind edgeKind)
     {
-        var targetIds = graph.Edges
-          .Where(edge => edge.SourceId == sourceId && edge.Kind == edgeKind)
+        var targetIds = context.GetGraphEdgesByKind(sourceId, edgeKind)
           .Select(edge => edge.TargetId)
           .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var node in graph.Nodes)
+        foreach (var targetId in targetIds)
         {
-            if (targetIds.Contains(node.Id))
+            var node = context.FindGraphNodeById(targetId);
+            if (node is not null)
             {
                 yield return node;
             }
@@ -211,7 +209,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 根据方法符号的源码位置，在图中定位对应的方法抽象节点。
     /// </summary>
-    private static RoslynCpgNode? FindMethodNodeBySymbol(RoslynCpgGraph graph, IMethodSymbol methodSymbol)
+    private static RoslynCpgNode? FindMethodNodeBySymbol(RuleContext context, IMethodSymbol methodSymbol)
     {
         var location = methodSymbol.Locations.FirstOrDefault(location => location.IsInSource);
         if (location is null || location.SourceTree?.FilePath is not string filePath)
@@ -219,7 +217,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
             return null;
         }
 
-        return graph.NodesByKind(RoslynCpgNodeKind.Method)
+        return context.GetGraphNodesByKind(RoslynCpgNodeKind.Method)
           .FirstOrDefault(node =>
             string.Equals(node.FilePath, filePath, StringComparison.Ordinal) &&
             node.SpanStart == location.SourceSpan.Start &&
@@ -241,7 +239,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
                 continue;
             }
 
-            var methodNode = FindMethodNodeBySymbol(context.Graph, methodSymbol);
+            var methodNode = FindMethodNodeBySymbol(context, methodSymbol);
             if (methodNode is not null)
             {
                 map[methodNode.Id] = method;

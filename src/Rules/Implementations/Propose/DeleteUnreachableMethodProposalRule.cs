@@ -26,7 +26,7 @@ public sealed class DeleteUnreachableMethodProposalRule : RuleDefinitionPropose
 
         foreach (var seedMark in seedMarks)
         {
-            yield return RuleAnalysisHelpers.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               seedMark.SyntaxNode,
               seedMark.Reason);

@@ -336,13 +336,13 @@ public sealed class RuleDecisionEngine
 
         // 先按规则分桶，避免每条规则在 Propose 阶段重复扫描全量 marks。
         var seedMarksByGroupKey = seedMarks
-          .GroupBy(MarkingEngine.GetGroupKey, StringComparer.Ordinal)
+          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
           .ToDictionary(group => group.Key, group => (IReadOnlyList<MarkRecord>)group.ToList(), StringComparer.Ordinal);
         var propagatedMarksByGroupKey = propagatedMarks
-          .GroupBy(MarkingEngine.GetGroupKey, StringComparer.Ordinal)
+          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
           .ToDictionary(group => group.Key, group => (IReadOnlyList<PropagatedMarkRecord>)group.ToList(), StringComparer.Ordinal);
         var liftedMarksByGroupKey = liftedMarks
-          .GroupBy(mark => mark.GroupKey ?? mark.RuleId, StringComparer.Ordinal)
+          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
           .ToDictionary(group => group.Key, group => (IReadOnlyList<LiftedMarkRecord>)group.ToList(), StringComparer.Ordinal);
 
         foreach (var rule in rules)

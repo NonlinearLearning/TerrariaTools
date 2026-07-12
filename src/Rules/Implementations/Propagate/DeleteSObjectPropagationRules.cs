@@ -30,7 +30,7 @@ public sealed class DeleteSObjectAssignmentLeftValuePropagationRule : DeleteSObj
                 {
                     yield return new PropagatedMarkRecord(
                       RuleId,
-                      RuleAnalysisHelpers.CreateMark(
+                      MarkRecordFactory.Create(
                         RuleId,
                         assignmentExpression.Left,
                         "Assignment right value is marked; propagate mark to assignment left value."),
@@ -67,7 +67,7 @@ public sealed class DeleteSObjectDefinitionInitializerPropagationRule : DeleteSO
                 {
                     yield return new PropagatedMarkRecord(
                       RuleId,
-                      RuleAnalysisHelpers.CreateMark(
+                      MarkRecordFactory.Create(
                         RuleId,
                         variableDeclarator,
                         "Definition initializer is marked; propagate mark to defined left value."),
@@ -97,11 +97,10 @@ public sealed class DeleteSObjectLogicalConditionPropagationRule : DeleteSObject
         var knownKeys = seedMarks
           .Select(mark => BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
-        var analyzer = new LogicalConditionMarkAnalyzer();
         foreach (var seedMark in seedMarks)
         {
             if (seedMark.SyntaxNode is not ExpressionSyntax expression ||
-                !analyzer.CanAnalyze(expression, context.AnalysisContext))
+                !context.CanAnalyzeLogicalCondition(expression))
             {
                 continue;
             }
@@ -109,10 +108,7 @@ public sealed class DeleteSObjectLogicalConditionPropagationRule : DeleteSObject
             LogicalConditionMarkAnalysis analysis;
             try
             {
-                analysis = analyzer.Analyze(
-                  expression,
-                  string.Join(",", targetNames),
-                  context.AnalysisContext);
+                analysis = context.AnalyzeLogicalCondition(expression, string.Join(",", targetNames));
             }
             catch (InvalidOperationException exception) when (
                 exception.Message.StartsWith(
@@ -142,7 +138,7 @@ public sealed class DeleteSObjectLogicalConditionPropagationRule : DeleteSObject
 
             yield return new PropagatedMarkRecord(
               RuleId,
-              RuleAnalysisHelpers.CreateMark(
+              MarkRecordFactory.Create(
                 RuleId,
                 analysis.PreferredMarkedNode,
                 "Logical condition group is marked; lift atomic hits to the logical host."),
@@ -181,12 +177,11 @@ public sealed class DeleteSObjectLogicalOperandGroupPropagationRule : DeleteSObj
             yield break;
         }
 
-        var analyzer = new LogicalConditionMarkAnalyzer();
         var knownKeys = new HashSet<(int Start, int Length, int RawKind)>();
         foreach (var seedMark in seedMarks)
         {
             if (seedMark.SyntaxNode is not ExpressionSyntax expression ||
-                !analyzer.CanAnalyze(expression, context.AnalysisContext))
+                !context.CanAnalyzeLogicalCondition(expression))
             {
                 continue;
             }
@@ -194,10 +189,7 @@ public sealed class DeleteSObjectLogicalOperandGroupPropagationRule : DeleteSObj
             LogicalConditionMarkAnalysis analysis;
             try
             {
-                analysis = analyzer.Analyze(
-                  expression,
-                  string.Join(",", targetNames),
-                  context.AnalysisContext);
+                analysis = context.AnalyzeLogicalCondition(expression, string.Join(",", targetNames));
             }
             catch (InvalidOperationException exception) when (
                 exception.Message.StartsWith(
@@ -226,7 +218,7 @@ public sealed class DeleteSObjectLogicalOperandGroupPropagationRule : DeleteSObj
 
             yield return new PropagatedMarkRecord(
               RuleId,
-              RuleAnalysisHelpers.CreateMark(
+              MarkRecordFactory.Create(
                 RuleId,
                 host,
                 "Logical condition group is marked; propagate removable and surviving operands to the logical host."),
@@ -269,7 +261,7 @@ public sealed class DeleteSObjectSymbolReferencePropagationRule : DeleteSObjectP
         var knownKeys = seedMarks
           .Select(mark => BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
-        var root = context.AnalysisContext.CompilationRoot;
+        var root = context.Root;
         foreach (var reference in root.DescendantNodes().OfType<IdentifierNameSyntax>())
         {
             var referencedSymbol = ResolveReferencedSymbol(context, reference);
@@ -283,7 +275,7 @@ public sealed class DeleteSObjectSymbolReferencePropagationRule : DeleteSObjectP
 
             yield return new PropagatedMarkRecord(
               RuleId,
-              RuleAnalysisHelpers.CreateMark(
+              MarkRecordFactory.Create(
                 RuleId,
                 reference,
                 $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked definition."),

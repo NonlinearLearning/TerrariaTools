@@ -1,9 +1,10 @@
 using RoslynPrototype.Application;
 
-var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
-var result = application.AnalyzeFromArgs(args);
+var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+var result = host.AnalyzeFromArgs(args);
+var formatter = new DeletionResultFormatter();
 
-foreach (var line in application.FormatResult(result))
+foreach (var line in formatter.FormatResult(result))
 {
     Console.WriteLine(line);
 }

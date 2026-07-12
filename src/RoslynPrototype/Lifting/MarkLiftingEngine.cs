@@ -18,13 +18,13 @@ public sealed class MarkLiftingEngine
           .Where(mark => mark.Payload is null)
           .ToList();
         var seedMarksByGroupKey = seedMarks
-          .GroupBy(MarkingEngine.GetGroupKey, StringComparer.Ordinal)
+          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
           .ToDictionary(
             group => group.Key,
             group => (IReadOnlyList<MarkRecord>)group.ToList(),
             StringComparer.Ordinal);
         var propagatedMarksByGroupKey = liftEligiblePropagatedMarks
-          .GroupBy(MarkingEngine.GetGroupKey, StringComparer.Ordinal)
+          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
           .ToDictionary(
             group => group.Key,
             group => (IReadOnlyList<PropagatedMarkRecord>)group.ToList(),
@@ -56,7 +56,7 @@ public sealed class MarkLiftingEngine
 
         return liftedMarks
           .DistinctBy(mark => (
-            mark.GroupKey ?? mark.RuleId,
+            RuleStageGroupKey.Get(mark),
             mark.Mark.SyntaxNode.SpanStart,
             mark.Mark.SyntaxNode.Span.Length,
             mark.Mark.SyntaxNode.RawKind))
@@ -75,8 +75,8 @@ public sealed class MarkLiftingEngine
             return context;
         }
 
-        var structureView = _structureViewBuilder.Build(fragments, context.AnalysisContext);
-        return context.WithStructureView(structureView);
+        var structureView = context.StructureViews.BuildStructureView(fragments);
+        return context.StructureViews.WithStructureView(structureView);
     }
 
     internal static void ValidateLiftNode(RuleDefinitionLift rule, SyntaxNode syntaxNode)

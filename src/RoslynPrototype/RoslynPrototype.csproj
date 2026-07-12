@@ -5,25 +5,14 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>preview</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
-    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.14.0" />
+    <Compile Include="Program.cs" />
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="samples\**\*.cs" />
-    <None Include="samples\**\*.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Compile Include="..\Application\**\*.cs" Link="Application\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\Rules\**\*.cs" Link="Rules\%(RecursiveDir)%(Filename)%(Extension)" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
+    <ProjectReference Include="..\Host\Host.csproj" />
   </ItemGroup>
 </Project>

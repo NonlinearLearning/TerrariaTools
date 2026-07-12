@@ -6,6 +6,8 @@ namespace RoslynPrototype.Propagation;
 
 public abstract class DeleteSObjectPropagationRuleBase : RuleDefinitionPropagate
 {
+    private const string DeleteSObjectGroupKey = "DEL-SOBJ";
+
     protected static readonly IReadOnlyList<SyntaxKind> SharedAllowedPropagateNodeKinds =
       new[]
       {
@@ -39,7 +41,7 @@ public abstract class DeleteSObjectPropagationRuleBase : RuleDefinitionPropagate
         SyntaxKind.ReturnStatement
       };
 
-    public override string GroupKey { get; } = DeleteSObjectRuleIds.GroupKey;
+    public override string GroupKey { get; } = DeleteSObjectGroupKey;
 
     public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds =>
       SharedAllowedPropagateNodeKinds;
