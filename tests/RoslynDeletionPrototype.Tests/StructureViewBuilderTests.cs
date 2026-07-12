@@ -78,6 +78,94 @@ public sealed class StructureViewBuilderTests
     }
 
     [Fact]
+    public void Build_ForSameFragments_ReusesCachedViewWithinAnalysisContext()
+    {
+        var source = SObjectExpressionSources.TargetNameSource;
+        var (context, root) = CreateAnalysisContext(source, "structure-view-cache.cs");
+        var declarator = root.DescendantNodes().OfType<VariableDeclaratorSyntax>().Single();
+        var memberAccess = root.DescendantNodes()
+            .OfType<MemberAccessExpressionSyntax>()
+            .Single(node => node.ToString() == "s.Seed");
+        var builder = new RoslynCpgStructureViewBuilder();
+
+        var firstView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
+        var secondView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
+
+        Assert.Same(firstView, secondView);
+    }
+
+    [Fact]
+    public void Build_ForSameFragmentsDifferentOrder_UsesRequestedFirstFragmentAsRoot()
+    {
+        var source = SObjectExpressionSources.TargetNameSource;
+        var (context, root) = CreateAnalysisContext(source, "structure-view-cache-order.cs");
+        var declarator = root.DescendantNodes().OfType<VariableDeclaratorSyntax>().Single();
+        var memberAccess = root.DescendantNodes()
+            .OfType<MemberAccessExpressionSyntax>()
+            .Single(node => node.ToString() == "s.Seed");
+        var builder = new RoslynCpgStructureViewBuilder();
+
+        var declaratorFirstView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
+        var memberAccessFirstView = builder.Build(new SyntaxNode[] { memberAccess, declarator }, context);
+
+        Assert.NotSame(declaratorFirstView, memberAccessFirstView);
+        Assert.Equal(declarator.SpanStart, declaratorFirstView.Root.SpanStart);
+        Assert.Equal(memberAccess.SpanStart, memberAccessFirstView.Root.SpanStart);
+    }
+
+    [Fact]
+    public void Build_WhenSyntaxTreeHasNoPath_StillResolvesGraphNodes()
+    {
+        const string source = """
+            public sealed class Sample
+            {
+                public int Run(Box s)
+                {
+                    return s.Seed;
+                }
+            }
+
+            public sealed class Box
+            {
+                public int Seed { get; set; }
+            }
+            """;
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var root = tree.GetRoot();
+        var compilation = CSharpCompilation.Create(
+            "StructureViewBuilderNoPathTests",
+            new[] { tree },
+            new[]
+            {
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
+            });
+        var semanticModel = compilation.GetSemanticModel(tree);
+        var graphWithPath = new RoslynCpgBuilder().BuildFromSource(source, "structure-view-no-path.cs");
+        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        foreach (var node in graphWithPath.Nodes)
+        {
+            graph.AddNode(node with { FilePath = string.Empty });
+        }
+
+        foreach (var edge in graphWithPath.Edges)
+        {
+            var sourceNode = graph.GetNode(edge.SourceId)!;
+            var targetNode = graph.GetNode(edge.TargetId)!;
+            graph.AddEdge(sourceNode, targetNode, edge.Kind, edge.Label);
+        }
+
+        var context = new CpgAnalysisContext(graph, semanticModel, root);
+        var memberAccess = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>().Single();
+
+        var view = new RoslynCpgStructureViewBuilder().Build(memberAccess, context);
+
+        Assert.NotEmpty(view.Nodes);
+        Assert.Contains(view.Nodes, node => node.SpanStart == memberAccess.SpanStart);
+    }
+
+    [Fact]
     public void AnalyzeBinaryExpression_ReturnsAffectedSyntaxTreeOnly()
     {
         var source = SObjectLogicalSources.LogicalAndConditionSource;

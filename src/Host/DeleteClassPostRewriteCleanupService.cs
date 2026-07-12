@@ -12,12 +12,10 @@ internal sealed class DeleteClassPostRewriteCleanupService
     internal PrototypeAnalysisResult ApplyUsingCleanup(
       string filePath,
       PrototypeAnalysisResult result,
-      Dictionary<string, string> projectSourcesByPath)
+      CleanupProjectState cleanupProjectState)
     {
         var currentSource = result.RewrittenSource;
         var cleanupEdits = new List<RewriteEdit>();
-        var baselineDiagnostics =
-          DeletionPostRewriteDiagnostics.GetStableErrorDiagnosticKeys(projectSourcesByPath);
         var changed = true;
 
         while (changed)
@@ -45,15 +43,7 @@ internal sealed class DeleteClassPostRewriteCleanupService
                 }
 
                 var candidateSource = candidateRoot.ToFullString();
-                var candidateProjectSources = new Dictionary<string, string>(
-                  projectSourcesByPath,
-                  StringComparer.Ordinal)
-                {
-                    [filePath] = candidateSource
-                };
-                var candidateDiagnostics =
-                  DeletionPostRewriteDiagnostics.GetStableErrorDiagnosticKeys(candidateProjectSources);
-                if (!baselineDiagnostics.SetEquals(candidateDiagnostics))
+                if (!cleanupProjectState.TryAcceptCandidate(filePath, candidateSource))
                 {
                     continue;
                 }
@@ -64,7 +54,6 @@ internal sealed class DeleteClassPostRewriteCleanupService
                   usingDirective.WithoutTrivia().ToFullString(),
                   string.Empty));
                 currentSource = candidateSource;
-                projectSourcesByPath[filePath] = candidateSource;
                 changed = true;
                 break;
             }
@@ -76,7 +65,7 @@ internal sealed class DeleteClassPostRewriteCleanupService
     internal PrototypeAnalysisResult ApplyEmptyNamespaceCleanup(
       string filePath,
       PrototypeAnalysisResult result,
-      Dictionary<string, string> projectSourcesByPath)
+      CleanupProjectState cleanupProjectState)
     {
         var currentSource = result.RewrittenSource;
         var cleanupEdits = new List<RewriteEdit>();
@@ -110,17 +99,7 @@ internal sealed class DeleteClassPostRewriteCleanupService
             }
 
             var candidateSource = candidateRoot.ToFullString();
-            var candidateProjectSources = new Dictionary<string, string>(
-              projectSourcesByPath,
-              StringComparer.Ordinal)
-            {
-                [filePath] = candidateSource
-            };
-            var baselineDiagnostics =
-              DeletionPostRewriteDiagnostics.GetStableErrorDiagnosticKeys(projectSourcesByPath);
-            var candidateDiagnostics =
-              DeletionPostRewriteDiagnostics.GetStableErrorDiagnosticKeys(candidateProjectSources);
-            if (!baselineDiagnostics.SetEquals(candidateDiagnostics))
+            if (!cleanupProjectState.TryAcceptCandidate(filePath, candidateSource))
             {
                 break;
             }
@@ -131,7 +110,6 @@ internal sealed class DeleteClassPostRewriteCleanupService
               emptyNamespace.WithoutTrivia().ToFullString(),
               string.Empty));
             currentSource = candidateSource;
-            projectSourcesByPath[filePath] = candidateSource;
             changed = true;
         }
 
@@ -155,5 +133,34 @@ internal sealed class DeleteClassPostRewriteCleanupService
             RewrittenSource = currentSource,
             DiffText = _rewriter.BuildDiffText(edits)
         };
+    }
+
+    internal sealed class CleanupProjectState
+    {
+        private readonly Dictionary<string, string> _projectSourcesByPath;
+        private readonly HashSet<string> _baselineDiagnostics;
+
+        internal CleanupProjectState(Dictionary<string, string> projectSourcesByPath)
+        {
+            _projectSourcesByPath = projectSourcesByPath;
+            _baselineDiagnostics =
+              DeletionPostRewriteDiagnostics.GetStableErrorDiagnosticKeys(projectSourcesByPath);
+        }
+
+        internal bool TryAcceptCandidate(string filePath, string candidateSource)
+        {
+            var candidateDiagnostics =
+              DeletionPostRewriteDiagnostics.GetStableErrorDiagnosticKeys(
+                _projectSourcesByPath,
+                filePath,
+                candidateSource);
+            if (!_baselineDiagnostics.SetEquals(candidateDiagnostics))
+            {
+                return false;
+            }
+
+            _projectSourcesByPath[filePath] = candidateSource;
+            return true;
+        }
     }
 }

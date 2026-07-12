@@ -521,6 +521,9 @@ internal sealed class DeletionDirectoryAnalysisService
               : sourcesByPath[filePath];
         }
 
+        var cleanupProjectState = new DeleteClassPostRewriteCleanupService.CleanupProjectState(
+          projectSourcesByPath);
+
         for (var index = 0; index < filePaths.Count; index++)
         {
             var filePath = filePaths[index];
@@ -533,11 +536,11 @@ internal sealed class DeletionDirectoryAnalysisService
             fileResults[index] = _cleanupService.ApplyUsingCleanup(
               filePath,
               result,
-              projectSourcesByPath);
+              cleanupProjectState);
             fileResults[index] = _cleanupService.ApplyEmptyNamespaceCleanup(
               filePath,
               fileResults[index],
-              projectSourcesByPath);
+              cleanupProjectState);
         }
     }
 

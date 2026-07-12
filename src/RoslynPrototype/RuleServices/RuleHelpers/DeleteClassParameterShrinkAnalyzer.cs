@@ -570,19 +570,19 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                   return;
               }
 
-              foreach (var invocation in scan.Invocations)
+              foreach (var invocation in scan.GetInvocationBindings(delegateSymbol.DelegateInvokeMethod!))
               {
-                  if (!TryResolveMethodSymbol(scan.SemanticModel, invocation, out var targetMethod) ||
+                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
                       targetMethod.MethodKind != MethodKind.DelegateInvoke ||
                       !SymbolEqualityComparer.Default.Equals(targetMethod.ContainingType, delegateSymbol))
                   {
                       continue;
                   }
 
-                  if (!handledInvocations.TryAdd(BuildSyntaxKey(invocation), 0) ||
+                  if (!handledInvocations.TryAdd(BuildSyntaxKey(invocation.Invocation), 0) ||
                       !TryBuildMappedInvocationReplacement(
-                        invocation,
-                        scan.SemanticModel.GetOperation(invocation, CancellationToken.None) as IInvocationOperation,
+                        invocation.Invocation,
+                        invocation.Operation,
                         parameterSymbol,
                         out var replacementInvocation))
                   {
@@ -591,18 +591,18 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                       return;
                   }
 
-                  invocationRewrites.Add(new InvocationRewrite(invocation, replacementInvocation));
+                  invocationRewrites.Add(
+                    new InvocationRewrite(invocation.Invocation, replacementInvocation));
               }
 
-              foreach (var expression in scan.Expressions)
+              foreach (var expression in scan.GetExpressionBindings(delegateSymbol))
               {
-                  if (!ExpressionConvertsToDelegate(scan.SemanticModel, expression, delegateSymbol))
+                  if (!SymbolEqualityComparer.Default.Equals(expression.ConvertedType, delegateSymbol))
                   {
                       continue;
                   }
 
-                  var operation = scan.SemanticModel.GetOperation(expression, CancellationToken.None);
-                  switch (operation)
+                  switch (expression.Operation)
                   {
                       case IMethodReferenceOperation methodReference:
                           if (!TryBuildMethodGroupTargetRewrite(
@@ -634,12 +634,12 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                           break;
 
                       case IAnonymousFunctionOperation anonymousFunction:
-                          var key = $"{scan.SyntaxTree.FilePath}:{expression.SpanStart}:{expression.Span.Length}";
+                          var key = $"{scan.SyntaxTree.FilePath}:{expression.Expression.SpanStart}:{expression.Expression.Span.Length}";
                           if (!handledLambdaSpans.TryAdd(key, 0) ||
                               !TryBuildLambdaRewrite(
                                 context,
                                 scan.SemanticModel,
-                                expression,
+                                expression.Expression,
                                 anonymousFunction,
                                 parameterIndex,
                                 out var lambdaRewrite))
@@ -736,23 +736,28 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           GetTreeScans(compilation),
           (scan, state) =>
           {
-              foreach (var invocation in scan.Invocations)
+              foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
               {
-                  if (!TryResolveMethodSymbol(scan.SemanticModel, invocation, out var targetMethod) ||
+                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
                       !SymbolEqualityComparer.Default.Equals(methodSymbol, targetMethod))
                   {
                       continue;
                   }
 
                   Interlocked.Increment(ref matchedCallsites);
-                  if (!TryBuildReplacementInvocation(invocation, parameterIndex, expectedParameterCount, out var replacementInvocation))
+                  if (!TryBuildReplacementInvocation(
+                        invocation.Invocation,
+                        parameterIndex,
+                        expectedParameterCount,
+                        out var replacementInvocation))
                   {
                       Interlocked.Exchange(ref failed, 1);
                       state.Stop();
                       return;
                   }
 
-                  rewrites.Add(new InvocationRewrite(invocation, replacementInvocation));
+                  rewrites.Add(
+                    new InvocationRewrite(invocation.Invocation, replacementInvocation));
               }
           });
 
@@ -773,18 +778,18 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           GetTreeScans(compilation),
           (scan, state) =>
           {
-              foreach (var invocation in scan.Invocations)
+              foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
               {
-                  if (!TryResolveMethodSymbol(scan.SemanticModel, invocation, out var targetMethod) ||
+                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
                       !SymbolEqualityComparer.Default.Equals(methodSymbol, targetMethod) ||
-                      scan.SemanticModel.GetOperation(invocation, CancellationToken.None) is not IInvocationOperation invocationOperation)
+                      invocation.Operation is not IInvocationOperation invocationOperation)
                   {
                       continue;
                   }
 
                   Interlocked.Increment(ref matchedCallsites);
                   if (!TryBuildNamedArgumentReplacementInvocation(
-                        invocation,
+                        invocation.Invocation,
                         invocationOperation,
                         parameterSymbol,
                         out var replacementInvocation))
@@ -794,7 +799,8 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                       return;
                   }
 
-                  rewrites.Add(new InvocationRewrite(invocation, replacementInvocation));
+                  rewrites.Add(
+                    new InvocationRewrite(invocation.Invocation, replacementInvocation));
               }
           });
 
@@ -815,18 +821,18 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           GetTreeScans(compilation),
           (scan, state) =>
           {
-              foreach (var invocation in scan.Invocations)
+              foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
               {
-                  if (!TryResolveMethodSymbol(scan.SemanticModel, invocation, out var targetMethod) ||
+                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
                       !SymbolEqualityComparer.Default.Equals(methodSymbol, targetMethod) ||
-                      scan.SemanticModel.GetOperation(invocation, CancellationToken.None) is not IInvocationOperation invocationOperation)
+                      invocation.Operation is not IInvocationOperation invocationOperation)
                   {
                       continue;
                   }
 
                   Interlocked.Increment(ref matchedCallsites);
                   if (!TryBuildOptionalReplacementInvocation(
-                        invocation,
+                        invocation.Invocation,
                         invocationOperation,
                         parameterSymbol,
                         out var replacementInvocation,
@@ -839,7 +845,8 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
                   if (changed)
                   {
-                      rewrites.Add(new InvocationRewrite(invocation, replacementInvocation));
+                      rewrites.Add(
+                        new InvocationRewrite(invocation.Invocation, replacementInvocation));
                   }
               }
           });
@@ -861,11 +868,11 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           GetTreeScans(compilation),
           (scan, state) =>
           {
-              foreach (var invocation in scan.Invocations)
+              foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
               {
-                  if (!TryResolveMethodSymbol(scan.SemanticModel, invocation, out var targetMethod) ||
+                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
                       !SymbolEqualityComparer.Default.Equals(methodSymbol, targetMethod) ||
-                      scan.SemanticModel.GetOperation(invocation, CancellationToken.None) is not IInvocationOperation invocationOperation)
+                      invocation.Operation is not IInvocationOperation invocationOperation)
                   {
                       continue;
                   }
@@ -897,9 +904,9 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           GetTreeScans(compilation),
           (scan, state) =>
           {
-              foreach (var elementAccess in scan.ElementAccesses)
+              foreach (var elementAccess in scan.GetElementAccessBindings(indexerSymbol))
               {
-                  if (!TryResolveIndexerSymbol(scan.SemanticModel, elementAccess, out var targetIndexer) ||
+                  if (elementAccess.PropertySymbol is not IPropertySymbol targetIndexer ||
                       !SymbolEqualityComparer.Default.Equals(indexerSymbol, targetIndexer))
                   {
                       continue;
@@ -907,7 +914,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
                   Interlocked.Increment(ref matchedCallsites);
                   if (!TryBuildReplacementElementAccess(
-                        elementAccess,
+                        elementAccess.ElementAccess,
                         parameterIndex,
                         expectedParameterCount,
                         out var replacementElementAccess))
@@ -917,7 +924,8 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                       return;
                   }
 
-                  rewrites.Add(new ElementAccessRewrite(elementAccess, replacementElementAccess));
+                  rewrites.Add(
+                    new ElementAccessRewrite(elementAccess.ElementAccess, replacementElementAccess));
               }
           });
 
@@ -938,18 +946,18 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           GetTreeScans(compilation),
           (scan, state) =>
           {
-              foreach (var elementAccess in scan.ElementAccesses)
+              foreach (var elementAccess in scan.GetElementAccessBindings(indexerSymbol))
               {
-                  if (!TryResolveIndexerSymbol(scan.SemanticModel, elementAccess, out var targetIndexer) ||
+                  if (elementAccess.PropertySymbol is not IPropertySymbol targetIndexer ||
                       !SymbolEqualityComparer.Default.Equals(indexerSymbol, targetIndexer) ||
-                      scan.SemanticModel.GetOperation(elementAccess, CancellationToken.None) is not IPropertyReferenceOperation propertyReference)
+                      elementAccess.Operation is not IPropertyReferenceOperation propertyReference)
                   {
                       continue;
                   }
 
                   Interlocked.Increment(ref matchedCallsites);
                   if (!TryBuildNamedArgumentReplacementElementAccess(
-                        elementAccess,
+                        elementAccess.ElementAccess,
                         propertyReference,
                         parameterSymbol,
                         out var replacementElementAccess))
@@ -959,7 +967,8 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                       return;
                   }
 
-                  rewrites.Add(new ElementAccessRewrite(elementAccess, replacementElementAccess));
+                  rewrites.Add(
+                    new ElementAccessRewrite(elementAccess.ElementAccess, replacementElementAccess));
               }
           });
 
@@ -980,9 +989,9 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           GetTreeScans(compilation),
           (scan, state) =>
           {
-              foreach (var invocation in scan.Invocations)
+              foreach (var invocation in scan.GetMappedInvocationBindings(methodSymbol))
               {
-                  if (!TryResolveMethodSymbol(scan.SemanticModel, invocation, out var targetMethod) ||
+                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
                       !MethodMatchesInvocationTarget(methodSymbol, targetMethod))
                   {
                       continue;
@@ -990,8 +999,8 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
                   Interlocked.Increment(ref matchedCallsites);
                   if (!TryBuildMappedInvocationReplacement(
-                        invocation,
-                        scan.SemanticModel.GetOperation(invocation, CancellationToken.None) as IInvocationOperation,
+                        invocation.Invocation,
+                        invocation.Operation,
                         parameterSymbol,
                         out var replacementInvocation))
                   {
@@ -1000,7 +1009,8 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                       return;
                   }
 
-                  rewrites.Add(new InvocationRewrite(invocation, replacementInvocation));
+                  rewrites.Add(
+                    new InvocationRewrite(invocation.Invocation, replacementInvocation));
               }
           });
 
@@ -1013,9 +1023,9 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
     private static bool TryResolveMethodSymbol(SemanticModel semanticModel, InvocationExpressionSyntax invocation, out IMethodSymbol methodSymbol)
     {
-        methodSymbol = semanticModel.GetSymbolInfo(invocation, CancellationToken.None).Symbol as IMethodSymbol
-          ?? semanticModel.GetSymbolInfo(invocation, CancellationToken.None)
-            .CandidateSymbols
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation, CancellationToken.None);
+        methodSymbol = symbolInfo.Symbol as IMethodSymbol
+          ?? symbolInfo.CandidateSymbols
             .OfType<IMethodSymbol>()
             .SingleOrDefault()!;
         return methodSymbol is not null;
@@ -1023,9 +1033,9 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
     private static bool TryResolveIndexerSymbol(SemanticModel semanticModel, ElementAccessExpressionSyntax elementAccess, out IPropertySymbol indexerSymbol)
     {
-        indexerSymbol = semanticModel.GetSymbolInfo(elementAccess, CancellationToken.None).Symbol as IPropertySymbol
-          ?? semanticModel.GetSymbolInfo(elementAccess, CancellationToken.None)
-            .CandidateSymbols
+        var symbolInfo = semanticModel.GetSymbolInfo(elementAccess, CancellationToken.None);
+        indexerSymbol = symbolInfo.Symbol as IPropertySymbol
+          ?? symbolInfo.CandidateSymbols
             .OfType<IPropertySymbol>()
             .SingleOrDefault()!;
         return indexerSymbol is not null;
@@ -1038,12 +1048,6 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           SymbolEqualityComparer.Default.Equals(declaredMethod.OriginalDefinition, targetMethod.OriginalDefinition) ||
           (targetMethod.ReducedFrom is not null &&
            SymbolEqualityComparer.Default.Equals(declaredMethod.OriginalDefinition, targetMethod.ReducedFrom.OriginalDefinition));
-    }
-
-    private static bool ExpressionConvertsToDelegate(SemanticModel semanticModel, ExpressionSyntax expression, INamedTypeSymbol delegateSymbol)
-    {
-        var typeInfo = semanticModel.GetTypeInfo(expression, CancellationToken.None);
-        return SymbolEqualityComparer.Default.Equals(typeInfo.ConvertedType, delegateSymbol);
     }
 
     public static bool TryBuildReplacementInvocation(InvocationExpressionSyntax invocation, int parameterIndex, int expectedParameterCount, out InvocationExpressionSyntax replacementInvocation)
@@ -1377,10 +1381,9 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         foreach (var tree in compilation.SyntaxTrees)
         {
             var scan = GetTreeScan(compilation, tree);
-            foreach (var node in scan.TypeSyntaxes)
+            foreach (var typeSyntax in scan.GetTypeSyntaxBindings(delegateSymbol))
             {
-                var symbol = scan.SemanticModel.GetSymbolInfo(node, CancellationToken.None).Symbol;
-                if (SymbolEqualityComparer.Default.Equals(symbol, delegateSymbol))
+                if (SymbolEqualityComparer.Default.Equals(typeSyntax.Symbol, delegateSymbol))
                 {
                     return true;
                 }
@@ -1466,23 +1469,325 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         {
             var semanticModel = compilation.GetSemanticModel(tree);
             var root = tree.GetRoot();
+            var invocationBindings = root.DescendantNodes()
+              .OfType<InvocationExpressionSyntax>()
+              .Select(invocation => new InvocationBinding(
+                invocation,
+                ResolveMethodSymbol(semanticModel, invocation),
+                semanticModel.GetOperation(invocation, CancellationToken.None) as IInvocationOperation))
+              .ToList();
+            var elementAccessBindings = root.DescendantNodes()
+              .OfType<ElementAccessExpressionSyntax>()
+              .Select(elementAccess => new ElementAccessBinding(
+                elementAccess,
+                ResolveIndexerSymbol(semanticModel, elementAccess),
+                semanticModel.GetOperation(elementAccess, CancellationToken.None) as IPropertyReferenceOperation))
+              .ToList();
+            var expressionBindings = root.DescendantNodes()
+              .OfType<ExpressionSyntax>()
+              .Select(expression =>
+              {
+                  var typeInfo = semanticModel.GetTypeInfo(expression, CancellationToken.None);
+                  return new ExpressionBinding(
+                    expression,
+                    semanticModel.GetOperation(expression, CancellationToken.None),
+                    typeInfo.ConvertedType);
+              })
+              .ToList();
+            var typeSyntaxBindings = root.DescendantNodes()
+              .OfType<TypeSyntax>()
+              .Select(typeSyntax => new TypeSyntaxBinding(
+                typeSyntax,
+                semanticModel.GetSymbolInfo(typeSyntax, CancellationToken.None).Symbol))
+              .ToList();
             return new TreeScan(
               tree,
               semanticModel,
-              root.DescendantNodes().OfType<InvocationExpressionSyntax>().ToList(),
-              root.DescendantNodes().OfType<ElementAccessExpressionSyntax>().ToList(),
-              root.DescendantNodes().OfType<ExpressionSyntax>().ToList(),
-              root.DescendantNodes().OfType<TypeSyntax>().ToList());
+              invocationBindings,
+              elementAccessBindings,
+              expressionBindings,
+              typeSyntaxBindings);
         }
     }
 
-    private sealed record TreeScan(
-      SyntaxTree SyntaxTree,
-      SemanticModel SemanticModel,
-      IReadOnlyList<InvocationExpressionSyntax> Invocations,
-      IReadOnlyList<ElementAccessExpressionSyntax> ElementAccesses,
-      IReadOnlyList<ExpressionSyntax> Expressions,
-      IReadOnlyList<TypeSyntax> TypeSyntaxes);
+    private static IMethodSymbol? ResolveMethodSymbol(
+      SemanticModel semanticModel,
+      InvocationExpressionSyntax invocation)
+    {
+        return TryResolveMethodSymbol(semanticModel, invocation, out var methodSymbol)
+          ? methodSymbol
+          : null;
+    }
+
+    private static IPropertySymbol? ResolveIndexerSymbol(
+      SemanticModel semanticModel,
+      ElementAccessExpressionSyntax elementAccess)
+    {
+        return TryResolveIndexerSymbol(semanticModel, elementAccess, out var indexerSymbol)
+          ? indexerSymbol
+          : null;
+    }
+
+    private static IEnumerable<IMethodSymbol> GetMethodLookupSymbols(IMethodSymbol methodSymbol)
+    {
+        var seen = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        if (seen.Add(methodSymbol))
+        {
+            yield return methodSymbol;
+        }
+
+        if (methodSymbol.ReducedFrom is not null &&
+            seen.Add(methodSymbol.ReducedFrom))
+        {
+            yield return methodSymbol.ReducedFrom;
+        }
+
+        if (seen.Add(methodSymbol.OriginalDefinition))
+        {
+            yield return methodSymbol.OriginalDefinition;
+        }
+
+        if (methodSymbol.ReducedFrom?.OriginalDefinition is IMethodSymbol reducedOriginal &&
+            seen.Add(reducedOriginal))
+        {
+            yield return reducedOriginal;
+        }
+    }
+
+    private static IEnumerable<IPropertySymbol> GetPropertyLookupSymbols(IPropertySymbol propertySymbol)
+    {
+        var seen = new HashSet<IPropertySymbol>(SymbolEqualityComparer.Default);
+        if (seen.Add(propertySymbol))
+        {
+            yield return propertySymbol;
+        }
+
+        if (seen.Add(propertySymbol.OriginalDefinition))
+        {
+            yield return propertySymbol.OriginalDefinition;
+        }
+    }
+
+    private sealed class TreeScan
+    {
+        private readonly Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> _invocationsByMethodSymbol;
+        private readonly Dictionary<IPropertySymbol, IReadOnlyList<ElementAccessBinding>> _elementAccessesByPropertySymbol;
+        private readonly Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> _mappedInvocationsByMethodSymbol;
+        private readonly Dictionary<INamedTypeSymbol, IReadOnlyList<ExpressionBinding>> _expressionsByConvertedType;
+        private readonly Dictionary<INamedTypeSymbol, IReadOnlyList<TypeSyntaxBinding>> _typeSyntaxesByResolvedSymbol;
+
+        public TreeScan(
+          SyntaxTree syntaxTree,
+          SemanticModel semanticModel,
+          IReadOnlyList<InvocationBinding> invocationBindings,
+          IReadOnlyList<ElementAccessBinding> elementAccessBindings,
+          IReadOnlyList<ExpressionBinding> expressionBindings,
+          IReadOnlyList<TypeSyntaxBinding> typeSyntaxBindings)
+        {
+            SyntaxTree = syntaxTree;
+            SemanticModel = semanticModel;
+            _invocationsByMethodSymbol = BuildInvocationIndex(invocationBindings);
+            _mappedInvocationsByMethodSymbol = BuildMappedInvocationIndex(invocationBindings);
+            _elementAccessesByPropertySymbol = BuildElementAccessIndex(elementAccessBindings);
+            _expressionsByConvertedType = BuildExpressionIndex(expressionBindings);
+            _typeSyntaxesByResolvedSymbol = BuildTypeSyntaxIndex(typeSyntaxBindings);
+        }
+
+        public SyntaxTree SyntaxTree { get; }
+
+        public SemanticModel SemanticModel { get; }
+
+        public IReadOnlyList<InvocationBinding> GetInvocationBindings(IMethodSymbol methodSymbol)
+        {
+            return _invocationsByMethodSymbol.TryGetValue(methodSymbol, out var bindings)
+              ? bindings
+              : Array.Empty<InvocationBinding>();
+        }
+
+        public IReadOnlyList<InvocationBinding> GetMappedInvocationBindings(IMethodSymbol methodSymbol)
+        {
+            var results = new Dictionary<string, InvocationBinding>(StringComparer.Ordinal);
+            foreach (var lookupSymbol in GetMethodLookupSymbols(methodSymbol))
+            {
+                if (!_mappedInvocationsByMethodSymbol.TryGetValue(lookupSymbol, out var bindings))
+                {
+                    continue;
+                }
+
+                foreach (var binding in bindings)
+                {
+                    results.TryAdd(BuildSyntaxKey(binding.Invocation), binding);
+                }
+            }
+
+            return results.Values.ToList();
+        }
+
+        public IReadOnlyList<ElementAccessBinding> GetElementAccessBindings(IPropertySymbol propertySymbol)
+        {
+            var results = new Dictionary<string, ElementAccessBinding>(StringComparer.Ordinal);
+            foreach (var lookupSymbol in GetPropertyLookupSymbols(propertySymbol))
+            {
+                if (!_elementAccessesByPropertySymbol.TryGetValue(lookupSymbol, out var bindings))
+                {
+                    continue;
+                }
+
+                foreach (var binding in bindings)
+                {
+                    results.TryAdd(BuildSyntaxKey(binding.ElementAccess), binding);
+                }
+            }
+
+            return results.Values.ToList();
+        }
+
+        public IReadOnlyList<ExpressionBinding> GetExpressionBindings(INamedTypeSymbol delegateSymbol)
+        {
+            return _expressionsByConvertedType.TryGetValue(delegateSymbol, out var bindings)
+              ? bindings
+              : Array.Empty<ExpressionBinding>();
+        }
+
+        public IReadOnlyList<TypeSyntaxBinding> GetTypeSyntaxBindings(INamedTypeSymbol targetSymbol)
+        {
+            return _typeSyntaxesByResolvedSymbol.TryGetValue(targetSymbol, out var bindings)
+              ? bindings
+              : Array.Empty<TypeSyntaxBinding>();
+        }
+
+        private static Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> BuildInvocationIndex(
+          IEnumerable<InvocationBinding> invocationBindings)
+        {
+            var index = new Dictionary<IMethodSymbol, List<InvocationBinding>>(
+              SymbolEqualityComparer.Default);
+            foreach (var binding in invocationBindings)
+            {
+                if (binding.MethodSymbol is null)
+                {
+                    continue;
+                }
+
+                foreach (var lookupSymbol in GetMethodLookupSymbols(binding.MethodSymbol))
+                {
+                    AddIndexValue(index, lookupSymbol, binding);
+                }
+            }
+
+            return FreezeIndex(index, SymbolEqualityComparer.Default);
+        }
+
+        private static Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> BuildMappedInvocationIndex(
+          IEnumerable<InvocationBinding> invocationBindings)
+        {
+            return BuildInvocationIndex(invocationBindings);
+        }
+
+        private static Dictionary<IPropertySymbol, IReadOnlyList<ElementAccessBinding>> BuildElementAccessIndex(
+          IEnumerable<ElementAccessBinding> elementAccessBindings)
+        {
+            var index = new Dictionary<IPropertySymbol, List<ElementAccessBinding>>(
+              SymbolEqualityComparer.Default);
+            foreach (var binding in elementAccessBindings)
+            {
+                if (binding.PropertySymbol is null)
+                {
+                    continue;
+                }
+
+                foreach (var lookupSymbol in GetPropertyLookupSymbols(binding.PropertySymbol))
+                {
+                    AddIndexValue(index, lookupSymbol, binding);
+                }
+            }
+
+            return FreezeIndex(index, SymbolEqualityComparer.Default);
+        }
+
+        private static Dictionary<INamedTypeSymbol, IReadOnlyList<ExpressionBinding>> BuildExpressionIndex(
+          IEnumerable<ExpressionBinding> expressionBindings)
+        {
+            var index = new Dictionary<INamedTypeSymbol, List<ExpressionBinding>>(
+              SymbolEqualityComparer.Default);
+            foreach (var binding in expressionBindings)
+            {
+                if (binding.ConvertedType is not INamedTypeSymbol convertedType)
+                {
+                    continue;
+                }
+
+                AddIndexValue(index, convertedType, binding);
+            }
+
+            return FreezeIndex(index, SymbolEqualityComparer.Default);
+        }
+
+        private static Dictionary<INamedTypeSymbol, IReadOnlyList<TypeSyntaxBinding>> BuildTypeSyntaxIndex(
+          IEnumerable<TypeSyntaxBinding> typeSyntaxBindings)
+        {
+            var index = new Dictionary<INamedTypeSymbol, List<TypeSyntaxBinding>>(
+              SymbolEqualityComparer.Default);
+            foreach (var binding in typeSyntaxBindings)
+            {
+                if (binding.Symbol is not INamedTypeSymbol namedType)
+                {
+                    continue;
+                }
+
+                AddIndexValue(index, namedType, binding);
+            }
+
+            return FreezeIndex(index, SymbolEqualityComparer.Default);
+        }
+
+        private static void AddIndexValue<TKey, TValue>(
+          IDictionary<TKey, List<TValue>> index,
+          TKey key,
+          TValue value)
+          where TKey : notnull
+        {
+            if (!index.TryGetValue(key, out var values))
+            {
+                values = new List<TValue>();
+                index[key] = values;
+            }
+
+            values.Add(value);
+        }
+
+        private static Dictionary<TKey, IReadOnlyList<TValue>> FreezeIndex<TKey, TValue>(
+          IDictionary<TKey, List<TValue>> index,
+          IEqualityComparer<TKey> comparer)
+          where TKey : notnull
+        {
+            var result = new Dictionary<TKey, IReadOnlyList<TValue>>(index.Count, comparer);
+            foreach (var pair in index)
+            {
+                result[pair.Key] = pair.Value;
+            }
+
+            return result;
+        }
+    }
+
+    private sealed record InvocationBinding(
+      InvocationExpressionSyntax Invocation,
+      IMethodSymbol? MethodSymbol,
+      IInvocationOperation? Operation);
+
+    private sealed record ElementAccessBinding(
+      ElementAccessExpressionSyntax ElementAccess,
+      IPropertySymbol? PropertySymbol,
+      IPropertyReferenceOperation? Operation);
+
+    private sealed record ExpressionBinding(
+      ExpressionSyntax Expression,
+      IOperation? Operation,
+      ITypeSymbol? ConvertedType);
+
+    private sealed record TypeSyntaxBinding(
+      TypeSyntax TypeSyntax,
+      ISymbol? Symbol);
 }
 
 public sealed record InvocationRewrite(
