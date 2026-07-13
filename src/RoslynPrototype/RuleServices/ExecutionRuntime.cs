@@ -84,6 +84,7 @@ public sealed class BoundedRuleStageScheduler : IRuleStageScheduler
     await gate.WaitAsync(cancellationToken);
     try
     {
+      cancellationToken.ThrowIfCancellationRequested();
       return await workItem(index, cancellationToken);
     }
     finally

@@ -27,9 +27,15 @@ namespace MinimalRoslynCpg.Builder
 {
   public sealed partial class RoslynCpgBuilder
   {
+    private readonly record struct SyntaxTraversalFrame(
+      SyntaxNode Syntax,
+      RoslynCpgNode Parent,
+      RoslynCpgNode? Current,
+      bool EmitTokens);
+
     internal void RunSyntaxPass(RoslynCpgBuildContext context)
     {
-      VisitSyntax(
+      VisitSyntaxIterative(
         context.Root,
         context.SyntaxTreeNode,
         context.Graph,
@@ -37,7 +43,37 @@ namespace MinimalRoslynCpg.Builder
         context.FilePath);
     }
 
-    private void VisitSyntax(
+    private void VisitSyntaxIterative(
+      SyntaxNode syntax,
+      RoslynCpgNode parent,
+      RoslynCpgGraph graph,
+      SemanticModel semanticModel,
+      string filePath)
+    {
+      var pending = new Stack<SyntaxTraversalFrame>();
+      pending.Push(new SyntaxTraversalFrame(syntax, parent, Current: null, EmitTokens: false));
+
+      while (pending.Count > 0)
+      {
+        var frame = pending.Pop();
+        if (frame.EmitTokens)
+        {
+          EmitChildTokens(frame.Syntax, frame.Current!, graph, filePath);
+          continue;
+        }
+
+        var syntaxNode = CreateSyntaxNode(frame.Syntax, frame.Parent, graph, semanticModel, filePath);
+        pending.Push(new SyntaxTraversalFrame(frame.Syntax, frame.Parent, syntaxNode, EmitTokens: true));
+
+        var childNodes = frame.Syntax.ChildNodes().ToArray();
+        for (var index = childNodes.Length - 1; index >= 0; index -= 1)
+        {
+          pending.Push(new SyntaxTraversalFrame(childNodes[index], syntaxNode, Current: null, EmitTokens: false));
+        }
+      }
+    }
+
+    private RoslynCpgNode CreateSyntaxNode(
       SyntaxNode syntax,
       RoslynCpgNode parent,
       RoslynCpgGraph graph,
@@ -67,12 +103,15 @@ namespace MinimalRoslynCpg.Builder
       AddReferencedSymbolEdges(syntax, syntaxNode, graph, semanticModel);
       AddTypeEdges(syntaxNode, semanticModel.GetTypeInfo(syntax).Type, graph);
       AddTypeReferenceEdges(syntax, syntaxNode, graph, semanticModel);
+      return syntaxNode;
+    }
 
-      foreach (var childNode in syntax.ChildNodes())
-      {
-        VisitSyntax(childNode, syntaxNode, graph, semanticModel, filePath);
-      }
-
+    private static void EmitChildTokens(
+      SyntaxNode syntax,
+      RoslynCpgNode syntaxNode,
+      RoslynCpgGraph graph,
+      string filePath)
+    {
       foreach (var childToken in syntax.ChildTokens())
       {
         var tokenNode = graph.AddNode(new RoslynCpgNode(

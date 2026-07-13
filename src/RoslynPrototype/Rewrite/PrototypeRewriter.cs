@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.CodeAnalysis.Editing;
+using Microsoft.CodeAnalysis.Text;
 using System.Text;
 using RoslynPrototype.Decision;
 using Rules;
@@ -10,14 +10,17 @@ namespace RoslynPrototype.Rewrite;
 
 public sealed class PrototypeRewriter
 {
+  private const int NormalizeWhitespaceDepthLimit = 256;
+  private readonly record struct RewritePlanEntry(TextRewriteOperation Operation, RewriteEdit Edit);
+  private readonly record struct TextRewriteOperation(TextSpan Span, string ReplacementText);
+
   /// <summary>
   /// 根据决策列表对语法树执行删除或替换，并产出最终源码与编辑记录。
   /// </summary>
   public PrototypeRewriteResult Rewrite(SyntaxNode root, SemanticModel semanticModel, IEnumerable<RuleDecision> decisions)
   {
-    var workspace = new AdhocWorkspace();
-    var editor = new SyntaxEditor(root, workspace.Services);
-    var edits = new List<RewriteEdit>();
+    var source = root.ToFullString();
+    var rewritePlan = new List<RewritePlanEntry>();
 
     foreach (var decision in decisions.OrderByDescending(item => item.FinalNode.Span.Length)) {
       if (decision.Action == DecisionActionKind.Skip) {
@@ -29,8 +32,7 @@ public sealed class PrototypeRewriter
             decision.ReplacementNode is ExpressionSyntax replacementExpression) {
           var rewrittenExpression = CloneExpression(replacementExpression)
             .WithTriviaFrom(targetExpression);
-          editor.ReplaceNode(targetExpression, rewrittenExpression);
-          edits.Add(CreateEdit(targetExpression, rewrittenExpression));
+          rewritePlan.Add(CreateRewritePlanEntry(targetExpression, rewrittenExpression));
           continue;
         }
 
@@ -38,9 +40,8 @@ public sealed class PrototypeRewriter
             decision.ReplacementNode is StatementSyntax replacementStatement) {
           var rewrittenStatement = CloneStatement(replacementStatement)
             .WithTriviaFrom(targetStatement);
-          editor.ReplaceNode(targetStatement, rewrittenStatement);
           var displayEdit = CreateStatementDisplayEdit(targetStatement, rewrittenStatement);
-          edits.Add(displayEdit);
+          rewritePlan.Add(CreateRewritePlanEntry(targetStatement, rewrittenStatement, displayEdit));
           continue;
         }
 
@@ -48,14 +49,16 @@ public sealed class PrototypeRewriter
             decision.ReplacementNode is ElseClauseSyntax replacementElseClause) {
           var rewrittenElseClause = CloneElseClause(replacementElseClause)
             .WithTriviaFrom(targetElseClause);
-          editor.ReplaceNode(targetElseClause, rewrittenElseClause);
           SyntaxNode displayOriginalNode = targetElseClause.Parent is IfStatementSyntax owningOriginalIfStatement
             ? owningOriginalIfStatement
             : targetElseClause;
           SyntaxNode displayReplacementNode = targetElseClause.Parent is IfStatementSyntax owningIfStatement
             ? owningIfStatement.WithElse(rewrittenElseClause)
             : rewrittenElseClause;
-          edits.Add(CreateEdit(displayOriginalNode, displayReplacementNode));
+          rewritePlan.Add(CreateRewritePlanEntry(
+            targetElseClause,
+            rewrittenElseClause,
+            CreateEdit(displayOriginalNode, displayReplacementNode)));
           continue;
         }
 
@@ -63,8 +66,7 @@ public sealed class PrototypeRewriter
             decision.ReplacementNode is MethodDeclarationSyntax replacementMethod) {
           var rewrittenMethod = CloneMethod(replacementMethod)
             .WithTriviaFrom(targetMethod);
-          editor.ReplaceNode(targetMethod, rewrittenMethod);
-          edits.Add(CreateEdit(targetMethod, rewrittenMethod));
+          rewritePlan.Add(CreateRewritePlanEntry(targetMethod, rewrittenMethod));
           continue;
         }
 
@@ -72,8 +74,7 @@ public sealed class PrototypeRewriter
             decision.ReplacementNode is IndexerDeclarationSyntax replacementIndexer) {
           var rewrittenIndexer = CloneIndexer(replacementIndexer)
             .WithTriviaFrom(targetIndexer);
-          editor.ReplaceNode(targetIndexer, rewrittenIndexer);
-          edits.Add(CreateEdit(targetIndexer, rewrittenIndexer));
+          rewritePlan.Add(CreateRewritePlanEntry(targetIndexer, rewrittenIndexer));
           continue;
         }
 
@@ -81,8 +82,7 @@ public sealed class PrototypeRewriter
             decision.ReplacementNode is DelegateDeclarationSyntax replacementDelegate) {
           var rewrittenDelegate = CloneDelegate(replacementDelegate)
             .WithTriviaFrom(targetDelegate);
-          editor.ReplaceNode(targetDelegate, rewrittenDelegate);
-          edits.Add(CreateEdit(targetDelegate, rewrittenDelegate));
+          rewritePlan.Add(CreateRewritePlanEntry(targetDelegate, rewrittenDelegate));
           continue;
         }
 
@@ -93,26 +93,27 @@ public sealed class PrototypeRewriter
       // 表达式删除当前不直接挖空，而是降级成 default(...) 替换，避免生成明显非法的源码。
       if (decision.FinalNode is ExpressionSyntax expression) {
         var replacement = CreateReplacementExpression(expression, semanticModel);
-        editor.ReplaceNode(expression, replacement);
-        edits.Add(CreateEdit(expression, replacement));
+        rewritePlan.Add(CreateRewritePlanEntry(expression, replacement.WithTriviaFrom(expression)));
         continue;
       }
 
       if (decision.FinalNode is ElseClauseSyntax elseClause &&
           elseClause.Parent is IfStatementSyntax parentIfStatement) {
         var rewrittenIfStatement = parentIfStatement.WithElse(null);
-        editor.ReplaceNode(parentIfStatement, rewrittenIfStatement);
-        edits.Add(CreateEdit(parentIfStatement, rewrittenIfStatement));
+        rewritePlan.Add(CreateRewritePlanEntry(parentIfStatement, rewrittenIfStatement));
         continue;
       }
 
-      editor.RemoveNode(decision.FinalNode, SyntaxRemoveOptions.KeepNoTrivia);
-      edits.Add(CreateDeleteEdit(decision.FinalNode));
+      rewritePlan.Add(CreateDeleteRewritePlanEntry(decision.FinalNode));
     }
 
-    var changedRoot = editor.GetChangedRoot();
-    var formattedRoot = changedRoot.NormalizeWhitespace(eol: "\r\n");
-    var rewrittenSource = NormalizeLineEndings(formattedRoot.ToFullString());
+    var effectivePlan = BuildEffectiveRewritePlan(rewritePlan);
+    var rewrittenSource = FinalizeRewrittenSource(
+      ApplyTextRewriteOperations(
+        source,
+        effectivePlan.Select(entry => entry.Operation).ToList()),
+      root.SyntaxTree.FilePath);
+    var edits = effectivePlan.Select(entry => entry.Edit).ToList();
     return new PrototypeRewriteResult(rewrittenSource, edits, BuildDiffText(edits));
   }
 
@@ -173,6 +174,151 @@ public sealed class PrototypeRewriter
       originalNode.Span,
       GetDisplayText(originalNode),
       string.Empty);
+  }
+
+  private static RewritePlanEntry CreateRewritePlanEntry(
+    SyntaxNode originalNode,
+    SyntaxNode replacementNode,
+    RewriteEdit? displayEdit = null)
+  {
+    return new RewritePlanEntry(
+      CreateTextRewriteOperation(originalNode, replacementNode),
+      displayEdit ?? CreateEdit(originalNode, replacementNode));
+  }
+
+  private static RewritePlanEntry CreateDeleteRewritePlanEntry(SyntaxNode originalNode)
+  {
+    return new RewritePlanEntry(
+      new TextRewriteOperation(originalNode.Span, string.Empty),
+      CreateDeleteEdit(originalNode));
+  }
+
+  private static TextRewriteOperation CreateTextRewriteOperation(SyntaxNode originalNode, SyntaxNode replacementNode)
+  {
+    return new TextRewriteOperation(originalNode.Span, replacementNode.ToFullString());
+  }
+
+  private static IReadOnlyList<RewritePlanEntry> BuildEffectiveRewritePlan(IReadOnlyList<RewritePlanEntry> rewritePlan)
+  {
+    if (rewritePlan.Count <= 1)
+    {
+      return rewritePlan;
+    }
+
+    var orderedPlan = rewritePlan
+      .OrderByDescending(entry => entry.Operation.Span.Start)
+      .ThenByDescending(entry => entry.Operation.Span.Length)
+      .ToList();
+    var effectivePlan = new List<RewritePlanEntry>();
+
+    foreach (var entry in orderedPlan)
+    {
+      var overlappingEntries = effectivePlan
+        .Where(existing => existing.Operation.Span.OverlapsWith(entry.Operation.Span))
+        .ToList();
+      if (overlappingEntries.Count == 0)
+      {
+        effectivePlan.Add(entry);
+        continue;
+      }
+
+      if (overlappingEntries.Any(overlappingEntry =>
+            overlappingEntry.Operation.Span.Contains(entry.Operation.Span)))
+      {
+        continue;
+      }
+
+      if (overlappingEntries.All(overlappingEntry =>
+            entry.Operation.Span.Contains(overlappingEntry.Operation.Span)))
+      {
+        foreach (var overlappingEntry in overlappingEntries)
+        {
+          effectivePlan.Remove(overlappingEntry);
+        }
+
+        effectivePlan.Add(entry);
+        continue;
+      }
+
+      var conflictingEntry = overlappingEntries.First(overlappingEntry =>
+        !entry.Operation.Span.Contains(overlappingEntry.Operation.Span) &&
+        !overlappingEntry.Operation.Span.Contains(entry.Operation.Span));
+      throw new InvalidOperationException(
+        "Partially overlapping rewrite operations are not supported: " +
+        $"{entry.Operation.Span.Start}..{entry.Operation.Span.End} overlaps " +
+        $"{conflictingEntry.Operation.Span.Start}..{conflictingEntry.Operation.Span.End}.");
+    }
+
+    return effectivePlan
+      .OrderByDescending(entry => entry.Operation.Span.Start)
+      .ThenByDescending(entry => entry.Operation.Span.Length)
+      .ToList();
+  }
+
+  private static string ApplyTextRewriteOperations(string source, IReadOnlyList<TextRewriteOperation> operations)
+  {
+    if (operations.Count == 0)
+    {
+      return source;
+    }
+
+    var builder = new StringBuilder(source);
+    var orderedOperations = operations
+      .OrderByDescending(operation => operation.Span.Start)
+      .ThenByDescending(operation => operation.Span.Length)
+      .ToList();
+    var lastAppliedStart = source.Length + 1;
+
+    foreach (var operation in orderedOperations)
+    {
+      if (operation.Span.End > lastAppliedStart)
+      {
+        throw new InvalidOperationException(
+          $"Overlapping rewrite operations detected at span {operation.Span.Start}..{operation.Span.End}.");
+      }
+
+      builder.Remove(operation.Span.Start, operation.Span.Length);
+      builder.Insert(operation.Span.Start, operation.ReplacementText);
+      lastAppliedStart = operation.Span.Start;
+    }
+
+    return builder.ToString();
+  }
+
+  private static string FinalizeRewrittenSource(string rewrittenSource, string filePath)
+  {
+    var rewrittenTree = CSharpSyntaxTree.ParseText(rewrittenSource, path: filePath);
+    var rewrittenRoot = rewrittenTree.GetRoot();
+    if (ComputeMaxSyntaxDepth(rewrittenRoot) > NormalizeWhitespaceDepthLimit)
+    {
+      return NormalizeLineEndings(rewrittenRoot.ToFullString());
+    }
+
+    var formattedRoot = rewrittenRoot.NormalizeWhitespace(eol: "\r\n");
+    return NormalizeLineEndings(formattedRoot.ToFullString());
+  }
+
+  private static int ComputeMaxSyntaxDepth(SyntaxNode root)
+  {
+    var maxDepth = 0;
+    var pending = new Stack<(SyntaxNode Node, int Depth)>();
+    pending.Push((root, 1));
+
+    while (pending.Count > 0)
+    {
+      var (node, depth) = pending.Pop();
+      if (depth > maxDepth)
+      {
+        maxDepth = depth;
+      }
+
+      foreach (var child in node.ChildNodes())
+      {
+        pending.Push((child, depth + 1));
+      }
+    }
+
+    return maxDepth;
   }
 
   private static string GetDisplayText(SyntaxNode node)

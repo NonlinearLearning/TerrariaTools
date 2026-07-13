@@ -6,6 +6,10 @@ namespace RoslynPrototype.Tests;
 public sealed class DeleteClassRandomSampleHelperTests : IDisposable
 {
     private readonly string _sourceDirectory;
+    private const string DeleteClassTargetName = "PlayerInput";
+    private const int TerrariaTimingReferenceFileLimit = 99;
+    private const string TerrariaExternalCodeSetPath =
+      @"D:\lodes\TR\Backup\New1.27\1.45 2\TR";
 
     public DeleteClassRandomSampleHelperTests()
     {
@@ -90,6 +94,48 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
         Assert.NotEmpty(result.AnalysisResult.DiffText);
     }
 
+    [Fact]
+    public void Execute_TerrariaCodeSet_ReportsPhaseTimingsWithoutApplyingFinalWriteBack()
+    {
+        var stagedSourceDirectory = CreateTargetedTerrariaSourceDirectory();
+        var sampleCount = CountCandidateFiles(stagedSourceDirectory);
+        Assert.True(sampleCount > 0, $"Missing target sources under {TerrariaExternalCodeSetPath}");
+
+        var result = DeleteClassRandomSampleHelper.Execute(new DeleteClassRandomSampleRequest(
+          stagedSourceDirectory,
+          DeleteClassTargetName,
+          DeleteClassRandomSampleMode.FixedSeed,
+          SampleCount: sampleCount,
+          WriteBackCopiedSource: false));
+
+        Console.WriteLine(
+          $"[terraria-phase-timing] sourceRoot={TerrariaExternalCodeSetPath};" +
+          $"stagedRoot={stagedSourceDirectory};" +
+          $"files={result.SelectedRelativePaths.Count};" +
+          $"writeBackApplied={result.WriteBackApplied};" +
+          $"copyMs={result.Timings.CopyMilliseconds};" +
+          $"analysisMs={result.Timings.AnalysisMilliseconds};" +
+          $"diffMs={result.Timings.DiffMaterializationMilliseconds};" +
+          $"manifestMs={result.Timings.ManifestMilliseconds};" +
+          $"writeBackMs={result.Timings.WriteBackMilliseconds};" +
+          $"totalMs={result.Timings.TotalMilliseconds}");
+
+        Assert.Equal(sampleCount, result.SelectedRelativePaths.Count);
+        Assert.False(result.WriteBackApplied);
+        Assert.NotEmpty(result.AnalysisResult.DiffText);
+        Assert.True(result.AnalysisResult.Edits.Count > 0);
+        Assert.True(result.Timings.CopyMilliseconds >= 0);
+        Assert.True(result.Timings.AnalysisMilliseconds >= 0);
+        Assert.True(result.Timings.DiffMaterializationMilliseconds >= 0);
+        Assert.True(result.Timings.ManifestMilliseconds >= 0);
+        Assert.Equal(0, result.Timings.WriteBackMilliseconds);
+        Assert.All(result.FileResults, file =>
+        {
+            Assert.True(File.Exists(file.CopiedPath));
+            Assert.Equal(File.ReadAllText(file.SourcePath), File.ReadAllText(file.CopiedPath));
+        });
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_sourceDirectory))
@@ -120,5 +166,58 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
               }
               """);
         }
+    }
+
+    private static int CountCandidateFiles(string sourceDirectory)
+    {
+        return Directory.EnumerateFiles(sourceDirectory, "*.cs", SearchOption.AllDirectories)
+          .Count(path => !IsIgnoredCodeSetPath(path, sourceDirectory));
+    }
+
+    private static bool IsIgnoredCodeSetPath(string path, string rootDirectory)
+    {
+        var relativePath = Path.GetRelativePath(rootDirectory, path);
+        return relativePath.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+          .Any(part =>
+            string.Equals(part, "bin", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(part, "obj", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string CreateTargetedTerrariaSourceDirectory()
+    {
+        Assert.True(
+          Directory.Exists(TerrariaExternalCodeSetPath),
+          $"Missing external code set: {TerrariaExternalCodeSetPath}");
+        var stagedSourceDirectory = Path.Combine(_sourceDirectory, "terraria-targeted-source");
+        Directory.CreateDirectory(stagedSourceDirectory);
+        var targetDefinitionPath = Path.Combine(
+          TerrariaExternalCodeSetPath,
+          "Terraria.GameInput",
+          "PlayerInput.cs");
+        Assert.True(File.Exists(targetDefinitionPath), $"Missing target definition: {targetDefinitionPath}");
+
+        var sourcePaths = new[] { targetDefinitionPath }
+          .Concat(Directory.EnumerateFiles(
+            TerrariaExternalCodeSetPath,
+            "*.cs",
+            SearchOption.AllDirectories)
+            .Where(path => !IsIgnoredCodeSetPath(path, TerrariaExternalCodeSetPath))
+            .Where(path => !string.Equals(path, targetDefinitionPath, StringComparison.OrdinalIgnoreCase))
+            .Where(path => File.ReadAllText(path).Contains(DeleteClassTargetName, StringComparison.Ordinal))
+            .Select(path => new FileInfo(path))
+            .OrderBy(file => file.Length)
+            .ThenBy(file => file.FullName, StringComparer.OrdinalIgnoreCase)
+            .Take(TerrariaTimingReferenceFileLimit)
+            .Select(file => file.FullName));
+
+        foreach (var sourcePath in sourcePaths)
+        {
+            var relativePath = Path.GetRelativePath(TerrariaExternalCodeSetPath, sourcePath);
+            var stagedPath = Path.Combine(stagedSourceDirectory, relativePath);
+            Directory.CreateDirectory(Path.GetDirectoryName(stagedPath)!);
+            File.Copy(sourcePath, stagedPath, overwrite: true);
+        }
+
+        return stagedSourceDirectory;
     }
 }

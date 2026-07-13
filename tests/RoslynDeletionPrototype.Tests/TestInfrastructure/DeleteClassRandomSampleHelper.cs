@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using RoslynPrototype.Application;
 using RoslynPrototype.Rewrite;
@@ -17,7 +18,8 @@ internal sealed record DeleteClassRandomSampleRequest(
   DeleteClassRandomSampleMode Mode,
   int SampleCount = 10,
   int? Seed = null,
-  string? RunName = null);
+  string? RunName = null,
+  bool WriteBackCopiedSource = true);
 
 internal sealed record DeleteClassRandomSampleFileResult(
   string RelativePath,
@@ -25,6 +27,14 @@ internal sealed record DeleteClassRandomSampleFileResult(
   string CopiedPath,
   string DiffPath,
   bool Changed);
+
+internal sealed record DeleteClassRandomSampleTimings(
+  long CopyMilliseconds,
+  long AnalysisMilliseconds,
+  long DiffMaterializationMilliseconds,
+  long ManifestMilliseconds,
+  long WriteBackMilliseconds,
+  long TotalMilliseconds);
 
 internal sealed record DeleteClassRandomSampleRunResult(
   DeleteClassRandomSampleMode Mode,
@@ -36,6 +46,8 @@ internal sealed record DeleteClassRandomSampleRunResult(
   string ManifestPath,
   IReadOnlyList<string> SelectedRelativePaths,
   IReadOnlyList<DeleteClassRandomSampleFileResult> FileResults,
+  DeleteClassRandomSampleTimings Timings,
+  bool WriteBackApplied,
   PrototypeAnalysisResult AnalysisResult);
 
 internal static class DeleteClassRandomSampleHelper
@@ -74,7 +86,9 @@ internal static class DeleteClassRandomSampleHelper
         var diffRoot = Path.Combine(workingRoot, "diffs");
         Directory.CreateDirectory(copiedSourceRoot);
         Directory.CreateDirectory(diffRoot);
+        var totalStopwatch = Stopwatch.StartNew();
 
+        var copyStopwatch = Stopwatch.StartNew();
         foreach (var relativePath in selectedRelativePaths)
         {
             var sourcePath = Path.Combine(request.SourceDirectory, relativePath);
@@ -82,23 +96,36 @@ internal static class DeleteClassRandomSampleHelper
             Directory.CreateDirectory(Path.GetDirectoryName(copiedPath)!);
             File.Copy(sourcePath, copiedPath, overwrite: true);
         }
+        copyStopwatch.Stop();
 
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
-        var analysisResult = application.AnalyzeFromArgs(
-        [
+        var args = new List<string>
+        {
             copiedSourceRoot,
             "--delete-class",
             request.DeleteClassTarget,
             "--fast-delete-class-directory",
-            "--write-back",
             "--diff-out",
             diffRoot
-        ]);
+        };
+        if (request.WriteBackCopiedSource)
+        {
+            args.Add("--write-back");
+        }
+
+        var analysisStopwatch = Stopwatch.StartNew();
+        var analysisResult = application.AnalyzeFromArgs(args.ToArray());
+        analysisStopwatch.Stop();
+
+        var diffStopwatch = Stopwatch.StartNew();
         var fileResults = BuildFileResults(
           request.SourceDirectory,
           copiedSourceRoot,
           diffRoot,
           selectedRelativePaths);
+        diffStopwatch.Stop();
+
+        var manifestStopwatch = Stopwatch.StartNew();
         var manifestPath = Path.Combine(workingRoot, "manifest.json");
         WriteManifest(
           manifestPath,
@@ -108,6 +135,10 @@ internal static class DeleteClassRandomSampleHelper
           diffRoot,
           selectedRelativePaths,
           fileResults);
+        manifestStopwatch.Stop();
+        totalStopwatch.Stop();
+
+        var writeBackApplied = request.WriteBackCopiedSource && analysisResult.Edits.Count > 0;
 
         return new DeleteClassRandomSampleRunResult(
           request.Mode,
@@ -119,6 +150,14 @@ internal static class DeleteClassRandomSampleHelper
           manifestPath,
           selectedRelativePaths,
           fileResults,
+          new DeleteClassRandomSampleTimings(
+            copyStopwatch.ElapsedMilliseconds,
+            analysisStopwatch.ElapsedMilliseconds,
+            diffStopwatch.ElapsedMilliseconds,
+            manifestStopwatch.ElapsedMilliseconds,
+            0,
+            totalStopwatch.ElapsedMilliseconds),
+          writeBackApplied,
           analysisResult);
     }
 

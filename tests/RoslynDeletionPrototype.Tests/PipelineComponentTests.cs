@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System.Text;
 using RoslynPrototype.Analysis;
 using RoslynPrototype.Application;
 using RoslynPrototype.Decision;
@@ -1016,6 +1017,89 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains("default(int)", result.RewrittenSource, result.DiffText);
         TextDiffAssert.DoesNotContain("var temp = value + 1;", result.RewrittenSource, result.DiffText);
         TextDiffAssert.Contains("<deleted>", result.DiffText, result.DiffText);
+    }
+
+    [Fact]
+    public void PrototypeRewriter_Rewrite_DeepElseIfChain_DoesNotOverflowRewriteTraversal()
+    {
+        const int elseIfDepth = 400;
+        var source = CreateDeepElseIfChainSource(elseIfDepth);
+
+        var tree = CSharpSyntaxTree.ParseText(source, path: "deep-elseif-rewrite.cs");
+        var root = tree.GetRoot();
+        var compilation = CreateCompilation(tree);
+        var semanticModel = compilation.GetSemanticModel(tree);
+        var targetElseClause = root.DescendantNodes().OfType<ElseClauseSyntax>().First();
+        var replacementElseClause = SyntaxFactory.ElseClause(
+            SyntaxFactory.Block(
+                SyntaxFactory.ReturnStatement(
+                    SyntaxFactory.LiteralExpression(
+                        SyntaxKind.NumericLiteralExpression,
+                        SyntaxFactory.Literal(-1)))));
+        var decisions = new[]
+        {
+            new RuleDecision(
+                targetElseClause,
+                targetElseClause,
+                DecisionActionKind.Replace,
+                "Collapse deep else-if chain tail.",
+                replacementElseClause)
+        };
+        var rewriter = new PrototypeRewriter();
+
+        var exception = Record.Exception(() => rewriter.Rewrite(root, semanticModel, decisions));
+
+        Assert.Null(exception);
+        var result = rewriter.Rewrite(root, semanticModel, decisions);
+        TextDiffAssert.Contains("return -1;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("else if (flag1)", result.RewrittenSource, result.DiffText);
+    }
+
+    [Fact]
+    public void PrototypeRewriter_Rewrite_WhenParentDeleteOverlapsChildDelete_KeepsOuterRewrite()
+    {
+        const string source = """
+            namespace Demo;
+
+            internal static class Sample
+            {
+                public static int Run(bool ready)
+                {
+                    if (ready)
+                    {
+                        return 1;
+                    }
+
+                    return 2;
+                }
+            }
+            """;
+
+        var tree = CSharpSyntaxTree.ParseText(source, path: "overlap-delete.cs");
+        var root = tree.GetRoot();
+        var compilation = CreateCompilation(tree);
+        var semanticModel = compilation.GetSemanticModel(tree);
+        var ifStatement = root.DescendantNodes().OfType<IfStatementSyntax>().Single();
+        var readyIdentifier = root.DescendantNodes().OfType<IdentifierNameSyntax>()
+            .Single(node => node.Identifier.ValueText == "ready");
+        var returnStatement = ifStatement.Statement.DescendantNodes()
+            .OfType<ReturnStatementSyntax>()
+            .Single();
+        var decisions = new[]
+        {
+            new RuleDecision(ifStatement, ifStatement, DecisionActionKind.Delete, "Delete enclosing if."),
+            new RuleDecision(readyIdentifier, readyIdentifier, DecisionActionKind.Delete, "Delete nested condition symbol."),
+            new RuleDecision(returnStatement, returnStatement, DecisionActionKind.Delete, "Delete nested return.")
+        };
+        var rewriter = new PrototypeRewriter();
+
+        var exception = Record.Exception(() => rewriter.Rewrite(root, semanticModel, decisions));
+
+        Assert.Null(exception);
+        var result = rewriter.Rewrite(root, semanticModel, decisions);
+        TextDiffAssert.DoesNotContain("if (ready)", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("return 2;", result.RewrittenSource, result.DiffText);
+        Assert.Single(result.Edits);
     }
 
     [Fact]
@@ -4342,6 +4426,37 @@ public sealed class PipelineComponentTests : IDisposable
             MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
           },
           new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    private static string CreateDeepElseIfChainSource(int elseIfDepth)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("namespace Demo;");
+        builder.AppendLine();
+        builder.AppendLine("internal static class DeepElseIfRewrite");
+        builder.AppendLine("{");
+        builder.AppendLine("    public static int Run(bool[] flags)");
+        builder.AppendLine("    {");
+        builder.AppendLine("        if (flags.Length > 0 && flags[0])");
+        builder.AppendLine("        {");
+        builder.AppendLine("            return 0;");
+        builder.AppendLine("        }");
+
+        for (var index = 1; index <= elseIfDepth; index += 1)
+        {
+            builder.AppendLine($"        else if (flags.Length > {index} && flags[{index}])");
+            builder.AppendLine("        {");
+            builder.AppendLine($"            return {index};");
+            builder.AppendLine("        }");
+        }
+
+        builder.AppendLine("        else");
+        builder.AppendLine("        {");
+        builder.AppendLine("            return -2;");
+        builder.AppendLine("        }");
+        builder.AppendLine("    }");
+        builder.AppendLine("}");
+        return builder.ToString();
     }
 
     private static IReadOnlyList<RuleDefinitionMark> GetDeleteSObjectMarkRules(DeletionRulePipeline? rules = null)
