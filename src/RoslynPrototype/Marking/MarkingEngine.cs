@@ -15,16 +15,9 @@ public sealed class MarkingEngine
     /// <returns>去重后的种子标记集合。</returns>
     public IReadOnlyList<MarkRecord> Run(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
     {
-        var seedMarks = new List<MarkRecord>();
-
-        foreach (var rule in rules)
-        {
-            foreach (var mark in rule.Mark(context, root))
-            {
-                ValidateMarkNode(rule, mark.SyntaxNode);
-                seedMarks.Add(BindMarkRecord(context, mark, rule.GroupKey));
-            }
-        }
+        var seedMarks = ShouldRunRulesInParallel(context, rules.Count)
+          ? RunRulesInParallel(context, root, rules)
+          : RunRulesSerial(context, root, rules);
 
         // 同一规则可能通过多条路径命中同一个语法节点，这里按规则和语法位置去重。
         return seedMarks
@@ -33,6 +26,62 @@ public sealed class MarkingEngine
           mark.SyntaxNode.SpanStart,
           mark.SyntaxNode.Span.Length))
         .ToList();
+    }
+
+    private static List<MarkRecord> RunRulesSerial(
+      RuleContext context,
+      SyntaxNode root,
+      IReadOnlyList<RuleDefinitionMark> rules)
+    {
+        var seedMarks = new List<MarkRecord>();
+        foreach (var rule in rules)
+        {
+            seedMarks.AddRange(RunRule(context, root, rule));
+        }
+
+        return seedMarks;
+    }
+
+    private static List<MarkRecord> RunRulesInParallel(
+      RuleContext context,
+      SyntaxNode root,
+      IReadOnlyList<RuleDefinitionMark> rules)
+    {
+        var orderedRuleMarks = context.Runtime.Scheduler.RunOrderedAsync(
+            rules.Count,
+            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            (index, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult((IReadOnlyList<MarkRecord>)RunRule(context, root, rules[index]));
+            },
+            context.Runtime.ExecutionOptions.CancellationToken)
+          .GetAwaiter()
+          .GetResult();
+
+        return orderedRuleMarks.SelectMany(marks => marks).ToList();
+    }
+
+    private static List<MarkRecord> RunRule(
+      RuleContext context,
+      SyntaxNode root,
+      RuleDefinitionMark rule)
+    {
+        var producedMarks = new List<MarkRecord>();
+        foreach (var mark in rule.Mark(context, root))
+        {
+            ValidateMarkNode(rule, mark.SyntaxNode);
+            producedMarks.Add(BindMarkRecord(context, mark, rule.GroupKey));
+        }
+
+        return producedMarks;
+    }
+
+    private static bool ShouldRunRulesInParallel(RuleContext context, int ruleCount)
+    {
+        return context.Runtime.ExecutionOptions.EnableGroupParallelism &&
+          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism > 1 &&
+          ruleCount > 1;
     }
 
     /// <summary>

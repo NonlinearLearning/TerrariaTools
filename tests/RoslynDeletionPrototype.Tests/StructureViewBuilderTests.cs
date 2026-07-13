@@ -5,6 +5,7 @@ using RoslynPrototype.Analysis;
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Contracts;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
+using Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -92,6 +93,33 @@ public sealed class StructureViewBuilderTests
         var secondView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
 
         Assert.Same(firstView, secondView);
+    }
+
+    [Fact]
+    public void Build_AfterRuntimeCacheInvalidation_DoesNotReuseCachedView()
+    {
+        var source = SObjectExpressionSources.TargetNameSource;
+        var (context, root) = CreateAnalysisContext(source, "structure-view-cache-epoch.cs");
+        var declarator = root.DescendantNodes().OfType<VariableDeclaratorSyntax>().Single();
+        var memberAccess = root.DescendantNodes()
+            .OfType<MemberAccessExpressionSyntax>()
+            .Single(node => node.ToString() == "s.Seed");
+        var runtime = DeletionAnalysisRuntime.CreateDefault();
+        var firstRuleContext = new RuleContext(
+            context,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            runtime: runtime);
+        var secondRuleContext = new RuleContext(
+            context,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            runtime: runtime.InvalidateCaches());
+
+        var firstView = firstRuleContext.StructureViews.BuildStructureView(
+            new SyntaxNode[] { declarator, memberAccess });
+        var secondView = secondRuleContext.StructureViews.BuildStructureView(
+            new SyntaxNode[] { declarator, memberAccess });
+
+        Assert.NotSame(firstView, secondView);
     }
 
     [Fact]

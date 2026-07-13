@@ -1,5 +1,6 @@
 using System.Text;
 using RoslynPrototype.Rewrite;
+using Rules;
 
 namespace RoslynPrototype.Application;
 
@@ -16,6 +17,7 @@ public sealed class DeletionCommandHost
     {
         var inputPath = args.FirstOrDefault(path => !path.StartsWith("--", StringComparison.Ordinal));
         var options = DeletionApplicationOptions.Parse(args);
+        var runtime = DeletionApplicationOptions.CreateRuntime(options);
         var rules = DeletionApplicationOptions.TryParseDisabledRuleTypes(
           options,
           out var disabledRuleTypes)
@@ -24,7 +26,10 @@ public sealed class DeletionCommandHost
 
         if (inputPath is not null && Directory.Exists(inputPath))
         {
-            return new DeletionDirectoryAnalysisService(rules).AnalyzeDirectory(inputPath, options);
+            return new DeletionDirectoryAnalysisService(rules).AnalyzeDirectory(
+              inputPath,
+              options,
+              runtime);
         }
 
         var source = inputPath is not null && File.Exists(inputPath)
@@ -32,7 +37,7 @@ public sealed class DeletionCommandHost
           : DefaultSourceProvider.GetDefaultSource();
         var filePath = inputPath ?? "demo.cs";
         var application = new DeletionApplicationService(rules);
-        var result = application.Analyze(source, filePath, options);
+        var result = application.Analyze(source, filePath, options, runtime);
         result = DeletionPostRewriteDiagnostics.AddSingleFileDiagnostics(result, filePath, options);
 
         if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)

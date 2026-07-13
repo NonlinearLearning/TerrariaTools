@@ -191,6 +191,7 @@ public sealed class DeleteClassDelegateUsageClassificationPropagationRule : Rule
         }
 
         if (DeleteClassParameterShrinkAnalyzer.HasDelegateReferences(
+              context.Runtime,
               context.SemanticModel.Compilation,
               delegateSymbol))
         {

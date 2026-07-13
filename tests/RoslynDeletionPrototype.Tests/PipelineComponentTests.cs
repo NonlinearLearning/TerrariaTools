@@ -126,6 +126,241 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void Analyze_DirectCall_UsesRuntimeDerivedFromOptions()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class RuntimeAware
+          {
+          }
+          """;
+        var application = new DeletionApplicationService(
+          new RuleDefinitionMark[] { new RuntimeAwareMarkRule() },
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>());
+
+        var result = application.Analyze(
+          source,
+          "runtime-aware.cs",
+          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+          {
+            ["max-degree-of-parallelism"] = "3",
+            ["disable-helper-parallelism"] = "true",
+            ["enable-group-parallelism"] = "true"
+          });
+
+        var seedMark = Assert.Single(result.SeedMarks);
+        Assert.Contains("mdop=3", seedMark.Reason, StringComparison.Ordinal);
+        Assert.Contains("group=True", seedMark.Reason, StringComparison.Ordinal);
+        Assert.Contains("helper=False", seedMark.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DeletionAnalysisRuntime_GetOrCreateCompilationCache_AllowsMultipleCacheTypesPerCompilation()
+    {
+        var tree = CSharpSyntaxTree.ParseText("namespace Demo; public sealed class Sample { }", path: "runtime-cache.cs");
+        var compilation = CreateCompilation(tree);
+        var runtime = DeletionAnalysisRuntime.CreateDefault();
+
+        var firstCache = GetCompilationCache(
+          runtime,
+          compilation,
+          static currentCompilation => new TestCompilationCacheA(currentCompilation.AssemblyName ?? "unknown"));
+        var secondCache = GetCompilationCache(
+          runtime,
+          compilation,
+          static currentCompilation => new TestCompilationCacheB((currentCompilation.SyntaxTrees.Count(), 7)));
+        var firstCacheAgain = GetCompilationCache(
+          runtime,
+          compilation,
+          static _ => new TestCompilationCacheA("should-not-recreate"));
+
+        Assert.Equal(compilation.AssemblyName, firstCache.Value);
+        Assert.Equal((1, 7), secondCache.Value);
+        Assert.Same(firstCache, firstCacheAgain);
+    }
+
+    [Fact]
+    public void MarkingEngine_Run_EnableGroupParallelism_UsesScheduler()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class Alpha
+          {
+          }
+
+          public sealed class Beta
+          {
+          }
+          """;
+        var scheduler = new RecordingScheduler();
+        var runtime = CreateParallelRuntime(scheduler);
+        var (context, root) = CreateContext(source, runtime: runtime);
+        var engine = new MarkingEngine();
+
+        var marks = engine.Run(
+          context,
+          root,
+          new RuleDefinitionMark[]
+          {
+            new ParallelClassMarkRule("TEST-PARALLEL-MARK-A", "TEST-GROUP-A", "Alpha"),
+            new ParallelClassMarkRule("TEST-PARALLEL-MARK-B", "TEST-GROUP-B", "Beta")
+          });
+
+        Assert.Equal(1, scheduler.InvocationCount);
+        Assert.Equal(new[] { 2 }, scheduler.ItemCounts);
+        Assert.Equal(
+          new[] { "TEST-PARALLEL-MARK-A", "TEST-PARALLEL-MARK-B" },
+          marks.Select(mark => mark.RuleId).ToArray());
+    }
+
+    [Fact]
+    public void PropagationEngine_Run_EnableGroupParallelism_UsesScheduler()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class Alpha
+          {
+            public void Step()
+            {
+            }
+          }
+
+          public sealed class Beta
+          {
+            public void Step()
+            {
+            }
+          }
+          """;
+        var scheduler = new RecordingScheduler();
+        var runtime = CreateParallelRuntime(scheduler);
+        var (context, root) = CreateContext(source, runtime: runtime);
+        var seedMarks = new MarkingEngine().Run(
+          context,
+          root,
+          new RuleDefinitionMark[]
+          {
+            new ParallelClassMarkRule("TEST-PROP-SEED-A", "TEST-GROUP-A", "Alpha"),
+            new ParallelClassMarkRule("TEST-PROP-SEED-B", "TEST-GROUP-B", "Beta")
+          });
+        scheduler.Reset();
+        var engine = new PropagationEngine();
+
+        var propagatedMarks = engine.Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[]
+          {
+            new GroupMethodPropagationRule("TEST-PROP-A", "TEST-GROUP-A"),
+            new GroupMethodPropagationRule("TEST-PROP-B", "TEST-GROUP-B")
+          });
+
+        Assert.Equal(1, scheduler.InvocationCount);
+        Assert.Equal(new[] { 2 }, scheduler.ItemCounts);
+        Assert.Equal(
+          new[] { "TEST-PROP-A", "TEST-PROP-B" },
+          propagatedMarks.Select(mark => mark.RuleId).ToArray());
+    }
+
+    [Fact]
+    public void MarkLiftingEngine_Run_EnableGroupParallelism_UsesScheduler()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class Alpha
+          {
+          }
+
+          public sealed class Beta
+          {
+          }
+          """;
+        var scheduler = new RecordingScheduler();
+        var runtime = CreateParallelRuntime(scheduler);
+        var (context, root) = CreateContext(source, runtime: runtime);
+        var seedMarks = new MarkingEngine().Run(
+          context,
+          root,
+          new RuleDefinitionMark[]
+          {
+            new ParallelClassMarkRule("TEST-LIFT-SEED-A", "TEST-GROUP-A", "Alpha"),
+            new ParallelClassMarkRule("TEST-LIFT-SEED-B", "TEST-GROUP-B", "Beta")
+          });
+        scheduler.Reset();
+        var engine = new MarkLiftingEngine();
+
+        var liftedMarks = engine.Run(
+          context,
+          seedMarks,
+          Array.Empty<PropagatedMarkRecord>(),
+          new RuleDefinitionLift[]
+          {
+            new NamespaceLiftRule("TEST-LIFT-A1", "TEST-GROUP-A"),
+            new NamespaceLiftRule("TEST-LIFT-A2", "TEST-GROUP-A"),
+            new NamespaceLiftRule("TEST-LIFT-B", "TEST-GROUP-B")
+          });
+
+        Assert.Equal(1, scheduler.InvocationCount);
+        Assert.Equal(new[] { 2 }, scheduler.ItemCounts);
+        Assert.Equal(
+          new[] { "TEST-LIFT-A1", "TEST-LIFT-B" },
+          liftedMarks.Select(mark => mark.RuleId).ToArray());
+    }
+
+    [Fact]
+    public void RuleDecisionEngine_Decide_EnableGroupParallelism_UsesScheduler()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class Alpha
+          {
+          }
+
+          public sealed class Beta
+          {
+          }
+          """;
+        var scheduler = new RecordingScheduler();
+        var runtime = CreateParallelRuntime(scheduler);
+        var (context, root) = CreateContext(source, runtime: runtime);
+        var seedMarks = new MarkingEngine().Run(
+          context,
+          root,
+          new RuleDefinitionMark[]
+          {
+            new ParallelClassMarkRule("TEST-DECIDE-SEED-A", "TEST-GROUP-A", "Alpha"),
+            new ParallelClassMarkRule("TEST-DECIDE-SEED-B", "TEST-GROUP-B", "Beta")
+          });
+        scheduler.Reset();
+        var engine = new RuleDecisionEngine();
+
+        var decisions = engine.Decide(
+          context,
+          seedMarks,
+          Array.Empty<PropagatedMarkRecord>(),
+          Array.Empty<LiftedMarkRecord>(),
+          new RuleDefinitionPropose[]
+          {
+            new DeleteClassDecisionRule("TEST-DECIDE-A1", "TEST-GROUP-A"),
+            new DeleteClassDecisionRule("TEST-DECIDE-A2", "TEST-GROUP-A"),
+            new DeleteClassDecisionRule("TEST-DECIDE-B", "TEST-GROUP-B")
+          });
+
+        Assert.Equal(1, scheduler.InvocationCount);
+        Assert.Equal(new[] { 2 }, scheduler.ItemCounts);
+        Assert.Equal(
+          new[] { "Delete TEST-DECIDE-A1", "Delete TEST-DECIDE-B" },
+          decisions.Select(decision => decision.Reason).ToArray());
+    }
+
+    [Fact]
     public void PropagationEngine_Run_DeleteClassMethodParameterUsageRule_ProducesStructuredPayload()
     {
         const string source = """
@@ -1024,6 +1259,65 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(serialResult.Edits);
         Assert.NotEmpty(parallelResult.Edits);
         AssertEquivalentAnalysisResults(serialResult, parallelResult);
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DisableHelperParallelism_KeepsStableResults()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "delete-class-helper-parallelism-project");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "PlayerInput.cs"),
+          """
+          namespace Demo;
+
+          public sealed class PlayerInput
+          {
+          }
+          """);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "Game.cs"),
+          """
+          namespace Demo;
+
+          public sealed class Game
+          {
+            private int Apply(PlayerInput input, int frame)
+            {
+              return frame;
+            }
+
+            public int Run(int frame)
+            {
+              return Apply(null, frame);
+            }
+          }
+          """);
+        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var defaultResult = application.AnalyzeFromArgs(new[]
+        {
+          projectDirectory,
+          "--delete-class",
+          "PlayerInput",
+          "--max-degree-of-parallelism",
+          "8",
+          "--no-diff"
+        });
+        var helperSerialResult = application.AnalyzeFromArgs(new[]
+        {
+          projectDirectory,
+          "--delete-class",
+          "PlayerInput",
+          "--max-degree-of-parallelism",
+          "8",
+          "--disable-helper-parallelism",
+          "--no-diff"
+        });
+
+        Assert.NotEmpty(defaultResult.Edits);
+        Assert.NotEmpty(helperSerialResult.Edits);
+        AssertEquivalentAnalysisResults(defaultResult, helperSerialResult);
     }
 
     [Fact]
@@ -3987,7 +4281,10 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private static (RuleContext Context, SyntaxNode Root) CreateContext(string source, string? targetName = null)
+    private static (RuleContext Context, SyntaxNode Root) CreateContext(
+      string source,
+      string? targetName = null,
+      DeletionAnalysisRuntime? runtime = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "component-test.cs");
         var root = tree.GetRoot();
@@ -4000,7 +4297,32 @@ public sealed class PipelineComponentTests : IDisposable
             options["target-name"] = targetName;
         }
 
-        return (new RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options), root);
+        return (new RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options, runtime: runtime), root);
+    }
+
+    private static DeletionAnalysisRuntime CreateParallelRuntime(RecordingScheduler scheduler)
+    {
+        return new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(
+            4,
+            EnableGroupParallelism: true),
+          new DeletionAnalysisEpoch(0, 0, 0),
+          scheduler);
+    }
+
+    private static TCache GetCompilationCache<TCache>(
+      DeletionAnalysisRuntime runtime,
+      Compilation compilation,
+      Func<Compilation, TCache> factory)
+      where TCache : class
+    {
+        var method = typeof(DeletionAnalysisRuntime)
+          .GetMethod("GetOrCreateCompilationCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        var genericMethod = method!.MakeGenericMethod(typeof(TCache));
+        var cache = genericMethod.Invoke(runtime, new object[] { compilation, factory });
+        return Assert.IsType<TCache>(cache);
     }
 
     private static CSharpCompilation CreateCompilation(SyntaxTree tree)
@@ -4053,6 +4375,103 @@ public sealed class PipelineComponentTests : IDisposable
             var memberAccess = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>().Single();
             yield return new MarkRecord(RuleId, memberAccess, null, null, "first");
             yield return new MarkRecord(RuleId, memberAccess, null, null, "second");
+        }
+    }
+
+    private sealed record TestCompilationCacheA(string Value);
+
+    private sealed record TestCompilationCacheB((int TreeCount, int StableId) Value);
+
+    private sealed class RecordingScheduler : IRuleStageScheduler
+    {
+        public int InvocationCount { get; private set; }
+
+        public List<int> ItemCounts { get; } = new();
+
+        public void Reset()
+        {
+            InvocationCount = 0;
+            ItemCounts.Clear();
+        }
+
+        public async Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(
+          int itemCount,
+          int maxDegreeOfParallelism,
+          Func<int, CancellationToken, Task<TResult>> workItem,
+          CancellationToken cancellationToken)
+        {
+            _ = maxDegreeOfParallelism;
+            InvocationCount++;
+            ItemCounts.Add(itemCount);
+
+            var results = new TResult[itemCount];
+            for (var index = 0; index < itemCount; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                results[index] = await workItem(index, cancellationToken);
+            }
+
+            return results;
+        }
+    }
+
+    private sealed class RuntimeAwareMarkRule : RuleDefinitionMark
+    {
+        public override string RuleId { get; } = "TEST-RUNTIME-MARK";
+
+        public override string Name { get; } = "Emit a mark only when runtime options flow into the direct Analyze overload.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+            new[] { SyntaxKind.ClassDeclaration };
+
+        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        {
+            var executionOptions = context.Runtime.ExecutionOptions;
+            if (executionOptions.EffectiveMaxDegreeOfParallelism != 3 ||
+                executionOptions.EnableHelperParallelism ||
+                !executionOptions.EnableGroupParallelism)
+            {
+                yield break;
+            }
+
+            var classDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().Single();
+            yield return new MarkRecord(
+              RuleId,
+              classDeclaration,
+              null,
+              null,
+              $"mdop={executionOptions.EffectiveMaxDegreeOfParallelism};group={executionOptions.EnableGroupParallelism};helper={executionOptions.EnableHelperParallelism}");
+        }
+    }
+
+    private sealed class ParallelClassMarkRule : RuleDefinitionMark
+    {
+        private readonly string _className;
+        private readonly string _groupKey;
+
+        public ParallelClassMarkRule(string ruleId, string groupKey, string className)
+        {
+            RuleId = ruleId;
+            _groupKey = groupKey;
+            _className = className;
+        }
+
+        public override string RuleId { get; }
+
+        public override string GroupKey => _groupKey;
+
+        public override string Name { get; } = "Mark a named class for parallel scheduler tests.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+            new[] { SyntaxKind.ClassDeclaration };
+
+        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        {
+            _ = context;
+            var classDeclaration = root.DescendantNodes()
+              .OfType<ClassDeclarationSyntax>()
+              .Single(candidate => string.Equals(candidate.Identifier.ValueText, _className, StringComparison.Ordinal));
+            yield return new MarkRecord(RuleId, classDeclaration, null, null, $"Seed {_className}");
         }
     }
 
@@ -4180,6 +4599,39 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
+    private sealed class GroupMethodPropagationRule : RuleDefinitionPropagate
+    {
+        private readonly string _groupKey;
+
+        public GroupMethodPropagationRule(string ruleId, string groupKey)
+        {
+            RuleId = ruleId;
+            _groupKey = groupKey;
+        }
+
+        public override string RuleId { get; }
+
+        public override string GroupKey => _groupKey;
+
+        public override string Name { get; } = "Propagate a class seed to its method for scheduler tests.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+            new[] { SyntaxKind.MethodDeclaration };
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+        {
+            _ = context;
+            var seedMark = Assert.Single(seedMarks);
+            var classDeclaration = Assert.IsType<ClassDeclarationSyntax>(seedMark.SyntaxNode);
+            var method = classDeclaration.Members.OfType<MethodDeclarationSyntax>().Single();
+            yield return new PropagatedMarkRecord(
+              RuleId,
+              new MarkRecord(RuleId, method, null, null, $"Propagate {classDeclaration.Identifier.ValueText}"),
+              seedMark,
+              1);
+        }
+    }
+
     private sealed class ViewAwarePropagationRule : RuleDefinitionPropagate
     {
         public override string RuleId { get; } = "TEST-VIEW-PROP-001";
@@ -4247,6 +4699,95 @@ public sealed class PipelineComponentTests : IDisposable
               new MarkRecord(RuleId, returnStatement, null, null, "rule-scoped view is available during lifting"),
               propagatedMarks[0].Mark,
               propagatedMarks[0].Depth + 1);
+        }
+    }
+
+    private sealed class NamespaceLiftRule : RuleDefinitionLift
+    {
+        private readonly string _groupKey;
+
+        public NamespaceLiftRule(string ruleId, string groupKey)
+        {
+            RuleId = ruleId;
+            _groupKey = groupKey;
+        }
+
+        public override string RuleId { get; }
+
+        public override string GroupKey => _groupKey;
+
+        public override string Name { get; } = "Lift a class seed to its namespace for scheduler tests.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
+            new[] { SyntaxKind.FileScopedNamespaceDeclaration };
+
+        public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+        {
+            _ = context;
+            _ = propagatedMarks;
+            var seedMark = Assert.Single(seedMarks);
+            var namespaceDeclaration = seedMark.SyntaxNode.Ancestors()
+              .OfType<FileScopedNamespaceDeclarationSyntax>()
+              .Single();
+            yield return new LiftedMarkRecord(
+              RuleId,
+              new MarkRecord(RuleId, namespaceDeclaration, null, null, "Lift to namespace"),
+              seedMark,
+              1);
+        }
+    }
+
+    private sealed class DeleteClassDecisionRule : RuleDefinitionPropose
+    {
+        private readonly string _groupKey;
+
+        public DeleteClassDecisionRule(string ruleId, string groupKey)
+        {
+            RuleId = ruleId;
+            _groupKey = groupKey;
+        }
+
+        public override string RuleId { get; }
+
+        public override string GroupKey => _groupKey;
+
+        public override string Name { get; } = "Create a delete decision for scheduler tests.";
+
+        public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds { get; } =
+            new[] { SyntaxKind.ClassDeclaration };
+
+        public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
+            new[] { SyntaxKind.ClassDeclaration };
+
+        public override IEnumerable<DecisionUnit> Propose(
+          RuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks,
+          IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+          IReadOnlyList<LiftedMarkRecord> liftedMarks)
+        {
+            _ = context;
+            _ = propagatedMarks;
+            _ = liftedMarks;
+            var seedMark = Assert.Single(seedMarks);
+            var fragment = DecisionCpgFactory.CreateFragment(
+              $"fragment:{RuleId}",
+              seedMark.SyntaxNode,
+              "anchor",
+              DecisionActionKind.Delete);
+            var unitNode = DecisionCpgFactory.CreateUnit(
+              RuleId,
+              DecisionActionKind.Delete,
+              fragment,
+              $"Delete {RuleId}");
+            yield return new DecisionUnit(
+              RuleId,
+              DecisionActionKind.Delete,
+              unitNode,
+              new[] { fragment },
+              new[] { DecisionCpgFactory.CreateContainment(unitNode, fragment) },
+              DecisionCpgFactory.CreateSyntaxBindings((fragment, seedMark.SyntaxNode)),
+              reason: $"Delete {RuleId}",
+              groupKey: GroupKey);
         }
     }
 

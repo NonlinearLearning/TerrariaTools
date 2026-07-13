@@ -9,11 +9,8 @@ namespace RoslynPrototype.Lifting;
 
 public sealed class MarkLiftingEngine
 {
-    private readonly RoslynCpgStructureViewBuilder _structureViewBuilder = new();
-
     public IReadOnlyList<LiftedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<RuleDefinitionLift> rules)
     {
-        var liftedMarks = new List<LiftedMarkRecord>();
         var liftEligiblePropagatedMarks = propagatedMarks
           .Where(mark => mark.Payload is null)
           .ToList();
@@ -29,30 +26,16 @@ public sealed class MarkLiftingEngine
             group => group.Key,
             group => (IReadOnlyList<PropagatedMarkRecord>)group.ToList(),
             StringComparer.Ordinal);
-
-        foreach (var rule in rules)
-        {
-            seedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleSeedMarks);
-            propagatedMarksByGroupKey.TryGetValue(rule.GroupKey, out var rulePropagatedMarks);
-            if ((ruleSeedMarks is null || ruleSeedMarks.Count == 0) &&
-                (rulePropagatedMarks is null || rulePropagatedMarks.Count == 0))
-            {
-                continue;
-            }
-
-            var ruleContext = BuildRuleContext(
-              context,
-              ruleSeedMarks ?? Array.Empty<MarkRecord>(),
-              rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>());
-            foreach (var liftedMark in rule.Lift(
-                       ruleContext,
-                       ruleSeedMarks ?? Array.Empty<MarkRecord>(),
-                       rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>()))
-            {
-                ValidateLiftNode(rule, liftedMark.Mark.SyntaxNode);
-                liftedMarks.Add(BindLiftedMarkRecord(ruleContext, liftedMark, rule.GroupKey));
-            }
-        }
+        var groupedRules = rules
+          .GroupBy(rule => rule.GroupKey, StringComparer.Ordinal)
+          .Select(group => new LiftRuleGroup(group.Key, group.ToList()))
+          .Where(group =>
+            seedMarksByGroupKey.ContainsKey(group.GroupKey) ||
+            propagatedMarksByGroupKey.ContainsKey(group.GroupKey))
+          .ToList();
+        var liftedMarks = ShouldRunGroupsInParallel(context, groupedRules.Count)
+          ? RunGroupsInParallel(context, groupedRules, seedMarksByGroupKey, propagatedMarksByGroupKey)
+          : RunGroupsSerial(context, groupedRules, seedMarksByGroupKey, propagatedMarksByGroupKey);
 
         return liftedMarks
           .DistinctBy(mark => (
@@ -63,7 +46,104 @@ public sealed class MarkLiftingEngine
           .ToList();
     }
 
-    private RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    private static List<LiftedMarkRecord> RunGroupsSerial(
+      RuleContext context,
+      IReadOnlyList<LiftRuleGroup> groupedRules,
+      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
+      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    {
+        var liftedMarks = new List<LiftedMarkRecord>();
+        foreach (var ruleGroup in groupedRules)
+        {
+            liftedMarks.AddRange(RunRule(
+              context,
+              ruleGroup,
+              seedMarksByGroupKey,
+              propagatedMarksByGroupKey));
+        }
+
+        return liftedMarks;
+    }
+
+    private static List<LiftedMarkRecord> RunGroupsInParallel(
+      RuleContext context,
+      IReadOnlyList<LiftRuleGroup> groupedRules,
+      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
+      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    {
+        var orderedLiftedMarks = context.Runtime.Scheduler.RunOrderedAsync(
+            groupedRules.Count,
+            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            (index, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult((IReadOnlyList<LiftedMarkRecord>)RunRule(
+                  context,
+                  groupedRules[index],
+                  seedMarksByGroupKey,
+                  propagatedMarksByGroupKey));
+            },
+            context.Runtime.ExecutionOptions.CancellationToken)
+          .GetAwaiter()
+          .GetResult();
+
+        return orderedLiftedMarks.SelectMany(marks => marks).ToList();
+    }
+
+    private static List<LiftedMarkRecord> RunRule(
+      RuleContext context,
+      LiftRuleGroup ruleGroup,
+      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
+      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    {
+        var liftedMarks = new List<LiftedMarkRecord>();
+        foreach (var rule in ruleGroup.Rules)
+        {
+            liftedMarks.AddRange(RunRule(context, rule, seedMarksByGroupKey, propagatedMarksByGroupKey));
+        }
+
+        return liftedMarks;
+    }
+
+    private static List<LiftedMarkRecord> RunRule(
+      RuleContext context,
+      RuleDefinitionLift rule,
+      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
+      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    {
+        seedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleSeedMarks);
+        propagatedMarksByGroupKey.TryGetValue(rule.GroupKey, out var rulePropagatedMarks);
+        if ((ruleSeedMarks is null || ruleSeedMarks.Count == 0) &&
+            (rulePropagatedMarks is null || rulePropagatedMarks.Count == 0))
+        {
+            return new List<LiftedMarkRecord>();
+        }
+
+        var producedMarks = new List<LiftedMarkRecord>();
+        var ruleContext = BuildRuleContext(
+          context,
+          ruleSeedMarks ?? Array.Empty<MarkRecord>(),
+          rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>());
+        foreach (var liftedMark in rule.Lift(
+                   ruleContext,
+                   ruleSeedMarks ?? Array.Empty<MarkRecord>(),
+                   rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>()))
+        {
+            ValidateLiftNode(rule, liftedMark.Mark.SyntaxNode);
+            producedMarks.Add(BindLiftedMarkRecord(ruleContext, liftedMark, rule.GroupKey));
+        }
+
+        return producedMarks;
+    }
+
+    private static bool ShouldRunGroupsInParallel(RuleContext context, int groupCount)
+    {
+        return context.Runtime.ExecutionOptions.EnableGroupParallelism &&
+          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism > 1 &&
+          groupCount > 1;
+    }
+
+    private static RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var fragments = seedMarks
           .Select(mark => mark.SyntaxNode)
@@ -101,4 +181,8 @@ public sealed class MarkLiftingEngine
             GroupKey = candidate.GroupKey ?? groupKey
         };
     }
+
+    private sealed record LiftRuleGroup(
+      string GroupKey,
+      IReadOnlyList<RuleDefinitionLift> Rules);
 }

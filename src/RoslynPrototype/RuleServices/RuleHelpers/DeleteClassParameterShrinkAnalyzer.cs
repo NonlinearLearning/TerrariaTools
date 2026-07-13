@@ -11,8 +11,6 @@ namespace RoslynPrototype.Decision;
 
 public sealed class DeleteClassParameterShrinkAnalyzer
 {
-    private static readonly ConditionalWeakTable<Compilation, CompilationScanCache> CompilationScanCaches = new();
-
     public bool TryBuildNamedArgumentMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
     {
         plan = null!;
@@ -29,6 +27,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasConflictingReplacementOverload(methodSymbol, parameterIndex) ||
             !TryBuildReplacementMethod(method, parameter, out var replacementMethod) ||
             !TryCollectNamedArgumentInvocationRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               methodSymbol,
               parameterSymbol,
@@ -58,6 +57,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasConflictingReplacementOverload(methodSymbol, parameterIndex) ||
             !TryBuildReplacementMethod(method, parameter, out var replacementMethod) ||
             !TryCollectOptionalInvocationRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               methodSymbol,
               parameterSymbol,
@@ -88,6 +88,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasConflictingReplacementOverload(methodSymbol, parameterIndex) ||
             !TryBuildReplacementMethod(method, parameter, out var replacementMethod) ||
             !TryCollectParamsInvocationRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               methodSymbol,
               parameterSymbol,
@@ -138,6 +139,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasUnsupportedParameterShape(parameter, methodSymbol.Parameters[parameterIndex]) ||
             !TryBuildReplacementLocalFunction(localFunction, parameter, out var replacementLocalFunction) ||
             !TryCollectInvocationRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               methodSymbol,
               parameterIndex,
@@ -165,6 +167,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasUnsupportedParameterShape(parameter, methodSymbol.Parameters[parameterIndex]) ||
             !TryBuildReplacementLocalFunction(localFunction, parameter, out var replacementLocalFunction) ||
             !TryCollectNamedArgumentInvocationRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               methodSymbol,
               methodSymbol.Parameters[parameterIndex],
@@ -191,6 +194,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasUnsupportedOptionalParameterShape(parameter, methodSymbol.Parameters[parameterIndex]) ||
             !TryBuildReplacementLocalFunction(localFunction, parameter, out var replacementLocalFunction) ||
             !TryCollectOptionalInvocationRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               methodSymbol,
               methodSymbol.Parameters[parameterIndex],
@@ -217,6 +221,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasUnsupportedParameterShape(parameter, indexerSymbol.Parameters[parameterIndex]) ||
             !TryBuildReplacementIndexer(indexer, parameter, out var replacementIndexer) ||
             !TryCollectElementAccessRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               indexerSymbol,
               parameterIndex,
@@ -241,6 +246,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasUnsupportedParameterShape(parameter, indexerSymbol.Parameters[parameterIndex]) ||
             !TryBuildReplacementIndexer(indexer, parameter, out var replacementIndexer) ||
             !TryCollectNamedElementAccessRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               indexerSymbol,
               indexerSymbol.Parameters[parameterIndex],
@@ -264,7 +270,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             parameterIndex >= invokeMethod.Parameters.Length ||
             HasUnsupportedParameterShape(parameter, invokeMethod.Parameters[parameterIndex]) ||
             !TryBuildReplacementDelegate(delegateDeclaration, parameter, out var replacementDelegate) ||
-            HasDelegateReferences(context.SemanticModel.Compilation, delegateSymbol))
+            HasDelegateReferences(context.Runtime, context.SemanticModel.Compilation, delegateSymbol))
         {
             return false;
         }
@@ -395,6 +401,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasConflictingReplacementOverload(methodSymbol, parameterIndex) ||
             !TryBuildReplacementMethod(method, parameter, out var replacementMethod) ||
             !TryCollectMappedInvocationRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               methodSymbol,
               methodSymbol.Parameters[parameterIndex],
@@ -418,6 +425,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             HasUnsupportedParameterShape(parameter, methodSymbol.Parameters[parameterIndex]) ||
             !TryBuildReplacementMethod(method, parameter, out var replacementMethod) ||
             !TryCollectInvocationRewrites(
+              context.Runtime,
               context.SemanticModel.Compilation,
               methodSymbol,
               parameterIndex,
@@ -560,16 +568,11 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         var handledLocalFunctionRewrites = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
         var failed = 0;
 
-        Parallel.ForEach(
-          GetTreeScans(context.SemanticModel.Compilation),
-          (scan, state) =>
+        ForEachScan(
+          GetTreeScans(context.SemanticModel.Compilation, context.Runtime),
+          context.Runtime,
+          (scan, stop) =>
           {
-              if (Volatile.Read(ref failed) != 0)
-              {
-                  state.Stop();
-                  return;
-              }
-
               foreach (var invocation in scan.GetInvocationBindings(delegateSymbol.DelegateInvokeMethod!))
               {
                   if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
@@ -587,7 +590,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                         out var replacementInvocation))
                   {
                       Interlocked.Exchange(ref failed, 1);
-                      state.Stop();
+                      stop();
                       return;
                   }
 
@@ -613,7 +616,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                                 out var localFunctionRewrite))
                           {
                               Interlocked.Exchange(ref failed, 1);
-                              state.Stop();
+                              stop();
                               return;
                           }
 
@@ -645,7 +648,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                                 out var lambdaRewrite))
                           {
                               Interlocked.Exchange(ref failed, 1);
-                              state.Stop();
+                              stop();
                               return;
                           }
 
@@ -726,15 +729,16 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return replacementParameters.Count + 1 == delegateDeclaration.ParameterList.Parameters.Count;
     }
 
-    private static bool TryCollectInvocationRewrites(Compilation compilation, IMethodSymbol methodSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         var rewrites = new ConcurrentBag<InvocationRewrite>();
         var matchedCallsites = 0;
         var failed = 0;
 
-        Parallel.ForEach(
-          GetTreeScans(compilation),
-          (scan, state) =>
+        ForEachScan(
+          GetTreeScans(compilation, runtime),
+          runtime,
+          (scan, stop) =>
           {
               foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
               {
@@ -752,7 +756,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                         out var replacementInvocation))
                   {
                       Interlocked.Exchange(ref failed, 1);
-                      state.Stop();
+                      stop();
                       return;
                   }
 
@@ -768,15 +772,16 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
     }
 
-    private static bool TryCollectNamedArgumentInvocationRewrites(Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectNamedArgumentInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, out List<InvocationRewrite> invocationRewrites)
     {
         var rewrites = new ConcurrentBag<InvocationRewrite>();
         var matchedCallsites = 0;
         var failed = 0;
 
-        Parallel.ForEach(
-          GetTreeScans(compilation),
-          (scan, state) =>
+        ForEachScan(
+          GetTreeScans(compilation, runtime),
+          runtime,
+          (scan, stop) =>
           {
               foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
               {
@@ -795,7 +800,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                         out var replacementInvocation))
                   {
                       Interlocked.Exchange(ref failed, 1);
-                      state.Stop();
+                      stop();
                       return;
                   }
 
@@ -811,15 +816,16 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           Volatile.Read(ref matchedCallsites) > 0;
     }
 
-    private static bool TryCollectOptionalInvocationRewrites(Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectOptionalInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         var matchedCallsites = 0;
         var rewrites = new ConcurrentBag<InvocationRewrite>();
         var failed = 0;
 
-        Parallel.ForEach(
-          GetTreeScans(compilation),
-          (scan, state) =>
+        ForEachScan(
+          GetTreeScans(compilation, runtime),
+          runtime,
+          (scan, stop) =>
           {
               foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
               {
@@ -839,7 +845,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                         out var changed))
                   {
                       Interlocked.Exchange(ref failed, 1);
-                      state.Stop();
+                      stop();
                       return;
                   }
 
@@ -858,15 +864,16 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
     }
 
-    private static bool TryCollectParamsInvocationRewrites(Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectParamsInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         invocationRewrites = new List<InvocationRewrite>();
         var matchedCallsites = 0;
         var failed = 0;
 
-        Parallel.ForEach(
-          GetTreeScans(compilation),
-          (scan, state) =>
+        ForEachScan(
+          GetTreeScans(compilation, runtime),
+          runtime,
+          (scan, stop) =>
           {
               foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
               {
@@ -884,7 +891,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                   if (paramsArguments.Any(argument => !argument.IsImplicit))
                   {
                       Interlocked.Exchange(ref failed, 1);
-                      state.Stop();
+                      stop();
                       return;
                   }
               }
@@ -894,15 +901,16 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
     }
 
-    private static bool TryCollectElementAccessRewrites(Compilation compilation, IPropertySymbol indexerSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<ElementAccessRewrite> accessRewrites)
+    private static bool TryCollectElementAccessRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IPropertySymbol indexerSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<ElementAccessRewrite> accessRewrites)
     {
         var rewrites = new ConcurrentBag<ElementAccessRewrite>();
         var matchedCallsites = 0;
         var failed = 0;
 
-        Parallel.ForEach(
-          GetTreeScans(compilation),
-          (scan, state) =>
+        ForEachScan(
+          GetTreeScans(compilation, runtime),
+          runtime,
+          (scan, stop) =>
           {
               foreach (var elementAccess in scan.GetElementAccessBindings(indexerSymbol))
               {
@@ -920,7 +928,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                         out var replacementElementAccess))
                   {
                       Interlocked.Exchange(ref failed, 1);
-                      state.Stop();
+                      stop();
                       return;
                   }
 
@@ -936,15 +944,16 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
     }
 
-    private static bool TryCollectNamedElementAccessRewrites(Compilation compilation, IPropertySymbol indexerSymbol, IParameterSymbol parameterSymbol, out List<ElementAccessRewrite> accessRewrites)
+    private static bool TryCollectNamedElementAccessRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IPropertySymbol indexerSymbol, IParameterSymbol parameterSymbol, out List<ElementAccessRewrite> accessRewrites)
     {
         var rewrites = new ConcurrentBag<ElementAccessRewrite>();
         var matchedCallsites = 0;
         var failed = 0;
 
-        Parallel.ForEach(
-          GetTreeScans(compilation),
-          (scan, state) =>
+        ForEachScan(
+          GetTreeScans(compilation, runtime),
+          runtime,
+          (scan, stop) =>
           {
               foreach (var elementAccess in scan.GetElementAccessBindings(indexerSymbol))
               {
@@ -963,7 +972,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                         out var replacementElementAccess))
                   {
                       Interlocked.Exchange(ref failed, 1);
-                      state.Stop();
+                      stop();
                       return;
                   }
 
@@ -979,15 +988,16 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           Volatile.Read(ref matchedCallsites) > 0;
     }
 
-    private static bool TryCollectMappedInvocationRewrites(Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectMappedInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         var rewrites = new ConcurrentBag<InvocationRewrite>();
         var matchedCallsites = 0;
         var failed = 0;
 
-        Parallel.ForEach(
-          GetTreeScans(compilation),
-          (scan, state) =>
+        ForEachScan(
+          GetTreeScans(compilation, runtime),
+          runtime,
+          (scan, stop) =>
           {
               foreach (var invocation in scan.GetMappedInvocationBindings(methodSymbol))
               {
@@ -1005,7 +1015,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
                         out var replacementInvocation))
                   {
                       Interlocked.Exchange(ref failed, 1);
-                      state.Stop();
+                      stop();
                       return;
                   }
 
@@ -1376,11 +1386,11 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
-    public static bool HasDelegateReferences(Compilation compilation, INamedTypeSymbol delegateSymbol)
+    public static bool HasDelegateReferences(DeletionAnalysisRuntime runtime, Compilation compilation, INamedTypeSymbol delegateSymbol)
     {
         foreach (var tree in compilation.SyntaxTrees)
         {
-            var scan = GetTreeScan(compilation, tree);
+            var scan = GetTreeScan(compilation, tree, runtime);
             foreach (var typeSyntax in scan.GetTypeSyntaxBindings(delegateSymbol))
             {
                 if (SymbolEqualityComparer.Default.Equals(typeSyntax.Symbol, delegateSymbol))
@@ -1393,18 +1403,76 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return false;
     }
 
-    private static IReadOnlyList<TreeScan> GetTreeScans(Compilation compilation)
+    private static IReadOnlyList<TreeScan> GetTreeScans(
+      Compilation compilation,
+      DeletionAnalysisRuntime runtime)
     {
-        return CompilationScanCaches.GetValue(
+        return runtime.GetOrCreateCompilationCache(
           compilation,
           static key => new CompilationScanCache(key)).TreeScans;
     }
 
-    private static TreeScan GetTreeScan(Compilation compilation, SyntaxTree tree)
+    private static TreeScan GetTreeScan(
+      Compilation compilation,
+      SyntaxTree tree,
+      DeletionAnalysisRuntime runtime)
     {
-        return CompilationScanCaches.GetValue(
+        return runtime.GetOrCreateCompilationCache(
           compilation,
           static key => new CompilationScanCache(key)).GetTreeScan(tree);
+    }
+
+    private static void ForEachScan(
+      IReadOnlyList<TreeScan> scans,
+      DeletionAnalysisRuntime runtime,
+      Action<TreeScan, Action> visit)
+    {
+        var shouldStop = 0;
+        void Stop()
+        {
+            Interlocked.Exchange(ref shouldStop, 1);
+        }
+
+        if (!runtime.ExecutionOptions.EnableHelperParallelism ||
+            runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism == 1 ||
+            scans.Count <= 1)
+        {
+            foreach (var scan in scans)
+            {
+                if (Volatile.Read(ref shouldStop) != 0)
+                {
+                    break;
+                }
+
+                visit(scan, Stop);
+            }
+
+            return;
+        }
+
+        Parallel.ForEach(
+          scans,
+          new ParallelOptions
+          {
+              MaxDegreeOfParallelism = runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+              CancellationToken = runtime.ExecutionOptions.CancellationToken
+          },
+          (scan, state) =>
+          {
+              if (Volatile.Read(ref shouldStop) != 0)
+              {
+                  state.Stop();
+                  return;
+              }
+
+              visit(
+                scan,
+                () =>
+                {
+                    Stop();
+                    state.Stop();
+                });
+          });
     }
 
     public static bool HasConflictingReplacementOverload(IMethodSymbol methodSymbol, int parameterIndex)

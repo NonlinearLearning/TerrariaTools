@@ -18,14 +18,17 @@ public sealed class RuleContext :
 {
     private readonly CpgAnalysisContext _analysisContext;
     private readonly IReadOnlyDictionary<string, string> _options;
+    private readonly DeletionAnalysisRuntime _runtime;
 
     public RuleContext(
       CpgAnalysisContext analysisContext,
       IReadOnlyDictionary<string, string> options,
-      RoslynCpgStructureView? structureView = null)
+      RoslynCpgStructureView? structureView = null,
+      DeletionAnalysisRuntime? runtime = null)
     {
         _analysisContext = analysisContext;
         _options = options;
+        _runtime = runtime ?? DeletionAnalysisRuntime.CreateDefault();
         StructureView = structureView;
     }
 
@@ -38,6 +41,8 @@ public sealed class RuleContext :
     public IRuleStructureViewServices StructureViews => this;
 
     public RoslynCpgStructureView? StructureView { get; }
+
+    public DeletionAnalysisRuntime Runtime => _runtime;
 
     /// <summary>
     /// 当前源码的 Roslyn 语义模型。
@@ -56,12 +61,15 @@ public sealed class RuleContext :
 
     public RuleContext WithStructureView(RoslynCpgStructureView structureView)
     {
-        return new RuleContext(_analysisContext, _options, structureView);
+        return new RuleContext(_analysisContext, _options, structureView, _runtime);
     }
 
     public RoslynCpgStructureView BuildStructureView(IReadOnlyCollection<SyntaxNode> fragments)
     {
-        return new RoslynCpgStructureViewBuilder().Build(fragments, _analysisContext);
+        return new RoslynCpgStructureViewBuilder().Build(
+          fragments,
+          _analysisContext,
+          _runtime.CacheScopeKey);
     }
 
     public IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(

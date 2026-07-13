@@ -50,7 +50,20 @@ public sealed class DeletionApplicationService
     string filePath,
     IReadOnlyDictionary<string, string> options)
   {
-    var analysisContext = BuildAnalysisContext(source, filePath, options);
+    return Analyze(
+      source,
+      filePath,
+      options,
+      DeletionAnalysisRuntime.CreateFromOptions(options));
+  }
+
+  public PrototypeAnalysisResult Analyze(
+    string source,
+    string filePath,
+    IReadOnlyDictionary<string, string> options,
+    DeletionAnalysisRuntime runtime)
+  {
+    var analysisContext = BuildAnalysisContext(source, filePath, options, runtime);
     return RunAnalysis(analysisContext);
   }
 
@@ -61,7 +74,30 @@ public sealed class DeletionApplicationService
     SemanticModel semanticModel,
     SyntaxNode root)
   {
-    var analysisContext = BuildAnalysisContext(source, filePath, options, semanticModel, root);
+    return Analyze(
+      source,
+      filePath,
+      options,
+      DeletionAnalysisRuntime.CreateFromOptions(options),
+      semanticModel,
+      root);
+  }
+
+  public PrototypeAnalysisResult Analyze(
+    string source,
+    string filePath,
+    IReadOnlyDictionary<string, string> options,
+    DeletionAnalysisRuntime runtime,
+    SemanticModel semanticModel,
+    SyntaxNode root)
+  {
+    var analysisContext = BuildAnalysisContext(
+      source,
+      filePath,
+      options,
+      runtime,
+      semanticModel,
+      root);
     return RunAnalysis(analysisContext);
   }
 
@@ -103,19 +139,21 @@ public sealed class DeletionApplicationService
   private DeletionAnalysisContext BuildAnalysisContext(
     string source,
     string filePath,
-    IReadOnlyDictionary<string, string> options)
+    IReadOnlyDictionary<string, string> options,
+    DeletionAnalysisRuntime runtime)
   {
     var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
     var root = tree.GetRoot();
     var compilation = RoslynCompilationFactory.CreateCompilation(tree);
     var semanticModel = compilation.GetSemanticModel(tree);
-    return BuildAnalysisContext(source, filePath, options, semanticModel, root);
+    return BuildAnalysisContext(source, filePath, options, runtime, semanticModel, root);
   }
 
   private DeletionAnalysisContext BuildAnalysisContext(
     string source,
     string filePath,
     IReadOnlyDictionary<string, string> options,
+    DeletionAnalysisRuntime runtime,
     SemanticModel semanticModel,
     SyntaxNode root)
   {
@@ -125,7 +163,7 @@ public sealed class DeletionApplicationService
       source,
       filePath);
     var cpgAnalysisContext = new CpgAnalysisContext(graph, semanticModel, root);
-    var ruleContext = new RuleContext(cpgAnalysisContext, options);
+    var ruleContext = new RuleContext(cpgAnalysisContext, options, runtime: runtime);
 
     return new DeletionAnalysisContext(root, semanticModel, ruleContext);
   }

@@ -29,11 +29,12 @@ internal sealed class DeletionDirectoryAnalysisService
 
     internal PrototypeAnalysisResult AnalyzeDirectory(
       string directoryPath,
-      IReadOnlyDictionary<string, string> options)
+      IReadOnlyDictionary<string, string> options,
+      DeletionAnalysisRuntime runtime)
     {
         if (DeletionApplicationOptions.ShouldUseUnreferencedMethodFastPath(options))
         {
-            return AnalyzeDirectoryForUnreferencedMethods(directoryPath, options);
+            return AnalyzeDirectoryForUnreferencedMethods(directoryPath, options, runtime);
         }
 
         var filePaths = EnumerateSourceFiles(directoryPath).ToList();
@@ -50,10 +51,12 @@ internal sealed class DeletionDirectoryAnalysisService
           trees,
           compilation,
           options,
+          runtime,
           (filePath, _, semanticModel, root) => _application.Analyze(
             sourcesByPath[filePath],
             filePath,
             options,
+            runtime,
             semanticModel,
             root));
 
@@ -73,7 +76,8 @@ internal sealed class DeletionDirectoryAnalysisService
 
     private PrototypeAnalysisResult AnalyzeDirectoryForUnreferencedMethods(
       string directoryPath,
-      IReadOnlyDictionary<string, string> options)
+      IReadOnlyDictionary<string, string> options,
+      DeletionAnalysisRuntime runtime)
     {
         var stopwatch = Stopwatch.StartNew();
         var filePaths = EnumerateSourceFiles(directoryPath).ToList();
@@ -102,6 +106,7 @@ internal sealed class DeletionDirectoryAnalysisService
           trees,
           compilation,
           options,
+          runtime,
           (filePath, _, semanticModel, root) =>
           {
               var methodDeclarations = unreferencedMethodsByPath.TryGetValue(filePath, out var matches)
@@ -406,28 +411,43 @@ internal sealed class DeletionDirectoryAnalysisService
       IReadOnlyDictionary<string, SyntaxTree> trees,
       CSharpCompilation compilation,
       IReadOnlyDictionary<string, string> options,
+      DeletionAnalysisRuntime runtime,
       Func<string, SyntaxTree, SemanticModel, SyntaxNode, PrototypeAnalysisResult> analyzeFile)
     {
-        var fileResults = new PrototypeAnalysisResult[filePaths.Count];
-        var parallelOptions = new ParallelOptions
+        if (!runtime.ExecutionOptions.EnableDirectoryParallelism ||
+            runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism == 1 ||
+            filePaths.Count <= 1)
         {
-            MaxDegreeOfParallelism = DeletionApplicationOptions.ResolveMaxDegreeOfParallelism(options)
-        };
+            var serialResults = new PrototypeAnalysisResult[filePaths.Count];
+            for (var index = 0; index < filePaths.Count; index++)
+            {
+                var filePath = filePaths[index];
+                var tree = trees[filePath];
+                var semanticModel = compilation.GetSemanticModel(tree);
+                var root = tree.GetRoot();
+                serialResults[index] = analyzeFile(filePath, tree, semanticModel, root);
+            }
 
-        Parallel.For(
-          0,
-          filePaths.Count,
-          parallelOptions,
-          index =>
-          {
-              var filePath = filePaths[index];
-              var tree = trees[filePath];
-              var semanticModel = compilation.GetSemanticModel(tree);
-              var root = tree.GetRoot();
-              fileResults[index] = analyzeFile(filePath, tree, semanticModel, root);
-          });
+            return serialResults;
+        }
 
-        return fileResults;
+        var orderedResults = runtime.Scheduler.RunOrderedAsync(
+            filePaths.Count,
+            runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            (index, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var filePath = filePaths[index];
+                var tree = trees[filePath];
+                var semanticModel = compilation.GetSemanticModel(tree);
+                var root = tree.GetRoot();
+                return Task.FromResult(analyzeFile(filePath, tree, semanticModel, root));
+            },
+            runtime.ExecutionOptions.CancellationToken)
+          .GetAwaiter()
+          .GetResult();
+
+        return orderedResults.ToArray();
     }
 
     private PrototypeAnalysisResult FinalizeDirectoryResults(

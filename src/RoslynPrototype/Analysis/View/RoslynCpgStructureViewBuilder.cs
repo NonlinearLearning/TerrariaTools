@@ -22,10 +22,26 @@ public sealed class RoslynCpgStructureViewBuilder
         return Build(new SyntaxNode[] { root }, context);
     }
 
+    public RoslynCpgStructureView Build(
+      SyntaxNode root,
+      CpgAnalysisContext context,
+      string cacheScopeKey)
+    {
+        return Build(new SyntaxNode[] { root }, context, cacheScopeKey);
+    }
+
     /// <summary>
     /// 为多个离散代码片段构建同一份局部 CPG 视图。
     /// </summary>
     public RoslynCpgStructureView Build(IReadOnlyCollection<SyntaxNode> fragments, CpgAnalysisContext context)
+    {
+        return Build(fragments, context, null);
+    }
+
+    public RoslynCpgStructureView Build(
+      IReadOnlyCollection<SyntaxNode> fragments,
+      CpgAnalysisContext context,
+      string? cacheScopeKey)
     {
         if (fragments.Count == 0)
         {
@@ -34,7 +50,7 @@ public sealed class RoslynCpgStructureViewBuilder
 
         var fragmentList = fragments.ToList();
         var runCache = RunCaches.GetValue(context, static _ => new AnalysisRunCache());
-        var cacheKey = BuildFragmentSetKey(fragmentList);
+        var cacheKey = BuildFragmentSetKey(fragmentList, cacheScopeKey);
         if (runCache.TryGetView(cacheKey, out var cachedView))
         {
             return cachedView;
@@ -134,13 +150,18 @@ public sealed class RoslynCpgStructureViewBuilder
         }
     }
 
-    private static string BuildFragmentSetKey(IReadOnlyList<SyntaxNode> fragments)
+    private static string BuildFragmentSetKey(
+      IReadOnlyList<SyntaxNode> fragments,
+      string? cacheScopeKey)
     {
-        return string.Join(
+        var fragmentKey = string.Join(
             "|",
             fragments
                 .Select(fragment =>
                     $"{fragment.SyntaxTree.FilePath}:{fragment.SpanStart}:{fragment.Span.Length}:{fragment.RawKind}"));
+        return string.IsNullOrWhiteSpace(cacheScopeKey)
+          ? fragmentKey
+          : $"{cacheScopeKey}|{fragmentKey}";
     }
 
     /// <summary>

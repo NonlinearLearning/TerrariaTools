@@ -1,3 +1,5 @@
+using Rules;
+
 namespace RoslynPrototype.Application;
 
 internal static class DeletionApplicationOptions
@@ -103,5 +105,17 @@ internal static class DeletionApplicationOptions
         }
 
         return Math.Max(1, parsedValue);
+    }
+
+    internal static RoslynPrototypeExecutionOptions CreateExecutionOptions(
+      IReadOnlyDictionary<string, string> options)
+    {
+        return DeletionAnalysisRuntime.CreateExecutionOptions(options);
+    }
+
+    internal static DeletionAnalysisRuntime CreateRuntime(
+      IReadOnlyDictionary<string, string> options)
+    {
+        return DeletionAnalysisRuntime.CreateFromOptions(options);
     }
 }
