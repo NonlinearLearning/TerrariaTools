@@ -68,6 +68,7 @@ public sealed partial class RoslynCpgBuilder
           SpanEnd: operationNode.SpanEnd,
           Text: operationNode.Text));
         graph.AddEdge(operationNode, callSiteNode, RoslynCpgEdgeKind.SyntaxChild);
+        _callSiteNodesByInvocation[invocationOperation] = callSiteNode;
 
         if (targetMethod is not null)
         {
@@ -113,6 +114,8 @@ public sealed partial class RoslynCpgBuilder
           SpanEnd: operationNode.SpanEnd,
           Text: operationNode.Text));
         graph.AddEdge(operationNode, callSiteNode, RoslynCpgEdgeKind.SyntaxChild);
+        _propertyAccessorCallSiteNodesByKey[PropertyAccessorCallSiteKey(propertyReference, accessorMethod)] =
+          callSiteNode;
 
         foreach (var candidateMethod in resolvedCandidates)
         {

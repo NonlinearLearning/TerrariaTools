@@ -12,7 +12,9 @@ public sealed record RoslynCpgBuilderOptions(
   int MaxDegreeOfParallelism,
   int LargeFileLineThreshold,
   int LargeFileMethodThreshold,
-  int LargeMethodLineSpanThreshold)
+  int LargeMethodLineSpanThreshold,
+  bool EnableReferencedSymbolTypeReuse = true,
+  bool EnableOperationBackedSyntaxTypes = true)
 {
   public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
 
@@ -23,7 +25,9 @@ public sealed record RoslynCpgBuilderOptions(
       Math.Max(1, Environment.ProcessorCount),
       LargeFileLineThreshold: 800,
       LargeFileMethodThreshold: 8,
-      LargeMethodLineSpanThreshold: 80);
+      LargeMethodLineSpanThreshold: 80,
+      EnableReferencedSymbolTypeReuse: true,
+      EnableOperationBackedSyntaxTypes: true);
   }
 }
 
@@ -59,7 +63,12 @@ public sealed record RoslynCpgSyntaxPassTelemetry(
   long AddDeclaredSymbolEdgesElapsedMilliseconds,
   long AddReferencedSymbolEdgesElapsedMilliseconds,
   long AddTypeInfoElapsedMilliseconds,
+  long ResolveTypeInfoElapsedMilliseconds,
+  long AddSyntaxTypeEdgesElapsedMilliseconds,
   long AddTypeReferenceEdgesElapsedMilliseconds,
+  int TypeInfoQueryCount,
+  int TypeInfoResolvedCount,
+  int TypeInfoSymbolReuseCount,
   int SyntaxNodeCount,
   int SyntaxTokenCount)
 {
@@ -73,7 +82,12 @@ public sealed record RoslynCpgSyntaxPassTelemetry(
       AddDeclaredSymbolEdgesElapsedMilliseconds: 0,
       AddReferencedSymbolEdgesElapsedMilliseconds: 0,
       AddTypeInfoElapsedMilliseconds: 0,
+      ResolveTypeInfoElapsedMilliseconds: 0,
+      AddSyntaxTypeEdgesElapsedMilliseconds: 0,
       AddTypeReferenceEdgesElapsedMilliseconds: 0,
+      TypeInfoQueryCount: 0,
+      TypeInfoResolvedCount: 0,
+      TypeInfoSymbolReuseCount: 0,
       SyntaxNodeCount: 0,
       SyntaxTokenCount: 0);
   }

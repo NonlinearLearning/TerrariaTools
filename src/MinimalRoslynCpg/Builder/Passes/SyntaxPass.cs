@@ -34,6 +34,11 @@ namespace MinimalRoslynCpg.Builder
       RoslynCpgNode? Current,
       bool EmitTokens);
 
+    private readonly record struct SyntaxTypeResolution(
+      ITypeSymbol? TypeSymbol,
+      bool QueriedSemanticModel,
+      bool ReusedReferencedSymbolType);
+
     private sealed class SyntaxPassMetrics
     {
       public long TraversalElapsedMilliseconds { get; set; }
@@ -42,7 +47,12 @@ namespace MinimalRoslynCpg.Builder
       public long AddDeclaredSymbolEdgesElapsedMilliseconds { get; set; }
       public long AddReferencedSymbolEdgesElapsedMilliseconds { get; set; }
       public long AddTypeInfoElapsedMilliseconds { get; set; }
+      public long ResolveTypeInfoElapsedMilliseconds { get; set; }
+      public long AddSyntaxTypeEdgesElapsedMilliseconds { get; set; }
       public long AddTypeReferenceEdgesElapsedMilliseconds { get; set; }
+      public int TypeInfoQueryCount { get; set; }
+      public int TypeInfoResolvedCount { get; set; }
+      public int TypeInfoSymbolReuseCount { get; set; }
       public int SyntaxNodeCount { get; set; }
       public int SyntaxTokenCount { get; set; }
     }
@@ -67,7 +77,12 @@ namespace MinimalRoslynCpg.Builder
         metrics.AddDeclaredSymbolEdgesElapsedMilliseconds,
         metrics.AddReferencedSymbolEdgesElapsedMilliseconds,
         metrics.AddTypeInfoElapsedMilliseconds,
+        metrics.ResolveTypeInfoElapsedMilliseconds,
+        metrics.AddSyntaxTypeEdgesElapsedMilliseconds,
         metrics.AddTypeReferenceEdgesElapsedMilliseconds,
+        metrics.TypeInfoQueryCount,
+        metrics.TypeInfoResolvedCount,
+        metrics.TypeInfoSymbolReuseCount,
         metrics.SyntaxNodeCount,
         metrics.SyntaxTokenCount);
     }
@@ -144,20 +159,106 @@ namespace MinimalRoslynCpg.Builder
       metrics.AddDeclaredSymbolEdgesElapsedMilliseconds += declaredSymbolStopwatch.ElapsedMilliseconds;
 
       var referencedSymbolStopwatch = Stopwatch.StartNew();
-      AddReferencedSymbolEdges(syntax, syntaxNode, graph, semanticModel);
+      var referencedSymbol = CanReferenceSymbol(syntax) ? semanticModel.GetSymbolInfo(syntax).Symbol : null;
+      AddReferencedSymbolEdges(syntax, syntaxNode, referencedSymbol, graph);
       referencedSymbolStopwatch.Stop();
       metrics.AddReferencedSymbolEdgesElapsedMilliseconds += referencedSymbolStopwatch.ElapsedMilliseconds;
 
-      var typeInfoStopwatch = Stopwatch.StartNew();
-      AddTypeEdges(syntaxNode, semanticModel.GetTypeInfo(syntax).Type, graph);
-      typeInfoStopwatch.Stop();
-      metrics.AddTypeInfoElapsedMilliseconds += typeInfoStopwatch.ElapsedMilliseconds;
+      var shouldDeferToOperation = ShouldDeferSyntaxTypeToOperation(syntax);
+      if (shouldDeferToOperation)
+      {
+        _pendingOperationSyntaxTypeNodes.Add(syntax);
+      }
+
+      var resolveTypeInfoStopwatch = Stopwatch.StartNew();
+      var typeResolution = shouldDeferToOperation
+        ? new SyntaxTypeResolution(null, QueriedSemanticModel: false, ReusedReferencedSymbolType: false)
+        : ResolveSyntaxTypeSymbol(syntax, semanticModel, referencedSymbol);
+      resolveTypeInfoStopwatch.Stop();
+      metrics.ResolveTypeInfoElapsedMilliseconds += resolveTypeInfoStopwatch.ElapsedMilliseconds;
+      metrics.TypeInfoQueryCount += typeResolution.QueriedSemanticModel ? 1 : 0;
+      metrics.TypeInfoResolvedCount += typeResolution.TypeSymbol is null ? 0 : 1;
+      metrics.TypeInfoSymbolReuseCount += typeResolution.ReusedReferencedSymbolType ? 1 : 0;
+
+      var addTypeEdgesStopwatch = Stopwatch.StartNew();
+      AddTypeEdges(syntaxNode, typeResolution.TypeSymbol, graph);
+      addTypeEdgesStopwatch.Stop();
+      metrics.AddSyntaxTypeEdgesElapsedMilliseconds += addTypeEdgesStopwatch.ElapsedMilliseconds;
+      metrics.AddTypeInfoElapsedMilliseconds +=
+        resolveTypeInfoStopwatch.ElapsedMilliseconds + addTypeEdgesStopwatch.ElapsedMilliseconds;
 
       var typeReferenceStopwatch = Stopwatch.StartNew();
-      AddTypeReferenceEdges(syntax, syntaxNode, graph, semanticModel);
+      AddTypeReferenceEdges(syntax, syntaxNode, graph, semanticModel, typeResolution.TypeSymbol);
       typeReferenceStopwatch.Stop();
       metrics.AddTypeReferenceEdgesElapsedMilliseconds += typeReferenceStopwatch.ElapsedMilliseconds;
       return syntaxNode;
+    }
+
+    private SyntaxTypeResolution ResolveSyntaxTypeSymbol(
+      SyntaxNode syntax,
+      SemanticModel semanticModel,
+      ISymbol? referencedSymbol)
+    {
+      if (syntax is not ExpressionSyntax and not TypeSyntax and not BaseTypeSyntax)
+      {
+        return new SyntaxTypeResolution(null, QueriedSemanticModel: false, ReusedReferencedSymbolType: false);
+      }
+
+      if (_options.EnableReferencedSymbolTypeReuse &&
+          TryResolveTypeFromReferencedSymbol(referencedSymbol, out var reusedTypeSymbol))
+      {
+        return new SyntaxTypeResolution(
+          reusedTypeSymbol,
+          QueriedSemanticModel: false,
+          ReusedReferencedSymbolType: true);
+      }
+
+      var typeSymbol = syntax switch
+      {
+        BaseTypeSyntax baseType => semanticModel.GetTypeInfo(baseType.Type).Type,
+        _ => semanticModel.GetTypeInfo(syntax).Type,
+      };
+      return new SyntaxTypeResolution(typeSymbol, QueriedSemanticModel: true, ReusedReferencedSymbolType: false);
+    }
+
+    private static bool TryResolveTypeFromReferencedSymbol(ISymbol? symbol, out ITypeSymbol? typeSymbol)
+    {
+      typeSymbol = symbol switch
+      {
+        ILocalSymbol local => local.Type,
+        IParameterSymbol parameter => parameter.Type,
+        IFieldSymbol field => field.Type,
+        IPropertySymbol property => property.Type,
+        IEventSymbol eventSymbol => eventSymbol.Type,
+        ITypeSymbol type => type,
+        _ => null,
+      };
+      if (typeSymbol is null || typeSymbol.TypeKind is TypeKind.Dynamic or TypeKind.Error)
+      {
+        typeSymbol = null;
+        return false;
+      }
+
+      return true;
+    }
+
+    private bool ShouldDeferSyntaxTypeToOperation(SyntaxNode syntax)
+    {
+      if (!_options.EnableOperationBackedSyntaxTypes || syntax is not ExpressionSyntax)
+      {
+        return false;
+      }
+
+      return syntax is IdentifierNameSyntax or
+        MemberAccessExpressionSyntax or
+        BinaryExpressionSyntax or
+        ConditionalExpressionSyntax or
+        InvocationExpressionSyntax or
+        ElementAccessExpressionSyntax or
+        ParenthesizedExpressionSyntax or
+        CastExpressionSyntax or
+        PrefixUnaryExpressionSyntax or
+        PostfixUnaryExpressionSyntax;
     }
 
     private static void EmitChildTokens(

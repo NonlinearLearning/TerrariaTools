@@ -169,8 +169,8 @@ public sealed partial class RoslynCpgBuilder
         var flowNodeIds = flowNodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
         var nodesById = flowNodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
         var buildNeighborsStopwatch = Stopwatch.StartNew();
-        var predecessors = BuildFlowNeighbors(graph, flowNodeIds, incoming: true);
-        var successors = BuildFlowNeighbors(graph, flowNodeIds, incoming: false);
+        var predecessors = BuildFlowNeighborsFromCache(flowNodeIds, incoming: true);
+        var successors = BuildFlowNeighborsFromCache(flowNodeIds, incoming: false);
         buildNeighborsStopwatch.Stop();
         metrics.BuildFlowNeighborsElapsedMilliseconds += buildNeighborsStopwatch.ElapsedMilliseconds;
         var inSets = flowNodes.ToDictionary(node => node.Id, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
@@ -231,28 +231,25 @@ public sealed partial class RoslynCpgBuilder
         metrics.ReachingDefinitionEdgeElapsedMilliseconds += reachingDefinitionStopwatch.ElapsedMilliseconds;
     }
 
-    private static Dictionary<string, List<string>> BuildFlowNeighbors(RoslynCpgGraph graph, HashSet<string> flowNodeIds, bool incoming)
+    private Dictionary<string, List<string>> BuildFlowNeighborsFromCache(HashSet<string> flowNodeIds, bool incoming)
     {
         var neighbors = flowNodeIds.ToDictionary(nodeId => nodeId, _ => new List<string>(), StringComparer.Ordinal);
-        foreach (var edge in graph.Edges)
+        foreach (var nodeId in flowNodeIds)
         {
-            if (!IsControlFlowEdge(edge.Kind))
+            var cachedNeighbors = incoming
+              ? GetCachedCfgPredecessors(nodeId)
+              : GetCachedCfgSuccessors(nodeId);
+            if (cachedNeighbors.Count == 0)
             {
                 continue;
             }
 
-            if (!flowNodeIds.Contains(edge.SourceId) || !flowNodeIds.Contains(edge.TargetId))
+            foreach (var neighborNodeId in cachedNeighbors)
             {
-                continue;
-            }
-
-            if (incoming)
-            {
-                neighbors[edge.TargetId].Add(edge.SourceId);
-            }
-            else
-            {
-                neighbors[edge.SourceId].Add(edge.TargetId);
+                if (flowNodeIds.Contains(neighborNodeId))
+                {
+                    neighbors[nodeId].Add(neighborNodeId);
+                }
             }
         }
 
@@ -272,11 +269,6 @@ public sealed partial class RoslynCpgBuilder
           FactsConflict(priorFact, definedFact));
         outgoingDefinitions.Add(nodeId);
         return outgoingDefinitions;
-    }
-
-    private static bool IsControlFlowEdge(RoslynCpgEdgeKind edgeKind)
-    {
-        return edgeKind is RoslynCpgEdgeKind.CfgNext or RoslynCpgEdgeKind.CfgTrue or RoslynCpgEdgeKind.CfgFalse;
     }
 
     private static bool FactsMatch(DefinitionFact reachingFact, DefinitionFact usedFact)
@@ -536,23 +528,18 @@ public sealed partial class RoslynCpgBuilder
 
     private RoslynCpgNode? FindCallSiteNode(IInvocationOperation invocationOperation, RoslynCpgGraph graph)
     {
-        var invocationNode = GetOrCreateOperationNode(invocationOperation, graph);
-        return graph.Nodes.FirstOrDefault(node =>
-          node.Kind == RoslynCpgNodeKind.CallSite &&
-          node.FilePath == invocationNode.FilePath &&
-          node.SpanStart == invocationNode.SpanStart &&
-          node.SpanEnd == invocationNode.SpanEnd);
+        return _callSiteNodesByInvocation.TryGetValue(invocationOperation, out var callSiteNode)
+          ? callSiteNode
+          : null;
     }
 
     private RoslynCpgNode? FindPropertyAccessorCallSiteNode(IPropertyReferenceOperation propertyReference, IMethodSymbol accessorMethod, RoslynCpgGraph graph)
     {
-        var propertyNode = GetOrCreateOperationNode(propertyReference, graph);
-        return graph.Nodes.FirstOrDefault(node =>
-          node.Kind == RoslynCpgNodeKind.CallSite &&
-          node.Name == accessorMethod.Name &&
-          node.FilePath == propertyNode.FilePath &&
-          node.SpanStart == propertyNode.SpanStart &&
-          node.SpanEnd == propertyNode.SpanEnd);
+        return _propertyAccessorCallSiteNodesByKey.TryGetValue(
+          PropertyAccessorCallSiteKey(propertyReference, accessorMethod),
+          out var callSiteNode)
+            ? callSiteNode
+            : null;
     }
 
     private static DefinitionFact? DefinedFact(IOperation operation)

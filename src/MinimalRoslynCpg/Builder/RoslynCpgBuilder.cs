@@ -49,6 +49,12 @@ public sealed partial class RoslynCpgBuilder
     private readonly Dictionary<string, List<IMethodSymbol>> _methodSymbolsByFullName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<IMethodSymbol>> _methodSymbolsByNameAndSignature = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<INamedTypeSymbol>> _baseTypeCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _cfgPredecessorsByNodeId = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _cfgSuccessorsByNodeId = new(StringComparer.Ordinal);
+    private readonly Dictionary<IInvocationOperation, RoslynCpgNode> _callSiteNodesByInvocation =
+      new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, RoslynCpgNode> _propertyAccessorCallSiteNodesByKey = new(StringComparer.Ordinal);
+    private readonly HashSet<SyntaxNode> _pendingOperationSyntaxTypeNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<INamedTypeSymbol> _declaredTypes = new();
     private readonly RoslynCpgBuilderOptions _options;
     private int _operationSequence;
@@ -97,6 +103,11 @@ public sealed partial class RoslynCpgBuilder
         _methodSymbolsByFullName.Clear();
         _methodSymbolsByNameAndSignature.Clear();
         _baseTypeCache.Clear();
+        _cfgPredecessorsByNodeId.Clear();
+        _cfgSuccessorsByNodeId.Clear();
+        _callSiteNodesByInvocation.Clear();
+        _propertyAccessorCallSiteNodesByKey.Clear();
+        _pendingOperationSyntaxTypeNodes.Clear();
         _declaredTypes.Clear();
         _operationSequence = 0;
         _referenceSequence = 0;
@@ -116,6 +127,8 @@ public sealed partial class RoslynCpgBuilder
             RunPipeline(PartitionedPreOperationPipeline, context);
 
             RunPartitionedOperationPass(context, operationBuildStrategy.OperationRoots);
+
+            CompleteOperationBackedSyntaxTypes(context);
 
             RunPipeline(PartitionedPostOperationPipeline, context);
         }
@@ -138,6 +151,90 @@ public sealed partial class RoslynCpgBuilder
         {
             pass.Run(this, context);
         }
+    }
+
+    private void CompleteOperationBackedSyntaxTypes(RoslynCpgBuildContext context)
+    {
+        foreach (var syntax in _pendingOperationSyntaxTypeNodes.ToArray())
+        {
+            if (!_syntaxNodes.TryGetValue(syntax, out var syntaxNode))
+            {
+                continue;
+            }
+
+            var typeSymbol = context.SemanticModel.GetTypeInfo(syntax).Type;
+            AddTypeEdges(syntaxNode, typeSymbol, context.Graph);
+        }
+
+        _pendingOperationSyntaxTypeNodes.Clear();
+    }
+
+    private void AddOperationBackedSyntaxTypeEdge(IOperation operation, RoslynCpgGraph graph)
+    {
+        if (!_pendingOperationSyntaxTypeNodes.Remove(operation.Syntax) ||
+            !_syntaxNodes.TryGetValue(operation.Syntax, out var syntaxNode))
+        {
+            return;
+        }
+
+        if (operation.Type is null)
+        {
+            _pendingOperationSyntaxTypeNodes.Add(operation.Syntax);
+            return;
+        }
+
+        AddTypeEdges(syntaxNode, operation.Type, graph);
+    }
+
+    private void AddControlFlowEdge(
+      RoslynCpgNode sourceNode,
+      RoslynCpgNode targetNode,
+      RoslynCpgEdgeKind edgeKind,
+      RoslynCpgGraph graph)
+    {
+        graph.AddEdge(sourceNode, targetNode, edgeKind);
+        if (edgeKind is not (RoslynCpgEdgeKind.CfgNext or RoslynCpgEdgeKind.CfgTrue or RoslynCpgEdgeKind.CfgFalse))
+        {
+            return;
+        }
+
+        AddCfgNeighbor(_cfgSuccessorsByNodeId, sourceNode.Id, targetNode.Id);
+        AddCfgNeighbor(_cfgPredecessorsByNodeId, targetNode.Id, sourceNode.Id);
+    }
+
+    private IReadOnlyCollection<string> GetCachedCfgPredecessors(string nodeId)
+    {
+        return _cfgPredecessorsByNodeId.TryGetValue(nodeId, out var predecessors)
+          ? predecessors
+          : Array.Empty<string>();
+    }
+
+    private IReadOnlyCollection<string> GetCachedCfgSuccessors(string nodeId)
+    {
+        return _cfgSuccessorsByNodeId.TryGetValue(nodeId, out var successors)
+          ? successors
+          : Array.Empty<string>();
+    }
+
+    private static void AddCfgNeighbor(
+      Dictionary<string, HashSet<string>> neighborsByNodeId,
+      string nodeId,
+      string neighborNodeId)
+    {
+        if (!neighborsByNodeId.TryGetValue(nodeId, out var neighbors))
+        {
+            neighbors = new HashSet<string>(StringComparer.Ordinal);
+            neighborsByNodeId[nodeId] = neighbors;
+        }
+
+        neighbors.Add(neighborNodeId);
+    }
+
+    private static string PropertyAccessorCallSiteKey(
+      IPropertyReferenceOperation propertyReference,
+      IMethodSymbol accessorMethod)
+    {
+        return $"{propertyReference.Syntax.SpanStart}:{propertyReference.Syntax.Span.End}:{accessorMethod.Name}";
     }
 
 
@@ -170,6 +267,11 @@ public sealed partial class RoslynCpgBuilder
     private void AddDeclaredSymbolEdges(SyntaxNode syntax, RoslynCpgNode syntaxNode, RoslynCpgGraph graph, SemanticModel semanticModel)
     {
         var symbol = semanticModel.GetDeclaredSymbol(syntax);
+        AddDeclaredSymbolEdges(syntaxNode, symbol, graph);
+    }
+
+    private void AddDeclaredSymbolEdges(RoslynCpgNode syntaxNode, ISymbol? symbol, RoslynCpgGraph graph)
+    {
         if (symbol is null)
         {
             return;
@@ -221,6 +323,15 @@ public sealed partial class RoslynCpgBuilder
         }
 
         var symbol = semanticModel.GetSymbolInfo(syntax).Symbol;
+        AddReferencedSymbolEdges(syntax, syntaxNode, symbol, graph);
+    }
+
+    private void AddReferencedSymbolEdges(
+      SyntaxNode syntax,
+      RoslynCpgNode syntaxNode,
+      ISymbol? symbol,
+      RoslynCpgGraph graph)
+    {
         if (symbol is null)
         {
             return;
@@ -268,14 +379,19 @@ public sealed partial class RoslynCpgBuilder
         graph.AddEdge(sourceNode, typeNode, RoslynCpgEdgeKind.EvalType);
     }
 
-    private void AddTypeReferenceEdges(SyntaxNode syntax, RoslynCpgNode syntaxNode, RoslynCpgGraph graph, SemanticModel semanticModel)
+    private void AddTypeReferenceEdges(
+      SyntaxNode syntax,
+      RoslynCpgNode syntaxNode,
+      RoslynCpgGraph graph,
+      SemanticModel semanticModel,
+      ITypeSymbol? resolvedTypeSymbol = null)
     {
         if (syntax is not TypeSyntax and not ObjectCreationExpressionSyntax and not BaseTypeSyntax)
         {
             return;
         }
 
-        var typeSymbol = syntax switch
+        var typeSymbol = resolvedTypeSymbol ?? syntax switch
         {
             TypeSyntax typeSyntax => semanticModel.GetTypeInfo(typeSyntax).Type,
             ObjectCreationExpressionSyntax creation => semanticModel.GetTypeInfo(creation).Type,

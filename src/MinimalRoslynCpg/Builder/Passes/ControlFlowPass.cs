@@ -53,42 +53,46 @@ public sealed partial class RoslynCpgBuilder
 
                 if (parameterNodes.Count > 0)
                 {
-                    graph.AddEdge(entryNode, parameterNodes[0], RoslynCpgEdgeKind.CfgNext);
+                    AddControlFlowEdge(entryNode, parameterNodes[0], RoslynCpgEdgeKind.CfgNext, graph);
                     for (var index = 0; index < parameterNodes.Count - 1; index += 1)
                     {
-                        graph.AddEdge(parameterNodes[index], parameterNodes[index + 1], RoslynCpgEdgeKind.CfgNext);
+                        AddControlFlowEdge(parameterNodes[index], parameterNodes[index + 1], RoslynCpgEdgeKind.CfgNext, graph);
                     }
 
                     if (firstOperation is not null)
                     {
-                        graph.AddEdge(parameterNodes[^1], GetOrCreateOperationNode(firstOperation, graph), RoslynCpgEdgeKind.CfgNext);
+                        AddControlFlowEdge(
+                          parameterNodes[^1],
+                          GetOrCreateOperationNode(firstOperation, graph),
+                          RoslynCpgEdgeKind.CfgNext,
+                          graph);
                     }
                     else
                     {
-                        graph.AddEdge(parameterNodes[^1], returnNode, RoslynCpgEdgeKind.CfgNext);
+                        AddControlFlowEdge(parameterNodes[^1], returnNode, RoslynCpgEdgeKind.CfgNext, graph);
                     }
                 }
                 else if (firstOperation is not null)
                 {
-                    graph.AddEdge(entryNode, GetOrCreateOperationNode(firstOperation, graph), RoslynCpgEdgeKind.CfgNext);
+                    AddControlFlowEdge(entryNode, GetOrCreateOperationNode(firstOperation, graph), RoslynCpgEdgeKind.CfgNext, graph);
                 }
                 else
                 {
-                    graph.AddEdge(entryNode, returnNode, RoslynCpgEdgeKind.CfgNext);
+                    AddControlFlowEdge(entryNode, returnNode, RoslynCpgEdgeKind.CfgNext, graph);
                 }
 
                 foreach (var returnOperation in methodBlock.DescendantsAndSelf().OfType<IReturnOperation>())
                 {
-                    graph.AddEdge(GetOrCreateOperationNode(returnOperation, graph), returnNode, RoslynCpgEdgeKind.CfgNext);
+                    AddControlFlowEdge(GetOrCreateOperationNode(returnOperation, graph), returnNode, RoslynCpgEdgeKind.CfgNext, graph);
                 }
 
                 var terminalOperation = methodBlock.Operations.LastOrDefault();
                 if (terminalOperation is not null && !ContainsExplicitReturn(methodBlock) && !StopsSequentialFlow(terminalOperation))
                 {
-                    graph.AddEdge(GetOrCreateOperationNode(terminalOperation, graph), returnNode, RoslynCpgEdgeKind.CfgNext);
+                    AddControlFlowEdge(GetOrCreateOperationNode(terminalOperation, graph), returnNode, RoslynCpgEdgeKind.CfgNext, graph);
                 }
 
-                graph.AddEdge(returnNode, exitNode, RoslynCpgEdgeKind.CfgNext);
+                AddControlFlowEdge(returnNode, exitNode, RoslynCpgEdgeKind.CfgNext, graph);
             }
 
             AddSequentialEdges(methodBlock.Operations, graph);
@@ -130,7 +134,11 @@ public sealed partial class RoslynCpgBuilder
                 continue;
             }
 
-            graph.AddEdge(GetOrCreateOperationNode(ordered[index], graph), GetOrCreateOperationNode(ordered[index + 1], graph), RoslynCpgEdgeKind.CfgNext);
+            AddControlFlowEdge(
+              GetOrCreateOperationNode(ordered[index], graph),
+              GetOrCreateOperationNode(ordered[index + 1], graph),
+              RoslynCpgEdgeKind.CfgNext,
+              graph);
         }
 
         foreach (var nestedBlock in ordered.OfType<IBlockOperation>())
@@ -146,12 +154,12 @@ public sealed partial class RoslynCpgBuilder
         var falseNode = conditional.WhenFalse is null ? null : GetOrCreateOperationNode(conditional.WhenFalse, graph);
         if (trueNode is not null)
         {
-            graph.AddEdge(conditionNode, trueNode, RoslynCpgEdgeKind.CfgTrue);
+            AddControlFlowEdge(conditionNode, trueNode, RoslynCpgEdgeKind.CfgTrue, graph);
         }
 
         if (falseNode is not null)
         {
-            graph.AddEdge(conditionNode, falseNode, RoslynCpgEdgeKind.CfgFalse);
+            AddControlFlowEdge(conditionNode, falseNode, RoslynCpgEdgeKind.CfgFalse, graph);
         }
     }
 
@@ -169,13 +177,13 @@ public sealed partial class RoslynCpgBuilder
             return;
         }
 
-        graph.AddEdge(conditionNode, bodyNode, RoslynCpgEdgeKind.CfgTrue);
-        graph.AddEdge(bodyNode, conditionNode, RoslynCpgEdgeKind.CfgNext);
+        AddControlFlowEdge(conditionNode, bodyNode, RoslynCpgEdgeKind.CfgTrue, graph);
+        AddControlFlowEdge(bodyNode, conditionNode, RoslynCpgEdgeKind.CfgNext, graph);
 
         var exitTarget = NextSiblingOperation(whileLoop);
         if (exitTarget is not null)
         {
-            graph.AddEdge(conditionNode, GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgFalse);
+            AddControlFlowEdge(conditionNode, GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgFalse, graph);
         }
     }
 
@@ -186,13 +194,13 @@ public sealed partial class RoslynCpgBuilder
         if (conditionOperation is not null && bodyNode is not null)
         {
             var conditionNode = GetOrCreateOperationNode(conditionOperation, graph);
-            graph.AddEdge(conditionNode, bodyNode, RoslynCpgEdgeKind.CfgTrue);
-            graph.AddEdge(bodyNode, conditionNode, RoslynCpgEdgeKind.CfgNext);
+            AddControlFlowEdge(conditionNode, bodyNode, RoslynCpgEdgeKind.CfgTrue, graph);
+            AddControlFlowEdge(bodyNode, conditionNode, RoslynCpgEdgeKind.CfgNext, graph);
 
             var exitTarget = NextSiblingOperation(forLoop);
             if (exitTarget is not null)
             {
-                graph.AddEdge(conditionNode, GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgFalse);
+                AddControlFlowEdge(conditionNode, GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgFalse, graph);
             }
         }
     }
@@ -220,7 +228,7 @@ public sealed partial class RoslynCpgBuilder
                 continue;
             }
 
-            graph.AddEdge(switchValueNode, GetOrCreateOperationNode(caseBodyEntry, graph), RoslynCpgEdgeKind.CfgTrue);
+            AddControlFlowEdge(switchValueNode, GetOrCreateOperationNode(caseBodyEntry, graph), RoslynCpgEdgeKind.CfgTrue, graph);
 
             if (@case.Clauses.Any(clause => clause.CaseKind == CaseKind.Default))
             {
@@ -230,7 +238,7 @@ public sealed partial class RoslynCpgBuilder
 
         if (!hasDefaultCase && exitTarget is not null)
         {
-            graph.AddEdge(switchValueNode, GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgFalse);
+            AddControlFlowEdge(switchValueNode, GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgFalse, graph);
         }
 
         for (var index = 0; index < caseEntries.Count; index += 1)
@@ -247,17 +255,19 @@ public sealed partial class RoslynCpgBuilder
             {
                 if (nextCaseEntry is not null)
                 {
-                    graph.AddEdge(
+                    AddControlFlowEdge(
                       GetOrCreateOperationNode(caseTerminal, graph),
                       GetOrCreateOperationNode(nextCaseEntry, graph),
-                      RoslynCpgEdgeKind.CfgNext);
+                      RoslynCpgEdgeKind.CfgNext,
+                      graph);
                 }
                 else if (exitTarget is not null)
                 {
-                    graph.AddEdge(
+                    AddControlFlowEdge(
                       GetOrCreateOperationNode(caseTerminal, graph),
                       GetOrCreateOperationNode(exitTarget, graph),
-                      RoslynCpgEdgeKind.CfgNext);
+                      RoslynCpgEdgeKind.CfgNext,
+                      graph);
                 }
             }
 
@@ -267,10 +277,11 @@ public sealed partial class RoslynCpgBuilder
                 {
                     if (exitTarget is not null)
                     {
-                        graph.AddEdge(
+                        AddControlFlowEdge(
                           GetOrCreateOperationNode(operation, graph),
                           GetOrCreateOperationNode(exitTarget, graph),
-                          RoslynCpgEdgeKind.CfgNext);
+                          RoslynCpgEdgeKind.CfgNext,
+                          graph);
                     }
                 }
             }
@@ -306,11 +317,11 @@ public sealed partial class RoslynCpgBuilder
 
         if (tryBodyEntry is not null)
         {
-            graph.AddEdge(GetOrCreateOperationNode(tryOperation, graph), GetOrCreateOperationNode(tryBodyEntry, graph), RoslynCpgEdgeKind.CfgNext);
+            AddControlFlowEdge(GetOrCreateOperationNode(tryOperation, graph), GetOrCreateOperationNode(tryBodyEntry, graph), RoslynCpgEdgeKind.CfgNext, graph);
         }
         else if (finallyEntry is not null)
         {
-            graph.AddEdge(GetOrCreateOperationNode(tryOperation, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext);
+            AddControlFlowEdge(GetOrCreateOperationNode(tryOperation, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext, graph);
         }
 
         foreach (var catchClause in tryOperation.Catches)
@@ -319,12 +330,12 @@ public sealed partial class RoslynCpgBuilder
             var catchTerminal = LastExecutableOperation(catchClause.Handler);
             if (tryBodyEntry is not null && catchEntry is not null)
             {
-                graph.AddEdge(GetOrCreateOperationNode(tryBodyEntry, graph), GetOrCreateOperationNode(catchEntry, graph), RoslynCpgEdgeKind.CfgFalse);
+                AddControlFlowEdge(GetOrCreateOperationNode(tryBodyEntry, graph), GetOrCreateOperationNode(catchEntry, graph), RoslynCpgEdgeKind.CfgFalse, graph);
             }
 
             if (catchEntry is not null && finallyEntry is not null)
             {
-                graph.AddEdge(GetOrCreateOperationNode(catchEntry, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext);
+                AddControlFlowEdge(GetOrCreateOperationNode(catchEntry, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext, graph);
             }
 
             if (catchTerminal is not null &&
@@ -333,11 +344,11 @@ public sealed partial class RoslynCpgBuilder
             {
                 if (finallyEntry is not null)
                 {
-                    graph.AddEdge(GetOrCreateOperationNode(catchTerminal, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext);
+                    AddControlFlowEdge(GetOrCreateOperationNode(catchTerminal, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext, graph);
                 }
                 else if (exitTarget is not null)
                 {
-                    graph.AddEdge(GetOrCreateOperationNode(catchTerminal, graph), GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgNext);
+                    AddControlFlowEdge(GetOrCreateOperationNode(catchTerminal, graph), GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgNext, graph);
                 }
             }
         }
@@ -346,22 +357,22 @@ public sealed partial class RoslynCpgBuilder
         {
             if (finallyEntry is not null)
             {
-                graph.AddEdge(GetOrCreateOperationNode(tryTerminal, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext);
+                AddControlFlowEdge(GetOrCreateOperationNode(tryTerminal, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext, graph);
             }
             else if (exitTarget is not null)
             {
-                graph.AddEdge(GetOrCreateOperationNode(tryTerminal, graph), GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgNext);
+                AddControlFlowEdge(GetOrCreateOperationNode(tryTerminal, graph), GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgNext, graph);
             }
         }
 
         var finallyTerminal = tryOperation.Finally is null ? null : LastExecutableOperation(tryOperation.Finally);
         if (finallyTerminal is not null && exitTarget is not null && !StopsSequentialFlow(finallyTerminal))
         {
-            graph.AddEdge(GetOrCreateOperationNode(finallyTerminal, graph), GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgNext);
+            AddControlFlowEdge(GetOrCreateOperationNode(finallyTerminal, graph), GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgNext, graph);
         }
         else if (finallyEntry is not null && exitTarget is not null)
         {
-            graph.AddEdge(GetOrCreateOperationNode(finallyEntry, graph), GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgNext);
+            AddControlFlowEdge(GetOrCreateOperationNode(finallyEntry, graph), GetOrCreateOperationNode(exitTarget, graph), RoslynCpgEdgeKind.CfgNext, graph);
         }
 
         if (finallyEntry is not null)
@@ -373,7 +384,7 @@ public sealed partial class RoslynCpgBuilder
                     continue;
                 }
 
-                graph.AddEdge(GetOrCreateOperationNode(returnOperation, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext);
+                AddControlFlowEdge(GetOrCreateOperationNode(returnOperation, graph), GetOrCreateOperationNode(finallyEntry, graph), RoslynCpgEdgeKind.CfgNext, graph);
             }
         }
     }
@@ -395,18 +406,20 @@ public sealed partial class RoslynCpgBuilder
                     var branch = (IBranchOperation)operation;
                     if (branch.BranchKind == BranchKind.Continue && targets.ContinueTarget is not null)
                     {
-                        graph.AddEdge(
+                        AddControlFlowEdge(
                           GetOrCreateOperationNode(operation, graph),
                           GetOrCreateOperationNode(targets.ContinueTarget, graph),
-                          RoslynCpgEdgeKind.CfgNext);
+                          RoslynCpgEdgeKind.CfgNext,
+                          graph);
                     }
 
                     if (branch.BranchKind == BranchKind.Break && targets.BreakTarget is not null)
                     {
-                        graph.AddEdge(
+                        AddControlFlowEdge(
                           GetOrCreateOperationNode(operation, graph),
                           GetOrCreateOperationNode(targets.BreakTarget, graph),
-                          RoslynCpgEdgeKind.CfgNext);
+                          RoslynCpgEdgeKind.CfgNext,
+                          graph);
                     }
                 }
             }

@@ -114,6 +114,7 @@ public sealed partial class RoslynCpgBuilder
 
       AddTypeEdges(operationNode, record.Operation.Type, graph);
       AddEvalTypeEdge(operationNode, record.Operation.Type, graph);
+      AddOperationBackedSyntaxTypeEdge(record.Operation, graph);
 
       var resolvedSymbol = ResolveOperationSymbol(record.Operation);
       if (resolvedSymbol is not null)

@@ -30,6 +30,7 @@ namespace MinimalRoslynCpg.Builder
     internal void RunOperationPass(RoslynCpgBuildContext context)
     {
       VisitOperationRoots(GetOperationRootPlans(context.Root, context.SemanticModel), context.Graph, context.SemanticModel);
+      CompleteOperationBackedSyntaxTypes(context);
     }
 
     private void VisitOperationRoots(
@@ -129,6 +130,7 @@ namespace MinimalRoslynCpg.Builder
 
       AddTypeEdges(operationNode, operation.Type, graph);
       AddEvalTypeEdge(operationNode, operation.Type, graph);
+      AddOperationBackedSyntaxTypeEdge(operation, graph);
 
       var resolvedSymbol = ResolveOperationSymbol(operation);
       if (resolvedSymbol is not null)
