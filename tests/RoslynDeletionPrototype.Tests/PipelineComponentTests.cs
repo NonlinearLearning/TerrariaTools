@@ -3584,6 +3584,111 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void AnalyzeFromArgs_ForDirectoryDeleteClass_FastDirectoryMode_TargetNameFilter_ReducesAnalyzedFiles()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "delete-class-fast-directory-target-filter-project");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "PlayerInput.cs"),
+          """
+          namespace Demo.Input;
+
+          public sealed class PlayerInput
+          {
+          }
+          """);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "Consumer.cs"),
+          """
+          namespace Demo;
+
+          using Demo.Input;
+
+          public sealed class Consumer
+          {
+            public PlayerInput Current { get; } = new PlayerInput();
+          }
+          """);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "Unrelated.cs"),
+          """
+          namespace Demo;
+
+          public sealed class Unrelated
+          {
+            public int Count() => 42;
+          }
+          """);
+        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var result = application.AnalyzeFromArgs(new[]
+        {
+          projectDirectory,
+          "--delete-class",
+          "PlayerInput",
+          "--fast-delete-class-directory",
+          "--filter-delete-class-files-by-target-name",
+          "--no-diff"
+        });
+
+        var stats = Assert.IsType<AnalysisStats>(result.Stats);
+        Assert.Equal(3, stats.ScannedFileCount);
+        Assert.Equal(2, stats.AnalyzedFileCount);
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_ForDirectoryDeleteClass_FastDirectoryMode_WithoutTargetNameFilter_KeepsAllFilesAnalyzed()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "delete-class-fast-directory-target-filter-disabled-project");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "PlayerInput.cs"),
+          """
+          namespace Demo.Input;
+
+          public sealed class PlayerInput
+          {
+          }
+          """);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "Consumer.cs"),
+          """
+          namespace Demo;
+
+          using Demo.Input;
+
+          public sealed class Consumer
+          {
+            public PlayerInput Current { get; } = new PlayerInput();
+          }
+          """);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "Unrelated.cs"),
+          """
+          namespace Demo;
+
+          public sealed class Unrelated
+          {
+            public int Count() => 42;
+          }
+          """);
+        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var result = application.AnalyzeFromArgs(new[]
+        {
+          projectDirectory,
+          "--delete-class",
+          "PlayerInput",
+          "--fast-delete-class-directory",
+          "--no-diff"
+        });
+
+        var stats = Assert.IsType<AnalysisStats>(result.Stats);
+        Assert.Equal(3, stats.ScannedFileCount);
+        Assert.Equal(3, stats.AnalyzedFileCount);
+    }
+
+    [Fact]
     public void AnalyzeFromArgs_ForDirectoryDeleteUnreferencedMethods_RemovesOnlyDeadPrivateMethods()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-unreferenced-method-project");

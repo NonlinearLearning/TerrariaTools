@@ -29,11 +29,29 @@ namespace MinimalRoslynCpg.Builder
   {
     internal void RunOperationPass(RoslynCpgBuildContext context)
     {
-      VisitOperationRoots(context.Root, context.Graph, context.SemanticModel);
+      VisitOperationRoots(GetOperationRootPlans(context.Root, context.SemanticModel), context.Graph, context.SemanticModel);
     }
 
-    private void VisitOperationRoots(SyntaxNode root, RoslynCpgGraph graph, SemanticModel semanticModel)
+    private void VisitOperationRoots(
+      IReadOnlyList<OperationRootPlan> operationRoots,
+      RoslynCpgGraph graph,
+      SemanticModel semanticModel)
     {
+      foreach (var operationRoot in operationRoots)
+      {
+        AddOperationTree(
+          semanticModel.GetOperation(operationRoot.BodySyntax),
+          parentOperation: null,
+          owningMethod: operationRoot.OwningMethod,
+          graph);
+      }
+    }
+
+    private static IReadOnlyList<OperationRootPlan> GetOperationRootPlans(SyntaxNode root, SemanticModel semanticModel)
+    {
+      var operationRoots = new List<OperationRootPlan>();
+      var order = 0;
+
       foreach (var method in root.DescendantNodes().OfType<BaseMethodDeclarationSyntax>())
       {
         var methodSymbol = semanticModel.GetDeclaredSymbol(method) as IMethodSymbol;
@@ -45,10 +63,13 @@ namespace MinimalRoslynCpg.Builder
           ConstructorDeclarationSyntax x when x.ExpressionBody is not null => x.ExpressionBody.Expression,
           _ => null,
         };
-        if (bodySyntax is not null)
+        if (bodySyntax is null)
         {
-          AddOperationTree(semanticModel.GetOperation(bodySyntax), parentOperation: null, owningMethod: methodSymbol, graph);
+          continue;
         }
+
+        operationRoots.Add(new OperationRootPlan(bodySyntax, methodSymbol, order));
+        order += 1;
       }
 
       foreach (var property in root.DescendantNodes().OfType<PropertyDeclarationSyntax>())
@@ -62,17 +83,23 @@ namespace MinimalRoslynCpg.Builder
             { ExpressionBody: not null } x => x.ExpressionBody.Expression,
             _ => null,
           };
-          if (bodySyntax is not null)
+          if (bodySyntax is null)
           {
-            AddOperationTree(semanticModel.GetOperation(bodySyntax), parentOperation: null, owningMethod: accessorSymbol, graph);
+            continue;
           }
+
+          operationRoots.Add(new OperationRootPlan(bodySyntax, accessorSymbol, order));
+          order += 1;
         }
       }
 
       foreach (var statement in root.DescendantNodes().OfType<GlobalStatementSyntax>())
       {
-        AddOperationTree(semanticModel.GetOperation(statement.Statement), parentOperation: null, owningMethod: null, graph);
+        operationRoots.Add(new OperationRootPlan(statement.Statement, OwningMethod: null, order));
+        order += 1;
       }
+
+      return operationRoots;
     }
 
     private void AddOperationTree(IOperation? operation, IOperation? parentOperation, IMethodSymbol? owningMethod, RoslynCpgGraph graph)

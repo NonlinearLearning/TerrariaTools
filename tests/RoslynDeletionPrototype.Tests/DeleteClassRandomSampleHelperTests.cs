@@ -8,6 +8,7 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
     private readonly string _sourceDirectory;
     private const string DeleteClassTargetName = "PlayerInput";
     private const int TerrariaTimingReferenceFileLimit = 99;
+    private const int TerrariaTimingMaxDegreeOfParallelism = 64;
     private const string TerrariaExternalCodeSetPath =
       @"D:\lodes\TR\Backup\New1.27\1.45 2\TR";
 
@@ -106,15 +107,27 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
           DeleteClassTargetName,
           DeleteClassRandomSampleMode.FixedSeed,
           SampleCount: sampleCount,
-          WriteBackCopiedSource: false));
+          WriteBackCopiedSource: false,
+          MaxDegreeOfParallelism: TerrariaTimingMaxDegreeOfParallelism));
+        var phaseTimings = Assert.IsType<DeleteClassRandomSampleAnalysisPhaseTimings>(
+          result.Timings.AnalysisPhases);
 
         Console.WriteLine(
           $"[terraria-phase-timing] sourceRoot={TerrariaExternalCodeSetPath};" +
           $"stagedRoot={stagedSourceDirectory};" +
           $"files={result.SelectedRelativePaths.Count};" +
+          $"maxDegreeOfParallelism={TerrariaTimingMaxDegreeOfParallelism};" +
           $"writeBackApplied={result.WriteBackApplied};" +
           $"copyMs={result.Timings.CopyMilliseconds};" +
           $"analysisMs={result.Timings.AnalysisMilliseconds};" +
+          $"prepMs={phaseTimings.PreparationMilliseconds};" +
+          $"cpgMs={phaseTimings.CpgBuildMilliseconds};" +
+          $"markMs={phaseTimings.MarkMilliseconds};" +
+          $"propagateMs={phaseTimings.PropagateMilliseconds};" +
+          $"liftMs={phaseTimings.LiftMilliseconds};" +
+          $"decideMs={phaseTimings.DecideMilliseconds};" +
+          $"rewriteMs={phaseTimings.RewriteMilliseconds};" +
+          $"phaseTotalMs={phaseTimings.TotalMilliseconds};" +
           $"diffMs={result.Timings.DiffMaterializationMilliseconds};" +
           $"manifestMs={result.Timings.ManifestMilliseconds};" +
           $"writeBackMs={result.Timings.WriteBackMilliseconds};" +
@@ -129,6 +142,11 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
         Assert.True(result.Timings.DiffMaterializationMilliseconds >= 0);
         Assert.True(result.Timings.ManifestMilliseconds >= 0);
         Assert.Equal(0, result.Timings.WriteBackMilliseconds);
+        Assert.True(phaseTimings.MarkMilliseconds >= 0);
+        Assert.True(phaseTimings.PropagateMilliseconds >= 0);
+        Assert.True(phaseTimings.LiftMilliseconds >= 0);
+        Assert.True(phaseTimings.DecideMilliseconds >= 0);
+        Assert.True(phaseTimings.RewriteMilliseconds >= 0);
         Assert.All(result.FileResults, file =>
         {
             Assert.True(File.Exists(file.CopiedPath));

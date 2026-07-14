@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
+using System.Diagnostics;
 
 namespace MinimalRoslynCpg.Builder.Passes
 {
@@ -26,21 +27,69 @@ namespace MinimalRoslynCpg.Builder
 {
 public sealed partial class RoslynCpgBuilder
 {
-    internal void RunDataFlowPass(RoslynCpgBuildContext context)
+    private sealed class DataFlowPassMetrics
     {
-        AddReachingDefinitionDataFlow(context.Graph);
+        public long EnumerateMethodBlocksElapsedMilliseconds { get; set; }
+        public long EnumerateOrderedOperationsElapsedMilliseconds { get; set; }
+        public long CfgSensitiveElapsedMilliseconds { get; set; }
+        public long ValueSourceEdgeElapsedMilliseconds { get; set; }
+        public long ReturnFlowEdgeElapsedMilliseconds { get; set; }
+        public long TerminalFlowEdgeElapsedMilliseconds { get; set; }
+        public long CallArgumentAndReturnElapsedMilliseconds { get; set; }
+        public long BuildFlowNeighborsElapsedMilliseconds { get; set; }
+        public long FixpointElapsedMilliseconds { get; set; }
+        public long ReachingDefinitionEdgeElapsedMilliseconds { get; set; }
+        public int MethodBlockCount { get; set; }
+        public int OrderedOperationCount { get; set; }
     }
 
-    private void AddReachingDefinitionDataFlow(RoslynCpgGraph graph)
+    internal void RunDataFlowPass(RoslynCpgBuildContext context)
     {
-        foreach (var methodBlock in _operationNodes.Keys.OfType<IBlockOperation>().Where(IsMethodRootBlock))
+        var totalStopwatch = Stopwatch.StartNew();
+        var metrics = new DataFlowPassMetrics();
+        AddReachingDefinitionDataFlow(context.Graph, metrics);
+        totalStopwatch.Stop();
+        _dataFlowPassTelemetry = new RoslynCpgDataFlowPassTelemetry(
+            totalStopwatch.ElapsedMilliseconds,
+            metrics.EnumerateMethodBlocksElapsedMilliseconds,
+            metrics.EnumerateOrderedOperationsElapsedMilliseconds,
+            metrics.CfgSensitiveElapsedMilliseconds,
+            metrics.ValueSourceEdgeElapsedMilliseconds,
+            metrics.ReturnFlowEdgeElapsedMilliseconds,
+            metrics.TerminalFlowEdgeElapsedMilliseconds,
+            metrics.CallArgumentAndReturnElapsedMilliseconds,
+            metrics.BuildFlowNeighborsElapsedMilliseconds,
+            metrics.FixpointElapsedMilliseconds,
+            metrics.ReachingDefinitionEdgeElapsedMilliseconds,
+            metrics.MethodBlockCount,
+            metrics.OrderedOperationCount);
+    }
+
+    private void AddReachingDefinitionDataFlow(RoslynCpgGraph graph, DataFlowPassMetrics metrics)
+    {
+        var enumerateMethodBlocksStopwatch = Stopwatch.StartNew();
+        var methodBlocks = _operationNodes.Keys.OfType<IBlockOperation>().Where(IsMethodRootBlock).ToList();
+        enumerateMethodBlocksStopwatch.Stop();
+        metrics.EnumerateMethodBlocksElapsedMilliseconds = enumerateMethodBlocksStopwatch.ElapsedMilliseconds;
+        metrics.MethodBlockCount = methodBlocks.Count;
+
+        foreach (var methodBlock in methodBlocks)
         {
+            var orderedOperationsStopwatch = Stopwatch.StartNew();
             var orderedOperations = methodBlock.DescendantsAndSelf().ToList();
-            AddCfgSensitiveSymbolDataFlow(methodBlock, orderedOperations, graph);
+            orderedOperationsStopwatch.Stop();
+            metrics.EnumerateOrderedOperationsElapsedMilliseconds += orderedOperationsStopwatch.ElapsedMilliseconds;
+            metrics.OrderedOperationCount += orderedOperations.Count;
+
+            var cfgSensitiveStopwatch = Stopwatch.StartNew();
+            AddCfgSensitiveSymbolDataFlow(methodBlock, orderedOperations, graph, metrics);
+            cfgSensitiveStopwatch.Stop();
+            metrics.CfgSensitiveElapsedMilliseconds += cfgSensitiveStopwatch.ElapsedMilliseconds;
             foreach (var operation in orderedOperations)
             {
                 var operationNode = GetOrCreateOperationNode(operation, graph);
 
+                var valueSourceStopwatch = Stopwatch.StartNew();
                 foreach (var sourceOperation in ValueSourceOperations(operation))
                 {
                     if (!ReferenceEquals(sourceOperation, operation))
@@ -48,21 +97,27 @@ public sealed partial class RoslynCpgBuilder
                         graph.AddEdge(GetOrCreateOperationNode(sourceOperation, graph), operationNode, RoslynCpgEdgeKind.DataFlow);
                     }
                 }
+                valueSourceStopwatch.Stop();
+                metrics.ValueSourceEdgeElapsedMilliseconds += valueSourceStopwatch.ElapsedMilliseconds;
 
                 if (operation is IReturnOperation returnOperation &&
                     returnOperation.ReturnedValue is not null &&
                     _operationOwningMethods.TryGetValue(operation, out var owningMethod))
                 {
+                    var returnFlowStopwatch = Stopwatch.StartNew();
                     var exitNode = GetOrCreateMethodExitNode(owningMethod, graph);
                     var returnNode = GetOrCreateMethodReturnNode(owningMethod, graph);
                     graph.AddEdge(GetOrCreateOperationNode(returnOperation.ReturnedValue, graph), returnNode, RoslynCpgEdgeKind.DataFlow);
                     graph.AddEdge(returnNode, exitNode, RoslynCpgEdgeKind.DataFlow);
                     graph.AddEdge(operationNode, exitNode, RoslynCpgEdgeKind.DataFlow);
+                    returnFlowStopwatch.Stop();
+                    metrics.ReturnFlowEdgeElapsedMilliseconds += returnFlowStopwatch.ElapsedMilliseconds;
                 }
             }
 
             if (_operationOwningMethods.TryGetValue(methodBlock, out var flowMethodSymbol))
             {
+                var terminalFlowStopwatch = Stopwatch.StartNew();
                 var returnNode = GetOrCreateMethodReturnNode(flowMethodSymbol, graph);
                 var terminalOperation = methodBlock.Operations.LastOrDefault();
                 if (terminalOperation is not null &&
@@ -71,13 +126,18 @@ public sealed partial class RoslynCpgBuilder
                 {
                     graph.AddEdge(GetOrCreateOperationNode(terminalOperation, graph), returnNode, RoslynCpgEdgeKind.DataFlow);
                 }
+                terminalFlowStopwatch.Stop();
+                metrics.TerminalFlowEdgeElapsedMilliseconds += terminalFlowStopwatch.ElapsedMilliseconds;
             }
         }
 
+        var callArgumentAndReturnStopwatch = Stopwatch.StartNew();
         AddCallArgumentAndReturnDataFlow(graph);
+        callArgumentAndReturnStopwatch.Stop();
+        metrics.CallArgumentAndReturnElapsedMilliseconds += callArgumentAndReturnStopwatch.ElapsedMilliseconds;
     }
 
-    private void AddCfgSensitiveSymbolDataFlow(IBlockOperation methodBlock, List<IOperation> orderedOperations, RoslynCpgGraph graph)
+    private void AddCfgSensitiveSymbolDataFlow(IBlockOperation methodBlock, List<IOperation> orderedOperations, RoslynCpgGraph graph, DataFlowPassMetrics metrics)
     {
         var flowNodes = new List<RoslynCpgNode>();
         var definitionFactsByNodeId = new Dictionary<string, DefinitionFact>(StringComparer.Ordinal);
@@ -108,13 +168,17 @@ public sealed partial class RoslynCpgBuilder
 
         var flowNodeIds = flowNodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
         var nodesById = flowNodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
+        var buildNeighborsStopwatch = Stopwatch.StartNew();
         var predecessors = BuildFlowNeighbors(graph, flowNodeIds, incoming: true);
         var successors = BuildFlowNeighbors(graph, flowNodeIds, incoming: false);
+        buildNeighborsStopwatch.Stop();
+        metrics.BuildFlowNeighborsElapsedMilliseconds += buildNeighborsStopwatch.ElapsedMilliseconds;
         var inSets = flowNodes.ToDictionary(node => node.Id, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
         var outSets = flowNodes.ToDictionary(node => node.Id, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
         var worklist = new Queue<string>(flowNodes.Select(node => node.Id));
         var queued = new HashSet<string>(flowNodes.Select(node => node.Id), StringComparer.Ordinal);
 
+        var fixpointStopwatch = Stopwatch.StartNew();
         while (worklist.Count > 0)
         {
             var nodeId = worklist.Dequeue();
@@ -142,7 +206,10 @@ public sealed partial class RoslynCpgBuilder
                 }
             }
         }
+        fixpointStopwatch.Stop();
+        metrics.FixpointElapsedMilliseconds += fixpointStopwatch.ElapsedMilliseconds;
 
+        var reachingDefinitionStopwatch = Stopwatch.StartNew();
         foreach (var operation in orderedOperations)
         {
             var operationNode = GetOrCreateOperationNode(operation, graph);
@@ -160,6 +227,8 @@ public sealed partial class RoslynCpgBuilder
                 }
             }
         }
+        reachingDefinitionStopwatch.Stop();
+        metrics.ReachingDefinitionEdgeElapsedMilliseconds += reachingDefinitionStopwatch.ElapsedMilliseconds;
     }
 
     private static Dictionary<string, List<string>> BuildFlowNeighbors(RoslynCpgGraph graph, HashSet<string> flowNodeIds, bool incoming)

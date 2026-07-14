@@ -49,13 +49,31 @@ public sealed record PrototypeAnalysisResult(
   /// <summary>
   /// 改写后重新编译得到的诊断。目前只收集 error 级别诊断。
   /// </summary>
-  IReadOnlyList<AnalysisDiagnostic>? Diagnostics = null);
+  IReadOnlyList<AnalysisDiagnostic>? Diagnostics = null,
+  /// <summary>
+  /// 可选的分析阶段耗时明细。
+  /// </summary>
+  AnalysisPhaseTimings? Timings = null);
+
+/// <summary>
+/// 单次分析运行的阶段耗时明细。
+/// </summary>
+public sealed record AnalysisPhaseTimings(
+  long PreparationMilliseconds,
+  long CpgBuildMilliseconds,
+  long MarkMilliseconds,
+  long PropagateMilliseconds,
+  long LiftMilliseconds,
+  long DecideMilliseconds,
+  long RewriteMilliseconds,
+  long TotalMilliseconds);
 
 /// <summary>
 /// 一次分析运行的聚合统计。
 /// </summary>
 public sealed record AnalysisStats(
   int ScannedFileCount,
+  int? AnalyzedFileCount,
   int CandidateMethodCount,
   int DeletedMethodCount,
   long ElapsedMilliseconds);

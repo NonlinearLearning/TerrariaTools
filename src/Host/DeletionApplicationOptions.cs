@@ -91,6 +91,14 @@ internal static class DeletionApplicationOptions
           IsTrueOption(options, "fast-delete-class-directory");
     }
 
+    internal static bool ShouldFilterDeleteClassFilesByTargetName(
+      IReadOnlyDictionary<string, string> options)
+    {
+        return options.ContainsKey("delete-class") &&
+          IsTrueOption(options, "fast-delete-class-directory") &&
+          IsTrueOption(options, "filter-delete-class-files-by-target-name");
+    }
+
     internal static int ResolveMaxDegreeOfParallelism(IReadOnlyDictionary<string, string> options)
     {
         if (!options.TryGetValue("max-degree-of-parallelism", out var rawValue) ||

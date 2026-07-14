@@ -53,6 +53,11 @@ public sealed class DeletionResultFormatter
         if (result.Stats is not null)
         {
             lines.Add($"ScannedFiles: {result.Stats.ScannedFileCount}");
+            if (result.Stats.AnalyzedFileCount is not null)
+            {
+                lines.Add($"AnalyzedFiles: {result.Stats.AnalyzedFileCount}");
+            }
+
             lines.Add($"CandidateMethods: {result.Stats.CandidateMethodCount}");
             lines.Add($"DeletedMethods: {result.Stats.DeletedMethodCount}");
             lines.Add($"ElapsedMs: {result.Stats.ElapsedMilliseconds}");

@@ -44,10 +44,11 @@ internal sealed class DeletionDirectoryAnalysisService
         }
 
         var sourcesByPath = ReadSources(filePaths);
+        var analysisFilePaths = ResolveAnalysisFilePaths(filePaths, sourcesByPath, options);
         var trees = ParseTrees(filePaths, sourcesByPath);
         var compilation = RoslynCompilationFactory.CreateCompilation(trees.Values);
         var fileResults = AnalyzeFilesInParallel(
-          filePaths,
+          analysisFilePaths,
           trees,
           compilation,
           options,
@@ -62,15 +63,25 @@ internal sealed class DeletionDirectoryAnalysisService
 
         if (DeletionApplicationOptions.ShouldUseDeleteClassUsingCleanup(options))
         {
-            ApplyDeleteClassCleanup(filePaths, sourcesByPath, fileResults);
+            ApplyDeleteClassCleanup(analysisFilePaths, sourcesByPath, fileResults);
         }
 
-        var result = FinalizeDirectoryResults(directoryPath, options, filePaths, fileResults);
+        var result = FinalizeDirectoryResults(
+          directoryPath,
+          options,
+          analysisFilePaths,
+          fileResults,
+          new AnalysisStats(
+            filePaths.Count,
+            analysisFilePaths.Count,
+            0,
+            0,
+            0));
         var diagnostics = DeletionApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options)
           ? Array.Empty<AnalysisDiagnostic>()
           : DeletionPostRewriteDiagnostics.GetRewriteDiagnostics(
             sourcesByPath,
-            BuildRewrittenSources(filePaths, fileResults));
+            BuildRewrittenSources(analysisFilePaths, fileResults));
         return result with { Diagnostics = diagnostics };
     }
 
@@ -92,7 +103,7 @@ internal sealed class DeletionDirectoryAnalysisService
               string.Empty,
               string.Empty,
               null,
-              new AnalysisStats(0, 0, 0, stopwatch.ElapsedMilliseconds));
+              new AnalysisStats(0, 0, 0, 0, stopwatch.ElapsedMilliseconds));
         }
 
         var sourcesByPath = ReadSources(filePaths);
@@ -122,6 +133,7 @@ internal sealed class DeletionDirectoryAnalysisService
           filePaths,
           fileResults,
           new AnalysisStats(
+            filePaths.Count,
             filePaths.Count,
             candidateMethodCount,
             deletedMethodCount,
@@ -450,6 +462,29 @@ internal sealed class DeletionDirectoryAnalysisService
         return orderedResults.ToArray();
     }
 
+    private static IReadOnlyList<string> ResolveAnalysisFilePaths(
+      IReadOnlyList<string> filePaths,
+      IReadOnlyDictionary<string, string> sourcesByPath,
+      IReadOnlyDictionary<string, string> options)
+    {
+        if (!DeletionApplicationOptions.ShouldFilterDeleteClassFilesByTargetName(options) ||
+            !options.TryGetValue("delete-class", out var targetClassName) ||
+            string.IsNullOrWhiteSpace(targetClassName))
+        {
+            return filePaths;
+        }
+
+        var filteredFilePaths = filePaths
+          .Where(path => SourceMentionsTargetName(sourcesByPath[path], targetClassName))
+          .ToList();
+        return filteredFilePaths.Count > 0 ? filteredFilePaths : filePaths;
+    }
+
+    private static bool SourceMentionsTargetName(string source, string targetClassName)
+    {
+        return source.Contains(targetClassName, StringComparison.Ordinal);
+    }
+
     private PrototypeAnalysisResult FinalizeDirectoryResults(
       string directoryPath,
       IReadOnlyDictionary<string, string> options,
@@ -522,7 +557,8 @@ internal sealed class DeletionDirectoryAnalysisService
           $"<multi-file:{rewrittenSources.Count}>",
           diffText,
           diffPath,
-          stats);
+          stats,
+          Timings: AggregateAnalysisPhaseTimings(fileResults));
     }
 
     private void ApplyDeleteClassCleanup(
@@ -610,6 +646,30 @@ internal sealed class DeletionDirectoryAnalysisService
           string.Empty,
           string.Empty,
           null);
+    }
+
+    private static AnalysisPhaseTimings? AggregateAnalysisPhaseTimings(
+      IReadOnlyList<PrototypeAnalysisResult> fileResults)
+    {
+        var phaseTimings = fileResults
+          .Select(result => result.Timings)
+          .Where(timings => timings is not null)
+          .Cast<AnalysisPhaseTimings>()
+          .ToList();
+        if (phaseTimings.Count == 0)
+        {
+            return null;
+        }
+
+        return new AnalysisPhaseTimings(
+          phaseTimings.Sum(timings => timings.PreparationMilliseconds),
+          phaseTimings.Sum(timings => timings.CpgBuildMilliseconds),
+          phaseTimings.Sum(timings => timings.MarkMilliseconds),
+          phaseTimings.Sum(timings => timings.PropagateMilliseconds),
+          phaseTimings.Sum(timings => timings.LiftMilliseconds),
+          phaseTimings.Sum(timings => timings.DecideMilliseconds),
+          phaseTimings.Sum(timings => timings.RewriteMilliseconds),
+          phaseTimings.Sum(timings => timings.TotalMilliseconds));
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string directoryPath)

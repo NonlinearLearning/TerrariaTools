@@ -13,11 +13,23 @@ namespace MinimalRoslynCpg.Builder;
 /// </summary>
 public sealed partial class RoslynCpgBuilder
 {
-    private static readonly IReadOnlyList<IRoslynCpgPass> DefaultPipeline = new IRoslynCpgPass[]
+    private static readonly IReadOnlyList<IRoslynCpgPass> LegacyPipeline = new IRoslynCpgPass[]
     {
         SyntaxPass.Instance,
         MethodDecorationPass.Instance,
         OperationPass.Instance,
+        CallGraphPass.Instance,
+        MemberAccessPass.Instance,
+        ControlFlowPass.Instance,
+        DataFlowPass.Instance,
+    };
+    private static readonly IReadOnlyList<IRoslynCpgPass> PartitionedPreOperationPipeline = new IRoslynCpgPass[]
+    {
+        SyntaxPass.Instance,
+        MethodDecorationPass.Instance,
+    };
+    private static readonly IReadOnlyList<IRoslynCpgPass> PartitionedPostOperationPipeline = new IRoslynCpgPass[]
+    {
         CallGraphPass.Instance,
         MemberAccessPass.Instance,
         ControlFlowPass.Instance,
@@ -38,14 +50,24 @@ public sealed partial class RoslynCpgBuilder
     private readonly Dictionary<string, List<IMethodSymbol>> _methodSymbolsByNameAndSignature = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<INamedTypeSymbol>> _baseTypeCache = new(StringComparer.Ordinal);
     private readonly List<INamedTypeSymbol> _declaredTypes = new();
+    private readonly RoslynCpgBuilderOptions _options;
     private int _operationSequence;
     private int _referenceSequence;
     private int _typeReferenceSequence;
     private int _callSiteSequence;
     private int _memberAccessSequence;
+    private RoslynCpgSyntaxPassTelemetry _syntaxPassTelemetry = RoslynCpgSyntaxPassTelemetry.CreateDefault();
+    private RoslynCpgDataFlowPassTelemetry _dataFlowPassTelemetry = RoslynCpgDataFlowPassTelemetry.CreateDefault();
 
     private sealed record LoopControlTargets(IOperation? ContinueTarget, IOperation? BreakTarget);
     private sealed record DefinitionFact(string LocationKey, string? BaseKey, string Category, string? PathKey = null);
+
+    public RoslynCpgBuilder(RoslynCpgBuilderOptions? options = null)
+    {
+        _options = options ?? RoslynCpgBuilderOptions.CreateDefault();
+    }
+
+    public RoslynCpgBuildTelemetry LastBuildTelemetry { get; private set; } = RoslynCpgBuildTelemetry.CreateDefault();
 
     /// <summary>
     /// 解析源码、收集语法和操作，再补 CFG 与 DataFlow 叠加层。
@@ -81,13 +103,41 @@ public sealed partial class RoslynCpgBuilder
         _typeReferenceSequence = 0;
         _callSiteSequence = 0;
         _memberAccessSequence = 0;
+        _syntaxPassTelemetry = RoslynCpgSyntaxPassTelemetry.CreateDefault();
+        _dataFlowPassTelemetry = RoslynCpgDataFlowPassTelemetry.CreateDefault();
+        LastBuildTelemetry = RoslynCpgBuildTelemetry.CreateDefault();
+        var operationBuildStrategy = CreateOperationBuildStrategy(context);
+        if (!operationBuildStrategy.UsePartitionedOperationBuild)
+        {
+            RunPipeline(LegacyPipeline, context);
+        }
+        else
+        {
+            RunPipeline(PartitionedPreOperationPipeline, context);
 
-        foreach (var pass in DefaultPipeline)
+            RunPartitionedOperationPass(context, operationBuildStrategy.OperationRoots);
+
+            RunPipeline(PartitionedPostOperationPipeline, context);
+        }
+
+        LastBuildTelemetry = new RoslynCpgBuildTelemetry(
+          _options.BuildMode,
+          operationBuildStrategy.ExecutedMode,
+          operationBuildStrategy.UsePartitionedOperationBuild,
+          operationBuildStrategy.SourceLineCount,
+          operationBuildStrategy.UsePartitionedOperationBuild ? operationBuildStrategy.OperationRoots.Count : 0,
+          _options.EffectiveMaxDegreeOfParallelism,
+          _syntaxPassTelemetry,
+          _dataFlowPassTelemetry);
+        return context.Graph;
+    }
+
+    private void RunPipeline(IReadOnlyList<IRoslynCpgPass> pipeline, RoslynCpgBuildContext context)
+    {
+        foreach (var pass in pipeline)
         {
             pass.Run(this, context);
         }
-
-        return context.Graph;
     }
 
 

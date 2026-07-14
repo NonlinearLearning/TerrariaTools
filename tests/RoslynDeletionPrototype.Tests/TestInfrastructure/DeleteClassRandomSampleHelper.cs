@@ -19,7 +19,8 @@ internal sealed record DeleteClassRandomSampleRequest(
   int SampleCount = 10,
   int? Seed = null,
   string? RunName = null,
-  bool WriteBackCopiedSource = true);
+  bool WriteBackCopiedSource = true,
+  int? MaxDegreeOfParallelism = null);
 
 internal sealed record DeleteClassRandomSampleFileResult(
   string RelativePath,
@@ -28,13 +29,24 @@ internal sealed record DeleteClassRandomSampleFileResult(
   string DiffPath,
   bool Changed);
 
+internal sealed record DeleteClassRandomSampleAnalysisPhaseTimings(
+  long PreparationMilliseconds,
+  long CpgBuildMilliseconds,
+  long MarkMilliseconds,
+  long PropagateMilliseconds,
+  long LiftMilliseconds,
+  long DecideMilliseconds,
+  long RewriteMilliseconds,
+  long TotalMilliseconds);
+
 internal sealed record DeleteClassRandomSampleTimings(
   long CopyMilliseconds,
   long AnalysisMilliseconds,
   long DiffMaterializationMilliseconds,
   long ManifestMilliseconds,
   long WriteBackMilliseconds,
-  long TotalMilliseconds);
+  long TotalMilliseconds,
+  DeleteClassRandomSampleAnalysisPhaseTimings? AnalysisPhases);
 
 internal sealed record DeleteClassRandomSampleRunResult(
   DeleteClassRandomSampleMode Mode,
@@ -113,6 +125,12 @@ internal static class DeleteClassRandomSampleHelper
             args.Add("--write-back");
         }
 
+        if (request.MaxDegreeOfParallelism is int maxDegreeOfParallelism)
+        {
+            args.Add("--max-degree-of-parallelism");
+            args.Add(maxDegreeOfParallelism.ToString());
+        }
+
         var analysisStopwatch = Stopwatch.StartNew();
         var analysisResult = application.AnalyzeFromArgs(args.ToArray());
         analysisStopwatch.Stop();
@@ -156,7 +174,18 @@ internal static class DeleteClassRandomSampleHelper
             diffStopwatch.ElapsedMilliseconds,
             manifestStopwatch.ElapsedMilliseconds,
             0,
-            totalStopwatch.ElapsedMilliseconds),
+            totalStopwatch.ElapsedMilliseconds,
+            analysisResult.Timings is null
+              ? null
+              : new DeleteClassRandomSampleAnalysisPhaseTimings(
+                analysisResult.Timings.PreparationMilliseconds,
+                analysisResult.Timings.CpgBuildMilliseconds,
+                analysisResult.Timings.MarkMilliseconds,
+                analysisResult.Timings.PropagateMilliseconds,
+                analysisResult.Timings.LiftMilliseconds,
+                analysisResult.Timings.DecideMilliseconds,
+                analysisResult.Timings.RewriteMilliseconds,
+                analysisResult.Timings.TotalMilliseconds)),
           writeBackApplied,
           analysisResult);
     }

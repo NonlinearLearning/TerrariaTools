@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using MinimalRoslynCpg.Builder;
@@ -103,27 +104,43 @@ public sealed class DeletionApplicationService
 
   private PrototypeAnalysisResult RunAnalysis(DeletionAnalysisContext analysisContext)
   {
+    var totalStopwatch = Stopwatch.StartNew();
+    var markStopwatch = Stopwatch.StartNew();
     var seedMarks = _markingEngine.Run(analysisContext.RuleContext, analysisContext.Root, _markers);
+    markStopwatch.Stop();
+
+    var propagateStopwatch = Stopwatch.StartNew();
     var propagatedMarks = _propagationEngine.Run(
       analysisContext.RuleContext,
       seedMarks,
       _propagators);
+    propagateStopwatch.Stop();
+
+    var liftStopwatch = Stopwatch.StartNew();
     var liftedMarks = _markLiftingEngine.Run(
       analysisContext.RuleContext,
       seedMarks,
       propagatedMarks,
       _lifters);
+    liftStopwatch.Stop();
+
+    var decideStopwatch = Stopwatch.StartNew();
     var decisions = _decisionEngine.Decide(
       analysisContext.RuleContext,
       seedMarks,
       propagatedMarks,
       liftedMarks,
       _proposers);
+    decideStopwatch.Stop();
+
     var filteredDecisions = FilterNestedDeleteDecisions(decisions);
+    var rewriteStopwatch = Stopwatch.StartNew();
     var rewriteResult = _rewriter.Rewrite(
       analysisContext.Root,
       analysisContext.SemanticModel,
       filteredDecisions);
+    rewriteStopwatch.Stop();
+    totalStopwatch.Stop();
 
     return new PrototypeAnalysisResult(
       seedMarks,
@@ -133,7 +150,16 @@ public sealed class DeletionApplicationService
       rewriteResult.Edits,
       rewriteResult.RewrittenSource,
       rewriteResult.DiffText,
-      null);
+      null,
+      Timings: new AnalysisPhaseTimings(
+        analysisContext.PreparationMilliseconds,
+        analysisContext.CpgBuildMilliseconds,
+        markStopwatch.ElapsedMilliseconds,
+        propagateStopwatch.ElapsedMilliseconds,
+        liftStopwatch.ElapsedMilliseconds,
+        decideStopwatch.ElapsedMilliseconds,
+        rewriteStopwatch.ElapsedMilliseconds,
+        totalStopwatch.ElapsedMilliseconds));
   }
 
   private DeletionAnalysisContext BuildAnalysisContext(
@@ -142,11 +168,20 @@ public sealed class DeletionApplicationService
     IReadOnlyDictionary<string, string> options,
     DeletionAnalysisRuntime runtime)
   {
+    var preparationStopwatch = Stopwatch.StartNew();
     var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
     var root = tree.GetRoot();
     var compilation = RoslynCompilationFactory.CreateCompilation(tree);
     var semanticModel = compilation.GetSemanticModel(tree);
-    return BuildAnalysisContext(source, filePath, options, runtime, semanticModel, root);
+    preparationStopwatch.Stop();
+    return BuildAnalysisContext(
+      source,
+      filePath,
+      options,
+      runtime,
+      semanticModel,
+      root,
+      preparationStopwatch.ElapsedMilliseconds);
   }
 
   private DeletionAnalysisContext BuildAnalysisContext(
@@ -155,17 +190,25 @@ public sealed class DeletionApplicationService
     IReadOnlyDictionary<string, string> options,
     DeletionAnalysisRuntime runtime,
     SemanticModel semanticModel,
-    SyntaxNode root)
+    SyntaxNode root,
+    long preparationMilliseconds = 0)
   {
+    var cpgBuildStopwatch = Stopwatch.StartNew();
     var graph = new RoslynCpgBuilder().BuildFromSemanticModel(
       semanticModel,
       root,
       source,
       filePath);
+    cpgBuildStopwatch.Stop();
     var cpgAnalysisContext = new CpgAnalysisContext(graph, semanticModel, root);
     var ruleContext = new RuleContext(cpgAnalysisContext, options, runtime: runtime);
 
-    return new DeletionAnalysisContext(root, semanticModel, ruleContext);
+    return new DeletionAnalysisContext(
+      root,
+      semanticModel,
+      ruleContext,
+      preparationMilliseconds,
+      cpgBuildStopwatch.ElapsedMilliseconds);
   }
 
   private static IReadOnlyList<RuleDecision> FilterNestedDeleteDecisions(
@@ -215,5 +258,7 @@ public sealed class DeletionApplicationService
   private sealed record DeletionAnalysisContext(
     SyntaxNode Root,
     SemanticModel SemanticModel,
-    RuleContext RuleContext);
+    RuleContext RuleContext,
+    long PreparationMilliseconds,
+    long CpgBuildMilliseconds);
 }
