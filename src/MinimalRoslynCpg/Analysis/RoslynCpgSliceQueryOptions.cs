@@ -10,7 +10,36 @@ public sealed record RoslynCpgSliceQueryOptions(
     int MaxHops,
     int MaxPaths,
     int MaxDefinitions,
-    int MaxCallDepth = 0);
+    int MaxCallDepth = 0,
+    int MaxVisitedNodes = int.MaxValue,
+    int MaxVisitedEdges = int.MaxValue,
+    int MaxCachedStates = 4096,
+    int MaxCallerFanout = int.MaxValue);
+
+/// <summary>
+/// Defines every traversal limit that participates in query semantics and caching.
+/// </summary>
+public sealed record RoslynCpgTraversalBudget(
+    int MaxHops,
+    int MaxPaths,
+    int MaxDefinitions,
+    int MaxVisitedNodes,
+    int MaxVisitedEdges);
+
+/// <summary>
+/// Reports deterministic traversal work and cache activity for one query execution.
+/// </summary>
+public sealed record RoslynCpgQueryTelemetry(
+    long VisitedNodeCount,
+    long VisitedEdgeCount,
+    long MaterializedPathCount,
+    bool WasTruncated,
+    string? TruncationReason,
+    long CacheHitCount,
+    long CacheMissCount,
+    int MaxObservedCallDepth = 0,
+    long InterproceduralBridgeExpansionCount = 0,
+    long CacheCapacityBypassCount = 0);
 
 /// <summary>
 /// Represents one stable source-to-sink path found by a CPG slice query.
@@ -28,4 +57,5 @@ public sealed record RoslynCpgSliceResult(
     bool WasTruncated,
     string? TruncationReason,
     long VisitedNodeCount,
-    long VisitedEdgeCount);
+    long VisitedEdgeCount,
+    RoslynCpgQueryTelemetry? Telemetry = null);

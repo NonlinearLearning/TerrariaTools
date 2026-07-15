@@ -17,6 +17,8 @@ public sealed class RoslynCpgGraph
 
     public bool HasQueryIndex => _queryIndex is not null;
 
+    public string GraphSnapshotVersion => RequireQueryIndex().SnapshotVersion;
+
     /// <summary>
     /// 新增节点；如果同 id 已存在则直接返回已有节点。
     /// </summary>
@@ -35,12 +37,17 @@ public sealed class RoslynCpgGraph
     /// <summary>
     /// 在确保端点节点已注册后，补上一条带类型边。
     /// </summary>
-    public void AddEdge(RoslynCpgNode source, RoslynCpgNode target, RoslynCpgEdgeKind kind, string? label = null)
+    public void AddEdge(
+        RoslynCpgNode source,
+        RoslynCpgNode target,
+        RoslynCpgEdgeKind kind,
+        string? label = null,
+        string? contextId = null)
     {
         EnsureMutable();
         AddNode(source);
         AddNode(target);
-        _edges.Add(new RoslynCpgEdge(source.Id, target.Id, kind, label));
+        _edges.Add(new RoslynCpgEdge(source.Id, target.Id, kind, label, contextId));
     }
 
     /// <summary>
@@ -48,7 +55,9 @@ public sealed class RoslynCpgGraph
     /// </summary>
     public IEnumerable<RoslynCpgNode> NodesByKind(RoslynCpgNodeKind kind)
     {
-        return _nodes.Values.Where(node => node.Kind == kind);
+        return _queryIndex is null
+            ? _nodes.Values.Where(node => node.Kind == kind)
+            : GetNodes(kind);
     }
 
     /// <summary>
@@ -66,7 +75,7 @@ public sealed class RoslynCpgGraph
             return;
         }
 
-        _queryIndex = RoslynCpgGraphIndex.Create(_edges);
+        _queryIndex = RoslynCpgGraphIndex.Create(_nodes.Values, _edges);
     }
 
     public IReadOnlyList<RoslynCpgEdge> GetOutgoingEdges(string nodeId)
@@ -79,10 +88,78 @@ public sealed class RoslynCpgGraph
         return GetAdjacency(nodeId, useOutgoingEdges: false);
     }
 
+    public IReadOnlyList<RoslynCpgEdge> GetIncomingEdges(string nodeId, RoslynCpgEdgeKind kind)
+    {
+        var index = RequireQueryIndex();
+        return index.IncomingByNodeAndKind.TryGetValue((nodeId, kind), out var edges)
+            ? edges
+            : Array.Empty<RoslynCpgEdge>();
+    }
+
+    public IReadOnlyList<RoslynCpgEdge> GetOutgoingEdges(string nodeId, RoslynCpgEdgeKind kind)
+    {
+        var index = RequireQueryIndex();
+        return index.OutgoingByNodeAndKind.TryGetValue((nodeId, kind), out var edges)
+            ? edges
+            : Array.Empty<RoslynCpgEdge>();
+    }
+
     public IReadOnlyList<RoslynCpgEdge> GetEdges(RoslynCpgEdgeKind kind)
     {
         var index = RequireQueryIndex();
         return index.EdgesByKind.TryGetValue(kind, out var edges) ? edges : Array.Empty<RoslynCpgEdge>();
+    }
+
+    public IReadOnlyList<RoslynCpgNode> GetNodes(RoslynCpgNodeKind kind)
+    {
+        var index = RequireQueryIndex();
+        return index.NodesByKind.TryGetValue(kind, out var nodes) ? nodes : Array.Empty<RoslynCpgNode>();
+    }
+
+    public IReadOnlyList<RoslynCpgNode> GetSymbolReferences(string symbolNodeId)
+    {
+        return GetIncomingEdges(symbolNodeId, RoslynCpgEdgeKind.Ref)
+            .Select(edge => _nodes[edge.SourceId])
+            .OrderBy(node => node.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    public IReadOnlyList<RoslynCpgNode> GetMethodOwnedCallSites(string methodNodeId)
+    {
+        return GetOutgoingEdges(methodNodeId, RoslynCpgEdgeKind.ContainsSymbol)
+            .Select(edge => _nodes[edge.TargetId])
+            .Where(node => node.Kind == RoslynCpgNodeKind.CallSite)
+            .OrderBy(node => node.Id, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    public IReadOnlyList<RoslynCpgNode> GetNodesInFileSpan(string filePath, int start, int end)
+    {
+        if (start < 0 || end < start)
+        {
+            throw new ArgumentOutOfRangeException(nameof(end), "The span must be a valid half-open interval.");
+        }
+
+        var index = RequireQueryIndex();
+        if (!index.NodesByFilePath.TryGetValue(filePath, out var nodes))
+        {
+            return Array.Empty<RoslynCpgNode>();
+        }
+
+        return nodes.Where(node => node.SpanStart >= start && node.SpanEnd <= end)
+            .ToArray();
+    }
+
+    public int GetEdgeMaskId(IReadOnlySet<RoslynCpgEdgeKind> edgeKinds)
+    {
+        ArgumentNullException.ThrowIfNull(edgeKinds);
+        var hash = new HashCode();
+        foreach (var kind in edgeKinds.OrderBy(kind => kind))
+        {
+            hash.Add((int)kind);
+        }
+
+        return hash.ToHashCode();
     }
 
     /// <summary>

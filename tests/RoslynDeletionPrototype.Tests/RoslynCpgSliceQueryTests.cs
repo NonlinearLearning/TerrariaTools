@@ -136,6 +136,133 @@ public sealed class RoslynCpgSliceQueryTests
         Assert.InRange(result.VisitedNodeCount, 1, 3);
     }
 
+    [Fact]
+    public void QueryBackward_WhenVisitedNodeBudgetIsReached_ReportsMaxVisitedNodes()
+    {
+        var graph = new RoslynCpgGraph();
+        var source = CreateNode("source");
+        var middle = CreateNode("middle");
+        var sink = CreateNode("sink");
+        graph.AddEdge(source, middle, RoslynCpgEdgeKind.DataFlow);
+        graph.AddEdge(middle, sink, RoslynCpgEdgeKind.DataFlow);
+        graph.FreezeQueryIndex();
+        var query = new RoslynCpgSliceQuery(graph);
+        var options = new RoslynCpgSliceQueryOptions(
+            new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+            MaxHops: 4,
+            MaxPaths: 4,
+            MaxDefinitions: 4,
+            MaxVisitedNodes: 1);
+
+        var result = query.QueryBackward(sink.Id, options);
+
+        Assert.True(result.WasTruncated);
+        Assert.Equal("maxVisitedNodes", result.TruncationReason);
+        Assert.Equal(1, result.VisitedNodeCount);
+    }
+
+    [Fact]
+    public void QueryBackward_RepeatedEquivalentQuery_UsesCache()
+    {
+        var graph = new RoslynCpgGraph();
+        var firstSource = CreateNode("first-source");
+        var secondSource = CreateNode("second-source");
+        var sink = CreateNode("sink");
+        graph.AddEdge(firstSource, sink, RoslynCpgEdgeKind.DataFlow);
+        graph.AddEdge(secondSource, sink, RoslynCpgEdgeKind.DataFlow);
+        graph.FreezeQueryIndex();
+        var query = new RoslynCpgSliceQuery(graph);
+        var options = new RoslynCpgSliceQueryOptions(
+            new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+            MaxHops: 2,
+            MaxPaths: 4,
+            MaxDefinitions: 4,
+            MaxVisitedEdges: 2);
+
+        var first = query.QueryBackward(sink.Id, options);
+        var second = query.QueryBackward(sink.Id, options);
+
+        Assert.False(first.WasTruncated);
+        Assert.Equal(1, first.Telemetry.CacheMissCount);
+        Assert.Equal(1, second.Telemetry.CacheHitCount);
+        Assert.Equal(first.Paths, second.Paths);
+    }
+
+    [Fact]
+    public void QueryBackward_WhenVisitedEdgeBudgetIsReached_ReportsMaxVisitedEdges()
+    {
+        var graph = new RoslynCpgGraph();
+        var firstSource = CreateNode("first-source");
+        var secondSource = CreateNode("second-source");
+        var sink = CreateNode("sink");
+        graph.AddEdge(firstSource, sink, RoslynCpgEdgeKind.DataFlow);
+        graph.AddEdge(secondSource, sink, RoslynCpgEdgeKind.DataFlow);
+        graph.FreezeQueryIndex();
+        var query = new RoslynCpgSliceQuery(graph);
+        var options = new RoslynCpgSliceQueryOptions(
+            new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+            MaxHops: 2,
+            MaxPaths: 4,
+            MaxDefinitions: 4,
+            MaxVisitedEdges: 1);
+
+        var result = query.QueryBackward(sink.Id, options);
+
+        Assert.True(result.WasTruncated);
+        Assert.Equal("maxVisitedEdges", result.TruncationReason);
+        Assert.Equal(1, result.VisitedEdgeCount);
+    }
+
+    [Fact]
+    public void QueryBackward_InterproceduralEdgesConsumeOnlyCallDepthBudget()
+    {
+        var graph = new RoslynCpgGraph();
+        var source = CreateNode("source");
+        var parameter = CreateNode("parameter");
+        var sink = CreateNode("sink");
+        graph.AddEdge(source, parameter, RoslynCpgEdgeKind.InterproceduralDataFlow);
+        graph.AddEdge(parameter, sink, RoslynCpgEdgeKind.DataFlow);
+        graph.FreezeQueryIndex();
+        var query = new RoslynCpgSliceQuery(graph);
+        var edgeKinds = new HashSet<RoslynCpgEdgeKind>
+        {
+            RoslynCpgEdgeKind.DataFlow,
+            RoslynCpgEdgeKind.InterproceduralDataFlow,
+        };
+
+        var blocked = query.QueryBackward(sink.Id, new RoslynCpgSliceQueryOptions(edgeKinds, 4, 4, 4));
+        var allowed = query.QueryBackward(sink.Id, new RoslynCpgSliceQueryOptions(edgeKinds, 4, 4, 4, MaxCallDepth: 1));
+
+        Assert.True(blocked.WasTruncated);
+        Assert.Equal("maxCallDepth", blocked.TruncationReason);
+        Assert.Equal(new[] { "source", "parameter", "sink" }, Assert.Single(allowed.Paths).NodeIds);
+    }
+
+    [Fact]
+    public void QueryBackward_WhenInterproceduralFrameRepeats_CutsTheRecursiveCallStack()
+    {
+        var graph = new RoslynCpgGraph();
+        var source = CreateNode("source");
+        var recursiveParameter = CreateNode("recursive-parameter");
+        var sink = CreateNode("sink");
+        graph.AddEdge(source, recursiveParameter, RoslynCpgEdgeKind.InterproceduralDataFlow, "ArgumentToParameter|callsite:recursive");
+        graph.AddEdge(recursiveParameter, sink, RoslynCpgEdgeKind.InterproceduralDataFlow, "MethodReturnToCallResult|callsite:recursive");
+        graph.FreezeQueryIndex();
+        var query = new RoslynCpgSliceQuery(graph);
+        var options = new RoslynCpgSliceQueryOptions(
+            new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.InterproceduralDataFlow },
+            MaxHops: 4,
+            MaxPaths: 4,
+            MaxDefinitions: 4,
+            MaxCallDepth: 4);
+
+        var result = query.QueryBackward(sink.Id, options);
+
+        Assert.True(result.WasTruncated);
+        Assert.Equal("callStackCycle", result.TruncationReason);
+        Assert.True(result.Telemetry!.MaxObservedCallDepth >= 1);
+    }
+
     private static RoslynCpgNode CreateNode(string id)
     {
         return new RoslynCpgNode(id, RoslynCpgNodeKind.Operation, "Operation");

@@ -73,6 +73,7 @@
 | `CfgTrue` | Branch or loop true-flow edge | analysis |
 | `CfgFalse` | Branch false-flow edge | analysis |
 | `DataFlow` | Minimal intraprocedural reaching-definition edge for locals and parameters | analysis |
+| `InterproceduralDataFlow` | Opt-in boundary bridge between a uniquely resolved call target and its parameter/return endpoint | opt-in analysis overlay |
 | `Dominates` | Method-local Roslyn CFG dominance relation | opt-in analysis overlay |
 | `PostDominates` | Method-local Roslyn CFG post-dominance relation | opt-in analysis overlay |
 | `ControlDependence` | Condition to branch-controlled node relation derived from post-dominance | opt-in analysis overlay |
@@ -83,10 +84,9 @@ This minimal graph intentionally does not model:
 
 - trivia
 - preprocessor directives
-- interprocedural data flow
 - full external dependency type summaries
 - dynamic dispatch candidate sets
-- interprocedural call/data flow
+- complete interprocedural call/data flow (the opt-in unique-target overlay below is deliberately partial)
 
 It is a Roslyn-native minimal graph, not a full joern schema clone.
 
@@ -95,6 +95,21 @@ It is a Roslyn-native minimal graph, not a full joern schema clone.
 `Dominance`, `PostDominance`, and `ControlDependence` are opt-in capabilities. They are calculated independently for each method from Roslyn `ControlFlowGraph` basic blocks, then projected only to graph nodes with a stable operation or synthetic entry/exit mapping. Synthetic CFG blocks without a graph-node mapping remain internal to the calculation.
 
 `Dominates(source)` and `PostDominates(source)` return direct overlay edges from the frozen query index. `Controls(source)` and `ControlledBy(target)` expose control-dependence edges without rescanning the graph.
+
+## Interprocedural data-flow overlay
+
+`InterproceduralDataFlow` is an opt-in capability and is excluded from the default capability set.
+It depends on the method model, resolved `CallTargets`, intraprocedural `DataFlow`, and the
+frozen query index. It materializes only deterministic bridges for an internal callsite with one
+resolved target: actual argument to formal parameter, returned expression to `MethodReturn`, and
+`MethodReturn` to the call result. Each bridge label is one of `ArgumentToParameter`,
+`ReturnToMethodReturn`, or `MethodReturnToCallResult`.
+
+Dynamic, delegate, external, recursive, aliased, heap, and multi-target calls are not inferred by
+this overlay. They remain explicit cuts; queries must report those cuts rather than inventing a
+flow. Cross-process traversal consumes call-depth budget only when it crosses an
+`InterproceduralDataFlow` edge. The overlay is deterministically ordered by caller method, source
+span, callsite, target, and parameter ordinal.
 
 ## Local View
 

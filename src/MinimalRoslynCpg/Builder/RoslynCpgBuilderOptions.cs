@@ -22,9 +22,17 @@ public sealed record RoslynCpgBuilderOptions(
   bool EnableOperationBackedSyntaxTypes = true,
   RoslynCpgSyntaxPassMode SyntaxPassMode = RoslynCpgSyntaxPassMode.Partitioned,
   int SyntaxLargeFileLineThreshold = 800,
-  IReadOnlyCollection<RoslynCpgCapability>? RequestedCapabilities = null)
+  IReadOnlyCollection<RoslynCpgCapability>? RequestedCapabilities = null,
+  RoslynCpgDataFlowOptions? DataFlowOptions = null,
+  RoslynCpgInterproceduralDataFlowOptions? InterproceduralDataFlowOptions = null)
 {
   public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
+
+  public RoslynCpgDataFlowOptions EffectiveDataFlowOptions =>
+    DataFlowOptions ?? RoslynCpgDataFlowOptions.Unbounded;
+
+  public RoslynCpgInterproceduralDataFlowOptions EffectiveInterproceduralDataFlowOptions =>
+    InterproceduralDataFlowOptions ?? RoslynCpgInterproceduralDataFlowOptions.Default;
 
   public static RoslynCpgBuilderOptions CreateDefault()
   {
@@ -42,6 +50,45 @@ public sealed record RoslynCpgBuilderOptions(
   }
 }
 
+public enum RoslynCpgDataFlowOverflowBehavior
+{
+  SkipMethod,
+  FailBuild,
+}
+
+public enum RoslynCpgDataFlowOverflowReason
+{
+  None,
+  DefinitionLimitExceeded,
+  FlowNodeLimitExceeded,
+  CandidateEdgeLimitExceeded,
+}
+
+public sealed record RoslynCpgDataFlowOptions(
+  int MaxDefinitionsPerMethod,
+  int MaxFlowNodesPerMethod = int.MaxValue,
+  int MaxCandidateEdgesPerMethod = int.MaxValue,
+  RoslynCpgDataFlowOverflowBehavior OverflowBehavior = RoslynCpgDataFlowOverflowBehavior.SkipMethod)
+{
+  public static RoslynCpgDataFlowOptions Unbounded { get; } = new(int.MaxValue);
+}
+
+public sealed record RoslynCpgInterproceduralDataFlowOptions(
+  int MaxCallTargetsPerSite = 1,
+  int MaxBoundaryEdgesPerMethod = 10000)
+{
+  public static RoslynCpgInterproceduralDataFlowOptions Default { get; } = new();
+}
+
+public sealed record RoslynCpgMethodDataFlowTelemetry(
+  string MethodFullName,
+  int DefinitionCount,
+  int FlowNodeCount,
+  int FixpointIterations,
+  int UnreachableNodeCount,
+  int GeneratedCandidateCount,
+  RoslynCpgDataFlowOverflowReason OverflowReason);
+
 public sealed record RoslynCpgBuildTelemetry(
   RoslynCpgBuilderMode RequestedMode,
   RoslynCpgBuilderMode ExecutedMode,
@@ -57,7 +104,8 @@ public sealed record RoslynCpgBuildTelemetry(
   IReadOnlyCollection<RoslynCpgCapability>? ResolvedCapabilities = null,
   IReadOnlyList<string>? ExecutedPassNames = null,
   IReadOnlyList<string>? SkippedPassNames = null,
-  string GraphSnapshotVersion = "legacy-v1")
+  string GraphSnapshotVersion = "legacy-v1",
+  RoslynCpgInterproceduralDataFlowTelemetry? InterproceduralDataFlowTelemetry = null)
 {
   public static RoslynCpgBuildTelemetry CreateDefault()
   {
@@ -75,7 +123,22 @@ public sealed record RoslynCpgBuildTelemetry(
       ResolvedCapabilities: Array.Empty<RoslynCpgCapability>(),
       ExecutedPassNames: Array.Empty<string>(),
       SkippedPassNames: Array.Empty<string>(),
-      GraphSnapshotVersion: "legacy-v1");
+      GraphSnapshotVersion: "legacy-v1",
+      InterproceduralDataFlowTelemetry: RoslynCpgInterproceduralDataFlowTelemetry.CreateDefault());
+  }
+}
+
+public sealed record RoslynCpgInterproceduralDataFlowTelemetry(
+  int BridgeEdgeCount,
+  int CutCount,
+  IReadOnlyDictionary<string, int> CutCountByReason)
+{
+  public static RoslynCpgInterproceduralDataFlowTelemetry CreateDefault()
+  {
+    return new RoslynCpgInterproceduralDataFlowTelemetry(
+      BridgeEdgeCount: 0,
+      CutCount: 0,
+      CutCountByReason: new Dictionary<string, int>(StringComparer.Ordinal));
   }
 }
 
@@ -186,7 +249,9 @@ public sealed record RoslynCpgDataFlowPassTelemetry(
   int MethodOperationNodeProjectionCount = 0,
   int UsedFactRecordCount = 0,
   long PrepareFlowNodesElapsedTicks = 0,
-  long CollectUsedFactsElapsedTicks = 0)
+  long CollectUsedFactsElapsedTicks = 0,
+  int SkippedMethodCount = 0,
+  IReadOnlyList<RoslynCpgMethodDataFlowTelemetry>? MethodTelemetry = null)
 {
   public static RoslynCpgDataFlowPassTelemetry CreateDefault()
   {
@@ -214,6 +279,7 @@ public sealed record RoslynCpgDataFlowPassTelemetry(
       UsedFactPartitionCount: 0,
       UsedFactPartitionMaxDegreeOfParallelism: 1,
       CfgSensitivePartitionCount: 0,
-      CfgSensitivePartitionMaxDegreeOfParallelism: 1);
+      CfgSensitivePartitionMaxDegreeOfParallelism: 1,
+      MethodTelemetry: Array.Empty<RoslynCpgMethodDataFlowTelemetry>());
   }
 }

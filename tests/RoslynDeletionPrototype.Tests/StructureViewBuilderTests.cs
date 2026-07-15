@@ -34,6 +34,41 @@ public sealed class StructureViewBuilderTests
     }
 
     [Fact]
+    public void QueryIndex_AfterFreeze_ProvidesStableNodesByKind()
+    {
+        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        var second = new MinimalRoslynCpg.Model.RoslynCpgNode("second", RoslynCpgNodeKind.Operation, "Operation");
+        var first = new MinimalRoslynCpg.Model.RoslynCpgNode("first", RoslynCpgNodeKind.Operation, "Operation");
+        var method = new MinimalRoslynCpg.Model.RoslynCpgNode("method", RoslynCpgNodeKind.Method, "Method");
+
+        graph.AddNode(second);
+        graph.AddNode(method);
+        graph.AddNode(first);
+        graph.FreezeQueryIndex();
+
+        Assert.Equal(new[] { "first", "second" }, graph.GetNodes(RoslynCpgNodeKind.Operation).Select(node => node.Id));
+    }
+
+    [Fact]
+    public void QueryIndex_AfterFreeze_ResolvesSymbolReferencesCallsitesAndHalfOpenFileSpan()
+    {
+        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        var symbol = new MinimalRoslynCpg.Model.RoslynCpgNode("symbol", RoslynCpgNodeKind.SymbolMethod, "SymbolMethod", FullName: "Demo.Callee");
+        var reference = new MinimalRoslynCpg.Model.RoslynCpgNode("reference", RoslynCpgNodeKind.Reference, "Reference", FilePath: "sample.cs", SpanStart: 2, SpanEnd: 4);
+        var callSite = new MinimalRoslynCpg.Model.RoslynCpgNode("call", RoslynCpgNodeKind.CallSite, "CallSite", FilePath: "sample.cs", SpanStart: 4, SpanEnd: 8);
+        var method = new MinimalRoslynCpg.Model.RoslynCpgNode("method", RoslynCpgNodeKind.Method, "Method", FullName: "Demo.Caller");
+        graph.AddEdge(reference, symbol, RoslynCpgEdgeKind.Ref);
+        graph.AddEdge(callSite, symbol, RoslynCpgEdgeKind.CallTargets);
+        graph.AddEdge(method, callSite, RoslynCpgEdgeKind.ContainsSymbol);
+        graph.FreezeQueryIndex();
+
+        Assert.Equal(new[] { "reference" }, graph.GetSymbolReferences("symbol").Select(node => node.Id));
+        Assert.Equal(new[] { "call" }, graph.GetMethodOwnedCallSites("method").Select(node => node.Id));
+        Assert.Equal(new[] { "reference" }, graph.GetNodesInFileSpan("sample.cs", 2, 4).Select(node => node.Id));
+        Assert.NotEqual(0, graph.GetEdgeMaskId(new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow }));
+    }
+
+    [Fact]
     public void ExtractLocalView_AfterFreeze_AppliesDirectionKindAndHopLimits()
     {
         var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();

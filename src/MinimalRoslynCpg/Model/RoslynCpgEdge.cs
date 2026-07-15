@@ -9,4 +9,5 @@ public sealed record RoslynCpgEdge(
   string SourceId,
   string TargetId,
   RoslynCpgEdgeKind Kind,
-  string? Label = null);
+  string? Label = null,
+  string? ContextId = null);

@@ -37,6 +37,7 @@ public enum RoslynCpgEdgeKind
     CfgTrue,
     CfgFalse,
     DataFlow,
+    InterproceduralDataFlow,
     Dominates,
     PostDominates,
     ControlDependence,

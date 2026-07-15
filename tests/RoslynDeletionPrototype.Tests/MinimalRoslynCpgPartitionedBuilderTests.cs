@@ -1,5 +1,6 @@
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Contracts;
+using MinimalRoslynCpg.Analysis.FlowSummaries;
 using MinimalRoslynCpg.Model;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -10,6 +11,76 @@ namespace RoslynPrototype.Tests;
 
 public sealed class MinimalRoslynCpgPartitionedBuilderTests
 {
+  [Fact]
+  public void FlowSummary_UsesRoslynParameterOrdinalsAndStableReturnEndpoint()
+  {
+    var summary = new RoslynCpgFlowSummary(
+      "project",
+      "Demo.Sample",
+      "Map",
+      0,
+      new[] { RoslynCpgFlowSummaryEndpoint.Parameter(2) },
+      RoslynCpgFlowSummaryEndpoint.Return);
+
+    Assert.Equal(2, Assert.Single(summary.Sources).ParameterOrdinal);
+    Assert.Equal(-1, summary.Target.ParameterOrdinal);
+    Assert.False(RoslynCpgDefaultFlowSummaries.TryGet(summary.StableKey, out _));
+  }
+  [Fact]
+  public void BuildFromSource_InterproceduralCapability_IsOptInAndResolvesDependencies()
+  {
+    var defaultGraph = new RoslynCpgBuilder().BuildFromSource(
+      "namespace Demo; public sealed class Sample { private int AddOne(int value) => value + 1; public int Run(int value) => AddOne(value); }",
+      "interprocedural-default.cs");
+    var options = RoslynCpgBuilderOptions.CreateDefault() with
+    {
+      RequestedCapabilities = new[] { RoslynCpgCapability.InterproceduralDataFlow },
+    };
+    var builder = new RoslynCpgBuilder(options);
+
+    var graph = builder.BuildFromSource(
+      "namespace Demo; public sealed class Sample { private int AddOne(int value) => value + 1; public int Run(int value) => AddOne(value); }",
+      "interprocedural-enabled.cs");
+
+    Assert.DoesNotContain(defaultGraph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.InterproceduralDataFlow);
+    var bridgeEdges = graph.Edges
+      .Where(edge => edge.Kind == RoslynCpgEdgeKind.InterproceduralDataFlow)
+      .ToArray();
+    Assert.NotEmpty(bridgeEdges);
+    Assert.All(bridgeEdges, edge => Assert.Contains(
+      edge.Label,
+      new[]
+      {
+        nameof(RoslynCpgInterproceduralBridgeKind.ArgumentToParameter),
+        nameof(RoslynCpgInterproceduralBridgeKind.ReturnToMethodReturn),
+        nameof(RoslynCpgInterproceduralBridgeKind.MethodReturnToCallResult),
+      }));
+    Assert.All(bridgeEdges, edge => Assert.StartsWith("callsite:", edge.ContextId));
+    Assert.Equal(bridgeEdges.Length, builder.LastBuildTelemetry.InterproceduralDataFlowTelemetry!.BridgeEdgeCount);
+    Assert.Contains(RoslynCpgCapability.InterproceduralDataFlow, builder.LastBuildTelemetry.ResolvedCapabilities!);
+    Assert.Contains(RoslynCpgCapability.QueryIndex, builder.LastBuildTelemetry.ResolvedCapabilities!);
+  }
+
+  [Fact]
+  public void BuildFromSource_InterproceduralCapability_RecordsExternalTargetCut()
+  {
+    var options = RoslynCpgBuilderOptions.CreateDefault() with
+    {
+      RequestedCapabilities = new[] { RoslynCpgCapability.InterproceduralDataFlow },
+    };
+
+    var builder = new RoslynCpgBuilder(options);
+    var graph = builder.BuildFromSource(
+      "public sealed class Sample { public string Run(int value) => value.ToString(); }",
+      "interprocedural-external.cs");
+
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.InterproceduralDataFlow);
+    Assert.True(builder.LastBuildTelemetry.InterproceduralDataFlowTelemetry!.CutCountByReason.TryGetValue(
+      "ExternalTarget",
+      out var externalTargetCutCount));
+    Assert.True(externalTargetCutCount > 0);
+  }
+
   [Fact]
   public void RoslynCpgEdgeKind_ContainsControlDependenceOverlayKinds()
   {
@@ -677,6 +748,101 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
 
     Assert.DoesNotContain(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.DataFlow);
     Assert.Equal(1, builder.LastBuildTelemetry.DataFlowPassTelemetry.SkippedMethodCount);
+  }
+
+  [Fact]
+  public void BuildFromSource_DataFlowNodeBudget_SkipsOverBudgetMethod()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public sealed class FlowNodeBudgetSample
+      {
+        public int Run(int input)
+        {
+          return input + 1;
+        }
+      }
+      """;
+    var options = CreateDataFlowPartitionOptions(maxDegreeOfParallelism: 1) with
+    {
+      DataFlowOptions = new RoslynCpgDataFlowOptions(
+        MaxDefinitionsPerMethod: int.MaxValue,
+        MaxFlowNodesPerMethod: 0)
+    };
+    var builder = new RoslynCpgBuilder(options);
+
+    var graph = builder.BuildFromSource(source, "flow-node-budget.cs");
+
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.DataFlow);
+    Assert.Equal(1, builder.LastBuildTelemetry.DataFlowPassTelemetry.SkippedMethodCount);
+  }
+
+  [Fact]
+  public void BuildFromSource_DataFlowCandidateBudget_FailBuildReportsStableMethodName()
+  {
+    const string source =
+      "namespace Demo; public sealed class Sample { public int Run(int value) { return value + 1; } }";
+    var options = CreateDataFlowPartitionOptions(maxDegreeOfParallelism: 1) with
+    {
+      DataFlowOptions = new RoslynCpgDataFlowOptions(
+        MaxDefinitionsPerMethod: int.MaxValue,
+        MaxFlowNodesPerMethod: int.MaxValue,
+        MaxCandidateEdgesPerMethod: 0,
+        OverflowBehavior: RoslynCpgDataFlowOverflowBehavior.FailBuild),
+    };
+
+    var exception = Assert.Throws<InvalidOperationException>(() =>
+      new RoslynCpgBuilder(options).BuildFromSource(source, "candidate-budget.cs"));
+
+    Assert.Contains("Run", exception.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void BuildFromSource_DataFlowBudgetSkip_ReportsStablePerMethodOverflowReason()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public sealed class BudgetSample
+      {
+        public int WithinBudget(int input)
+        {
+          var result = input + 1;
+          return result;
+        }
+
+        public int OverBudget(int input)
+        {
+          var first = input + 1;
+          var second = first + 1;
+          return second;
+        }
+      }
+      """;
+    var options = CreateDataFlowPartitionOptions(maxDegreeOfParallelism: 1) with
+    {
+      DataFlowOptions = new RoslynCpgDataFlowOptions(MaxDefinitionsPerMethod: 2),
+    };
+
+    var builder = new RoslynCpgBuilder(options);
+
+    _ = builder.BuildFromSource(source, "per-method-budget.cs");
+
+    var telemetry = builder.LastBuildTelemetry.DataFlowPassTelemetry;
+    var skippedMethod = Assert.Single(telemetry.MethodTelemetry!.Where(method =>
+      method.OverflowReason != RoslynCpgDataFlowOverflowReason.None));
+
+    Assert.Equal(
+      "Demo.BudgetSample.OverBudget(int)",
+      skippedMethod.MethodFullName);
+    Assert.Equal(
+      RoslynCpgDataFlowOverflowReason.DefinitionLimitExceeded,
+      skippedMethod.OverflowReason);
+    Assert.Equal(3, skippedMethod.DefinitionCount);
+    Assert.Equal(0, skippedMethod.GeneratedCandidateCount);
   }
 
   [Fact]

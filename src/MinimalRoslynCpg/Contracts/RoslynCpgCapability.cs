@@ -12,11 +12,12 @@ public enum RoslynCpgCapability
     Dominance = 1 << 5,
     ControlDependence = 1 << 6,
     QueryIndex = 1 << 7,
+    InterproceduralDataFlow = 1 << 8,
     Default = SyntaxSemantic |
               MethodModel |
               CallTargets |
               Cfg |
               DataFlow |
               QueryIndex,
-    All = Default | Dominance | ControlDependence,
+    All = Default | Dominance | ControlDependence | InterproceduralDataFlow,
 }

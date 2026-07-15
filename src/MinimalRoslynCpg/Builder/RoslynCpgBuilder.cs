@@ -75,6 +75,7 @@ public sealed partial class RoslynCpgBuilder
     private RoslynCpgSyntaxPassTelemetry _syntaxPassTelemetry = RoslynCpgSyntaxPassTelemetry.CreateDefault();
     private RoslynCpgMethodDecorationTelemetry _methodDecorationTelemetry = RoslynCpgMethodDecorationTelemetry.CreateDefault();
     private RoslynCpgDataFlowPassTelemetry _dataFlowPassTelemetry = RoslynCpgDataFlowPassTelemetry.CreateDefault();
+    private RoslynCpgInterproceduralDataFlowTelemetry _interproceduralDataFlowTelemetry = RoslynCpgInterproceduralDataFlowTelemetry.CreateDefault();
 
     private sealed record CapabilityBuildPlan(
         RoslynCpgCapability ResolvedCapabilities,
@@ -82,6 +83,7 @@ public sealed partial class RoslynCpgBuilder
         bool RequiresCallTargets,
         bool RequiresCfg,
         bool RequiresDataFlow,
+        bool RequiresInterproceduralDataFlow,
         bool RequiresDominance,
         bool RequiresControlDependence);
 
@@ -150,6 +152,7 @@ public sealed partial class RoslynCpgBuilder
         _syntaxPassTelemetry = RoslynCpgSyntaxPassTelemetry.CreateDefault();
         _methodDecorationTelemetry = RoslynCpgMethodDecorationTelemetry.CreateDefault();
         _dataFlowPassTelemetry = RoslynCpgDataFlowPassTelemetry.CreateDefault();
+        _interproceduralDataFlowTelemetry = RoslynCpgInterproceduralDataFlowTelemetry.CreateDefault();
         LastBuildTelemetry = RoslynCpgBuildTelemetry.CreateDefault();
         var buildPlan = ResolveCapabilityBuildPlan();
         var executedPassNames = new List<string>();
@@ -185,6 +188,12 @@ public sealed partial class RoslynCpgBuilder
         RunOptionalPass(buildPlan.RequiresMethodModel, MemberAccessPass.Instance, context, executedPassNames, skippedPassNames);
         RunOptionalPass(buildPlan.RequiresCfg, ControlFlowPass.Instance, context, executedPassNames, skippedPassNames);
         RunOptionalPass(buildPlan.RequiresDataFlow, DataFlowPass.Instance, context, executedPassNames, skippedPassNames);
+        RunOptionalPass(
+            buildPlan.RequiresInterproceduralDataFlow,
+            InterproceduralDataFlowPass.Instance,
+            context,
+            executedPassNames,
+            skippedPassNames);
         RunOptionalPass(buildPlan.RequiresDominance, DominancePass.Instance, context, executedPassNames, skippedPassNames);
         RunOptionalPass(buildPlan.RequiresControlDependence, ControlDependencePass.Instance, context, executedPassNames, skippedPassNames);
 
@@ -203,7 +212,8 @@ public sealed partial class RoslynCpgBuilder
           ResolvedCapabilities: EnumerateCapabilities(buildPlan.ResolvedCapabilities),
           ExecutedPassNames: executedPassNames,
           SkippedPassNames: skippedPassNames,
-          GraphSnapshotVersion: "capability-v1");
+          GraphSnapshotVersion: "capability-v1",
+          InterproceduralDataFlowTelemetry: _interproceduralDataFlowTelemetry);
         context.Graph.FreezeQueryIndex();
         return context.Graph;
     }
@@ -223,6 +233,7 @@ public sealed partial class RoslynCpgBuilder
                          RoslynCpgCapability.CallTargets |
                          RoslynCpgCapability.Cfg |
                          RoslynCpgCapability.DataFlow |
+                         RoslynCpgCapability.InterproceduralDataFlow |
                          RoslynCpgCapability.Dominance |
                          RoslynCpgCapability.ControlDependence)) != 0)
         {
@@ -232,6 +243,14 @@ public sealed partial class RoslynCpgBuilder
         if ((resolved & RoslynCpgCapability.DataFlow) != 0)
         {
             resolved |= RoslynCpgCapability.CallTargets | RoslynCpgCapability.Cfg;
+        }
+
+        if ((resolved & RoslynCpgCapability.InterproceduralDataFlow) != 0)
+        {
+            resolved |= RoslynCpgCapability.DataFlow |
+                        RoslynCpgCapability.CallTargets |
+                        RoslynCpgCapability.MethodModel |
+                        RoslynCpgCapability.QueryIndex;
         }
 
         if ((resolved & RoslynCpgCapability.Dominance) != 0)
@@ -255,6 +274,7 @@ public sealed partial class RoslynCpgBuilder
             RequiresCallTargets: (resolved & RoslynCpgCapability.CallTargets) != 0,
             RequiresCfg: (resolved & RoslynCpgCapability.Cfg) != 0,
             RequiresDataFlow: (resolved & RoslynCpgCapability.DataFlow) != 0,
+            RequiresInterproceduralDataFlow: (resolved & RoslynCpgCapability.InterproceduralDataFlow) != 0,
             RequiresDominance: (resolved & RoslynCpgCapability.Dominance) != 0,
             RequiresControlDependence: (resolved & RoslynCpgCapability.ControlDependence) != 0);
     }
@@ -285,6 +305,134 @@ public sealed partial class RoslynCpgBuilder
 
         pass.Run(this, context);
         executedPassNames.Add(pass.Name);
+    }
+
+    internal void RunInterproceduralDataFlowPass(RoslynCpgBuildContext context)
+    {
+        var graph = context.Graph;
+        var nodesById = graph.Nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
+        var dataFlowEdges = graph.Edges
+          .Where(edge => edge.Kind == RoslynCpgEdgeKind.DataFlow)
+          .ToArray();
+        var plans = new List<InterproceduralDataFlowPlan>();
+        var recordedReturnMethods = new HashSet<string>(StringComparer.Ordinal);
+        var cuts = new Dictionary<string, int>(StringComparer.Ordinal);
+        var options = _options.EffectiveInterproceduralDataFlowOptions;
+
+        foreach (var callSite in graph.Nodes
+          .Where(node => node.Kind == RoslynCpgNodeKind.CallSite)
+          .OrderBy(node => node.FullName, StringComparer.Ordinal)
+          .ThenBy(node => node.SpanStart)
+          .ThenBy(node => node.Id, StringComparer.Ordinal))
+        {
+            var targets = graph.Edges
+              .Where(edge => edge.Kind == RoslynCpgEdgeKind.CallTargets && edge.SourceId == callSite.Id)
+              .Select(edge => edge.TargetId)
+              .Distinct(StringComparer.Ordinal)
+              .OrderBy(targetId => targetId, StringComparer.Ordinal)
+              .ToArray();
+            if (targets.Length == 0)
+            {
+                RecordCut(cuts, "UnresolvedTarget");
+                continue;
+            }
+
+            if (targets.Length > options.MaxCallTargetsPerSite)
+            {
+                RecordCut(cuts, "AmbiguousTarget");
+                continue;
+            }
+
+            var targetMethodId = targets[0];
+            var parameterPrefix = $"methodparam:{targetMethodId}:";
+            var returnNodeId = $"methodreturn:{targetMethodId}";
+            var hasInternalBoundary = nodesById.ContainsKey(returnNodeId) ||
+              nodesById.Keys.Any(nodeId => nodeId.StartsWith(parameterPrefix, StringComparison.Ordinal));
+            if (!hasInternalBoundary)
+            {
+                RecordCut(cuts, "ExternalTarget");
+                continue;
+            }
+
+            var callSitePlans = dataFlowEdges
+              .Where(edge => edge.TargetId.StartsWith(parameterPrefix, StringComparison.Ordinal))
+              .Select(edge => new InterproceduralDataFlowPlan(
+                callSite.Id,
+                targetMethodId,
+                edge.SourceId,
+                edge.TargetId,
+                RoslynCpgInterproceduralBridgeKind.ArgumentToParameter,
+                ParseArgumentOrdinal(edge.TargetId)))
+              .Concat(dataFlowEdges
+                .Where(edge => edge.SourceId == returnNodeId && edge.TargetId == callSite.Id)
+                .Select(edge => new InterproceduralDataFlowPlan(
+                  callSite.Id,
+                  targetMethodId,
+                  edge.SourceId,
+                  edge.TargetId,
+                  RoslynCpgInterproceduralBridgeKind.MethodReturnToCallResult)))
+              .ToList();
+            if (recordedReturnMethods.Add(targetMethodId))
+            {
+                callSitePlans.AddRange(dataFlowEdges
+                  .Where(edge => edge.TargetId == returnNodeId)
+                  .Select(edge => new InterproceduralDataFlowPlan(
+                    callSite.Id,
+                    targetMethodId,
+                    edge.SourceId,
+                    edge.TargetId,
+                    RoslynCpgInterproceduralBridgeKind.ReturnToMethodReturn)));
+            }
+
+            if (callSitePlans.Count == 0)
+            {
+                RecordCut(cuts, "MissingIntraFacts");
+                continue;
+            }
+
+            plans.AddRange(callSitePlans.Take(options.MaxBoundaryEdgesPerMethod));
+            if (callSitePlans.Count > options.MaxBoundaryEdgesPerMethod)
+            {
+                RecordCut(cuts, "BoundaryEdgeBudget");
+            }
+        }
+
+        var orderedPlans = plans
+          .Distinct()
+          .OrderBy(plan => plan.CallSiteId, StringComparer.Ordinal)
+          .ThenBy(plan => plan.TargetMethodId, StringComparer.Ordinal)
+          .ThenBy(plan => plan.ArgumentOrdinal)
+          .ThenBy(plan => plan.BridgeKind)
+          .ThenBy(plan => plan.SourceNodeId, StringComparer.Ordinal)
+          .ThenBy(plan => plan.TargetNodeId, StringComparer.Ordinal)
+          .ToArray();
+        foreach (var plan in orderedPlans)
+        {
+            graph.AddEdge(
+                nodesById[plan.SourceNodeId],
+                nodesById[plan.TargetNodeId],
+                RoslynCpgEdgeKind.InterproceduralDataFlow,
+                plan.Label,
+                plan.CallSiteId);
+        }
+
+        _interproceduralDataFlowTelemetry = new RoslynCpgInterproceduralDataFlowTelemetry(
+          orderedPlans.Length,
+          cuts.Values.Sum(),
+          new Dictionary<string, int>(cuts, StringComparer.Ordinal));
+    }
+
+    private static int ParseArgumentOrdinal(string methodParameterId)
+    {
+        var separator = methodParameterId.LastIndexOf(':');
+        return separator >= 0 && int.TryParse(methodParameterId[(separator + 1)..], out var ordinal)
+          ? ordinal
+          : -1;
+    }
+
+    private static void RecordCut(IDictionary<string, int> cuts, string reason)
+    {
+        cuts[reason] = cuts.TryGetValue(reason, out var count) ? count + 1 : 1;
     }
 
     private void RunPipeline(IReadOnlyList<IRoslynCpgPass> pipeline, RoslynCpgBuildContext context)

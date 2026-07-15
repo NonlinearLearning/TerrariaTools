@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
+using MinimalRoslynCpg.Analysis.FlowSummaries;
 using System.Text;
 using System.Text.Json;
 using RoslynPrototype.Analysis;
@@ -30,6 +31,42 @@ public sealed class PipelineComponentTests : IDisposable
     {
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"roslyn-prototype-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
+    }
+
+    [Fact]
+    public void FlowSummaryRegistry_ProjectOverride_TakesPrecedenceOverFrameworkAndUnknown()
+    {
+        var framework = new RoslynCpgFlowSummary(
+          "framework",
+          "Demo.Helpers",
+          "Map",
+          0,
+          new[] { RoslynCpgFlowSummaryEndpoint.Parameter(0) },
+          RoslynCpgFlowSummaryEndpoint.Return);
+        var project = framework with { Sources = new[] { RoslynCpgFlowSummaryEndpoint.Receiver } };
+        var registry = new RoslynCpgFlowSummaryRegistry(new[] { project }, new[] { framework });
+
+        var resolved = registry.Resolve(project.StableKey);
+
+        Assert.Equal(RoslynCpgFlowSummaryResolution.Project, resolved.Resolution);
+        Assert.Same(project, resolved.Summary);
+        Assert.Equal(RoslynCpgFlowSummaryResolution.Unknown, registry.Resolve("missing").Resolution);
+    }
+
+    [Fact]
+    public void DeletionRulePipeline_HelperReturnSlicePilot_IsOptInAndDoesNotChangeRuleResults()
+    {
+        var pipeline = new DeletionRulePipeline(
+          Array.Empty<RuleDefinitionMark>(),
+          new RuleDefinitionPropagate[] { new DeleteClassSymbolReferencePropagationRule() },
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>());
+
+        var disabled = pipeline.GetRequiredCapabilities();
+        var enabled = (pipeline with { EnableHelperReturnSlicePilot = true }).GetRequiredCapabilities();
+
+        Assert.DoesNotContain(RoslynCpgCapability.InterproceduralDataFlow, disabled);
+        Assert.Contains(RoslynCpgCapability.InterproceduralDataFlow, enabled);
     }
 
     [Fact]
