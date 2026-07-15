@@ -34,9 +34,9 @@ public sealed class MarkingEngine
       IReadOnlyList<RuleDefinitionMark> rules)
     {
         var seedMarks = new List<MarkRecord>();
-        foreach (var rule in rules)
+        for (var ruleIndex = 0; ruleIndex < rules.Count; ruleIndex++)
         {
-            seedMarks.AddRange(RunRule(context, root, rule));
+            seedMarks.AddRange(RunRule(context, root, rules[ruleIndex], ruleIndex));
         }
 
         return seedMarks;
@@ -53,7 +53,9 @@ public sealed class MarkingEngine
             (index, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return Task.FromResult((IReadOnlyList<MarkRecord>)RunRule(context, root, rules[index]));
+                return Task.Run(
+                  () => (IReadOnlyList<MarkRecord>)RunRule(context, root, rules[index], index),
+                  cancellationToken);
             },
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
@@ -65,13 +67,22 @@ public sealed class MarkingEngine
     private static List<MarkRecord> RunRule(
       RuleContext context,
       SyntaxNode root,
-      RuleDefinitionMark rule)
+      RuleDefinitionMark rule,
+      int ruleOrder)
     {
+        using var telemetryScope = context.BeginMarkRuleTelemetry(ruleOrder, rule.RuleId, rule.GroupKey);
         var producedMarks = new List<MarkRecord>();
         foreach (var mark in rule.Mark(context, root))
         {
+            telemetryScope.RecordCandidateMark();
             ValidateMarkNode(rule, mark.SyntaxNode);
+            if (mark.PrimaryGraphNode is null)
+            {
+                telemetryScope.RecordGraphBindingFallback();
+            }
+
             producedMarks.Add(BindMarkRecord(context, mark, rule.GroupKey));
+            telemetryScope.RecordAcceptedMark();
         }
 
         return producedMarks;

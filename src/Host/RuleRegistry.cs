@@ -4,6 +4,12 @@ namespace RoslynPrototype.Application;
 
 public static class RuleRegistry
 {
+  public static IReadOnlyList<MinimalRoslynCpg.Contracts.RoslynCpgCapability> GetRequiredCapabilities(
+    DeletionRulePipeline pipeline)
+  {
+    return pipeline.GetRequiredCapabilities();
+  }
+
   public static DeletionRulePipeline CreateDefaultRules(IEnumerable<string>? disabledRuleTypes = null)
   {
     var disabledTypeNames = (disabledRuleTypes ?? Array.Empty<string>())

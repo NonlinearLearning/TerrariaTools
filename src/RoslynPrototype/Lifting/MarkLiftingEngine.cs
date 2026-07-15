@@ -77,11 +77,13 @@ public sealed class MarkLiftingEngine
             (index, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return Task.FromResult((IReadOnlyList<LiftedMarkRecord>)RunRule(
-                  context,
-                  groupedRules[index],
-                  seedMarksByGroupKey,
-                  propagatedMarksByGroupKey));
+                return Task.Run(
+                  () => (IReadOnlyList<LiftedMarkRecord>)RunRule(
+                    context,
+                    groupedRules[index],
+                    seedMarksByGroupKey,
+                    propagatedMarksByGroupKey),
+                  cancellationToken);
             },
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()

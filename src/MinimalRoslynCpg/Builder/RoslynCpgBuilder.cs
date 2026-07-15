@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.Operations;
 using MinimalRoslynCpg.Builder.Passes;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
+using System.Diagnostics;
 
 namespace MinimalRoslynCpg.Builder;
 
@@ -55,6 +56,9 @@ public sealed partial class RoslynCpgBuilder
       new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, RoslynCpgNode> _propertyAccessorCallSiteNodesByKey = new(StringComparer.Ordinal);
     private readonly HashSet<SyntaxNode> _pendingOperationSyntaxTypeNodes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<SyntaxNode, SyntaxSemanticFacts> _partitionedSyntaxFacts = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<SyntaxNode> _matchedOperationSyntaxTypeNodes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, int> _operationBackedTypeInfoFallbackCountBySyntaxKind = new(StringComparer.Ordinal);
     private readonly List<INamedTypeSymbol> _declaredTypes = new();
     private readonly RoslynCpgBuilderOptions _options;
     private int _operationSequence;
@@ -62,11 +66,31 @@ public sealed partial class RoslynCpgBuilder
     private int _typeReferenceSequence;
     private int _callSiteSequence;
     private int _memberAccessSequence;
+    private int _operationBackedTypeInfoResolvedCount;
+    private int _operationBackedTypeInfoFallbackCount;
+    private int _operationBackedTypeInfoMissingOperationCount;
+    private int _operationBackedTypeInfoNullOperationTypeCount;
+    private int _operationChildBufferRentCount;
+    private long _operationBackedTypeInfoFallbackElapsedTicks;
     private RoslynCpgSyntaxPassTelemetry _syntaxPassTelemetry = RoslynCpgSyntaxPassTelemetry.CreateDefault();
+    private RoslynCpgMethodDecorationTelemetry _methodDecorationTelemetry = RoslynCpgMethodDecorationTelemetry.CreateDefault();
     private RoslynCpgDataFlowPassTelemetry _dataFlowPassTelemetry = RoslynCpgDataFlowPassTelemetry.CreateDefault();
+
+    private sealed record CapabilityBuildPlan(
+        RoslynCpgCapability ResolvedCapabilities,
+        bool RequiresMethodModel,
+        bool RequiresCallTargets,
+        bool RequiresCfg,
+        bool RequiresDataFlow,
+        bool RequiresDominance,
+        bool RequiresControlDependence);
 
     private sealed record LoopControlTargets(IOperation? ContinueTarget, IOperation? BreakTarget);
     private sealed record DefinitionFact(string LocationKey, string? BaseKey, string Category, string? PathKey = null);
+    private sealed record DataFlowOperationIndex(
+        IReadOnlyDictionary<IOperation, RoslynCpgNode> NodesByOperation,
+        IReadOnlyDictionary<IOperation, string> NodeIdsByOperation,
+        IReadOnlyDictionary<IOperation, IMethodSymbol> OwningMethods);
 
     public RoslynCpgBuilder(RoslynCpgBuilderOptions? options = null)
     {
@@ -108,41 +132,159 @@ public sealed partial class RoslynCpgBuilder
         _callSiteNodesByInvocation.Clear();
         _propertyAccessorCallSiteNodesByKey.Clear();
         _pendingOperationSyntaxTypeNodes.Clear();
+        _partitionedSyntaxFacts.Clear();
+        _matchedOperationSyntaxTypeNodes.Clear();
+        _operationBackedTypeInfoFallbackCountBySyntaxKind.Clear();
         _declaredTypes.Clear();
         _operationSequence = 0;
         _referenceSequence = 0;
         _typeReferenceSequence = 0;
         _callSiteSequence = 0;
         _memberAccessSequence = 0;
+        _operationBackedTypeInfoResolvedCount = 0;
+        _operationBackedTypeInfoFallbackCount = 0;
+        _operationBackedTypeInfoMissingOperationCount = 0;
+        _operationBackedTypeInfoNullOperationTypeCount = 0;
+        _operationChildBufferRentCount = 0;
+        _operationBackedTypeInfoFallbackElapsedTicks = 0;
         _syntaxPassTelemetry = RoslynCpgSyntaxPassTelemetry.CreateDefault();
+        _methodDecorationTelemetry = RoslynCpgMethodDecorationTelemetry.CreateDefault();
         _dataFlowPassTelemetry = RoslynCpgDataFlowPassTelemetry.CreateDefault();
         LastBuildTelemetry = RoslynCpgBuildTelemetry.CreateDefault();
-        var operationBuildStrategy = CreateOperationBuildStrategy(context);
-        if (!operationBuildStrategy.UsePartitionedOperationBuild)
+        var buildPlan = ResolveCapabilityBuildPlan();
+        var executedPassNames = new List<string>();
+        var skippedPassNames = new List<string>();
+        var operationBuildStrategy = buildPlan.RequiresMethodModel
+            ? CreateOperationBuildStrategy(context)
+            : new OperationBuildStrategy(
+                RoslynCpgBuilderMode.Partitioned,
+                UsePartitionedOperationBuild: false,
+                SourceLineCount: context.Source.Count(character => character == '\n') + 1,
+                OperationRoots: Array.Empty<OperationRootPlan>());
+        var usePartitionedSyntaxPass = ShouldUsePartitionedSyntaxPass(context, operationBuildStrategy.OperationRoots);
+
+        RunSyntaxPass(context, usePartitionedSyntaxPass, operationBuildStrategy.OperationRoots);
+        executedPassNames.Add(nameof(SyntaxPass));
+
+        if (buildPlan.RequiresMethodModel)
         {
-            RunPipeline(LegacyPipeline, context);
+            MethodDecorationPass.Instance.Run(this, context);
+            executedPassNames.Add(nameof(MethodDecorationPass));
+
+            RunPartitionedOperationPass(context, operationBuildStrategy.OperationRoots);
+            CompleteOperationBackedSyntaxTypes(context);
+            executedPassNames.Add(nameof(OperationPass));
         }
         else
         {
-            RunPipeline(PartitionedPreOperationPipeline, context);
-
-            RunPartitionedOperationPass(context, operationBuildStrategy.OperationRoots);
-
-            CompleteOperationBackedSyntaxTypes(context);
-
-            RunPipeline(PartitionedPostOperationPipeline, context);
+            skippedPassNames.Add(nameof(MethodDecorationPass));
+            skippedPassNames.Add(nameof(OperationPass));
         }
+
+        RunOptionalPass(buildPlan.RequiresCallTargets, CallGraphPass.Instance, context, executedPassNames, skippedPassNames);
+        RunOptionalPass(buildPlan.RequiresMethodModel, MemberAccessPass.Instance, context, executedPassNames, skippedPassNames);
+        RunOptionalPass(buildPlan.RequiresCfg, ControlFlowPass.Instance, context, executedPassNames, skippedPassNames);
+        RunOptionalPass(buildPlan.RequiresDataFlow, DataFlowPass.Instance, context, executedPassNames, skippedPassNames);
+        RunOptionalPass(buildPlan.RequiresDominance, DominancePass.Instance, context, executedPassNames, skippedPassNames);
+        RunOptionalPass(buildPlan.RequiresControlDependence, ControlDependencePass.Instance, context, executedPassNames, skippedPassNames);
 
         LastBuildTelemetry = new RoslynCpgBuildTelemetry(
           _options.BuildMode,
           operationBuildStrategy.ExecutedMode,
           operationBuildStrategy.UsePartitionedOperationBuild,
+          usePartitionedSyntaxPass,
           operationBuildStrategy.SourceLineCount,
           operationBuildStrategy.UsePartitionedOperationBuild ? operationBuildStrategy.OperationRoots.Count : 0,
           _options.EffectiveMaxDegreeOfParallelism,
           _syntaxPassTelemetry,
-          _dataFlowPassTelemetry);
+          _methodDecorationTelemetry,
+          _dataFlowPassTelemetry,
+          OperationChildBufferRentCount: Volatile.Read(ref _operationChildBufferRentCount),
+          ResolvedCapabilities: EnumerateCapabilities(buildPlan.ResolvedCapabilities),
+          ExecutedPassNames: executedPassNames,
+          SkippedPassNames: skippedPassNames,
+          GraphSnapshotVersion: "capability-v1");
+        context.Graph.FreezeQueryIndex();
         return context.Graph;
+    }
+
+    private CapabilityBuildPlan ResolveCapabilityBuildPlan()
+    {
+        var requestedCapabilities = _options.RequestedCapabilities;
+        var resolved = requestedCapabilities is null
+            ? RoslynCpgCapability.Default
+            : requestedCapabilities.Aggregate(RoslynCpgCapability.None, (current, capability) => current | capability);
+        if ((resolved & ~RoslynCpgCapability.All) != 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(_options.RequestedCapabilities), "The requested CPG capability set contains an unknown value.");
+        }
+
+        if ((resolved & (RoslynCpgCapability.MethodModel |
+                         RoslynCpgCapability.CallTargets |
+                         RoslynCpgCapability.Cfg |
+                         RoslynCpgCapability.DataFlow |
+                         RoslynCpgCapability.Dominance |
+                         RoslynCpgCapability.ControlDependence)) != 0)
+        {
+            resolved |= RoslynCpgCapability.MethodModel;
+        }
+
+        if ((resolved & RoslynCpgCapability.DataFlow) != 0)
+        {
+            resolved |= RoslynCpgCapability.CallTargets | RoslynCpgCapability.Cfg;
+        }
+
+        if ((resolved & RoslynCpgCapability.Dominance) != 0)
+        {
+            resolved |= RoslynCpgCapability.Cfg;
+        }
+
+        if ((resolved & RoslynCpgCapability.ControlDependence) != 0)
+        {
+            resolved |= RoslynCpgCapability.Dominance | RoslynCpgCapability.Cfg;
+        }
+
+        if (resolved != RoslynCpgCapability.None)
+        {
+            resolved |= RoslynCpgCapability.SyntaxSemantic;
+        }
+
+        return new CapabilityBuildPlan(
+            resolved,
+            RequiresMethodModel: (resolved & RoslynCpgCapability.MethodModel) != 0,
+            RequiresCallTargets: (resolved & RoslynCpgCapability.CallTargets) != 0,
+            RequiresCfg: (resolved & RoslynCpgCapability.Cfg) != 0,
+            RequiresDataFlow: (resolved & RoslynCpgCapability.DataFlow) != 0,
+            RequiresDominance: (resolved & RoslynCpgCapability.Dominance) != 0,
+            RequiresControlDependence: (resolved & RoslynCpgCapability.ControlDependence) != 0);
+    }
+
+    private static IReadOnlyList<RoslynCpgCapability> EnumerateCapabilities(RoslynCpgCapability capabilities)
+    {
+        return Enum.GetValues<RoslynCpgCapability>()
+            .Where(capability => capability != RoslynCpgCapability.None &&
+                                 capability != RoslynCpgCapability.Default &&
+                                 capability != RoslynCpgCapability.All &&
+                                 (capabilities & capability) == capability)
+            .OrderBy(capability => capability)
+            .ToList();
+    }
+
+    private void RunOptionalPass(
+        bool shouldRun,
+        IRoslynCpgPass pass,
+        RoslynCpgBuildContext context,
+        List<string> executedPassNames,
+        List<string> skippedPassNames)
+    {
+        if (!shouldRun)
+        {
+            skippedPassNames.Add(pass.Name);
+            return;
+        }
+
+        pass.Run(this, context);
+        executedPassNames.Add(pass.Name);
     }
 
     private void RunPipeline(IReadOnlyList<IRoslynCpgPass> pipeline, RoslynCpgBuildContext context)
@@ -162,11 +304,23 @@ public sealed partial class RoslynCpgBuilder
                 continue;
             }
 
+            var fallbackStartTimestamp = Stopwatch.GetTimestamp();
             var typeSymbol = context.SemanticModel.GetTypeInfo(syntax).Type;
+            _operationBackedTypeInfoFallbackElapsedTicks += Stopwatch.GetTimestamp() - fallbackStartTimestamp;
             AddTypeEdges(syntaxNode, typeSymbol, context.Graph);
+            _operationBackedTypeInfoFallbackCount += 1;
+            if (!_matchedOperationSyntaxTypeNodes.Contains(syntax))
+            {
+                _operationBackedTypeInfoMissingOperationCount += 1;
+            }
+
+            var syntaxKind = syntax.Kind().ToString();
+            _operationBackedTypeInfoFallbackCountBySyntaxKind.TryGetValue(syntaxKind, out var fallbackCount);
+            _operationBackedTypeInfoFallbackCountBySyntaxKind[syntaxKind] = fallbackCount + 1;
         }
 
         _pendingOperationSyntaxTypeNodes.Clear();
+        UpdateOperationBackedSyntaxTypeTelemetry();
     }
 
     private void AddOperationBackedSyntaxTypeEdge(IOperation operation, RoslynCpgGraph graph)
@@ -179,11 +333,31 @@ public sealed partial class RoslynCpgBuilder
 
         if (operation.Type is null)
         {
+            _matchedOperationSyntaxTypeNodes.Add(operation.Syntax);
             _pendingOperationSyntaxTypeNodes.Add(operation.Syntax);
+            _operationBackedTypeInfoNullOperationTypeCount += 1;
             return;
         }
 
+        _matchedOperationSyntaxTypeNodes.Add(operation.Syntax);
         AddTypeEdges(syntaxNode, operation.Type, graph);
+        _operationBackedTypeInfoResolvedCount += 1;
+    }
+
+    private void UpdateOperationBackedSyntaxTypeTelemetry()
+    {
+        _syntaxPassTelemetry = _syntaxPassTelemetry with
+        {
+            OperationBackedTypeInfoResolvedCount = _operationBackedTypeInfoResolvedCount,
+            OperationBackedTypeInfoFallbackCount = _operationBackedTypeInfoFallbackCount,
+            OperationBackedTypeInfoFallbackElapsedMilliseconds =
+                (long)Stopwatch.GetElapsedTime(0, _operationBackedTypeInfoFallbackElapsedTicks).TotalMilliseconds,
+            OperationBackedTypeInfoFallbackElapsedTicks = _operationBackedTypeInfoFallbackElapsedTicks,
+            OperationBackedTypeInfoMissingOperationCount = _operationBackedTypeInfoMissingOperationCount,
+            OperationBackedTypeInfoNullOperationTypeCount = _operationBackedTypeInfoNullOperationTypeCount,
+            OperationBackedTypeInfoFallbackCountBySyntaxKind =
+                new Dictionary<string, int>(_operationBackedTypeInfoFallbackCountBySyntaxKind, StringComparer.Ordinal),
+        };
     }
 
     private void AddControlFlowEdge(
@@ -264,10 +438,60 @@ public sealed partial class RoslynCpgBuilder
         return node;
     }
 
+    private DataFlowOperationIndex FreezeDataFlowOperationIndex()
+    {
+        var nodesByOperation = new Dictionary<IOperation, RoslynCpgNode>(
+            (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
+        var nodeIdsByOperation = new Dictionary<IOperation, string>(
+            (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
+        foreach (var operationNode in _operationNodes)
+        {
+            nodesByOperation.Add(operationNode.Key, operationNode.Value);
+            nodeIdsByOperation.Add(operationNode.Key, operationNode.Value.Id);
+        }
+
+        var owningMethods = new Dictionary<IOperation, IMethodSymbol>(
+            (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
+        foreach (var operationOwner in _operationOwningMethods)
+        {
+            owningMethods.Add(operationOwner.Key, operationOwner.Value);
+        }
+
+        return new DataFlowOperationIndex(nodesByOperation, nodeIdsByOperation, owningMethods);
+    }
+
     private void AddDeclaredSymbolEdges(SyntaxNode syntax, RoslynCpgNode syntaxNode, RoslynCpgGraph graph, SemanticModel semanticModel)
     {
         var symbol = semanticModel.GetDeclaredSymbol(syntax);
         AddDeclaredSymbolEdges(syntaxNode, symbol, graph);
+    }
+
+    private static bool CanDeclareSymbol(SyntaxNode syntax)
+    {
+        return syntax is BaseNamespaceDeclarationSyntax or
+          BaseTypeDeclarationSyntax or
+          DelegateDeclarationSyntax or
+          BaseMethodDeclarationSyntax or
+          LocalFunctionStatementSyntax or
+          AccessorDeclarationSyntax or
+          PropertyDeclarationSyntax or
+          IndexerDeclarationSyntax or
+          EventDeclarationSyntax or
+          EnumMemberDeclarationSyntax or
+          VariableDeclaratorSyntax or
+          ParameterSyntax or
+          TypeParameterSyntax or
+          SingleVariableDesignationSyntax or
+          UsingDirectiveSyntax or
+          ExternAliasDirectiveSyntax or
+          LabeledStatementSyntax or
+          ForEachStatementSyntax or
+          ForEachVariableStatementSyntax or
+          CatchDeclarationSyntax or
+          FromClauseSyntax or
+          JoinClauseSyntax or
+          LetClauseSyntax or
+          QueryContinuationSyntax;
     }
 
     private void AddDeclaredSymbolEdges(RoslynCpgNode syntaxNode, ISymbol? symbol, RoslynCpgGraph graph)

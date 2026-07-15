@@ -9,16 +9,20 @@ public sealed class RoslynCpgGraph
 {
     private readonly Dictionary<string, RoslynCpgNode> _nodes = new(StringComparer.Ordinal);
     private readonly HashSet<RoslynCpgEdge> _edges = new();
+    private RoslynCpgGraphIndex? _queryIndex;
 
     public IReadOnlyCollection<RoslynCpgNode> Nodes => _nodes.Values;
 
     public IReadOnlyCollection<RoslynCpgEdge> Edges => _edges;
+
+    public bool HasQueryIndex => _queryIndex is not null;
 
     /// <summary>
     /// 新增节点；如果同 id 已存在则直接返回已有节点。
     /// </summary>
     public RoslynCpgNode AddNode(RoslynCpgNode node)
     {
+        EnsureMutable();
         if (!_nodes.TryGetValue(node.Id, out var existing))
         {
             _nodes[node.Id] = node;
@@ -33,6 +37,7 @@ public sealed class RoslynCpgGraph
     /// </summary>
     public void AddEdge(RoslynCpgNode source, RoslynCpgNode target, RoslynCpgEdgeKind kind, string? label = null)
     {
+        EnsureMutable();
         AddNode(source);
         AddNode(target);
         _edges.Add(new RoslynCpgEdge(source.Id, target.Id, kind, label));
@@ -54,6 +59,72 @@ public sealed class RoslynCpgGraph
         return _nodes.TryGetValue(nodeId, out var node) ? node : null;
     }
 
+    public void FreezeQueryIndex()
+    {
+        if (_queryIndex is not null)
+        {
+            return;
+        }
+
+        _queryIndex = RoslynCpgGraphIndex.Create(_edges);
+    }
+
+    public IReadOnlyList<RoslynCpgEdge> GetOutgoingEdges(string nodeId)
+    {
+        return GetAdjacency(nodeId, useOutgoingEdges: true);
+    }
+
+    public IReadOnlyList<RoslynCpgEdge> GetIncomingEdges(string nodeId)
+    {
+        return GetAdjacency(nodeId, useOutgoingEdges: false);
+    }
+
+    public IReadOnlyList<RoslynCpgEdge> GetEdges(RoslynCpgEdgeKind kind)
+    {
+        var index = RequireQueryIndex();
+        return index.EdgesByKind.TryGetValue(kind, out var edges) ? edges : Array.Empty<RoslynCpgEdge>();
+    }
+
+    /// <summary>
+    /// 返回指定节点直接控制的节点关系。
+    /// </summary>
+    public IReadOnlyList<RoslynCpgEdge> Controls(string nodeId)
+    {
+        return GetOutgoingEdges(nodeId)
+            .Where(edge => edge.Kind == RoslynCpgEdgeKind.ControlDependence)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// 返回直接控制指定节点的关系。
+    /// </summary>
+    public IReadOnlyList<RoslynCpgEdge> ControlledBy(string nodeId)
+    {
+        return GetIncomingEdges(nodeId)
+            .Where(edge => edge.Kind == RoslynCpgEdgeKind.ControlDependence)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// 返回指定节点支配的节点关系。
+    /// </summary>
+    public IReadOnlyList<RoslynCpgEdge> Dominates(string nodeId)
+    {
+        return GetOutgoingEdges(nodeId)
+            .Where(edge => edge.Kind == RoslynCpgEdgeKind.Dominates)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// 返回指定节点后支配的节点关系。
+    /// </summary>
+    public IReadOnlyList<RoslynCpgEdge> PostDominates(string nodeId)
+    {
+        return GetOutgoingEdges(nodeId)
+            .Where(edge => edge.Kind == RoslynCpgEdgeKind.PostDominates)
+            .ToArray();
+    }
+
     /// <summary>
     /// 围绕指定锚点提取一个 hop 有界的局部视图。
     /// </summary>
@@ -69,12 +140,8 @@ public sealed class RoslynCpgGraph
             throw new ArgumentException($"Unknown anchor node id: {anchorNodeId}", nameof(anchorNodeId));
         }
 
-        var allowedKinds = edgeKinds is null
-          ? null
-          : new HashSet<RoslynCpgEdgeKind>(edgeKinds);
-        // 两个方向的邻接表只建一次，后续 BFS 扩展就不必重复扫描全量边。
-        var outgoingEdges = BuildAdjacencyMap(useOutgoingEdges: true, allowedKinds);
-        var incomingEdges = BuildAdjacencyMap(useOutgoingEdges: false, allowedKinds);
+        var allowedKinds = edgeKinds is null ? null : new HashSet<RoslynCpgEdgeKind>(edgeKinds);
+        var index = RequireQueryIndex();
         var visitedNodeIds = new HashSet<string>(StringComparer.Ordinal) { anchorNodeId };
         var frontierNodeIds = new HashSet<string>(StringComparer.Ordinal) { anchorNodeId };
 
@@ -83,7 +150,7 @@ public sealed class RoslynCpgGraph
             var nextFrontierNodeIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var nodeId in frontierNodeIds)
             {
-                ExpandFrom(nodeId, direction, outgoingEdges, incomingEdges, visitedNodeIds, nextFrontierNodeIds);
+                ExpandFrom(nodeId, direction, index.OutgoingByNodeId, index.IncomingByNodeId, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
             }
 
             frontierNodeIds = nextFrontierNodeIds;
@@ -97,7 +164,7 @@ public sealed class RoslynCpgGraph
           .Select(nodeId => _nodes[nodeId])
           .OrderBy(node => node.Id, StringComparer.Ordinal)
           .ToArray();
-        var localEdges = _edges
+        var localEdges = index.EdgesByKind.Values.SelectMany(edges => edges)
           .Where(edge =>
             (allowedKinds is null || allowedKinds.Contains(edge.Kind)) &&
             visitedNodeIds.Contains(edge.SourceId) &&
@@ -110,51 +177,25 @@ public sealed class RoslynCpgGraph
     }
 
     /// <summary>
-    /// 按源或目标 id 组织邻接表，供局部视图遍历使用。
-    /// </summary>
-    private Dictionary<string, List<RoslynCpgEdge>> BuildAdjacencyMap(bool useOutgoingEdges, HashSet<RoslynCpgEdgeKind>? allowedKinds)
-    {
-        var adjacency = new Dictionary<string, List<RoslynCpgEdge>>(StringComparer.Ordinal);
-        foreach (var edge in _edges)
-        {
-            if (allowedKinds is not null && !allowedKinds.Contains(edge.Kind))
-            {
-                continue;
-            }
-
-            var key = useOutgoingEdges ? edge.SourceId : edge.TargetId;
-            if (!adjacency.TryGetValue(key, out var list))
-            {
-                list = new List<RoslynCpgEdge>();
-                adjacency[key] = list;
-            }
-
-            list.Add(edge);
-        }
-
-        return adjacency;
-    }
-
-    /// <summary>
     /// 按请求方向扩展一个 BFS 前沿节点。
     /// </summary>
-    private static void ExpandFrom(string nodeId, RoslynCpgViewDirection direction, IReadOnlyDictionary<string, List<RoslynCpgEdge>> outgoingEdges, IReadOnlyDictionary<string, List<RoslynCpgEdge>> incomingEdges, ISet<string> visitedNodeIds, ISet<string> nextFrontierNodeIds)
+    private static void ExpandFrom(string nodeId, RoslynCpgViewDirection direction, IReadOnlyDictionary<string, IReadOnlyList<RoslynCpgEdge>> outgoingEdges, IReadOnlyDictionary<string, IReadOnlyList<RoslynCpgEdge>> incomingEdges, HashSet<RoslynCpgEdgeKind>? allowedKinds, ISet<string> visitedNodeIds, ISet<string> nextFrontierNodeIds)
     {
         if (direction is RoslynCpgViewDirection.Both or RoslynCpgViewDirection.Outgoing)
         {
-            ExpandNeighbors(nodeId, outgoingEdges, useOutgoingTarget: true, visitedNodeIds, nextFrontierNodeIds);
+            ExpandNeighbors(nodeId, outgoingEdges, useOutgoingTarget: true, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
         }
 
         if (direction is RoslynCpgViewDirection.Both or RoslynCpgViewDirection.Incoming)
         {
-            ExpandNeighbors(nodeId, incomingEdges, useOutgoingTarget: false, visitedNodeIds, nextFrontierNodeIds);
+            ExpandNeighbors(nodeId, incomingEdges, useOutgoingTarget: false, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
         }
     }
 
     /// <summary>
     /// 将尚未访问的相邻节点加入下一轮 BFS 前沿。
     /// </summary>
-    private static void ExpandNeighbors(string nodeId, IReadOnlyDictionary<string, List<RoslynCpgEdge>> adjacency, bool useOutgoingTarget, ISet<string> visitedNodeIds, ISet<string> nextFrontierNodeIds)
+    private static void ExpandNeighbors(string nodeId, IReadOnlyDictionary<string, IReadOnlyList<RoslynCpgEdge>> adjacency, bool useOutgoingTarget, HashSet<RoslynCpgEdgeKind>? allowedKinds, ISet<string> visitedNodeIds, ISet<string> nextFrontierNodeIds)
     {
         if (!adjacency.TryGetValue(nodeId, out var edges))
         {
@@ -163,11 +204,36 @@ public sealed class RoslynCpgGraph
 
         foreach (var edge in edges)
         {
+            if (allowedKinds is not null && !allowedKinds.Contains(edge.Kind))
+            {
+                continue;
+            }
+
             var neighborId = useOutgoingTarget ? edge.TargetId : edge.SourceId;
             if (visitedNodeIds.Add(neighborId))
             {
                 nextFrontierNodeIds.Add(neighborId);
             }
+        }
+    }
+
+    private IReadOnlyList<RoslynCpgEdge> GetAdjacency(string nodeId, bool useOutgoingEdges)
+    {
+        var index = RequireQueryIndex();
+        var adjacency = useOutgoingEdges ? index.OutgoingByNodeId : index.IncomingByNodeId;
+        return adjacency.TryGetValue(nodeId, out var edges) ? edges : Array.Empty<RoslynCpgEdge>();
+    }
+
+    private RoslynCpgGraphIndex RequireQueryIndex()
+    {
+        return _queryIndex ?? throw new InvalidOperationException("The graph query index is unavailable until the graph has been frozen.");
+    }
+
+    private void EnsureMutable()
+    {
+        if (_queryIndex is not null)
+        {
+            throw new InvalidOperationException("The graph is frozen and cannot be mutated.");
         }
     }
 }

@@ -1,8 +1,10 @@
-using RoslynPrototype.Marking;
+using MinimalRoslynCpg.Builder;
+using RoslynPrototype.Analysis;
+using RoslynPrototype.Decision;
 using RoslynPrototype.Lifting;
+using RoslynPrototype.Marking;
 using RoslynPrototype.Propagation;
 using Rules;
-using RoslynPrototype.Decision;
 
 namespace RoslynPrototype.Rewrite;
 
@@ -53,7 +55,15 @@ public sealed record PrototypeAnalysisResult(
   /// <summary>
   /// 可选的分析阶段耗时明细。
   /// </summary>
-  AnalysisPhaseTimings? Timings = null);
+  AnalysisPhaseTimings? Timings = null,
+  /// <summary>
+  /// 可选的 CPG 构建遥测，用于确认当前分析使用的构图配置。
+  /// </summary>
+  RoslynCpgBuildTelemetry? CpgBuildTelemetry = null,
+  /// <summary>
+  /// 可选的 Mark 阶段快照遥测，用于量化重复工作是否减少。
+  /// </summary>
+  MarkAnalysisTelemetry? MarkAnalysisTelemetry = null);
 
 /// <summary>
 /// 单次分析运行的阶段耗时明细。

@@ -12,7 +12,7 @@
 2. 已看过 `docs/quick-start.md`
 3. 已读 `AGENTS.md`
 4. 已知道当前主要有 `MinimalRoslynCpg` 和 `RoslynPrototype` 两条主线
-5. 已知道当前设计入口在 `设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+5. 已知道当前设计入口在 `设计docs/目前设计/项目概览.md`
 
 ## 你会学到什么
 
@@ -92,16 +92,16 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj .\src\RoslynPr
 优先读这些位置：
 
 1. `src/Application/DeletionApplicationService.cs`
-2. `设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+2. `设计docs/目前设计/项目概览.md`
 3. `约束/删除规则分阶段分析约束.md`
-4. `设计docs/2026-07-06-RoslynDeletionPrototype-Propose下沉Propagate提案.md`
-5. `设计docs/2026-07-06-RoslynDeletionPrototype-DeleteClass组件盘点.md`
-6. `设计docs/2026-07-06-RoslynDeletionPrototype-DeleteClass传播设计.md`
-7. `设计docs/2026-07-06-RoslynDeletionPrototype-Decision模型与冲突裁决.md`
-8. `设计docs/2026-07-06-RoslynDeletionPrototype-FastPath规则边界.md`
-9. `设计docs/2026-07-06-MinimalRoslynCpg-当前分析边界.md`
-10. `设计docs/2026-07-06-RoslynDeletionPrototype-测试分层设计.md`
-11. `设计docs/2026-07-03-RoslynDeletionPrototype-原子表达式Mark设计.md`
+4. `设计docs/目前设计/proposal-fact-extraction.md`
+5. `设计docs/目前设计/delete-class-components.md`
+6. `设计docs/目前设计/delete-class-propagation.md`
+7. `设计docs/目前设计/decision-resolution.md`
+8. `设计docs/目前设计/fast-path-boundaries.md`
+9. `设计docs/目前设计/cpg-capabilities.md`
+10. `设计docs/目前设计/testing-strategy.md`
+11. `设计docs/目前设计/atomic-marking.md`
 12. `设计docs/README.md`
 13. `src/Rules/`
 14. `tests/RoslynDeletionPrototype.Tests/`
@@ -119,6 +119,19 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj .\src\RoslynPr
 2. 不要把最终 replacement syntax 提前塞进 `Propagate`
 3. 参数收缩、delegate 使用形态、调用点同步这类“中间计划”优先落到 `Propagate`
 4. 某个专题设计稿如果还没独立落盘，先以项目级 PRD 和 `设计docs/README.md` 为准，不要凭空补引用
+
+### 并行度与 ThreadPool
+
+运行时只提供一个全局 DOP：`--max-degree-of-parallelism N`。它由 `src/RoslynPrototype/RuleServices/ExecutionRuntime.cs` 解析，并传入目录分析、规则阶段和 `RoslynCpgBuilder`。默认值是 `Environment.ProcessorCount`。
+
+并行入口分别位于：
+
+1. `src/Host/DeletionDirectoryAnalysisService.cs`：目录内文件分析
+2. `src/RoslynPrototype/RuleServices/ExecutionRuntime.cs`：有界规则阶段 scheduler
+3. `src/MinimalRoslynCpg/Builder/BoundedPartitionWorkWindow.cs`：CPG 分片 worker window
+4. `src/RoslynPrototype/RuleServices/RuleHelpers/DeleteClassParameterShrinkAnalyzer.cs`：辅助扫描 `Parallel.ForEach`
+
+CPG 的 `LargeFileLineThreshold`、`LargeFileMethodThreshold`、`LargeMethodLineSpanThreshold` 和 `SyntaxLargeFileLineThreshold` 目前是内部 builder 配置。CLI 没有大文件专用 DOP；所有文件都复用全局 DOP。新增大文件专用 DOP 时，应保持目录级并发受全局上限控制，并明确 CPG 分片的独立上限与阈值触发条件。
 
 ## 4. 测试怎么写
 

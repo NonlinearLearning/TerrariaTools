@@ -1,5 +1,8 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -32,6 +35,14 @@ internal sealed class DeletionDirectoryAnalysisService
       IReadOnlyDictionary<string, string> options,
       DeletionAnalysisRuntime runtime)
     {
+        return AnalyzeDirectoryAsync(directoryPath, options, runtime).GetAwaiter().GetResult();
+    }
+
+    internal async Task<PrototypeAnalysisResult> AnalyzeDirectoryAsync(
+      string directoryPath,
+      IReadOnlyDictionary<string, string> options,
+      DeletionAnalysisRuntime runtime)
+    {
         if (DeletionApplicationOptions.ShouldUseUnreferencedMethodFastPath(options))
         {
             return AnalyzeDirectoryForUnreferencedMethods(directoryPath, options, runtime);
@@ -43,7 +54,7 @@ internal sealed class DeletionDirectoryAnalysisService
             return CreateEmptyDirectoryResult();
         }
 
-        var sourcesByPath = ReadSources(filePaths);
+        var sourcesByPath = await ReadSourcesAsync(filePaths, runtime.ExecutionOptions.CancellationToken);
         var analysisFilePaths = ResolveAnalysisFilePaths(filePaths, sourcesByPath, options);
         var trees = ParseTrees(filePaths, sourcesByPath);
         var compilation = RoslynCompilationFactory.CreateCompilation(trees.Values);
@@ -426,6 +437,28 @@ internal sealed class DeletionDirectoryAnalysisService
       DeletionAnalysisRuntime runtime,
       Func<string, SyntaxTree, SemanticModel, SyntaxNode, PrototypeAnalysisResult> analyzeFile)
     {
+        using var timingLog = PerFileTimingLog.Create(options);
+        using var phaseTimingLogs = PerFilePhaseTimingLogs.Create(options);
+        PrototypeAnalysisResult AnalyzeAndRecord(
+          string filePath,
+          SyntaxTree tree)
+        {
+            var totalStopwatch = Stopwatch.StartNew();
+            var semanticModelStopwatch = Stopwatch.StartNew();
+            var semanticModel = compilation.GetSemanticModel(tree);
+            var root = tree.GetRoot();
+            semanticModelStopwatch.Stop();
+            var result = analyzeFile(filePath, tree, semanticModel, root);
+            totalStopwatch.Stop();
+            timingLog?.Write(filePath, totalStopwatch.ElapsedMilliseconds);
+            phaseTimingLogs?.Write(
+              filePath,
+              semanticModelStopwatch.ElapsedMilliseconds,
+              totalStopwatch.ElapsedMilliseconds,
+              result.Timings);
+            return result;
+        }
+
         if (!runtime.ExecutionOptions.EnableDirectoryParallelism ||
             runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism == 1 ||
             filePaths.Count <= 1)
@@ -435,9 +468,7 @@ internal sealed class DeletionDirectoryAnalysisService
             {
                 var filePath = filePaths[index];
                 var tree = trees[filePath];
-                var semanticModel = compilation.GetSemanticModel(tree);
-                var root = tree.GetRoot();
-                serialResults[index] = analyzeFile(filePath, tree, semanticModel, root);
+                serialResults[index] = AnalyzeAndRecord(filePath, tree);
             }
 
             return serialResults;
@@ -451,9 +482,9 @@ internal sealed class DeletionDirectoryAnalysisService
                 cancellationToken.ThrowIfCancellationRequested();
                 var filePath = filePaths[index];
                 var tree = trees[filePath];
-                var semanticModel = compilation.GetSemanticModel(tree);
-                var root = tree.GetRoot();
-                return Task.FromResult(analyzeFile(filePath, tree, semanticModel, root));
+                return Task.Run(
+                  () => AnalyzeAndRecord(filePath, tree),
+                  cancellationToken);
             },
             runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
@@ -461,6 +492,129 @@ internal sealed class DeletionDirectoryAnalysisService
 
         return orderedResults.ToArray();
     }
+
+    private sealed class PerFileTimingLog : IDisposable
+    {
+        private const int BufferCapacity = 256;
+        private readonly Channel<PerFileTimingLogEntry> _entries;
+        private readonly Task _writerTask;
+        private readonly StreamWriter _writer;
+
+        internal PerFileTimingLog(string filePath)
+        {
+            var directoryPath = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+
+            _writer = new StreamWriter(
+              new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 4096, useAsync: true));
+            _entries = Channel.CreateBounded<PerFileTimingLogEntry>(new BoundedChannelOptions(BufferCapacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+                SingleWriter = false
+            });
+            _writerTask = WriteEntriesAsync();
+        }
+
+        internal static PerFileTimingLog? Create(IReadOnlyDictionary<string, string> options)
+        {
+            var filePath = DeletionApplicationOptions.ResolvePerFileTimingLogPath(options);
+            return filePath is null ? null : new PerFileTimingLog(filePath);
+        }
+
+        internal void Write(string filePath, long elapsedMilliseconds)
+        {
+            var entry = new PerFileTimingLogEntry(filePath, elapsedMilliseconds, DateTime.UtcNow);
+            _entries.Writer.WriteAsync(entry).AsTask().GetAwaiter().GetResult();
+        }
+
+        public void Dispose()
+        {
+            _entries.Writer.TryComplete();
+            _writerTask.GetAwaiter().GetResult();
+            _writer.Dispose();
+        }
+
+        private async Task WriteEntriesAsync()
+        {
+            await foreach (var entry in _entries.Reader.ReadAllAsync())
+            {
+                await _writer.WriteLineAsync(JsonSerializer.Serialize(entry));
+            }
+
+            await _writer.FlushAsync();
+        }
+    }
+
+    private sealed class PerFilePhaseTimingLogs : IDisposable
+    {
+        private static readonly string[] PhaseNames =
+        {
+          "semantic-model",
+          "cpg-build",
+          "mark",
+          "propagate",
+          "lift",
+          "decide",
+          "total"
+        };
+
+        private readonly IReadOnlyDictionary<string, PerFileTimingLog> _logs;
+
+        private PerFilePhaseTimingLogs(string directoryPath)
+        {
+            Directory.CreateDirectory(directoryPath);
+            _logs = PhaseNames.ToDictionary(
+              phaseName => phaseName,
+              phaseName => new PerFileTimingLog(Path.Combine(directoryPath, $"{phaseName}.jsonl")),
+              StringComparer.Ordinal);
+        }
+
+        internal static PerFilePhaseTimingLogs? Create(IReadOnlyDictionary<string, string> options)
+        {
+            var directoryPath = DeletionApplicationOptions.ResolvePerFilePhaseTimingLogDirectory(options);
+            return directoryPath is null ? null : new PerFilePhaseTimingLogs(directoryPath);
+        }
+
+        internal void Write(
+          string filePath,
+          long semanticModelMilliseconds,
+          long totalMilliseconds,
+          AnalysisPhaseTimings? timings)
+        {
+            var phaseElapsedMilliseconds = new Dictionary<string, long>(StringComparer.Ordinal)
+            {
+              ["semantic-model"] = semanticModelMilliseconds,
+              ["cpg-build"] = timings?.CpgBuildMilliseconds ?? 0,
+              ["mark"] = timings?.MarkMilliseconds ?? 0,
+              ["propagate"] = timings?.PropagateMilliseconds ?? 0,
+              ["lift"] = timings?.LiftMilliseconds ?? 0,
+              ["decide"] = timings?.DecideMilliseconds ?? 0,
+              ["total"] = totalMilliseconds
+            };
+
+            foreach (var (phaseName, elapsedMilliseconds) in phaseElapsedMilliseconds)
+            {
+                _logs[phaseName].Write(filePath, elapsedMilliseconds);
+            }
+        }
+
+        public void Dispose()
+        {
+            foreach (var log in _logs.Values)
+            {
+                log.Dispose();
+            }
+        }
+    }
+
+    private sealed record PerFileTimingLogEntry(
+      [property: JsonPropertyName("filePath")] string FilePath,
+      [property: JsonPropertyName("elapsedMs")] long ElapsedMilliseconds,
+      [property: JsonPropertyName("completedAtUtc")] DateTime CompletedAtUtc);
 
     private static IReadOnlyList<string> ResolveAnalysisFilePaths(
       IReadOnlyList<string> filePaths,
@@ -623,6 +777,40 @@ internal sealed class DeletionDirectoryAnalysisService
           path => path,
           path => File.ReadAllText(path),
           StringComparer.Ordinal);
+    }
+
+    private static async Task<Dictionary<string, string>> ReadSourcesAsync(
+      IReadOnlyList<string> filePaths,
+      CancellationToken cancellationToken)
+    {
+        var sources = new string[filePaths.Count];
+        var nextIndex = -1;
+        var workerCount = Math.Min(filePaths.Count, Math.Max(1, Environment.ProcessorCount));
+        var workers = new Task[workerCount];
+        for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
+        {
+            workers[workerIndex] = ReadNextSourceAsync();
+        }
+
+        await Task.WhenAll(workers);
+        return filePaths
+          .Select((filePath, index) => new KeyValuePair<string, string>(filePath, sources[index]))
+          .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+        async Task ReadNextSourceAsync()
+        {
+            while (true)
+            {
+                var index = Interlocked.Increment(ref nextIndex);
+                if (index >= filePaths.Count)
+                {
+                    return;
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                sources[index] = await File.ReadAllTextAsync(filePaths[index], cancellationToken);
+            }
+        }
     }
 
     private static Dictionary<string, SyntaxTree> ParseTrees(

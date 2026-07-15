@@ -1,3 +1,4 @@
+using System.Buffers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
@@ -46,25 +47,13 @@ public sealed partial class RoslynCpgBuilder
     IReadOnlyList<OperationRootPlan> operationRoots,
     SemanticModel semanticModel)
   {
-    using var gate = new SemaphoreSlim(_options.EffectiveMaxDegreeOfParallelism);
-    var tasks = operationRoots
-      .Select(async rootPlan =>
-      {
-        await gate.WaitAsync();
-        try
-        {
-          return await Task.Run(() => AnalyzeOperationPartition(rootPlan, semanticModel));
-        }
-        finally
-        {
-          gate.Release();
-        }
-      })
-      .ToArray();
-    return await Task.WhenAll(tasks);
+    return await BoundedPartitionWorkWindow.RunAsync(
+      operationRoots,
+      _options.EffectiveMaxDegreeOfParallelism,
+      (rootPlan, _) => AnalyzeOperationPartition(rootPlan, semanticModel));
   }
 
-  private static OperationPartitionResult AnalyzeOperationPartition(OperationRootPlan rootPlan, SemanticModel semanticModel)
+  private OperationPartitionResult AnalyzeOperationPartition(OperationRootPlan rootPlan, SemanticModel semanticModel)
   {
     var rootOperation = semanticModel.GetOperation(rootPlan.BodySyntax);
     var records = new List<OperationPartitionRecord>();
@@ -74,20 +63,48 @@ public sealed partial class RoslynCpgBuilder
     }
 
     var pending = new Stack<(IOperation Operation, IOperation? Parent)>();
-    pending.Push((rootOperation, Parent: null));
-    while (pending.Count > 0)
+    var childBuffer = ArrayPool<IOperation>.Shared.Rent(minimumLength: 8);
+    Interlocked.Increment(ref _operationChildBufferRentCount);
+    try
     {
-      var current = pending.Pop();
-      records.Add(new OperationPartitionRecord(current.Operation, current.Parent, rootPlan.OwningMethod));
-
-      var children = current.Operation.ChildOperations.ToArray();
-      for (var index = children.Length - 1; index >= 0; index -= 1)
+      pending.Push((rootOperation, Parent: null));
+      while (pending.Count > 0)
       {
-        pending.Push((children[index], current.Operation));
+        var current = pending.Pop();
+        records.Add(new OperationPartitionRecord(current.Operation, current.Parent, rootPlan.OwningMethod));
+
+        var childCount = 0;
+        foreach (var child in current.Operation.ChildOperations)
+        {
+          if (childCount == childBuffer.Length)
+          {
+            childBuffer = GrowChildBuffer(childBuffer, childCount + 1);
+          }
+
+          childBuffer[childCount] = child;
+          childCount += 1;
+        }
+
+        for (var index = childCount - 1; index >= 0; index -= 1)
+        {
+          pending.Push((childBuffer[index], current.Operation));
+        }
       }
+    }
+    finally
+    {
+      ArrayPool<IOperation>.Shared.Return(childBuffer, clearArray: true);
     }
 
     return new OperationPartitionResult(rootPlan.Order, records);
+  }
+
+  private static IOperation[] GrowChildBuffer(IOperation[] buffer, int requiredLength)
+  {
+    var expanded = ArrayPool<IOperation>.Shared.Rent(Math.Max(requiredLength, buffer.Length * 2));
+    Array.Copy(buffer, expanded, buffer.Length);
+    ArrayPool<IOperation>.Shared.Return(buffer, clearArray: true);
+    return expanded;
   }
 
   private void MaterializeOperationPartition(OperationPartitionResult partition, RoslynCpgGraph graph)
@@ -129,42 +146,16 @@ public sealed partial class RoslynCpgBuilder
   {
     var operationRoots = GetOperationRootPlans(context.Root, context.SemanticModel);
     var sourceLineCount = CountSourceLines(context.Source);
-    if (_options.BuildMode == RoslynCpgBuilderMode.Legacy)
-    {
-      return new OperationBuildStrategy(
-        RoslynCpgBuilderMode.Legacy,
-        UsePartitionedOperationBuild: false,
-        sourceLineCount,
-        operationRoots);
-    }
-
-    var shouldUsePartitioned = _options.BuildMode == RoslynCpgBuilderMode.Partitioned ||
-      ShouldUsePartitionedOperationBuild(operationRoots, sourceLineCount);
     return new OperationBuildStrategy(
-      shouldUsePartitioned ? RoslynCpgBuilderMode.Partitioned : RoslynCpgBuilderMode.Legacy,
-      shouldUsePartitioned,
+      RoslynCpgBuilderMode.Partitioned,
+      UsePartitionedOperationBuild: true,
       sourceLineCount,
       operationRoots);
   }
 
   private bool ShouldUsePartitionedOperationBuild(IReadOnlyList<OperationRootPlan> operationRoots, int sourceLineCount)
   {
-    if (_options.BuildMode == RoslynCpgBuilderMode.Partitioned)
-    {
-      return operationRoots.Count > 1;
-    }
-
-    if (_options.BuildMode != RoslynCpgBuilderMode.Auto || operationRoots.Count <= 1)
-    {
-      return false;
-    }
-
-    var maxMethodLineSpan = operationRoots.Count == 0
-      ? 0
-      : operationRoots.Max(rootPlan => CountLineSpan(rootPlan.BodySyntax));
-    return sourceLineCount >= _options.LargeFileLineThreshold &&
-      operationRoots.Count >= _options.LargeFileMethodThreshold &&
-      maxMethodLineSpan >= _options.LargeMethodLineSpanThreshold;
+    return true;
   }
 
   private static int CountSourceLines(string source)

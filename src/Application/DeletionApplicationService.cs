@@ -135,10 +135,15 @@ public sealed class DeletionApplicationService
 
     var filteredDecisions = FilterNestedDeleteDecisions(decisions);
     var rewriteStopwatch = Stopwatch.StartNew();
-    var rewriteResult = _rewriter.Rewrite(
-      analysisContext.Root,
-      analysisContext.SemanticModel,
-      filteredDecisions);
+    var rewriteResult = ShouldSkipRewrite(analysisContext.RuleContext)
+      ? new PrototypeRewriteResult(
+        analysisContext.Root.ToFullString(),
+        Array.Empty<RewriteEdit>(),
+        string.Empty)
+      : _rewriter.Rewrite(
+        analysisContext.Root,
+        analysisContext.SemanticModel,
+        filteredDecisions);
     rewriteStopwatch.Stop();
     totalStopwatch.Stop();
 
@@ -159,7 +164,9 @@ public sealed class DeletionApplicationService
         liftStopwatch.ElapsedMilliseconds,
         decideStopwatch.ElapsedMilliseconds,
         rewriteStopwatch.ElapsedMilliseconds,
-        totalStopwatch.ElapsedMilliseconds));
+        totalStopwatch.ElapsedMilliseconds),
+      CpgBuildTelemetry: analysisContext.CpgBuildTelemetry,
+      MarkAnalysisTelemetry: analysisContext.RuleContext.MarkAnalysisTelemetry);
   }
 
   private DeletionAnalysisContext BuildAnalysisContext(
@@ -194,7 +201,14 @@ public sealed class DeletionApplicationService
     long preparationMilliseconds = 0)
   {
     var cpgBuildStopwatch = Stopwatch.StartNew();
-    var graph = new RoslynCpgBuilder().BuildFromSemanticModel(
+    var builderOptions = RoslynCpgBuilderOptions.CreateDefault() with
+    {
+      MaxDegreeOfParallelism = runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+      RequestedCapabilities = new DeletionRulePipeline(_markers, _propagators, _lifters, _proposers)
+        .GetRequiredCapabilities()
+    };
+    var builder = new RoslynCpgBuilder(builderOptions);
+    var graph = builder.BuildFromSemanticModel(
       semanticModel,
       root,
       source,
@@ -208,7 +222,8 @@ public sealed class DeletionApplicationService
       semanticModel,
       ruleContext,
       preparationMilliseconds,
-      cpgBuildStopwatch.ElapsedMilliseconds);
+      cpgBuildStopwatch.ElapsedMilliseconds,
+      builder.LastBuildTelemetry);
   }
 
   private static IReadOnlyList<RuleDecision> FilterNestedDeleteDecisions(
@@ -246,6 +261,12 @@ public sealed class DeletionApplicationService
     return filtered;
   }
 
+  private static bool ShouldSkipRewrite(RuleContext ruleContext)
+  {
+    return ruleContext.TryGetOption("skip-rewrite", out var rawValue) &&
+      string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
+  }
+
   private static bool IsCoveredByReplaceDecision(
     RuleDecision deleteDecision,
     IReadOnlyList<RuleDecision> decisions)
@@ -260,5 +281,6 @@ public sealed class DeletionApplicationService
     SemanticModel SemanticModel,
     RuleContext RuleContext,
     long PreparationMilliseconds,
-    long CpgBuildMilliseconds);
+    long CpgBuildMilliseconds,
+    RoslynCpgBuildTelemetry CpgBuildTelemetry);
 }

@@ -1,7 +1,9 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using MinimalRoslynCpg.Contracts;
 using System.Text;
+using System.Text.Json;
 using RoslynPrototype.Analysis;
 using RoslynPrototype.Application;
 using RoslynPrototype.Decision;
@@ -31,6 +33,258 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void Analyze_SyntaxSemanticRule_SkipsDataFlowOverlay()
+    {
+        var application = new DeletionApplicationService(
+          new RuleDefinitionMark[] { new SyntaxSemanticOnlyMarkRule() },
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>());
+
+        var result = application.Analyze(
+          "namespace Demo; public sealed class Sample { public int Run(int value) => value + 1; }",
+          "syntax-semantic-rule.cs",
+          new Dictionary<string, string>());
+
+        Assert.Contains(RoslynCpgCapability.SyntaxSemantic, result.CpgBuildTelemetry!.ResolvedCapabilities!);
+        Assert.Contains("DataFlowPass", result.CpgBuildTelemetry.SkippedPassNames!);
+    }
+
+    [Fact]
+    public async Task AnalyzeFromArgsAsync_ForDirectory_PhaseTimingLogsDrainBeforeCompletion()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "async-phase-timing-log-project");
+        var phaseLogDirectory = Path.Combine(_tempDirectory, "analysis", "async-phases");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "First.cs"),
+          "namespace Demo; public sealed class First { public int Run() => 1; }");
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "Second.cs"),
+          "namespace Demo; public sealed class Second { public int Run() => 2; }");
+        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+
+        var result = await host.AnalyzeFromArgsAsync(new[]
+        {
+          projectDirectory,
+          "--max-degree-of-parallelism",
+          "16",
+          "--per-file-phase-timing-log-directory",
+          phaseLogDirectory,
+          "--no-diff"
+        });
+
+        Assert.Equal(2, result.Stats.AnalyzedFileCount);
+        foreach (var phaseName in new[]
+        {
+          "semantic-model",
+          "cpg-build",
+          "mark",
+          "propagate",
+          "lift",
+          "decide",
+          "total"
+        })
+        {
+            Assert.Equal(2, File.ReadLines(Path.Combine(phaseLogDirectory, $"{phaseName}.jsonl")).Count());
+        }
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_ForDirectory_PerFileTimingLog_WritesOneJsonRecordPerCompletedFile()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "per-file-timing-log-project");
+        var firstFilePath = Path.Combine(projectDirectory, "First.cs");
+        var secondFilePath = Path.Combine(projectDirectory, "Second.cs");
+        var timingLogPath = Path.Combine(_tempDirectory, "analysis", "per-file-timing.jsonl");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(firstFilePath, "namespace Demo; public sealed class First { public int Run() => 1; }");
+        File.WriteAllText(secondFilePath, "namespace Demo; public sealed class Second { public int Run() => 2; }");
+        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+
+        _ = host.AnalyzeFromArgs(new[]
+        {
+          projectDirectory,
+          "--max-degree-of-parallelism",
+          "16",
+          "--per-file-timing-log",
+          timingLogPath,
+          "--no-diff"
+        });
+
+        var records = File.ReadLines(timingLogPath)
+          .Select(line => JsonDocument.Parse(line).RootElement.Clone())
+          .ToList();
+
+        Assert.Equal(2, records.Count);
+        Assert.Equal(
+          new[] { firstFilePath, secondFilePath }.OrderBy(path => path, StringComparer.Ordinal),
+          records
+            .Select(record => record.GetProperty("filePath").GetString())
+            .OrderBy(path => path, StringComparer.Ordinal));
+        Assert.All(records, record =>
+        {
+            Assert.True(record.GetProperty("elapsedMs").GetInt64() >= 0);
+            Assert.True(record.GetProperty("completedAtUtc").GetDateTime() <= DateTime.UtcNow);
+        });
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_RuntimeMetricsLog_WritesCompletedAnalysisMetrics()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "runtime-metrics.cs");
+        var metricsLogPath = Path.Combine(_tempDirectory, "analysis", "runtime-metrics.jsonl");
+        File.WriteAllText(sourcePath, "namespace Demo; public sealed class Sample { public int Run() => 1; }");
+        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+
+        _ = host.AnalyzeFromArgs(new[]
+        {
+          sourcePath,
+          "--max-degree-of-parallelism",
+          "8",
+          "--runtime-metrics-log",
+          metricsLogPath,
+          "--no-diff"
+        });
+
+        var records = File.ReadLines(metricsLogPath)
+          .Select(line => JsonDocument.Parse(line).RootElement.Clone())
+          .ToList();
+
+        var completed = Assert.Single(records);
+        Assert.Equal("completed", completed.GetProperty("status").GetString());
+        Assert.Equal(8, completed.GetProperty("maxDegreeOfParallelism").GetInt32());
+        Assert.True(completed.GetProperty("elapsedMs").GetInt64() >= 0);
+        Assert.True(completed.GetProperty("allocatedBytes").GetInt64() >= 0);
+        Assert.True(completed.GetProperty("gen0CollectionCount").GetInt32() >= 0);
+        Assert.True(completed.GetProperty("gen1CollectionCount").GetInt32() >= 0);
+        Assert.True(completed.GetProperty("gen2CollectionCount").GetInt32() >= 0);
+        Assert.True(completed.GetProperty("managedHeapBytes").GetInt64() >= 0);
+        Assert.True(completed.GetProperty("workingSetBytes").GetInt64() >= 0);
+        Assert.True(completed.GetProperty("threadPoolThreadCount").GetInt32() >= 0);
+        Assert.True(completed.GetProperty("threadPoolPendingWorkItemCount").GetInt64() >= 0);
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_ForDirectory_PerFilePhaseTimingLogs_RecordAllNonRewriteStages()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "per-file-phase-timing-log-project");
+        var phaseLogDirectory = Path.Combine(_tempDirectory, "analysis", "phases");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "First.cs"),
+          "namespace Demo; public sealed class First { public int Run(Box s) { return s.Value; } }");
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "Second.cs"),
+          "namespace Demo; public sealed class Box { public int Value { get; set; } }");
+        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+
+        var result = host.AnalyzeFromArgs(new[]
+        {
+          projectDirectory,
+          "--target-name",
+          "s",
+          "--max-degree-of-parallelism",
+          "16",
+          "--per-file-phase-timing-log-directory",
+          phaseLogDirectory,
+          "--skip-rewrite",
+          "--no-diff"
+        });
+
+        Assert.NotEmpty(result.Decisions);
+        Assert.Empty(result.Edits);
+        foreach (var phaseName in new[]
+        {
+          "semantic-model",
+          "cpg-build",
+          "mark",
+          "propagate",
+          "lift",
+          "decide",
+          "total"
+        })
+        {
+            var records = File.ReadLines(Path.Combine(phaseLogDirectory, $"{phaseName}.jsonl"))
+              .Select(line => JsonDocument.Parse(line).RootElement.Clone())
+              .ToList();
+            Assert.Equal(2, records.Count);
+            Assert.All(records, record =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(record.GetProperty("filePath").GetString()));
+                Assert.True(record.GetProperty("elapsedMs").GetInt64() >= 0);
+                Assert.True(record.GetProperty("completedAtUtc").GetDateTime() <= DateTime.UtcNow);
+            });
+        }
+    }
+
+    [Fact]
+    public void Analyze_RuntimeConfiguredDop_ReportsConfiguredCpgDop()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class Sample
+          {
+            public int Run(int value)
+            {
+              return value + 1;
+            }
+          }
+          """;
+        var runtime = new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 3),
+          new DeletionAnalysisEpoch(0, 0, 0));
+        var application = new DeletionApplicationService(
+          Array.Empty<RuleDefinitionMark>(),
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>());
+
+        var result = application.Analyze(
+          source,
+          "runtime-cpg-dop.cs",
+          new Dictionary<string, string>(),
+          runtime);
+
+        Assert.NotNull(result.CpgBuildTelemetry);
+        Assert.Equal(3, result.CpgBuildTelemetry!.MaxDegreeOfParallelism);
+    }
+
+    [Fact]
+    public void MarkingEngine_Run_WithGroupParallelism_RunsIndependentRulesConcurrently()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class First
+          {
+          }
+
+          public sealed class Second
+          {
+          }
+          """;
+        var runtime = new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(
+            MaxDegreeOfParallelism: 2,
+            EnableGroupParallelism: true),
+          new DeletionAnalysisEpoch(0, 0, 0));
+        var (context, root) = CreateContext(source, runtime: runtime);
+        var probe = new ConcurrentRuleProbe(expectedConcurrentRules: 2);
+        var rules = new RuleDefinitionMark[]
+        {
+          new ConcurrentClassMarkRule("TEST-CONCURRENT-MARK-001", "test-concurrent-first", "First", probe),
+          new ConcurrentClassMarkRule("TEST-CONCURRENT-MARK-002", "test-concurrent-second", "Second", probe)
+        };
+
+        var marks = new MarkingEngine().Run(context, root, rules);
+
+        Assert.Equal(2, marks.Count);
+        Assert.Equal(2, probe.PeakActiveRuleCount);
+    }
+
+    [Fact]
     public void MarkingEngine_Run_DeduplicatesSameRuleAndSyntaxSpan()
     {
         var source = SObjectExpressionSources.MarkingDedupSource;
@@ -45,6 +299,90 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotNull(mark.Annotation);
         Assert.NotNull(mark.PrimaryGraphNode);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)mark.SyntaxNode.RawKind);
+    }
+
+    [Fact]
+    public void MarkingEngine_Run_RecordsPerRuleLedgerBeforeFinalDeduplication()
+    {
+        var source = SObjectExpressionSources.MarkingDedupSource;
+        var (context, root) = CreateContext(source, "s");
+        var engine = new MarkingEngine();
+
+        var marks = engine.Run(
+          context,
+          root,
+          new RuleDefinitionMark[]
+          {
+            new DuplicateSeedRule(),
+            new EmptyMarkRule()
+          });
+
+        var ledger = context.MarkAnalysisTelemetry.RuleTelemetry;
+        var duplicateRule = Assert.Single(ledger, item => item.RuleId == "TEST-DUP-SEED");
+        var emptyRule = Assert.Single(ledger, item => item.RuleId == "TEST-EMPTY-MARK");
+
+        Assert.Single(marks);
+        Assert.Equal(2, duplicateRule.CandidateMarkCount);
+        Assert.Equal(2, duplicateRule.AcceptedMarkCount);
+        Assert.Equal(2, duplicateRule.GraphBindingFallbackCount);
+        Assert.Equal(2, duplicateRule.GraphBindingIndexHitCount);
+        Assert.Equal(0, emptyRule.CandidateMarkCount);
+        Assert.Equal(0, emptyRule.AcceptedMarkCount);
+    }
+
+    [Fact]
+    public void MarkingEngine_Run_SObjectRules_PreservesSeedMarksAcrossGroupParallelismAndUsesSnapshotCaches()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class Box
+          {
+            public Box? Next { get; set; }
+
+            public int Value { get; set; }
+
+            public int Read() => Value;
+          }
+
+          public sealed class Consumer
+          {
+            public int Execute(Box s)
+            {
+              var created = new Box();
+              return s?.Next?.Read() ?? s.Value;
+            }
+          }
+          """;
+        var (serialContext, serialRoot) = CreateContext(source, "s");
+        var parallelRuntime = new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(
+            MaxDegreeOfParallelism: 4,
+            EnableGroupParallelism: true),
+          new DeletionAnalysisEpoch(0, 0, 0));
+        var (parallelContext, parallelRoot) = CreateContext(source, "s", parallelRuntime);
+        var engine = new MarkingEngine();
+
+        var serialMarks = engine.Run(serialContext, serialRoot, GetDeleteSObjectMarkRules());
+        var parallelMarks = engine.Run(parallelContext, parallelRoot, GetDeleteSObjectMarkRules());
+        var targetIdentifier = parallelRoot.DescendantNodes()
+          .OfType<IdentifierNameSyntax>()
+          .First(identifier => identifier.Identifier.ValueText == "s");
+
+        _ = parallelContext.GetCachedOperation(targetIdentifier);
+        _ = parallelContext.GetCachedOperation(targetIdentifier);
+
+        Assert.Equal(BuildMarkKeys(serialMarks), BuildMarkKeys(parallelMarks));
+        Assert.All(serialMarks, mark => Assert.NotNull(mark.PrimaryGraphNode));
+        Assert.All(parallelMarks, mark => Assert.NotNull(mark.PrimaryGraphNode));
+        Assert.True(parallelContext.MarkAnalysisTelemetry.AtomicCandidateIndexMissCount > 0);
+        Assert.True(parallelContext.MarkAnalysisTelemetry.OperationLookupCacheHitCount > 0);
+        Assert.True(parallelContext.MarkAnalysisTelemetry.GraphBindingIndexHitCount > 0);
+        Assert.Equal(
+          GetDeleteSObjectMarkRules().Select(rule => rule.RuleId),
+          parallelContext.MarkAnalysisTelemetry.RuleTelemetry.Select(item => item.RuleId));
+        Assert.True(parallelContext.MarkAnalysisTelemetry.RuleTelemetry.Sum(
+          item => item.AtomicCandidateIndexHitCount + item.AtomicCandidateIndexMissCount) > 0);
     }
 
     [Fact]
@@ -1330,19 +1668,22 @@ public sealed class PipelineComponentTests : IDisposable
           "1",
           "--no-diff"
         });
-        var parallelResult = application.AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--delete-class",
-          "PlayerInput",
-          "--max-degree-of-parallelism",
-          "8",
-          "--no-diff"
-        });
-
         Assert.NotEmpty(serialResult.Edits);
-        Assert.NotEmpty(parallelResult.Edits);
-        AssertEquivalentAnalysisResults(serialResult, parallelResult);
+        foreach (var maxDegreeOfParallelism in new[] { 16, 64 })
+        {
+            var parallelResult = application.AnalyzeFromArgs(new[]
+            {
+              projectDirectory,
+              "--delete-class",
+              "PlayerInput",
+              "--max-degree-of-parallelism",
+              maxDegreeOfParallelism.ToString(),
+              "--no-diff"
+            });
+
+            Assert.NotEmpty(parallelResult.Edits);
+            AssertEquivalentAnalysisResults(serialResult, parallelResult);
+        }
     }
 
     [Fact]
@@ -4598,6 +4939,40 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
+    private sealed class EmptyMarkRule : RuleDefinitionMark
+    {
+        public override string RuleId { get; } = "TEST-EMPTY-MARK";
+
+        public override string Name { get; } = "Emit no seed marks";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+            new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        {
+            _ = context;
+            _ = root;
+            yield break;
+        }
+    }
+
+    private sealed class SyntaxSemanticOnlyMarkRule : RuleDefinitionMark
+    {
+        public override string RuleId => "syntax-semantic-only";
+
+        public override string Name => "Syntax semantic only";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => Array.Empty<SyntaxKind>();
+
+        public override IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
+          new[] { RoslynCpgCapability.SyntaxSemantic };
+
+        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        {
+            return Array.Empty<MarkRecord>();
+        }
+    }
+
     private sealed record TestCompilationCacheA(string Value);
 
     private sealed record TestCompilationCacheB((int TreeCount, int StableId) Value);
@@ -4692,6 +5067,101 @@ public sealed class PipelineComponentTests : IDisposable
               .OfType<ClassDeclarationSyntax>()
               .Single(candidate => string.Equals(candidate.Identifier.ValueText, _className, StringComparison.Ordinal));
             yield return new MarkRecord(RuleId, classDeclaration, null, null, $"Seed {_className}");
+        }
+    }
+
+    private sealed class ConcurrentClassMarkRule : RuleDefinitionMark
+    {
+        private readonly string _className;
+        private readonly string _groupKey;
+        private readonly ConcurrentRuleProbe _probe;
+
+        public ConcurrentClassMarkRule(
+          string ruleId,
+          string groupKey,
+          string className,
+          ConcurrentRuleProbe probe)
+        {
+            RuleId = ruleId;
+            _groupKey = groupKey;
+            _className = className;
+            _probe = probe;
+        }
+
+        public override string RuleId { get; }
+
+        public override string GroupKey => _groupKey;
+
+        public override string Name { get; } = "Mark a named class while measuring rule concurrency.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+            new[] { SyntaxKind.ClassDeclaration };
+
+        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        {
+            _ = context;
+            _probe.Enter();
+            try
+            {
+                var classDeclaration = root.DescendantNodes()
+                  .OfType<ClassDeclarationSyntax>()
+                  .Single(candidate => string.Equals(candidate.Identifier.ValueText, _className, StringComparison.Ordinal));
+                yield return new MarkRecord(RuleId, classDeclaration, null, null, $"Seed {_className}");
+            }
+            finally
+            {
+                _probe.Leave();
+            }
+        }
+    }
+
+    private sealed class ConcurrentRuleProbe
+    {
+        private readonly int _expectedConcurrentRules;
+        private readonly ManualResetEventSlim _release = new();
+        private int _activeRuleCount;
+        private int _peakActiveRuleCount;
+
+        public ConcurrentRuleProbe(int expectedConcurrentRules)
+        {
+            _expectedConcurrentRules = expectedConcurrentRules;
+        }
+
+        public int PeakActiveRuleCount => Volatile.Read(ref _peakActiveRuleCount);
+
+        public void Enter()
+        {
+            var activeRuleCount = Interlocked.Increment(ref _activeRuleCount);
+            UpdatePeakActiveRuleCount(activeRuleCount);
+            if (activeRuleCount == _expectedConcurrentRules)
+            {
+                _release.Set();
+            }
+
+            _release.Wait(TimeSpan.FromSeconds(2));
+        }
+
+        public void Leave()
+        {
+            Interlocked.Decrement(ref _activeRuleCount);
+        }
+
+        private void UpdatePeakActiveRuleCount(int activeRuleCount)
+        {
+            var currentPeak = Volatile.Read(ref _peakActiveRuleCount);
+            while (activeRuleCount > currentPeak)
+            {
+                var observedPeak = Interlocked.CompareExchange(
+                  ref _peakActiveRuleCount,
+                  activeRuleCount,
+                  currentPeak);
+                if (observedPeak == currentPeak)
+                {
+                    return;
+                }
+
+                currentPeak = observedPeak;
+            }
         }
     }
 
@@ -5035,6 +5505,20 @@ public sealed class PipelineComponentTests : IDisposable
           .Select(BuildDiagnosticKey)
           .ToList();
         Assert.Equal(expectedDiagnosticKeys, actualDiagnosticKeys);
+    }
+
+    private static IReadOnlyList<string> BuildMarkKeys(IReadOnlyList<MarkRecord> marks)
+    {
+        return marks
+          .Select(mark => string.Join(
+            "|",
+            mark.RuleId,
+            mark.SyntaxNode.SpanStart,
+            mark.SyntaxNode.Span.Length,
+            mark.Reason,
+            mark.GroupKey,
+            mark.PrimaryGraphNode!.Id))
+          .ToList();
     }
 
     private static string BuildDecisionKey(RuleDecision decision)

@@ -39,9 +39,89 @@ public sealed partial class RoslynCpgBuilder
         public long BuildFlowNeighborsElapsedMilliseconds { get; set; }
         public long FixpointElapsedMilliseconds { get; set; }
         public long ReachingDefinitionEdgeElapsedMilliseconds { get; set; }
+        public long PrepareFlowNodesElapsedMilliseconds { get; set; }
+        public long CollectUsedFactsElapsedMilliseconds { get; set; }
+        public long CreateDefinitionFactsElapsedMilliseconds { get; set; }
+        public long InitializeCfgSensitiveStateElapsedMilliseconds { get; set; }
+        public long CfgSensitiveCandidateGenerationElapsedMilliseconds { get; set; }
+        public long CfgSensitiveCandidateCommitElapsedMilliseconds { get; set; }
         public int MethodBlockCount { get; set; }
         public int OrderedOperationCount { get; set; }
+        public int FlowNodeCount { get; set; }
+        public int UsedFactCount { get; set; }
+        public int DefinitionFactCount { get; set; }
+        public int UsedFactPartitionCount { get; set; }
+        public int UsedFactPartitionMaxDegreeOfParallelism { get; set; }
+        public int CfgSensitivePartitionCount { get; set; }
+        public int CfgSensitivePartitionMaxDegreeOfParallelism { get; set; }
+        public int PeakBufferedCandidateBatchCount { get; set; }
+        public int CandidateEdgeCount { get; set; }
+        public int FrozenOperationNodeCount { get; set; }
+        public int MethodOperationNodeProjectionCount { get; set; }
+        public int UsedFactRecordCount { get; set; }
+        public long PrepareFlowNodesElapsedTicks { get; set; }
+        public long CollectUsedFactsElapsedTicks { get; set; }
     }
+
+    private sealed record UsedFactRecord(
+        IReadOnlyList<DefinitionFact> DirectFacts,
+        IReadOnlyList<UsedFactRecord> ChildRecords,
+        int FactCount)
+    {
+        public IEnumerable<DefinitionFact> EnumerateFacts()
+        {
+            foreach (var directFact in DirectFacts)
+            {
+                yield return directFact;
+            }
+
+            foreach (var childRecord in ChildRecords)
+            {
+                foreach (var fact in childRecord.EnumerateFacts())
+                {
+                    yield return fact;
+                }
+            }
+        }
+    }
+
+    private sealed record UsedFactPartition(
+        int Order,
+        IReadOnlyList<IOperation> OrderedOperations,
+        IReadOnlyDictionary<IOperation, UsedFactRecord> UsedFactsByOperation,
+        long EnumerateOrderedOperationsMilliseconds,
+        long CollectUsedFactsMilliseconds,
+        long CollectUsedFactsTicks,
+        int UsedFactCount);
+
+    private sealed record CfgSensitivePartitionPlan(
+      int Order,
+      IReadOnlyList<IOperation> OrderedOperations,
+      IReadOnlyList<RoslynCpgNode> OperationNodes,
+      IReadOnlyDictionary<IOperation, UsedFactRecord> UsedFactsByOperation,
+      IReadOnlyDictionary<string, DefinitionFact> ParameterDefinitionFacts,
+      IReadOnlyDictionary<string, RoslynCpgNode> NodesById,
+      IReadOnlyDictionary<IOperation, string> OperationNodeIds,
+      string? ReturnNodeId,
+      string? ExitNodeId,
+      IReadOnlyDictionary<string, IReadOnlyList<string>> Predecessors,
+      IReadOnlyDictionary<string, IReadOnlyList<string>> Successors);
+
+    private sealed record DataFlowEdgeCandidate(string SourceNodeId, string TargetNodeId);
+
+    private sealed record CfgSensitivePartition(
+      int Order,
+      IReadOnlyList<DataFlowEdgeCandidate> Edges,
+      long ElapsedMilliseconds,
+      long CreateDefinitionFactsMilliseconds,
+      long InitializeStateMilliseconds,
+      long FixpointMilliseconds,
+      long ReachingDefinitionEdgeMilliseconds,
+      long ValueSourceEdgeMilliseconds,
+      long ReturnFlowEdgeMilliseconds,
+      long TerminalFlowEdgeMilliseconds,
+      int FlowNodeCount,
+      int DefinitionFactCount);
 
     internal void RunDataFlowPass(RoslynCpgBuildContext context)
     {
@@ -62,7 +142,27 @@ public sealed partial class RoslynCpgBuilder
             metrics.FixpointElapsedMilliseconds,
             metrics.ReachingDefinitionEdgeElapsedMilliseconds,
             metrics.MethodBlockCount,
-            metrics.OrderedOperationCount);
+            metrics.OrderedOperationCount,
+            metrics.PrepareFlowNodesElapsedMilliseconds,
+            metrics.CollectUsedFactsElapsedMilliseconds,
+            metrics.CreateDefinitionFactsElapsedMilliseconds,
+            metrics.InitializeCfgSensitiveStateElapsedMilliseconds,
+            metrics.FlowNodeCount,
+            metrics.UsedFactCount,
+            metrics.DefinitionFactCount,
+            metrics.UsedFactPartitionCount,
+            metrics.UsedFactPartitionMaxDegreeOfParallelism,
+            metrics.CfgSensitivePartitionCount,
+            metrics.CfgSensitivePartitionMaxDegreeOfParallelism,
+            metrics.CfgSensitiveCandidateGenerationElapsedMilliseconds,
+            metrics.CfgSensitiveCandidateCommitElapsedMilliseconds,
+            metrics.PeakBufferedCandidateBatchCount,
+            metrics.CandidateEdgeCount,
+            metrics.FrozenOperationNodeCount,
+            metrics.MethodOperationNodeProjectionCount,
+            metrics.UsedFactRecordCount,
+            metrics.PrepareFlowNodesElapsedTicks,
+            metrics.CollectUsedFactsElapsedTicks);
     }
 
     private void AddReachingDefinitionDataFlow(RoslynCpgGraph graph, DataFlowPassMetrics metrics)
@@ -73,62 +173,41 @@ public sealed partial class RoslynCpgBuilder
         metrics.EnumerateMethodBlocksElapsedMilliseconds = enumerateMethodBlocksStopwatch.ElapsedMilliseconds;
         metrics.MethodBlockCount = methodBlocks.Count;
 
-        foreach (var methodBlock in methodBlocks)
+        var prepareFlowNodesStopwatch = Stopwatch.StartNew();
+        var operationIndex = FreezeDataFlowOperationIndex();
+        var usedFactPartitions = RunUsedFactPartitionsAsync(methodBlocks)
+          .GetAwaiter()
+          .GetResult();
+        metrics.UsedFactPartitionCount = usedFactPartitions.Count;
+        metrics.UsedFactPartitionMaxDegreeOfParallelism = _options.EffectiveMaxDegreeOfParallelism;
+        var cfgSensitivePlans = BuildCfgSensitivePartitionPlans(
+          usedFactPartitions,
+          methodBlocks,
+          operationIndex,
+          graph,
+          metrics);
+        prepareFlowNodesStopwatch.Stop();
+        metrics.PrepareFlowNodesElapsedMilliseconds = prepareFlowNodesStopwatch.ElapsedMilliseconds;
+        metrics.PrepareFlowNodesElapsedTicks = prepareFlowNodesStopwatch.ElapsedTicks;
+        metrics.FrozenOperationNodeCount = operationIndex.NodeIdsByOperation.Count;
+        metrics.PeakBufferedCandidateBatchCount = RunCfgSensitivePartitionsInOrder(
+          cfgSensitivePlans,
+          graph,
+          metrics);
+        metrics.CfgSensitivePartitionCount = cfgSensitivePlans.Count;
+        metrics.CfgSensitivePartitionMaxDegreeOfParallelism = _options.EffectiveMaxDegreeOfParallelism;
+
+        foreach (var partition in usedFactPartitions.OrderBy(partition => partition.Order))
         {
-            var orderedOperationsStopwatch = Stopwatch.StartNew();
-            var orderedOperations = methodBlock.DescendantsAndSelf().ToList();
-            orderedOperationsStopwatch.Stop();
-            metrics.EnumerateOrderedOperationsElapsedMilliseconds += orderedOperationsStopwatch.ElapsedMilliseconds;
+            var orderedOperations = partition.OrderedOperations;
+            metrics.EnumerateOrderedOperationsElapsedMilliseconds += partition.EnumerateOrderedOperationsMilliseconds;
             metrics.OrderedOperationCount += orderedOperations.Count;
+            metrics.CollectUsedFactsElapsedMilliseconds += partition.CollectUsedFactsMilliseconds;
+            metrics.CollectUsedFactsElapsedTicks += partition.CollectUsedFactsTicks;
+            metrics.UsedFactCount += partition.UsedFactCount;
+            metrics.UsedFactRecordCount += partition.OrderedOperations.Count;
+            metrics.MethodOperationNodeProjectionCount += partition.OrderedOperations.Count;
 
-            var cfgSensitiveStopwatch = Stopwatch.StartNew();
-            AddCfgSensitiveSymbolDataFlow(methodBlock, orderedOperations, graph, metrics);
-            cfgSensitiveStopwatch.Stop();
-            metrics.CfgSensitiveElapsedMilliseconds += cfgSensitiveStopwatch.ElapsedMilliseconds;
-            foreach (var operation in orderedOperations)
-            {
-                var operationNode = GetOrCreateOperationNode(operation, graph);
-
-                var valueSourceStopwatch = Stopwatch.StartNew();
-                foreach (var sourceOperation in ValueSourceOperations(operation))
-                {
-                    if (!ReferenceEquals(sourceOperation, operation))
-                    {
-                        graph.AddEdge(GetOrCreateOperationNode(sourceOperation, graph), operationNode, RoslynCpgEdgeKind.DataFlow);
-                    }
-                }
-                valueSourceStopwatch.Stop();
-                metrics.ValueSourceEdgeElapsedMilliseconds += valueSourceStopwatch.ElapsedMilliseconds;
-
-                if (operation is IReturnOperation returnOperation &&
-                    returnOperation.ReturnedValue is not null &&
-                    _operationOwningMethods.TryGetValue(operation, out var owningMethod))
-                {
-                    var returnFlowStopwatch = Stopwatch.StartNew();
-                    var exitNode = GetOrCreateMethodExitNode(owningMethod, graph);
-                    var returnNode = GetOrCreateMethodReturnNode(owningMethod, graph);
-                    graph.AddEdge(GetOrCreateOperationNode(returnOperation.ReturnedValue, graph), returnNode, RoslynCpgEdgeKind.DataFlow);
-                    graph.AddEdge(returnNode, exitNode, RoslynCpgEdgeKind.DataFlow);
-                    graph.AddEdge(operationNode, exitNode, RoslynCpgEdgeKind.DataFlow);
-                    returnFlowStopwatch.Stop();
-                    metrics.ReturnFlowEdgeElapsedMilliseconds += returnFlowStopwatch.ElapsedMilliseconds;
-                }
-            }
-
-            if (_operationOwningMethods.TryGetValue(methodBlock, out var flowMethodSymbol))
-            {
-                var terminalFlowStopwatch = Stopwatch.StartNew();
-                var returnNode = GetOrCreateMethodReturnNode(flowMethodSymbol, graph);
-                var terminalOperation = methodBlock.Operations.LastOrDefault();
-                if (terminalOperation is not null &&
-                    !ContainsExplicitReturn(methodBlock) &&
-                    !StopsSequentialFlow(terminalOperation))
-                {
-                    graph.AddEdge(GetOrCreateOperationNode(terminalOperation, graph), returnNode, RoslynCpgEdgeKind.DataFlow);
-                }
-                terminalFlowStopwatch.Stop();
-                metrics.TerminalFlowEdgeElapsedMilliseconds += terminalFlowStopwatch.ElapsedMilliseconds;
-            }
         }
 
         var callArgumentAndReturnStopwatch = Stopwatch.StartNew();
@@ -137,55 +216,208 @@ public sealed partial class RoslynCpgBuilder
         metrics.CallArgumentAndReturnElapsedMilliseconds += callArgumentAndReturnStopwatch.ElapsedMilliseconds;
     }
 
-    private void AddCfgSensitiveSymbolDataFlow(IBlockOperation methodBlock, List<IOperation> orderedOperations, RoslynCpgGraph graph, DataFlowPassMetrics metrics)
+    private async Task<IReadOnlyList<UsedFactPartition>> RunUsedFactPartitionsAsync(
+      IReadOnlyList<IBlockOperation> methodBlocks)
     {
-        var flowNodes = new List<RoslynCpgNode>();
-        var definitionFactsByNodeId = new Dictionary<string, DefinitionFact>(StringComparer.Ordinal);
-        var usedFactsByNodeId = new Dictionary<string, List<DefinitionFact>>(StringComparer.Ordinal);
+        return await BoundedPartitionWorkWindow.RunAsync(
+          methodBlocks,
+          _options.EffectiveMaxDegreeOfParallelism,
+          AnalyzeUsedFactPartition);
+    }
 
-        if (_operationOwningMethods.TryGetValue(methodBlock, out var methodSymbol))
+    private static UsedFactPartition AnalyzeUsedFactPartition(IBlockOperation methodBlock, int order)
+    {
+        var orderedOperationsStopwatch = Stopwatch.StartNew();
+        var orderedOperations = methodBlock.DescendantsAndSelf().ToList();
+        orderedOperationsStopwatch.Stop();
+
+        var usedFactsStopwatch = Stopwatch.StartNew();
+        var usedFactsByOperation = new Dictionary<IOperation, UsedFactRecord>(
+          ReferenceEqualityComparer.Instance);
+        var usedFactCount = 0;
+        foreach (var operation in orderedOperations.AsEnumerable().Reverse())
         {
-            foreach (var parameter in methodSymbol.Parameters)
+            var directFacts = DirectUsedFacts(operation).ToArray();
+            var childRecords = operation.ChildOperations
+              .Where(usedFactsByOperation.ContainsKey)
+              .Select(child => usedFactsByOperation[child])
+              .ToArray();
+            var factCount = directFacts.Length + childRecords.Sum(record => record.FactCount);
+            usedFactsByOperation[operation] = new UsedFactRecord(directFacts, childRecords, factCount);
+            usedFactCount += factCount;
+        }
+        usedFactsStopwatch.Stop();
+
+        return new UsedFactPartition(
+          order,
+          orderedOperations,
+          usedFactsByOperation,
+          orderedOperationsStopwatch.ElapsedMilliseconds,
+          usedFactsStopwatch.ElapsedMilliseconds,
+          usedFactsStopwatch.ElapsedTicks,
+          usedFactCount);
+    }
+
+    private IReadOnlyList<CfgSensitivePartitionPlan> BuildCfgSensitivePartitionPlans(
+      IReadOnlyList<UsedFactPartition> usedFactPartitions,
+      IReadOnlyList<IBlockOperation> methodBlocks,
+      DataFlowOperationIndex operationIndex,
+      RoslynCpgGraph graph,
+      DataFlowPassMetrics metrics)
+    {
+        var plans = new List<CfgSensitivePartitionPlan>(usedFactPartitions.Count);
+        foreach (var partition in usedFactPartitions.OrderBy(partition => partition.Order))
+        {
+            var methodBlock = methodBlocks[partition.Order];
+            var operationNodes = partition.OrderedOperations
+              .Select(operation => operationIndex.NodesByOperation[operation])
+              .ToList();
+            var parameterDefinitionFacts = new Dictionary<string, DefinitionFact>(StringComparer.Ordinal);
+            var parameterNodes = new List<RoslynCpgNode>();
+            if (operationIndex.OwningMethods.TryGetValue(methodBlock, out var methodSymbol))
             {
-                var parameterNode = GetOrCreateMethodParameterNode(methodSymbol, parameter, graph);
-                flowNodes.Add(parameterNode);
-                definitionFactsByNodeId[parameterNode.Id] = DefinitionFactForParameter(parameter);
+                foreach (var parameter in methodSymbol.Parameters)
+                {
+                    var parameterNode = GetOrCreateMethodParameterNode(methodSymbol, parameter, graph);
+                    parameterNodes.Add(parameterNode);
+                    parameterDefinitionFacts[parameterNode.Id] = DefinitionFactForParameter(parameter);
+                }
             }
+
+            var flowNodes = parameterNodes.Concat(operationNodes).ToList();
+            var nodesById = flowNodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
+            var operationNodeIds = partition.OrderedOperations.ToDictionary(
+              operation => operation,
+              operation => operationIndex.NodeIdsByOperation[operation],
+              (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
+            string? returnNodeId = null;
+            string? exitNodeId = null;
+            if (operationIndex.OwningMethods.TryGetValue(methodBlock, out var flowMethodSymbol))
+            {
+              var returnNode = GetOrCreateMethodReturnNode(flowMethodSymbol, graph);
+              returnNodeId = returnNode.Id;
+              nodesById[returnNode.Id] = returnNode;
+              if (partition.OrderedOperations.OfType<IReturnOperation>().Any(operation => operation.ReturnedValue is not null))
+              {
+                var exitNode = GetOrCreateMethodExitNode(flowMethodSymbol, graph);
+                exitNodeId = exitNode.Id;
+                nodesById[exitNode.Id] = exitNode;
+              }
+            }
+            var flowNodeIds = nodesById.Keys.ToHashSet(StringComparer.Ordinal);
+            var flowNeighborsStopwatch = Stopwatch.StartNew();
+            var predecessors = SnapshotNeighbors(BuildFlowNeighborsFromCache(flowNodeIds, incoming: true));
+            var successors = SnapshotNeighbors(BuildFlowNeighborsFromCache(flowNodeIds, incoming: false));
+            flowNeighborsStopwatch.Stop();
+            metrics.BuildFlowNeighborsElapsedMilliseconds += flowNeighborsStopwatch.ElapsedMilliseconds;
+            plans.Add(new CfgSensitivePartitionPlan(
+              partition.Order,
+              partition.OrderedOperations,
+              operationNodes,
+              partition.UsedFactsByOperation,
+              parameterDefinitionFacts,
+              nodesById,
+              operationNodeIds,
+              returnNodeId,
+              exitNodeId,
+              predecessors,
+              successors));
         }
 
-        foreach (var operation in orderedOperations)
-        {
-            var operationNode = GetOrCreateOperationNode(operation, graph);
-            flowNodes.Add(operationNode);
-            usedFactsByNodeId[operationNode.Id] = UsedFacts(operation).ToList();
+        return plans;
+    }
 
-            var definedFact = DefinedFact(operation);
+    private int RunCfgSensitivePartitionsInOrder(
+      IReadOnlyList<CfgSensitivePartitionPlan> plans,
+      RoslynCpgGraph graph,
+      DataFlowPassMetrics metrics)
+    {
+        return BoundedPartitionWorkWindow.RunOrdered(
+          plans,
+          _options.EffectiveMaxDegreeOfParallelism,
+          (plan, _) => AnalyzeCfgSensitivePartition(plan),
+          (partition, order) => CommitCfgSensitivePartition(
+            plans[order],
+            partition,
+            graph,
+            metrics));
+    }
+
+    private static void CommitCfgSensitivePartition(
+      CfgSensitivePartitionPlan plan,
+      CfgSensitivePartition partition,
+      RoslynCpgGraph graph,
+      DataFlowPassMetrics metrics)
+    {
+        if (partition.Order != plan.Order)
+        {
+            throw new InvalidOperationException("Candidate batch order does not match its frozen plan.");
+        }
+
+        var commitStopwatch = Stopwatch.StartNew();
+        foreach (var edge in partition.Edges)
+        {
+            graph.AddEdge(
+              plan.NodesById[edge.SourceNodeId],
+              plan.NodesById[edge.TargetNodeId],
+              RoslynCpgEdgeKind.DataFlow);
+        }
+        commitStopwatch.Stop();
+
+        metrics.CfgSensitiveElapsedMilliseconds += partition.ElapsedMilliseconds;
+        metrics.CfgSensitiveCandidateGenerationElapsedMilliseconds += partition.ElapsedMilliseconds;
+        metrics.CfgSensitiveCandidateCommitElapsedMilliseconds += commitStopwatch.ElapsedMilliseconds;
+        metrics.CreateDefinitionFactsElapsedMilliseconds += partition.CreateDefinitionFactsMilliseconds;
+        metrics.InitializeCfgSensitiveStateElapsedMilliseconds += partition.InitializeStateMilliseconds;
+        metrics.FixpointElapsedMilliseconds += partition.FixpointMilliseconds;
+        metrics.ReachingDefinitionEdgeElapsedMilliseconds += partition.ReachingDefinitionEdgeMilliseconds;
+        metrics.ValueSourceEdgeElapsedMilliseconds += partition.ValueSourceEdgeMilliseconds;
+        metrics.ReturnFlowEdgeElapsedMilliseconds += partition.ReturnFlowEdgeMilliseconds;
+        metrics.TerminalFlowEdgeElapsedMilliseconds += partition.TerminalFlowEdgeMilliseconds;
+        metrics.CandidateEdgeCount += partition.Edges.Count;
+        metrics.FlowNodeCount += partition.FlowNodeCount;
+        metrics.DefinitionFactCount += partition.DefinitionFactCount;
+    }
+
+    private static CfgSensitivePartition AnalyzeCfgSensitivePartition(CfgSensitivePartitionPlan plan)
+    {
+        var totalStopwatch = Stopwatch.StartNew();
+        var definitionFactsByNodeId = new Dictionary<string, DefinitionFact>(
+          plan.ParameterDefinitionFacts,
+          StringComparer.Ordinal);
+
+        var createDefinitionFactsStopwatch = Stopwatch.StartNew();
+        foreach (var operationNodePair in plan.OrderedOperations.Zip(plan.OperationNodes))
+        {
+            var definedFact = DefinedFact(operationNodePair.First);
             if (definedFact is not null)
             {
-                definitionFactsByNodeId[operationNode.Id] = definedFact;
+                definitionFactsByNodeId[operationNodePair.Second.Id] = definedFact;
             }
         }
+        createDefinitionFactsStopwatch.Stop();
 
-        var flowNodeIds = flowNodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
-        var nodesById = flowNodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
-        var buildNeighborsStopwatch = Stopwatch.StartNew();
-        var predecessors = BuildFlowNeighborsFromCache(flowNodeIds, incoming: true);
-        var successors = BuildFlowNeighborsFromCache(flowNodeIds, incoming: false);
-        buildNeighborsStopwatch.Stop();
-        metrics.BuildFlowNeighborsElapsedMilliseconds += buildNeighborsStopwatch.ElapsedMilliseconds;
-        var inSets = flowNodes.ToDictionary(node => node.Id, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
-        var outSets = flowNodes.ToDictionary(node => node.Id, _ => new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
-        var worklist = new Queue<string>(flowNodes.Select(node => node.Id));
-        var queued = new HashSet<string>(flowNodes.Select(node => node.Id), StringComparer.Ordinal);
+        var initializeStateStopwatch = Stopwatch.StartNew();
+        var flowNodeIds = plan.NodesById.Keys;
+        var inSets = flowNodeIds.ToDictionary(
+          nodeId => nodeId,
+          _ => new HashSet<string>(StringComparer.Ordinal),
+          StringComparer.Ordinal);
+        var outSets = flowNodeIds.ToDictionary(
+          nodeId => nodeId,
+          _ => new HashSet<string>(StringComparer.Ordinal),
+          StringComparer.Ordinal);
+        var worklist = new Queue<string>(flowNodeIds);
+        var queued = new HashSet<string>(flowNodeIds, StringComparer.Ordinal);
+        initializeStateStopwatch.Stop();
 
         var fixpointStopwatch = Stopwatch.StartNew();
         while (worklist.Count > 0)
         {
             var nodeId = worklist.Dequeue();
             queued.Remove(nodeId);
-
             var incomingDefinitions = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var predecessorId in predecessors[nodeId])
+            foreach (var predecessorId in plan.Predecessors[nodeId])
             {
                 incomingDefinitions.UnionWith(outSets[predecessorId]);
             }
@@ -198,7 +430,7 @@ public sealed partial class RoslynCpgBuilder
             }
 
             outSets[nodeId] = updatedOut;
-            foreach (var successorId in successors[nodeId])
+            foreach (var successorId in plan.Successors[nodeId])
             {
                 if (queued.Add(successorId))
                 {
@@ -207,28 +439,88 @@ public sealed partial class RoslynCpgBuilder
             }
         }
         fixpointStopwatch.Stop();
-        metrics.FixpointElapsedMilliseconds += fixpointStopwatch.ElapsedMilliseconds;
 
-        var reachingDefinitionStopwatch = Stopwatch.StartNew();
-        foreach (var operation in orderedOperations)
+        var edgeStopwatch = Stopwatch.StartNew();
+        var edges = new List<DataFlowEdgeCandidate>();
+        foreach (var operationNodePair in plan.OrderedOperations.Zip(plan.OperationNodes))
         {
-            var operationNode = GetOrCreateOperationNode(operation, graph);
-            foreach (var usedFact in usedFactsByNodeId[operationNode.Id])
+            foreach (var usedFact in plan.UsedFactsByOperation[operationNodePair.First].EnumerateFacts())
             {
-                foreach (var reachingDefinitionId in inSets[operationNode.Id])
+                foreach (var reachingDefinitionId in inSets[operationNodePair.Second.Id])
                 {
-                    if (!definitionFactsByNodeId.TryGetValue(reachingDefinitionId, out var reachingFact) ||
-                        !FactsMatch(reachingFact, usedFact))
+                    if (definitionFactsByNodeId.TryGetValue(reachingDefinitionId, out var reachingFact) &&
+                        FactsMatch(reachingFact, usedFact))
                     {
-                        continue;
+                        edges.Add(new DataFlowEdgeCandidate(reachingDefinitionId, operationNodePair.Second.Id));
                     }
-
-                    graph.AddEdge(nodesById[reachingDefinitionId], operationNode, RoslynCpgEdgeKind.DataFlow);
                 }
             }
         }
-        reachingDefinitionStopwatch.Stop();
-        metrics.ReachingDefinitionEdgeElapsedMilliseconds += reachingDefinitionStopwatch.ElapsedMilliseconds;
+        edgeStopwatch.Stop();
+        var valueSourceStopwatch = Stopwatch.StartNew();
+        foreach (var operation in plan.OrderedOperations)
+        {
+            foreach (var sourceOperation in ValueSourceOperations(operation))
+            {
+                if (!ReferenceEquals(sourceOperation, operation) &&
+                    plan.OperationNodeIds.TryGetValue(sourceOperation, out var sourceNodeId) &&
+                    plan.OperationNodeIds.TryGetValue(operation, out var targetNodeId))
+                {
+                    edges.Add(new DataFlowEdgeCandidate(sourceNodeId, targetNodeId));
+                }
+            }
+        }
+        valueSourceStopwatch.Stop();
+        var returnFlowStopwatch = Stopwatch.StartNew();
+        if (plan.ReturnNodeId is not null && plan.ExitNodeId is not null)
+        {
+            foreach (var returnOperation in plan.OrderedOperations.OfType<IReturnOperation>().Where(operation => operation.ReturnedValue is not null))
+            {
+                if (plan.OperationNodeIds.TryGetValue(returnOperation.ReturnedValue!, out var valueNodeId) &&
+                    plan.OperationNodeIds.TryGetValue(returnOperation, out var returnOperationNodeId))
+                {
+                    edges.Add(new DataFlowEdgeCandidate(valueNodeId, plan.ReturnNodeId));
+                    edges.Add(new DataFlowEdgeCandidate(plan.ReturnNodeId, plan.ExitNodeId));
+                    edges.Add(new DataFlowEdgeCandidate(returnOperationNodeId, plan.ExitNodeId));
+                }
+            }
+        }
+        returnFlowStopwatch.Stop();
+        var terminalFlowStopwatch = Stopwatch.StartNew();
+        if (plan.ReturnNodeId is not null && plan.OrderedOperations.FirstOrDefault() is IBlockOperation methodBlock)
+        {
+            var terminalOperation = methodBlock.Operations.LastOrDefault();
+            if (terminalOperation is not null && !ContainsExplicitReturn(methodBlock) && !StopsSequentialFlow(terminalOperation) &&
+                plan.OperationNodeIds.TryGetValue(terminalOperation, out var terminalNodeId))
+            {
+                edges.Add(new DataFlowEdgeCandidate(terminalNodeId, plan.ReturnNodeId));
+            }
+        }
+        terminalFlowStopwatch.Stop();
+        totalStopwatch.Stop();
+
+        return new CfgSensitivePartition(
+          plan.Order,
+          edges,
+          totalStopwatch.ElapsedMilliseconds,
+          createDefinitionFactsStopwatch.ElapsedMilliseconds,
+          initializeStateStopwatch.ElapsedMilliseconds,
+          fixpointStopwatch.ElapsedMilliseconds,
+          edgeStopwatch.ElapsedMilliseconds,
+          valueSourceStopwatch.ElapsedMilliseconds,
+          returnFlowStopwatch.ElapsedMilliseconds,
+          terminalFlowStopwatch.ElapsedMilliseconds,
+          plan.NodesById.Count,
+          definitionFactsByNodeId.Count);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> SnapshotNeighbors(
+      IReadOnlyDictionary<string, List<string>> neighbors)
+    {
+        return neighbors.ToDictionary(
+          pair => pair.Key,
+          pair => (IReadOnlyList<string>)pair.Value.ToArray(),
+          StringComparer.Ordinal);
     }
 
     private Dictionary<string, List<string>> BuildFlowNeighborsFromCache(HashSet<string> flowNodeIds, bool incoming)
@@ -586,25 +878,22 @@ public sealed partial class RoslynCpgBuilder
         }
     }
 
-    private static IEnumerable<DefinitionFact> UsedFacts(IOperation operation)
+    private static IEnumerable<DefinitionFact> DirectUsedFacts(IOperation operation)
     {
-        foreach (var descendant in operation.DescendantsAndSelf())
+        switch (operation)
         {
-            switch (descendant)
-            {
-                case ILocalReferenceOperation localReference:
-                    yield return DefinitionFactForSymbol(localReference.Local);
-                    break;
-                case IParameterReferenceOperation parameterReference:
-                    yield return DefinitionFactForParameter(parameterReference.Parameter);
-                    break;
-                case IFieldReferenceOperation fieldReference:
-                    yield return DefinitionFactForField(fieldReference.Field, fieldReference.Instance);
-                    break;
-                case IPropertyReferenceOperation propertyReference:
-                    yield return DefinitionFactForProperty(propertyReference.Property, propertyReference.Instance);
-                    break;
-            }
+            case ILocalReferenceOperation localReference:
+                yield return DefinitionFactForSymbol(localReference.Local);
+                yield break;
+            case IParameterReferenceOperation parameterReference:
+                yield return DefinitionFactForParameter(parameterReference.Parameter);
+                yield break;
+            case IFieldReferenceOperation fieldReference:
+                yield return DefinitionFactForField(fieldReference.Field, fieldReference.Instance);
+                yield break;
+            case IPropertyReferenceOperation propertyReference:
+                yield return DefinitionFactForProperty(propertyReference.Property, propertyReference.Instance);
+                yield break;
         }
     }
 

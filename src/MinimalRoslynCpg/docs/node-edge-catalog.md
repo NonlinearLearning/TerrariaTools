@@ -73,6 +73,9 @@
 | `CfgTrue` | Branch or loop true-flow edge | analysis |
 | `CfgFalse` | Branch false-flow edge | analysis |
 | `DataFlow` | Minimal intraprocedural reaching-definition edge for locals and parameters | analysis |
+| `Dominates` | Method-local Roslyn CFG dominance relation | opt-in analysis overlay |
+| `PostDominates` | Method-local Roslyn CFG post-dominance relation | opt-in analysis overlay |
+| `ControlDependence` | Condition to branch-controlled node relation derived from post-dominance | opt-in analysis overlay |
 
 ## Scope Boundary
 
@@ -81,12 +84,17 @@ This minimal graph intentionally does not model:
 - trivia
 - preprocessor directives
 - interprocedural data flow
-- full dominance/post-dominance
 - full external dependency type summaries
 - dynamic dispatch candidate sets
 - interprocedural call/data flow
 
 It is a Roslyn-native minimal graph, not a full joern schema clone.
+
+## Control overlays
+
+`Dominance`, `PostDominance`, and `ControlDependence` are opt-in capabilities. They are calculated independently for each method from Roslyn `ControlFlowGraph` basic blocks, then projected only to graph nodes with a stable operation or synthetic entry/exit mapping. Synthetic CFG blocks without a graph-node mapping remain internal to the calculation.
+
+`Dominates(source)` and `PostDominates(source)` return direct overlay edges from the frozen query index. `Controls(source)` and `ControlledBy(target)` expose control-dependence edges without rescanning the graph.
 
 ## Local View
 

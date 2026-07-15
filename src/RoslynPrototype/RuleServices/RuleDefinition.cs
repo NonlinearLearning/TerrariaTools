@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using MinimalRoslynCpg.Contracts;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Lifting;
 using RoslynPrototype.Marking;
@@ -9,6 +10,9 @@ namespace Rules;
 
 public abstract class RuleDefinitionMark
 {
+    public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
+        new[] { RoslynCpgCapability.Default };
+
     public abstract string RuleId { get; }
 
     public virtual string GroupKey => RuleId;
@@ -22,6 +26,9 @@ public abstract class RuleDefinitionMark
 
 public abstract class RuleDefinitionPropagate
 {
+    public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
+        new[] { RoslynCpgCapability.Default };
+
     public abstract string RuleId { get; }
 
     public virtual string GroupKey => RuleId;
@@ -37,6 +44,9 @@ public abstract class RuleDefinitionPropagate
 
 public abstract class RuleDefinitionPropose
 {
+    public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
+        new[] { RoslynCpgCapability.Default };
+
     public abstract string RuleId { get; }
 
     public virtual string GroupKey => RuleId;
@@ -56,6 +66,9 @@ public abstract class RuleDefinitionPropose
 
 public abstract class RuleDefinitionLift
 {
+    public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
+        new[] { RoslynCpgCapability.Default };
+
     public abstract string RuleId { get; }
 
     public virtual string GroupKey => RuleId;

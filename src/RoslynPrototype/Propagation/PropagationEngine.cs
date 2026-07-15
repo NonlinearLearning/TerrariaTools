@@ -66,10 +66,12 @@ public sealed class PropagationEngine
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var ruleGroup = groupedRules[index];
-                return Task.FromResult((IReadOnlyList<PropagatedMarkRecord>)RunGroup(
-                  context,
-                  ruleGroup,
-                  seedMarksByGroupKey[ruleGroup.GroupKey]));
+                return Task.Run(
+                  () => (IReadOnlyList<PropagatedMarkRecord>)RunGroup(
+                    context,
+                    ruleGroup,
+                    seedMarksByGroupKey[ruleGroup.GroupKey]),
+                  cancellationToken);
             },
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()

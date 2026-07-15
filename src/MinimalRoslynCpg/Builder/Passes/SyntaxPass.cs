@@ -53,11 +53,14 @@ namespace MinimalRoslynCpg.Builder
       public int TypeInfoQueryCount { get; set; }
       public int TypeInfoResolvedCount { get; set; }
       public int TypeInfoSymbolReuseCount { get; set; }
+      public int DeclaredSymbolQueryCount { get; set; }
+      public int DeclaredSymbolResolvedCount { get; set; }
+      public int OperationBackedTypeInfoDeferredCount { get; set; }
       public int SyntaxNodeCount { get; set; }
       public int SyntaxTokenCount { get; set; }
     }
 
-    internal void RunSyntaxPass(RoslynCpgBuildContext context)
+    private void RunLegacySyntaxPass(RoslynCpgBuildContext context)
     {
       var totalStopwatch = Stopwatch.StartNew();
       var metrics = new SyntaxPassMetrics();
@@ -83,8 +86,111 @@ namespace MinimalRoslynCpg.Builder
         metrics.TypeInfoQueryCount,
         metrics.TypeInfoResolvedCount,
         metrics.TypeInfoSymbolReuseCount,
+        metrics.DeclaredSymbolQueryCount,
+        metrics.DeclaredSymbolResolvedCount,
         metrics.SyntaxNodeCount,
-        metrics.SyntaxTokenCount);
+        metrics.SyntaxTokenCount,
+        SyntaxPartitionCount: 0,
+        SyntaxPartitionMaxDegreeOfParallelism: 1,
+        metrics.OperationBackedTypeInfoDeferredCount,
+        OperationBackedTypeInfoResolvedCount: 0,
+        OperationBackedTypeInfoFallbackCount: 0,
+        OperationBackedTypeInfoFallbackElapsedMilliseconds: 0,
+        OperationBackedTypeInfoFallbackElapsedTicks: 0,
+        OperationBackedTypeInfoMissingOperationCount: 0,
+        OperationBackedTypeInfoNullOperationTypeCount: 0,
+        OperationBackedTypeInfoFallbackCountBySyntaxKind: new Dictionary<string, int>(StringComparer.Ordinal));
+    }
+
+    internal void RunSyntaxPass(RoslynCpgBuildContext context)
+    {
+      RunLegacySyntaxPass(context);
+    }
+
+    private void RunPartitionedSyntaxPass(
+      RoslynCpgBuildContext context,
+      IReadOnlyCollection<SyntaxNode> partitionRoots,
+      IReadOnlyList<SyntaxNode[]> partitions)
+    {
+      var metrics = new SyntaxPassMetrics();
+      VisitSyntaxOutsidePartitions(
+        context.Root,
+        context.SyntaxTreeNode,
+        context.Graph,
+        context.SemanticModel,
+        context.FilePath,
+        partitionRoots,
+        metrics);
+
+      foreach (var partition in partitions)
+      {
+        foreach (var syntax in partition)
+        {
+          var parent = syntax.Parent is null
+            ? context.SyntaxTreeNode
+            : _syntaxNodes[syntax.Parent];
+          var syntaxNode = CreateSyntaxNode(
+            syntax,
+            parent,
+            context.Graph,
+            context.SemanticModel,
+            context.FilePath,
+            metrics);
+          EmitChildTokens(syntax, syntaxNode, context.Graph, context.FilePath, metrics);
+        }
+      }
+
+      _syntaxPassTelemetry = new RoslynCpgSyntaxPassTelemetry(
+        TotalElapsedMilliseconds: metrics.TraversalElapsedMilliseconds,
+        TraversalElapsedMilliseconds: metrics.TraversalElapsedMilliseconds,
+        CreateSyntaxNodeElapsedMilliseconds: metrics.CreateSyntaxNodeElapsedMilliseconds,
+        EmitChildTokensElapsedMilliseconds: metrics.EmitChildTokensElapsedMilliseconds,
+        AddDeclaredSymbolEdgesElapsedMilliseconds: metrics.AddDeclaredSymbolEdgesElapsedMilliseconds,
+        AddReferencedSymbolEdgesElapsedMilliseconds: metrics.AddReferencedSymbolEdgesElapsedMilliseconds,
+        AddTypeInfoElapsedMilliseconds: metrics.AddTypeInfoElapsedMilliseconds,
+        ResolveTypeInfoElapsedMilliseconds: metrics.ResolveTypeInfoElapsedMilliseconds,
+        AddSyntaxTypeEdgesElapsedMilliseconds: metrics.AddSyntaxTypeEdgesElapsedMilliseconds,
+        AddTypeReferenceEdgesElapsedMilliseconds: metrics.AddTypeReferenceEdgesElapsedMilliseconds,
+        TypeInfoQueryCount: metrics.TypeInfoQueryCount,
+        TypeInfoResolvedCount: metrics.TypeInfoResolvedCount,
+        TypeInfoSymbolReuseCount: metrics.TypeInfoSymbolReuseCount,
+        DeclaredSymbolQueryCount: metrics.DeclaredSymbolQueryCount,
+        DeclaredSymbolResolvedCount: metrics.DeclaredSymbolResolvedCount,
+        SyntaxNodeCount: metrics.SyntaxNodeCount,
+        SyntaxTokenCount: metrics.SyntaxTokenCount,
+        SyntaxPartitionCount: partitions.Count,
+        SyntaxPartitionMaxDegreeOfParallelism: _options.EffectiveMaxDegreeOfParallelism,
+        OperationBackedTypeInfoDeferredCount: metrics.OperationBackedTypeInfoDeferredCount,
+        OperationBackedTypeInfoResolvedCount: 0,
+        OperationBackedTypeInfoFallbackCount: 0,
+        OperationBackedTypeInfoFallbackElapsedMilliseconds: 0,
+        OperationBackedTypeInfoFallbackElapsedTicks: 0,
+        OperationBackedTypeInfoMissingOperationCount: 0,
+        OperationBackedTypeInfoNullOperationTypeCount: 0,
+        OperationBackedTypeInfoFallbackCountBySyntaxKind: new Dictionary<string, int>(StringComparer.Ordinal));
+    }
+
+    private void VisitSyntaxOutsidePartitions(
+      SyntaxNode syntax,
+      RoslynCpgNode parent,
+      RoslynCpgGraph graph,
+      SemanticModel semanticModel,
+      string filePath,
+      IReadOnlyCollection<SyntaxNode> partitionRoots,
+      SyntaxPassMetrics metrics)
+    {
+      if (partitionRoots.Contains(syntax))
+      {
+        return;
+      }
+
+      var syntaxNode = CreateSyntaxNode(syntax, parent, graph, semanticModel, filePath, metrics);
+      foreach (var child in syntax.ChildNodes())
+      {
+        VisitSyntaxOutsidePartitions(child, syntaxNode, graph, semanticModel, filePath, partitionRoots, metrics);
+      }
+
+      EmitChildTokens(syntax, syntaxNode, graph, filePath, metrics);
     }
 
     private void VisitSyntaxIterative(
@@ -153,27 +259,41 @@ namespace MinimalRoslynCpg.Builder
       _syntaxNodes[syntax] = syntaxNode;
       graph.AddEdge(parent, syntaxNode, RoslynCpgEdgeKind.SyntaxChild);
 
+      _partitionedSyntaxFacts.TryGetValue(syntax, out var cachedFacts);
+
       var declaredSymbolStopwatch = Stopwatch.StartNew();
-      AddDeclaredSymbolEdges(syntax, syntaxNode, graph, semanticModel);
+      var queriedDeclaredSymbol = cachedFacts?.QueriedDeclaredSymbol ?? false;
+      var declaredSymbol = cachedFacts?.DeclaredSymbol;
+      if (cachedFacts is null && CanDeclareSymbol(syntax))
+      {
+        declaredSymbol = semanticModel.GetDeclaredSymbol(syntax);
+        queriedDeclaredSymbol = true;
+      }
+
+      AddDeclaredSymbolEdges(syntaxNode, declaredSymbol, graph);
       declaredSymbolStopwatch.Stop();
       metrics.AddDeclaredSymbolEdgesElapsedMilliseconds += declaredSymbolStopwatch.ElapsedMilliseconds;
+      metrics.DeclaredSymbolQueryCount += queriedDeclaredSymbol ? 1 : 0;
+      metrics.DeclaredSymbolResolvedCount += declaredSymbol is null ? 0 : 1;
 
       var referencedSymbolStopwatch = Stopwatch.StartNew();
-      var referencedSymbol = CanReferenceSymbol(syntax) ? semanticModel.GetSymbolInfo(syntax).Symbol : null;
+      var referencedSymbol = cachedFacts?.ReferencedSymbol ??
+        (CanReferenceSymbol(syntax) ? semanticModel.GetSymbolInfo(syntax).Symbol : null);
       AddReferencedSymbolEdges(syntax, syntaxNode, referencedSymbol, graph);
       referencedSymbolStopwatch.Stop();
       metrics.AddReferencedSymbolEdgesElapsedMilliseconds += referencedSymbolStopwatch.ElapsedMilliseconds;
 
-      var shouldDeferToOperation = ShouldDeferSyntaxTypeToOperation(syntax);
+      var shouldDeferToOperation = cachedFacts?.ShouldDeferToOperation ?? ShouldDeferSyntaxTypeToOperation(syntax);
       if (shouldDeferToOperation)
       {
         _pendingOperationSyntaxTypeNodes.Add(syntax);
+        metrics.OperationBackedTypeInfoDeferredCount += 1;
       }
 
       var resolveTypeInfoStopwatch = Stopwatch.StartNew();
-      var typeResolution = shouldDeferToOperation
+      var typeResolution = cachedFacts?.TypeResolution ?? (shouldDeferToOperation
         ? new SyntaxTypeResolution(null, QueriedSemanticModel: false, ReusedReferencedSymbolType: false)
-        : ResolveSyntaxTypeSymbol(syntax, semanticModel, referencedSymbol);
+        : ResolveSyntaxTypeSymbol(syntax, semanticModel, referencedSymbol));
       resolveTypeInfoStopwatch.Stop();
       metrics.ResolveTypeInfoElapsedMilliseconds += resolveTypeInfoStopwatch.ElapsedMilliseconds;
       metrics.TypeInfoQueryCount += typeResolution.QueriedSemanticModel ? 1 : 0;

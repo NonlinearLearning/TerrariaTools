@@ -1,6 +1,9 @@
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -8,12 +11,151 @@ namespace RoslynPrototype.Tests;
 public sealed class MinimalRoslynCpgPartitionedBuilderTests
 {
   [Fact]
+  public void RoslynCpgEdgeKind_ContainsControlDependenceOverlayKinds()
+  {
+    var names = Enum.GetNames<RoslynCpgEdgeKind>();
+
+    Assert.Contains("Dominates", names);
+    Assert.Contains("PostDominates", names);
+    Assert.Contains("ControlDependence", names);
+  }
+
+  [Fact]
+  public void BuildFromSource_ControlDependenceCapability_ProjectsStableConditionalOverlays()
+  {
+    const string source =
+      """
+      public sealed class Sample
+      {
+        public int Adjust(int value)
+        {
+          if (value > 0)
+          {
+            value += 1;
+          }
+          else
+          {
+            value -= 1;
+          }
+
+          return value;
+        }
+      }
+      """;
+    var options = RoslynCpgBuilderOptions.CreateDefault() with
+    {
+      RequestedCapabilities = new[] { RoslynCpgCapability.ControlDependence },
+    };
+
+    var graph = new RoslynCpgBuilder(options).BuildFromSource(source, "control-dependence.cs");
+
+    var condition = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpBinary && node.Text == "value > 0");
+    var trueBranchAssignment = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpAssignment && node.Text == "value += 1");
+    var falseBranchAssignment = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpAssignment && node.Text == "value -= 1");
+    var entry = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.MethodEntry && node.Name == "Adjust:entry");
+    var exit = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.MethodExit && node.Name == "Adjust:exit");
+
+    Assert.Contains(graph.Controls(condition.Id), edge => edge.TargetId == trueBranchAssignment.Id);
+    Assert.Contains(graph.Controls(condition.Id), edge => edge.TargetId == falseBranchAssignment.Id);
+    Assert.Contains(graph.Dominates(entry.Id), edge => edge.TargetId == condition.Id);
+    Assert.Contains(graph.GetEdges(RoslynCpgEdgeKind.PostDominates), edge => edge.TargetId == exit.Id);
+  }
+
+  [Fact]
+  public void BuildFromSource_DefaultOptions_AlwaysUsePartitionedPasses()
+  {
+    var builder = new RoslynCpgBuilder();
+
+    _ = builder.BuildFromSource(CreateLargeSource(methodCount: 2, statementsPerMethod: 1), "default-partitioned.cs");
+
+    Assert.True(builder.LastBuildTelemetry.UsedPartitionedOperationBuild);
+    Assert.True(builder.LastBuildTelemetry.UsedPartitionedSyntaxPass);
+    Assert.Contains("DominancePass", builder.LastBuildTelemetry.SkippedPassNames!);
+    Assert.Contains("ControlDependencePass", builder.LastBuildTelemetry.SkippedPassNames!);
+  }
+
+  [Fact]
+  public void BuildFromSource_DefaultCapabilities_DoesNotMaterializeOverlayEdges()
+  {
+    var graph = new RoslynCpgBuilder().BuildFromSource(
+      "namespace Demo; public sealed class Sample { public int Run(int value) { if (value > 0) return value; return 0; } }",
+      "default-no-overlay.cs");
+
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.Dominates);
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.PostDominates);
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.ControlDependence);
+  }
+
+  [Fact]
+  public void BuildFromSource_SyntaxSemanticCapability_SkipsExpensiveMethodOverlays()
+  {
+    var options = RoslynCpgBuilderOptions.CreateDefault() with
+    {
+      RequestedCapabilities = new[] { RoslynCpgCapability.SyntaxSemantic }
+    };
+    var builder = new RoslynCpgBuilder(options);
+
+    var graph = builder.BuildFromSource(
+      "namespace Demo; public sealed class Sample { public int Run(int value) => value + 1; }",
+      "syntax-only.cs");
+
+    Assert.Equal("capability-v1", builder.LastBuildTelemetry.GraphSnapshotVersion);
+    Assert.Contains("SyntaxPass", builder.LastBuildTelemetry.ExecutedPassNames!);
+    Assert.Contains("DataFlowPass", builder.LastBuildTelemetry.SkippedPassNames!);
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.DataFlow);
+  }
+
+  [Fact]
+  public void BuildFromSource_ControlDependenceCapability_ResolvesOverlayDependencies()
+  {
+    var options = RoslynCpgBuilderOptions.CreateDefault() with
+    {
+      RequestedCapabilities = new[] { RoslynCpgCapability.ControlDependence }
+    };
+    var builder = new RoslynCpgBuilder(options);
+
+    _ = builder.BuildFromSource(
+      "namespace Demo; public sealed class Sample { public int Run(int value) { if (value > 0) return value; return 0; } }",
+      "control-dependence.cs");
+
+    Assert.Equal(
+      new[]
+      {
+        RoslynCpgCapability.SyntaxSemantic,
+        RoslynCpgCapability.MethodModel,
+        RoslynCpgCapability.Cfg,
+        RoslynCpgCapability.Dominance,
+        RoslynCpgCapability.ControlDependence,
+      },
+      builder.LastBuildTelemetry.ResolvedCapabilities);
+    Assert.Contains("DominancePass", builder.LastBuildTelemetry.ExecutedPassNames!);
+    Assert.Contains("ControlDependencePass", builder.LastBuildTelemetry.ExecutedPassNames!);
+  }
+
+  [Fact]
+  public void BuildFromSource_PartitionedOperationPass_RentsChildOperationBuffer()
+  {
+    var builder = new RoslynCpgBuilder(new RoslynCpgBuilderOptions(
+      RoslynCpgBuilderMode.Partitioned,
+      MaxDegreeOfParallelism: 4,
+      LargeFileLineThreshold: 1,
+      LargeFileMethodThreshold: 1,
+      LargeMethodLineSpanThreshold: 1));
+
+    _ = builder.BuildFromSource(CreateLargeSource(methodCount: 2, statementsPerMethod: 4), "pooled-operation-buffer.cs");
+
+    var rentCountProperty = typeof(RoslynCpgBuildTelemetry).GetProperty("OperationChildBufferRentCount");
+    Assert.NotNull(rentCountProperty);
+    Assert.True((int)rentCountProperty.GetValue(builder.LastBuildTelemetry)! > 0);
+  }
+
+  [Fact]
   public void BuildFromSource_PartitionedMode_ProducesSameGraphAsLegacy()
   {
     const string filePath = "partitioned-ab.cs";
     var source = CreateLargeSource(methodCount: 12, statementsPerMethod: 10);
     var legacyBuilder = new RoslynCpgBuilder(new RoslynCpgBuilderOptions(
-      RoslynCpgBuilderMode.Legacy,
+      RoslynCpgBuilderMode.Partitioned,
       MaxDegreeOfParallelism: 1,
       LargeFileLineThreshold: 40,
       LargeFileMethodThreshold: 4,
@@ -29,7 +171,7 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
     var partitionedGraph = partitionedBuilder.BuildFromSource(source, filePath);
 
     AssertGraphsEqual(legacyGraph, partitionedGraph);
-    Assert.False(legacyBuilder.LastBuildTelemetry.UsedPartitionedOperationBuild);
+    Assert.True(legacyBuilder.LastBuildTelemetry.UsedPartitionedOperationBuild);
     Assert.True(partitionedBuilder.LastBuildTelemetry.UsedPartitionedOperationBuild);
     Assert.Equal(12, partitionedBuilder.LastBuildTelemetry.PartitionCount);
   }
@@ -40,7 +182,7 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
     const string filePath = "partitioned-auto-large.cs";
     var source = CreateLargeSource(methodCount: 10, statementsPerMethod: 12);
     var builder = new RoslynCpgBuilder(new RoslynCpgBuilderOptions(
-      RoslynCpgBuilderMode.Auto,
+      RoslynCpgBuilderMode.Partitioned,
       MaxDegreeOfParallelism: 3,
       LargeFileLineThreshold: 80,
       LargeFileMethodThreshold: 6,
@@ -71,7 +213,7 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
       }
       """;
     var builder = new RoslynCpgBuilder(new RoslynCpgBuilderOptions(
-      RoslynCpgBuilderMode.Auto,
+      RoslynCpgBuilderMode.Partitioned,
       MaxDegreeOfParallelism: 4,
       LargeFileLineThreshold: 80,
       LargeFileMethodThreshold: 6,
@@ -79,9 +221,306 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
 
     _ = builder.BuildFromSource(source, filePath);
 
-    Assert.False(builder.LastBuildTelemetry.UsedPartitionedOperationBuild);
-    Assert.Equal(RoslynCpgBuilderMode.Legacy, builder.LastBuildTelemetry.ExecutedMode);
-    Assert.Equal(0, builder.LastBuildTelemetry.PartitionCount);
+    Assert.True(builder.LastBuildTelemetry.UsedPartitionedOperationBuild);
+    Assert.Equal(RoslynCpgBuilderMode.Partitioned, builder.LastBuildTelemetry.ExecutedMode);
+    Assert.Equal(1, builder.LastBuildTelemetry.PartitionCount);
+  }
+
+  [Fact]
+  public void BuildFromSource_PartitionedSyntaxPass_PreservesGraphsAcrossDegreesOfParallelism()
+  {
+    const string filePath = "partitioned-syntax-pass.cs";
+    var source = CreateLargeSource(methodCount: 12, statementsPerMethod: 10);
+    var legacyGraph = new RoslynCpgBuilder(CreateSyntaxPassOptions(RoslynCpgSyntaxPassMode.Partitioned, 1))
+      .BuildFromSource(source, filePath);
+
+    foreach (var degreeOfParallelism in new[] { 1, 8, 12, 14, 16 })
+    {
+      for (var iteration = 0; iteration < 10; iteration += 1)
+      {
+        var builder = new RoslynCpgBuilder(CreateSyntaxPassOptions(
+          RoslynCpgSyntaxPassMode.Partitioned,
+          degreeOfParallelism));
+        var graph = builder.BuildFromSource(source, filePath);
+
+        AssertGraphsEqual(legacyGraph, graph);
+        Assert.True(builder.LastBuildTelemetry.UsedPartitionedSyntaxPass);
+        Assert.Equal(12, builder.LastBuildTelemetry.SyntaxPassTelemetry.SyntaxPartitionCount);
+        Assert.Equal(degreeOfParallelism, builder.LastBuildTelemetry.SyntaxPassTelemetry.SyntaxPartitionMaxDegreeOfParallelism);
+      }
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_PartitionedDataFlowUsedFacts_PreservesGraphsAcrossDegreesOfParallelism()
+  {
+    const string filePath = "partitioned-data-flow-used-facts.cs";
+    var source = CreateLargeSource(methodCount: 12, statementsPerMethod: 10);
+    var baselineGraph = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(1))
+      .BuildFromSource(source, filePath);
+
+    foreach (var maxDegreeOfParallelism in new[] { 1, 8, 12, 14, 16 })
+    {
+      var builder = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(maxDegreeOfParallelism));
+
+      var graph = builder.BuildFromSource(source, filePath);
+
+      AssertGraphsEqual(baselineGraph, graph);
+      Assert.Equal(12, builder.LastBuildTelemetry.DataFlowPassTelemetry.UsedFactPartitionCount);
+      Assert.Equal(
+        maxDegreeOfParallelism,
+        builder.LastBuildTelemetry.DataFlowPassTelemetry.UsedFactPartitionMaxDegreeOfParallelism);
+      Assert.Equal(12, builder.LastBuildTelemetry.DataFlowPassTelemetry.CfgSensitivePartitionCount);
+      Assert.Equal(
+        maxDegreeOfParallelism,
+        builder.LastBuildTelemetry.DataFlowPassTelemetry.CfgSensitivePartitionMaxDegreeOfParallelism);
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_PartitionedDataFlow_RecordsOrderedCandidateCommitTelemetry()
+  {
+    var builder = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(maxDegreeOfParallelism: 4));
+
+    _ = builder.BuildFromSource(
+      CreateLargeSource(methodCount: 12, statementsPerMethod: 10),
+      "ordered-data-flow-candidates.cs");
+
+    var telemetry = builder.LastBuildTelemetry.DataFlowPassTelemetry;
+    var telemetryType = telemetry.GetType();
+    var candidateGenerationProperty = telemetryType.GetProperty("CfgSensitiveCandidateGenerationElapsedMilliseconds");
+    var candidateCommitProperty = telemetryType.GetProperty("CfgSensitiveCandidateCommitElapsedMilliseconds");
+    var peakBufferedBatchProperty = telemetryType.GetProperty("PeakBufferedCandidateBatchCount");
+    var candidateEdgeCountProperty = telemetryType.GetProperty("CandidateEdgeCount");
+
+    Assert.NotNull(candidateGenerationProperty);
+    Assert.NotNull(candidateCommitProperty);
+    Assert.NotNull(peakBufferedBatchProperty);
+    Assert.NotNull(candidateEdgeCountProperty);
+    Assert.True((long)candidateGenerationProperty.GetValue(telemetry)! >= 0);
+    Assert.True((long)candidateCommitProperty.GetValue(telemetry)! >= 0);
+    Assert.InRange((int)peakBufferedBatchProperty.GetValue(telemetry)!, 1, 4);
+    Assert.True((int)candidateEdgeCountProperty.GetValue(telemetry)! > 0);
+  }
+
+  [Fact]
+  public void BuildFromSource_LocalDataFlowSample_EmitsExpectedSyntaxSymbolTypeAndOperationRelations()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public sealed class GraphSample
+      {
+        public int Increment(int seed)
+        {
+          var value = seed + 1;
+          return value;
+        }
+      }
+      """;
+    var graph = new RoslynCpgBuilder().BuildFromSource(source, "graph-correctness.cs");
+
+    var methodNode = Assert.Single(graph.Nodes, node =>
+      node.Kind == RoslynCpgNodeKind.SyntaxNode && node.Name == "Increment");
+    var parameterNode = Assert.Single(graph.Nodes, node =>
+      node.Kind == RoslynCpgNodeKind.SyntaxNode && node.Name == "seed");
+    var localNode = Assert.Single(graph.Nodes, node =>
+      node.Kind == RoslynCpgNodeKind.SyntaxNode && node.Name == "value");
+    var seedReferences = graph.Nodes.Where(node =>
+      node.Kind == RoslynCpgNodeKind.SyntaxNode &&
+      node.DisplayKind == "IdentifierName" &&
+      node.Text == "seed").ToArray();
+    var valueReferences = graph.Nodes.Where(node =>
+      node.Kind == RoslynCpgNodeKind.SyntaxNode &&
+      node.DisplayKind == "IdentifierName" &&
+      node.Text == "value").ToArray();
+
+    Assert.Contains(graph.Edges, edge =>
+      edge.SourceId == methodNode.Id && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
+    Assert.Contains(graph.Edges, edge =>
+      edge.SourceId == parameterNode.Id && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
+    Assert.Contains(graph.Edges, edge =>
+      edge.SourceId == localNode.Id && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
+    Assert.All(seedReferences, node => Assert.Contains(graph.Edges, edge =>
+      edge.SourceId == node.Id && edge.Kind == RoslynCpgEdgeKind.ReferencesSymbol));
+    Assert.All(valueReferences, node => Assert.Contains(graph.Edges, edge =>
+      edge.SourceId == node.Id && edge.Kind == RoslynCpgEdgeKind.ReferencesSymbol));
+    Assert.Contains(valueReferences, node => graph.Edges.Any(edge =>
+      edge.SourceId == node.Id && edge.Kind == RoslynCpgEdgeKind.HasType));
+    Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.SyntaxHasOperation);
+    Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.OpHasSyntax);
+  }
+
+  [Fact]
+  public void BuildFromSource_DeclarationShapes_PreserveDeclaredSymbolEdges()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public delegate int Transformer<T>(T value);
+
+      public enum State
+      {
+        Ready,
+      }
+
+      public sealed class DeclarationShapes<T>
+      {
+        private int _field;
+        public event System.Action? Changed;
+        public event System.Action? CustomChanged
+        {
+          add { }
+          remove { }
+        }
+        public int Property { get; set; }
+        public int this[int index] { get => index; set => _field = value; }
+
+        public DeclarationShapes(int parameter)
+        {
+          _field = parameter;
+        }
+
+        public static DeclarationShapes<T> operator +(
+          DeclarationShapes<T> left,
+          DeclarationShapes<T> right) => left;
+
+        public static implicit operator int(DeclarationShapes<T> value) => value._field;
+
+        public int Run<TMethod>(int parameter)
+        {
+          var local = parameter;
+          if (local is int pattern)
+          {
+          label:
+            int LocalFunction(int localParameter) => localParameter + pattern;
+            return LocalFunction(local);
+          }
+
+          return 0;
+        }
+      }
+      """;
+    var graph = new RoslynCpgBuilder().BuildFromSource(source, "declaration-shapes.cs");
+
+    var declarationKinds = new[]
+    {
+      "FileScopedNamespaceDeclaration",
+      "DelegateDeclaration",
+      "EnumDeclaration",
+      "EnumMemberDeclaration",
+      "ClassDeclaration",
+      "TypeParameter",
+      "VariableDeclarator",
+      "EventDeclaration",
+      "PropertyDeclaration",
+      "IndexerDeclaration",
+      "GetAccessorDeclaration",
+      "SetAccessorDeclaration",
+      "AddAccessorDeclaration",
+      "RemoveAccessorDeclaration",
+      "ConstructorDeclaration",
+      "MethodDeclaration",
+      "OperatorDeclaration",
+      "ConversionOperatorDeclaration",
+      "Parameter",
+      "LocalFunctionStatement",
+      "SingleVariableDesignation",
+      "LabeledStatement",
+    };
+
+    foreach (var declarationKind in declarationKinds)
+    {
+      var declarationNodes = graph.Nodes.Where(node =>
+        node.Kind == RoslynCpgNodeKind.SyntaxNode && node.DisplayKind == declarationKind).ToArray();
+      Assert.True(declarationNodes.Length > 0, $"Missing {declarationKind} syntax node.");
+      Assert.All(declarationNodes, node => Assert.Contains(graph.Edges, edge =>
+        edge.SourceId == node.Id && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol));
+    }
+
+    var methodLikeDeclarationKinds = new[]
+    {
+      "ConstructorDeclaration",
+      "MethodDeclaration",
+      "OperatorDeclaration",
+      "ConversionOperatorDeclaration",
+      "LocalFunctionStatement",
+      "GetAccessorDeclaration",
+      "SetAccessorDeclaration",
+      "AddAccessorDeclaration",
+      "RemoveAccessorDeclaration",
+    };
+    foreach (var declarationKind in methodLikeDeclarationKinds)
+    {
+      foreach (var declarationNode in graph.Nodes.Where(node =>
+        node.Kind == RoslynCpgNodeKind.SyntaxNode && node.DisplayKind == declarationKind))
+      {
+        Assert.Contains(graph.Edges, edge =>
+          edge.SourceId == declarationNode.Id &&
+          edge.Kind == RoslynCpgEdgeKind.SyntaxChild &&
+          graph.Nodes.Any(node => node.Id == edge.TargetId && node.Kind == RoslynCpgNodeKind.Method));
+      }
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_DeclaredSymbolQueryTelemetry_IsExposedAndReduced()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public sealed class QueryTelemetrySample
+      {
+        public int Run(int value)
+        {
+          var total = value + 1;
+          total = total * 2;
+          return total > 3 ? total : total + 4;
+        }
+      }
+      """;
+    var builder = new RoslynCpgBuilder();
+
+    _ = builder.BuildFromSource(source, "declared-symbol-query-telemetry.cs");
+
+    var telemetry = builder.LastBuildTelemetry.SyntaxPassTelemetry;
+    var queryCountProperty = telemetry.GetType().GetProperty("DeclaredSymbolQueryCount");
+    Assert.NotNull(queryCountProperty);
+    var queryCount = Assert.IsType<int>(queryCountProperty.GetValue(telemetry));
+    Assert.True(queryCount < telemetry.SyntaxNodeCount);
+    Assert.Equal(
+      builder.LastBuildTelemetry.MethodDecorationTelemetry.SyntaxNodeCount,
+      builder.LastBuildTelemetry.MethodDecorationTelemetry.DeclaredSymbolQueryCount);
+    Assert.True(
+      builder.LastBuildTelemetry.MethodDecorationTelemetry.SyntaxNodeCount < telemetry.SyntaxNodeCount);
+  }
+
+  [Fact]
+  public void SharedSemanticModel_ConcurrentSyntaxQueries_MatchSerialBaseline()
+  {
+    var syntaxTree = CSharpSyntaxTree.ParseText(CreateLargeSource(methodCount: 12, statementsPerMethod: 10));
+    var compilation = CSharpCompilation.Create(
+      "semantic-model-probe",
+      new[] { syntaxTree },
+      Array.Empty<MetadataReference>(),
+      new CSharpCompilationOptions(Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
+    var semanticModel = compilation.GetSemanticModel(syntaxTree);
+    var syntaxNodes = syntaxTree.GetRoot().DescendantNodes().ToArray();
+    var expected = syntaxNodes.Select(node => FormatSemanticFacts(node, semanticModel)).ToArray();
+
+    for (var iteration = 0; iteration < 10; iteration += 1)
+    {
+      var actual = new string[syntaxNodes.Length];
+      Parallel.For(0, syntaxNodes.Length, index =>
+      {
+        actual[index] = FormatSemanticFacts(syntaxNodes[index], semanticModel);
+      });
+
+      Assert.Equal(expected, actual);
+    }
   }
 
   [Fact]
@@ -134,6 +573,145 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
     Assert.True(telemetry.AddSyntaxTypeEdgesElapsedMilliseconds >= 0);
     Assert.True(telemetry.TypeInfoQueryCount > 0);
     Assert.True(telemetry.TypeInfoResolvedCount > 0);
+  }
+
+  [Fact]
+  public void BuildFromSource_RecordsTypeInfoSourceAndDataFlowPreparationTelemetry()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public sealed class TelemetrySample
+      {
+        private int _field;
+        public int Property { get; set; }
+
+        public int Run(int parameter)
+        {
+          var local = parameter + _field + Property;
+          return local;
+        }
+      }
+      """;
+    var builder = new RoslynCpgBuilder();
+
+    _ = builder.BuildFromSource(source, "type-info-source-and-data-flow-preparation-telemetry.cs");
+
+    var syntaxTelemetry = builder.LastBuildTelemetry.SyntaxPassTelemetry;
+    var dataFlowTelemetry = builder.LastBuildTelemetry.DataFlowPassTelemetry;
+    Assert.True(syntaxTelemetry.OperationBackedTypeInfoDeferredCount > 0);
+    Assert.True(syntaxTelemetry.OperationBackedTypeInfoResolvedCount >= 0);
+    Assert.True(syntaxTelemetry.OperationBackedTypeInfoFallbackCount >= 0);
+    Assert.True(syntaxTelemetry.OperationBackedTypeInfoFallbackElapsedMilliseconds >= 0);
+    Assert.True(dataFlowTelemetry.PrepareFlowNodesElapsedMilliseconds >= 0);
+    Assert.True(dataFlowTelemetry.CollectUsedFactsElapsedMilliseconds >= 0);
+    Assert.True(dataFlowTelemetry.CreateDefinitionFactsElapsedMilliseconds >= 0);
+    Assert.True(dataFlowTelemetry.InitializeCfgSensitiveStateElapsedMilliseconds >= 0);
+    Assert.True(dataFlowTelemetry.FlowNodeCount > 0);
+    Assert.True(dataFlowTelemetry.UsedFactCount > 0);
+    Assert.True(dataFlowTelemetry.DefinitionFactCount > 0);
+  }
+
+  [Fact]
+  public void BuildFromSource_DataFlowFactCollection_TraversesEachOperationOnceAndProjectsMethodNodes()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public sealed class DataFlowDedupSample
+      {
+        public int Run(int input)
+        {
+          var first = input + 1;
+          var second = Transform(first * (input + 2));
+          return second + first;
+        }
+
+        private static int Transform(int value) => value;
+      }
+      """;
+    var baseline = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(maxDegreeOfParallelism: 1))
+      .BuildFromSource(source, "data-flow-fact-dedup.cs");
+
+    foreach (var maxDegreeOfParallelism in new[] { 1, 8, 12, 14, 16 })
+    {
+      var builder = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(maxDegreeOfParallelism));
+      var graph = builder.BuildFromSource(source, "data-flow-fact-dedup.cs");
+
+      AssertGraphsEqual(baseline, graph);
+      var telemetry = builder.LastBuildTelemetry.DataFlowPassTelemetry;
+      Assert.Equal(telemetry.OrderedOperationCount, telemetry.UsedFactRecordCount);
+      Assert.Equal(telemetry.OrderedOperationCount, telemetry.MethodOperationNodeProjectionCount);
+      Assert.True(telemetry.FrozenOperationNodeCount >= telemetry.OrderedOperationCount);
+      Assert.True(telemetry.PrepareFlowNodesElapsedTicks > 0);
+      Assert.True(telemetry.CollectUsedFactsElapsedTicks > 0);
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_DataFlowDefinitionBudget_SkipsOnlyOverBudgetMethod()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public sealed class DefinitionBudgetSample
+      {
+        public int Run(int input)
+        {
+          var first = input + 1;
+          var second = first + 1;
+          return second;
+        }
+      }
+      """;
+    var options = CreateDataFlowPartitionOptions(maxDegreeOfParallelism: 1) with
+    {
+      DataFlowOptions = new RoslynCpgDataFlowOptions(MaxDefinitionsPerMethod: 0)
+    };
+    var builder = new RoslynCpgBuilder(options);
+
+    var graph = builder.BuildFromSource(source, "definition-budget.cs");
+
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.DataFlow);
+    Assert.Equal(1, builder.LastBuildTelemetry.DataFlowPassTelemetry.SkippedMethodCount);
+  }
+
+  [Fact]
+  public void BuildFromSource_ClassifiesOperationBackedTypeInfoFallbacks()
+  {
+    const string source =
+      """
+      namespace Demo;
+
+      public sealed class TypeInfoFallbackSample
+      {
+        private int _field = 1 + 2;
+
+        public void Run(int parameter)
+        {
+          System.Action action = Log;
+          action();
+        }
+
+        private void Log(int value)
+        {
+        }
+      }
+      """;
+    var builder = new RoslynCpgBuilder();
+
+    _ = builder.BuildFromSource(source, "type-info-fallback-classification.cs");
+
+    var telemetry = builder.LastBuildTelemetry.SyntaxPassTelemetry;
+    Assert.True(telemetry.OperationBackedTypeInfoFallbackCount > 0);
+    Assert.True(telemetry.OperationBackedTypeInfoFallbackElapsedTicks > 0);
+    Assert.True(telemetry.OperationBackedTypeInfoMissingOperationCount > 0);
+    Assert.True(telemetry.OperationBackedTypeInfoNullOperationTypeCount >= 0);
+    Assert.True(telemetry.OperationBackedTypeInfoFallbackCountBySyntaxKind.ContainsKey("AddExpression"));
+    Assert.True(telemetry.OperationBackedTypeInfoFallbackCountBySyntaxKind.ContainsKey("IdentifierName"));
   }
 
   [Fact]
@@ -295,7 +873,7 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
       }
       """;
     var legacyBuilder = new RoslynCpgBuilder(new RoslynCpgBuilderOptions(
-      RoslynCpgBuilderMode.Legacy,
+      RoslynCpgBuilderMode.Partitioned,
       MaxDegreeOfParallelism: 1,
       LargeFileLineThreshold: 20,
       LargeFileMethodThreshold: 2,
@@ -312,6 +890,67 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
 
     AssertGraphsEqual(legacyGraph, partitionedGraph);
     Assert.True(partitionedBuilder.LastBuildTelemetry.DataFlowPassTelemetry.BuildFlowNeighborsElapsedMilliseconds >= 0);
+  }
+
+  [Fact]
+  public void BuildFromSource_PartitionedSyntaxPass_PreservesSemanticEdgesForGenericAccessorAndLocalFunction()
+  {
+    const string source = """
+      namespace Demo;
+      public sealed class Box<T> { public T Value { get; set; } = default!; }
+      public sealed class Sample
+      {
+        public int Run(Box<int> box)
+        {
+          int Convert() => box.Value + 1;
+          return Convert();
+        }
+      }
+      """;
+    var baseline = new RoslynCpgBuilder(CreateSyntaxPassOptions(RoslynCpgSyntaxPassMode.Partitioned, 1))
+      .BuildFromSource(source, "syntax-semantic-shapes.cs");
+
+    foreach (var degreeOfParallelism in new[] { 8, 16 })
+    {
+      var graph = new RoslynCpgBuilder(CreateSyntaxPassOptions(
+        RoslynCpgSyntaxPassMode.Partitioned,
+        degreeOfParallelism)).BuildFromSource(source, "syntax-semantic-shapes.cs");
+
+      AssertGraphsEqual(baseline, graph);
+      Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.HasType);
+      Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.RefersToType);
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_PartitionedDataFlow_PreservesCallReturnAndPropertyFlowsAcrossDegreesOfParallelism()
+  {
+    const string source = """
+      namespace Demo;
+      public sealed class Counter { public int Value { get; set; } }
+      public sealed class Sample
+      {
+        public int Run(Counter counter, int seed)
+        {
+          counter.Value = seed;
+          var next = Increment(counter.Value);
+          return next;
+        }
+        private static int Increment(int value) => value + 1;
+      }
+      """;
+    var baseline = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(1))
+      .BuildFromSource(source, "dataflow-call-property.cs");
+
+    foreach (var degreeOfParallelism in new[] { 8, 16 })
+    {
+      var graph = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(degreeOfParallelism))
+        .BuildFromSource(source, "dataflow-call-property.cs");
+
+      AssertGraphsEqual(baseline, graph);
+      Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.DataFlow);
+      Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.ParameterLink);
+    }
   }
 
   private static void AssertGraphsEqual(RoslynCpgGraph expected, RoslynCpgGraph actual)
@@ -383,13 +1022,38 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
     bool enableOperationBackedSyntaxTypes = true)
   {
     return new RoslynCpgBuilderOptions(
-      RoslynCpgBuilderMode.Legacy,
+      RoslynCpgBuilderMode.Partitioned,
       MaxDegreeOfParallelism: 1,
       LargeFileLineThreshold: 800,
       LargeFileMethodThreshold: 8,
       LargeMethodLineSpanThreshold: 80,
       EnableReferencedSymbolTypeReuse: enableReferencedSymbolTypeReuse,
       EnableOperationBackedSyntaxTypes: enableOperationBackedSyntaxTypes);
+  }
+
+  private static RoslynCpgBuilderOptions CreateSyntaxPassOptions(
+    RoslynCpgSyntaxPassMode syntaxPassMode,
+    int maxDegreeOfParallelism)
+  {
+    return new RoslynCpgBuilderOptions(
+      RoslynCpgBuilderMode.Partitioned,
+      MaxDegreeOfParallelism: maxDegreeOfParallelism,
+      LargeFileLineThreshold: 40,
+      LargeFileMethodThreshold: 4,
+      LargeMethodLineSpanThreshold: 6,
+      SyntaxPassMode: syntaxPassMode,
+      SyntaxLargeFileLineThreshold: 40);
+  }
+
+  private static RoslynCpgBuilderOptions CreateDataFlowPartitionOptions(int maxDegreeOfParallelism)
+  {
+    return new RoslynCpgBuilderOptions(
+      RoslynCpgBuilderMode.Partitioned,
+      MaxDegreeOfParallelism: maxDegreeOfParallelism,
+      LargeFileLineThreshold: 40,
+      LargeFileMethodThreshold: 4,
+      LargeMethodLineSpanThreshold: 6,
+      SyntaxLargeFileLineThreshold: 40);
   }
 
   private static string FormatNode(RoslynCpgNode node)
@@ -409,6 +1073,14 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
       node.SpanEnd,
       node.IsImplicit,
       node.Text);
+  }
+
+  private static string FormatSemanticFacts(SyntaxNode syntax, Microsoft.CodeAnalysis.SemanticModel semanticModel)
+  {
+    var declaredSymbol = semanticModel.GetDeclaredSymbol(syntax)?.ToDisplayString() ?? "<null>";
+    var referencedSymbol = semanticModel.GetSymbolInfo(syntax).Symbol?.ToDisplayString() ?? "<null>";
+    var typeSymbol = semanticModel.GetTypeInfo(syntax).Type?.ToDisplayString() ?? "<null>";
+    return $"{declaredSymbol}|{referencedSymbol}|{typeSymbol}";
   }
 
   private static string CreateLargeSource(int methodCount, int statementsPerMethod)

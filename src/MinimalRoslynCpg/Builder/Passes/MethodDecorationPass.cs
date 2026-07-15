@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
 
@@ -27,7 +28,13 @@ namespace MinimalRoslynCpg.Builder
   {
     internal void RunMethodDecorationPass(RoslynCpgBuildContext context)
     {
-      foreach (var syntax in context.Root.DescendantNodesAndSelf())
+      var methodDeclarations = context.Root.DescendantNodes()
+        .OfType<BaseMethodDeclarationSyntax>()
+        .Cast<SyntaxNode>()
+        .Concat(context.Root.DescendantNodes().OfType<LocalFunctionStatementSyntax>())
+        .Concat(context.Root.DescendantNodes().OfType<AccessorDeclarationSyntax>())
+        .ToArray();
+      foreach (var syntax in methodDeclarations)
       {
         if (!_syntaxNodes.TryGetValue(syntax, out var syntaxNode) ||
             context.SemanticModel.GetDeclaredSymbol(syntax) is not IMethodSymbol methodSymbol)
@@ -37,6 +44,10 @@ namespace MinimalRoslynCpg.Builder
 
         AddMethodAbstractions(syntaxNode, methodSymbol, context.Graph);
       }
+
+      _methodDecorationTelemetry = new RoslynCpgMethodDecorationTelemetry(
+        SyntaxNodeCount: methodDeclarations.Length,
+        DeclaredSymbolQueryCount: methodDeclarations.Length);
     }
 
     private void AddMethodAbstractions(RoslynCpgNode syntaxNode, IMethodSymbol methodSymbol, RoslynCpgGraph graph)

@@ -17,6 +17,40 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     }
 
     [Fact]
+    public async Task RunOrderedAsync_OnlyStartsTheFirstWorkerWindowBeforeAnyWorkCompletes()
+    {
+        const int itemCount = 100;
+        const int maxDegreeOfParallelism = 4;
+        var scheduler = new BoundedRuleStageScheduler();
+        var firstWindowStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var startedCount = 0;
+
+        var runTask = scheduler.RunOrderedAsync(
+          itemCount,
+          maxDegreeOfParallelism,
+          async (index, cancellationToken) =>
+          {
+              if (Interlocked.Increment(ref startedCount) == maxDegreeOfParallelism)
+              {
+                  firstWindowStarted.TrySetResult();
+              }
+
+              await release.Task.WaitAsync(cancellationToken);
+              return index;
+          },
+          CancellationToken.None);
+
+        await firstWindowStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(maxDegreeOfParallelism, Volatile.Read(ref startedCount));
+
+        release.TrySetResult();
+        var results = await runTask;
+
+        Assert.Equal(Enumerable.Range(0, itemCount), results);
+    }
+
+    [Fact]
     public async Task RunOrderedAsync_ComputesPeakConcurrentTraffic()
     {
         var cases = new ConcurrentTrafficCase[]

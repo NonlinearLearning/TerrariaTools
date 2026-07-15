@@ -80,15 +80,15 @@
 这条主线负责验证一个 Roslyn-first 的删除规则原型。当前主线不是完整产品化删除引擎，而是一个围绕以下五阶段组织起来的最小原型：
 
 ```text
-分析 -> 标记 -> 传播 -> 决策 -> 改写
+分析 -> 标记 -> 传播 -> 提升 -> 决策 -> 改写
 ```
 
 当前已经落地并可验证的要点包括：
 
 1. `DeletionApplicationService` 作为最小应用层编排入口
-2. 规则通过 `IDeletionRule` 接入
-3. `MarkingEngine` 和 `PropagationEngine` 分开负责 direct mark 与 propagated mark
-4. `RuleDecisionEngine` 消费标记结果，生成决策
+2. 规则通过分阶段 `RuleDefinition*` 契约接入
+3. `MarkingEngine`、`PropagationEngine` 和 `MarkLiftingEngine` 分别处理标记、传播与结构提升
+4. `RuleDecisionEngine` 消费三类 mark，生成决策
 5. `PrototypeRewriter` 负责把决策落到源码改写结果上
 6. 当前已有 `s` 相关表达式删除样例和不可达函数删除样例
 7. 当前已有测试项目覆盖最小端到端流程
@@ -194,9 +194,9 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 
 建议优先看：
 
-1. `2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
-2. `README.md`
-3. `2026-07-03-RoslynDeletionPrototype-原子表达式Mark设计.md`
+1. `目前设计/项目概览.md`
+2. `目前设计/deletion-pipeline.md`
+3. `目前设计/atomic-marking.md`
 
 ## 从哪里开始读代码
 
@@ -273,7 +273,7 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 当前 `RoslynPrototype` 的核心主线是：
 
 ```text
-分析 -> 标记 -> 传播 -> 决策 -> 改写
+分析 -> 标记 -> 传播 -> 提升 -> 决策 -> 改写
 ```
 
 ## 常见任务
@@ -306,8 +306,8 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 
 优先看：
 
-1. `设计docs/2026-05-02-删除规则-Roslyn-first-一般重设计.md`
-2. `设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+1. `设计docs/目前设计/项目概览.md`
+2. `设计docs/目前设计/deletion-pipeline.md`
 3. `progress.md`
 4. `feature_list.json`
 
@@ -325,8 +325,8 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 
 优先入口：
 
-1. `设计docs/2026-05-02-删除规则-Roslyn-first-一般重设计.md`
-2. `设计docs/2026-07-06-RoslynDeletionPrototype-项目级PRD.md`
+1. `设计docs/目前设计/项目概览.md`
+2. `设计docs/目前设计/deletion-pipeline.md`
 3. `设计docs/README.md`
 
 ### 当前状态与执行约束
@@ -382,7 +382,7 @@ dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.
 如果你已经看完这份 README，下一步按你的目标继续：
 
 1. 想先跑仓库：看上面的“快速开始”
-2. 想理解删除原型：看 `设计docs/2026-05-02-删除规则-Roslyn-first-一般重设计.md`
+2. 想理解删除原型：看 `设计docs/目前设计/deletion-pipeline.md`
 3. 想理解当前分层与历史设计：先看 `设计docs/README.md`，再按索引进入 `设计docs/历史设计/`
 4. 想理解当前事实和待办：看 `progress.md` 与 `feature_list.json`
 5. 想直接看实现：从 `src/Application/DeletionApplicationService.cs` 开始

@@ -64,33 +64,30 @@ public sealed class BoundedRuleStageScheduler : IRuleStageScheduler
       return serialResults;
     }
 
-    using var gate = new SemaphoreSlim(Math.Max(1, maxDegreeOfParallelism));
-    var tasks = new Task<TResult>[itemCount];
-    for (var index = 0; index < itemCount; index++)
+    var results = new TResult[itemCount];
+    var nextIndex = -1;
+    var workerCount = Math.Min(itemCount, Math.Max(1, maxDegreeOfParallelism));
+    var workers = new Task[workerCount];
+    for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
     {
-      var currentIndex = index;
-      tasks[index] = RunOneAsync(currentIndex, gate, workItem, cancellationToken);
+      workers[workerIndex] = Task.Run(async () =>
+      {
+        while (true)
+        {
+          var index = Interlocked.Increment(ref nextIndex);
+          if (index >= itemCount)
+          {
+            return;
+          }
+
+          cancellationToken.ThrowIfCancellationRequested();
+          results[index] = await workItem(index, cancellationToken);
+        }
+      }, cancellationToken);
     }
 
-    return await Task.WhenAll(tasks);
-  }
-
-  private static async Task<TResult> RunOneAsync<TResult>(
-    int index,
-    SemaphoreSlim gate,
-    Func<int, CancellationToken, Task<TResult>> workItem,
-    CancellationToken cancellationToken)
-  {
-    await gate.WaitAsync(cancellationToken);
-    try
-    {
-      cancellationToken.ThrowIfCancellationRequested();
-      return await workItem(index, cancellationToken);
-    }
-    finally
-    {
-      gate.Release();
-    }
+    await Task.WhenAll(workers);
+    return results;
   }
 }
 

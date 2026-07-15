@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using MinimalRoslynCpg.Contracts;
+using MinimalRoslynCpg.Analysis;
 using MinimalRoslynCpg.Model;
 using RoslynPrototype.Analysis;
 
@@ -19,16 +20,19 @@ public sealed class RuleContext :
     private readonly CpgAnalysisContext _analysisContext;
     private readonly IReadOnlyDictionary<string, string> _options;
     private readonly DeletionAnalysisRuntime _runtime;
+    private readonly MarkAnalysisSnapshot _markAnalysisSnapshot;
 
     public RuleContext(
       CpgAnalysisContext analysisContext,
       IReadOnlyDictionary<string, string> options,
       RoslynCpgStructureView? structureView = null,
-      DeletionAnalysisRuntime? runtime = null)
+      DeletionAnalysisRuntime? runtime = null,
+      MarkAnalysisSnapshot? markAnalysisSnapshot = null)
     {
         _analysisContext = analysisContext;
         _options = options;
         _runtime = runtime ?? DeletionAnalysisRuntime.CreateDefault();
+        _markAnalysisSnapshot = markAnalysisSnapshot ?? new MarkAnalysisSnapshot(analysisContext);
         StructureView = structureView;
     }
 
@@ -43,6 +47,31 @@ public sealed class RuleContext :
     public RoslynCpgStructureView? StructureView { get; }
 
     public DeletionAnalysisRuntime Runtime => _runtime;
+
+    public MarkAnalysisTelemetry MarkAnalysisTelemetry => _markAnalysisSnapshot.Telemetry;
+
+    public MarkAnalysisSnapshot.MarkRuleTelemetryScope BeginMarkRuleTelemetry(
+      int ruleOrder,
+      string ruleId,
+      string? groupKey)
+    {
+        return _markAnalysisSnapshot.BeginRuleTelemetry(ruleOrder, ruleId, groupKey);
+    }
+
+    public IReadOnlyList<string> GetNormalizedTargetNames()
+    {
+        return TryGetOption("target-name", out var targetName)
+          ? _markAnalysisSnapshot.GetNormalizedTargetNames(targetName)
+          : Array.Empty<string>();
+    }
+
+    public bool GetCachedTargetMatch(
+      SyntaxNode syntaxNode,
+      IReadOnlyList<string> targetNames,
+      Func<bool> evaluate)
+    {
+        return _markAnalysisSnapshot.GetTargetMatch(syntaxNode, targetNames, evaluate);
+    }
 
     /// <summary>
     /// 当前源码的 Roslyn 语义模型。
@@ -61,7 +90,7 @@ public sealed class RuleContext :
 
     public RuleContext WithStructureView(RoslynCpgStructureView structureView)
     {
-        return new RuleContext(_analysisContext, _options, structureView, _runtime);
+        return new RuleContext(_analysisContext, _options, structureView, _runtime, _markAnalysisSnapshot);
     }
 
     public RoslynCpgStructureView BuildStructureView(IReadOnlyCollection<SyntaxNode> fragments)
@@ -76,7 +105,11 @@ public sealed class RuleContext :
       SyntaxNode root,
       IReadOnlyCollection<Microsoft.CodeAnalysis.CSharp.SyntaxKind> allowedKinds)
     {
-        return RuleSyntaxAnalysisHelpers.EnumerateAllowedExpressions(root, allowedKinds, _analysisContext);
+        return RuleSyntaxAnalysisHelpers.EnumerateAllowedExpressions(
+          root,
+          allowedKinds,
+          _analysisContext,
+          _markAnalysisSnapshot.GetAtomicCandidates(root));
     }
 
     public IEnumerable<MethodDeclarationSyntax> EnumerateMethodDeclarations(SyntaxNode root)
@@ -86,7 +119,19 @@ public sealed class RuleContext :
 
     public MarkCodeRegion AnalyzeMarkRegion(SyntaxNode anchorNode)
     {
-        return new MarkRegionAnalyzer().Analyze(anchorNode, _analysisContext);
+        return _markAnalysisSnapshot.GetMarkRegion(anchorNode);
+    }
+
+    public IOperation? GetCachedOperation(SyntaxNode syntaxNode)
+    {
+        return _markAnalysisSnapshot.GetOperation(syntaxNode);
+    }
+
+    public RoslynCpgSliceResult QuerySliceBackward(
+      string sinkNodeId,
+      RoslynCpgSliceQueryOptions options)
+    {
+        return _markAnalysisSnapshot.QuerySliceBackward(sinkNodeId, options);
     }
 
     public bool CanAnalyzeLogicalCondition(ExpressionSyntax expression)
@@ -132,14 +177,13 @@ public sealed class RuleContext :
 
     public bool TryResolvePrimaryGraphNode(SyntaxNode syntaxNode, out RoslynCpgNode? graphNode)
     {
-        graphNode = ResolvePrimaryGraphNode(syntaxNode);
-        return graphNode is not null;
+        return _markAnalysisSnapshot.TryResolvePrimaryGraphNode(syntaxNode, out graphNode);
     }
 
     public bool ContainsPrimaryGraphNodeInRegion(SyntaxNode syntaxNode, TextSpan regionSpan)
     {
-        var graphNode = ResolvePrimaryGraphNode(syntaxNode);
-        return graphNode is not null &&
+        return TryResolvePrimaryGraphNode(syntaxNode, out var graphNode) &&
+          graphNode is not null &&
           graphNode.SpanStart >= regionSpan.Start &&
           graphNode.SpanEnd <= regionSpan.End;
     }
@@ -151,8 +195,8 @@ public sealed class RuleContext :
 
     public IReadOnlyList<RoslynCpgEdge> GetGraphEdgesByKind(string sourceId, RoslynCpgEdgeKind kind)
     {
-        return _analysisContext.Graph.Edges
-          .Where(edge => edge.SourceId == sourceId && edge.Kind == kind)
+        return _analysisContext.Graph.GetOutgoingEdges(sourceId)
+          .Where(edge => edge.Kind == kind)
           .ToList();
     }
 
@@ -161,43 +205,4 @@ public sealed class RuleContext :
         return _analysisContext.Graph.Nodes.FirstOrDefault(node => node.Id == nodeId);
     }
 
-    private RoslynCpgNode? ResolvePrimaryGraphNode(SyntaxNode syntaxNode)
-    {
-        var filePath = syntaxNode.SyntaxTree.FilePath;
-        if (string.IsNullOrWhiteSpace(filePath))
-        {
-            return null;
-        }
-
-        return _analysisContext.Graph.Nodes
-          .Where(node =>
-            !node.IsImplicit &&
-            string.Equals(node.FilePath, filePath, StringComparison.Ordinal) &&
-            node.SpanStart == syntaxNode.SpanStart &&
-            node.SpanEnd == syntaxNode.Span.End)
-          .OrderBy(GetBindingPriority)
-          .FirstOrDefault();
-    }
-
-    private static int GetBindingPriority(RoslynCpgNode node)
-    {
-        return node.Kind switch
-        {
-            RoslynCpgNodeKind.Method => 0,
-            RoslynCpgNodeKind.MethodParameter => 1,
-            RoslynCpgNodeKind.CallSite => 2,
-            RoslynCpgNodeKind.MemberAccess => 3,
-            RoslynCpgNodeKind.Reference => 4,
-            RoslynCpgNodeKind.Operation => 5,
-            RoslynCpgNodeKind.OpInvocation => 6,
-            RoslynCpgNodeKind.OpBinary => 7,
-            RoslynCpgNodeKind.OpAssignment => 8,
-            RoslynCpgNodeKind.OpLocalReference => 9,
-            RoslynCpgNodeKind.OpParameterReference => 10,
-            RoslynCpgNodeKind.OpFieldReference => 11,
-            RoslynCpgNodeKind.OpPropertyReference => 12,
-            RoslynCpgNodeKind.SyntaxNode => 13,
-            _ => 14
-        };
-    }
 }

@@ -6,9 +6,13 @@ namespace RoslynPrototype.Analysis;
 
 public static class RuleSyntaxAnalysisHelpers
 {
-    public static IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(SyntaxNode root, IReadOnlyCollection<SyntaxKind> allowedKinds, CpgAnalysisContext context)
+    public static IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(
+      SyntaxNode root,
+      IReadOnlyCollection<SyntaxKind> allowedKinds,
+      CpgAnalysisContext context,
+      IReadOnlyList<ExpressionSyntax>? atomicCandidates = null)
     {
-        foreach (var expression in new AtomicExpressionAnalyzer().Analyze(root))
+        foreach (var expression in atomicCandidates ?? new AtomicExpressionAnalyzer().Analyze(root))
         {
             if (!allowedKinds.Contains(expression.Kind()))
             {

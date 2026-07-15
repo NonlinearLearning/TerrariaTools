@@ -37,4 +37,7 @@ public enum RoslynCpgEdgeKind
     CfgTrue,
     CfgFalse,
     DataFlow,
+    Dominates,
+    PostDominates,
+    ControlDependence,
 }

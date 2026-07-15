@@ -104,6 +104,17 @@ public sealed class PrototypeRewriter
         continue;
       }
 
+      if (decision.FinalNode is SimpleBaseTypeSyntax simpleBaseType &&
+          simpleBaseType.Parent is BaseListSyntax baseList) {
+        var remainingBaseTypes = baseList.Types.Remove(simpleBaseType);
+        if (remainingBaseTypes.Count == 0) {
+          rewritePlan.Add(CreateDeleteRewritePlanEntry(baseList));
+        } else {
+          rewritePlan.Add(CreateRewritePlanEntry(baseList, baseList.WithTypes(remainingBaseTypes)));
+        }
+        continue;
+      }
+
       rewritePlan.Add(CreateDeleteRewritePlanEntry(decision.FinalNode));
     }
 

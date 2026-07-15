@@ -20,11 +20,12 @@ public static class DeleteSObjectMarkRuleHelpers
         var marks = new List<MarkRecord>();
         foreach (var expression in context.EnumerateAllowedExpressions(root, allowedKinds))
         {
-            var markRegion = context.AnalyzeMarkRegion(expression);
             if (!IsRootedAtTarget(context, expression, targetNames))
             {
                 continue;
             }
+
+            var markRegion = context.AnalyzeMarkRegion(expression);
 
             if (!HasCpgNodeInRegion(context, expression, markRegion))
             {
@@ -36,10 +37,14 @@ public static class DeleteSObjectMarkRuleHelpers
                 continue;
             }
 
+            context.TryResolvePrimaryGraphNode(expression, out var primaryGraphNode);
             marks.Add(MarkRecordFactory.Create(
               ruleId,
               expression,
-              $"Expression is rooted at target '{string.Join(",", targetNames)}' within mark region {markRegion.Span}."));
+              $"Expression is rooted at target '{string.Join(",", targetNames)}' within mark region {markRegion.Span}.") with
+            {
+                PrimaryGraphNode = primaryGraphNode
+            });
         }
 
         return FinalizeMarks(marks);
@@ -77,17 +82,7 @@ public static class DeleteSObjectMarkRuleHelpers
 
     private static IReadOnlyList<string> ParseTargetNames(RuleContext context)
     {
-        if (!context.TryGetOption("target-name", out var targetName) ||
-            string.IsNullOrWhiteSpace(targetName))
-        {
-            return Array.Empty<string>();
-        }
-
-        return targetName
-          .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-          .Where(name => !string.IsNullOrWhiteSpace(name))
-          .Distinct(StringComparer.Ordinal)
-          .ToList();
+        return context.GetNormalizedTargetNames();
     }
 
     private static IEnumerable<MarkRecord> FinalizeMarks(IEnumerable<MarkRecord> marks)
@@ -133,19 +128,17 @@ public static class DeleteSObjectMarkRuleHelpers
 
     private static bool IsRootedAtTarget(RuleContext context, ExpressionSyntax expression, IReadOnlyList<string> targetNames)
     {
-        if (expression is MemberBindingExpressionSyntax memberBinding &&
-            ReferencesTargetMemberBinding(context, memberBinding, targetNames))
+        return context.GetCachedTargetMatch(expression, targetNames, () =>
         {
-            return true;
-        }
+            if (expression is MemberBindingExpressionSyntax memberBinding &&
+                ReferencesTargetMemberBinding(context, memberBinding, targetNames))
+            {
+                return true;
+            }
 
-        var operation = context.SemanticModel.GetOperation(expression);
-        if (operation is null)
-        {
-            return false;
-        }
-
-        return ReferencesTarget(operation, targetNames);
+            var operation = context.GetCachedOperation(expression);
+            return operation is not null && ReferencesTarget(operation, targetNames);
+        });
     }
 
     private static bool ReferencesTarget(IOperation operation, IReadOnlyList<string> targetNames)

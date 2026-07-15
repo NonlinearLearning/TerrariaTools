@@ -13,6 +13,54 @@ namespace RoslynPrototype.Tests;
 public sealed class StructureViewBuilderTests
 {
     [Fact]
+    public void QueryIndex_AfterFreeze_ProvidesStableSortedAdjacencyAndEdgesByKind()
+    {
+        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        var first = new MinimalRoslynCpg.Model.RoslynCpgNode("first", RoslynCpgNodeKind.Operation, "Operation");
+        var second = new MinimalRoslynCpg.Model.RoslynCpgNode("second", RoslynCpgNodeKind.Operation, "Operation");
+        var third = new MinimalRoslynCpg.Model.RoslynCpgNode("third", RoslynCpgNodeKind.Operation, "Operation");
+
+        graph.AddEdge(first, third, RoslynCpgEdgeKind.DataFlow);
+        graph.AddEdge(first, second, RoslynCpgEdgeKind.OpChild);
+
+        Assert.False(graph.HasQueryIndex);
+        graph.FreezeQueryIndex();
+
+        Assert.True(graph.HasQueryIndex);
+        Assert.Equal(new[] { "second", "third" }, graph.GetOutgoingEdges("first").Select(edge => edge.TargetId));
+        Assert.Equal(new[] { "first" }, graph.GetIncomingEdges("third").Select(edge => edge.SourceId));
+        Assert.Equal(new[] { "first" }, graph.GetEdges(RoslynCpgEdgeKind.DataFlow).Select(edge => edge.SourceId));
+        Assert.Throws<InvalidOperationException>(() => graph.AddNode(new MinimalRoslynCpg.Model.RoslynCpgNode("fourth", RoslynCpgNodeKind.Operation, "Operation")));
+    }
+
+    [Fact]
+    public void ExtractLocalView_AfterFreeze_AppliesDirectionKindAndHopLimits()
+    {
+        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        var first = new MinimalRoslynCpg.Model.RoslynCpgNode("first", RoslynCpgNodeKind.Operation, "Operation");
+        var second = new MinimalRoslynCpg.Model.RoslynCpgNode("second", RoslynCpgNodeKind.Operation, "Operation");
+        var third = new MinimalRoslynCpg.Model.RoslynCpgNode("third", RoslynCpgNodeKind.Operation, "Operation");
+        var fourth = new MinimalRoslynCpg.Model.RoslynCpgNode("fourth", RoslynCpgNodeKind.Operation, "Operation");
+
+        graph.AddEdge(first, second, RoslynCpgEdgeKind.DataFlow);
+        graph.AddEdge(second, third, RoslynCpgEdgeKind.DataFlow);
+        graph.AddEdge(second, fourth, RoslynCpgEdgeKind.OpChild);
+
+        Assert.Throws<InvalidOperationException>(() => graph.ExtractLocalView("second", 1));
+        graph.FreezeQueryIndex();
+
+        var view = graph.ExtractLocalView(
+            "second",
+            1,
+            RoslynCpgViewDirection.Incoming,
+            new[] { RoslynCpgEdgeKind.DataFlow });
+
+        Assert.Equal(new[] { "first", "second" }, view.Nodes.Select(node => node.Id));
+        Assert.Equal(new[] { "first" }, view.Edges.Select(edge => edge.SourceId));
+        Assert.Equal(new[] { "second" }, view.Edges.Select(edge => edge.TargetId));
+    }
+
+    [Fact]
     public void Build_ForSingleFragment_CopiesMainGraphNodesAndEdgesInsideFragment()
     {
         var source = SObjectExpressionSources.ReturnExpressionSource;

@@ -408,12 +408,14 @@ public sealed class RuleDecisionEngine
             (index, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return Task.FromResult((IReadOnlyList<DecisionUnit>)RunGroup(
-                  context,
-                  groupedRules[index],
-                  seedMarksByGroupKey,
-                  propagatedMarksByGroupKey,
-                  liftedMarksByGroupKey));
+                return Task.Run(
+                  () => (IReadOnlyList<DecisionUnit>)RunGroup(
+                    context,
+                    groupedRules[index],
+                    seedMarksByGroupKey,
+                    propagatedMarksByGroupKey,
+                    liftedMarksByGroupKey),
+                  cancellationToken);
             },
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
