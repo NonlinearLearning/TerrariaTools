@@ -112,27 +112,6 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
         var phaseTimings = Assert.IsType<DeleteClassRandomSampleAnalysisPhaseTimings>(
           result.Timings.AnalysisPhases);
 
-        Console.WriteLine(
-          $"[terraria-phase-timing] sourceRoot={TerrariaExternalCodeSetPath};" +
-          $"stagedRoot={stagedSourceDirectory};" +
-          $"files={result.SelectedRelativePaths.Count};" +
-          $"maxDegreeOfParallelism={TerrariaTimingMaxDegreeOfParallelism};" +
-          $"writeBackApplied={result.WriteBackApplied};" +
-          $"copyMs={result.Timings.CopyMilliseconds};" +
-          $"analysisMs={result.Timings.AnalysisMilliseconds};" +
-          $"prepMs={phaseTimings.PreparationMilliseconds};" +
-          $"cpgMs={phaseTimings.CpgBuildMilliseconds};" +
-          $"markMs={phaseTimings.MarkMilliseconds};" +
-          $"propagateMs={phaseTimings.PropagateMilliseconds};" +
-          $"liftMs={phaseTimings.LiftMilliseconds};" +
-          $"decideMs={phaseTimings.DecideMilliseconds};" +
-          $"rewriteMs={phaseTimings.RewriteMilliseconds};" +
-          $"phaseTotalMs={phaseTimings.TotalMilliseconds};" +
-          $"diffMs={result.Timings.DiffMaterializationMilliseconds};" +
-          $"manifestMs={result.Timings.ManifestMilliseconds};" +
-          $"writeBackMs={result.Timings.WriteBackMilliseconds};" +
-          $"totalMs={result.Timings.TotalMilliseconds}");
-
         Assert.Equal(sampleCount, result.SelectedRelativePaths.Count);
         Assert.False(result.WriteBackApplied);
         Assert.NotEmpty(result.AnalysisResult.DiffText);

@@ -11,12 +11,4 @@ public static class DeletionApplicationServiceCompatibilityExtensions
         _ = application;
         return new DeletionCommandHost(RuleRegistry.CreateDefaultRules()).AnalyzeFromArgs(args);
     }
-
-    public static IReadOnlyList<string> FormatResult(
-      this DeletionApplicationService application,
-      PrototypeAnalysisResult result)
-    {
-        _ = application;
-        return new DeletionResultFormatter().FormatResult(result);
-    }
 }

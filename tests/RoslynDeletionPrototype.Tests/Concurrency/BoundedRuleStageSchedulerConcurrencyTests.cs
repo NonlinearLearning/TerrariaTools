@@ -348,7 +348,6 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     {
         var line = $"[concurrent-traffic] {message}";
         _output.WriteLine(line);
-        Console.WriteLine(line);
     }
 
     private static IReadOnlyList<CodeSetWorkItem> LoadTerrariaCodeSetFiles()
