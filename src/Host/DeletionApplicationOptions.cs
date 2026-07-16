@@ -133,6 +133,23 @@ internal static class DeletionApplicationOptions
         return Path.GetFullPath(rawValue);
     }
 
+    internal static string? ResolvePerFileMemoryDiagnosticsLogPath(
+      IReadOnlyDictionary<string, string> options)
+    {
+        if (!options.TryGetValue("per-file-memory-diagnostics-log", out var rawValue))
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(rawValue) ||
+            string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("--per-file-memory-diagnostics-log requires a file path.");
+        }
+
+        return Path.GetFullPath(rawValue);
+    }
+
     internal static string? ResolveRuntimeMetricsLogPath(
       IReadOnlyDictionary<string, string> options)
     {

@@ -238,7 +238,6 @@ namespace MinimalRoslynCpg.Builder
     {
       var createNodeStopwatch = Stopwatch.StartNew();
       var syntaxNode = graph.AddNode(new RoslynCpgNode(
-        Id: SyntaxId(syntax, filePath),
         Kind: RoslynCpgNodeKind.SyntaxNode,
         DisplayKind: syntax.Kind().ToString(),
         Name: syntax switch
@@ -251,8 +250,7 @@ namespace MinimalRoslynCpg.Builder
         },
         FilePath: filePath,
         SpanStart: syntax.SpanStart,
-        SpanEnd: syntax.Span.End,
-        Text: Shorten(syntax.ToString())));
+        SpanEnd: syntax.Span.End));
       createNodeStopwatch.Stop();
       metrics.CreateSyntaxNodeElapsedMilliseconds += createNodeStopwatch.ElapsedMilliseconds;
       metrics.SyntaxNodeCount += 1;
@@ -393,14 +391,12 @@ namespace MinimalRoslynCpg.Builder
       foreach (var childToken in syntax.ChildTokens())
       {
         var tokenNode = graph.AddNode(new RoslynCpgNode(
-          Id: TokenId(childToken, filePath),
           Kind: RoslynCpgNodeKind.SyntaxToken,
           DisplayKind: childToken.Kind().ToString(),
           Name: childToken.ValueText.Length > 0 ? childToken.ValueText : childToken.Text,
           FilePath: filePath,
           SpanStart: childToken.SpanStart,
-          SpanEnd: childToken.Span.End,
-          Text: childToken.Text));
+          SpanEnd: childToken.Span.End));
         graph.AddEdge(syntaxNode, tokenNode, RoslynCpgEdgeKind.TokenChild);
         tokenCount += 1;
       }

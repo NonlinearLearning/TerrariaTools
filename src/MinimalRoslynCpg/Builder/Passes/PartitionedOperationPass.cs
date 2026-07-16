@@ -111,12 +111,12 @@ public sealed partial class RoslynCpgBuilder
   {
     foreach (var record in partition.Records)
     {
-      var operationNode = GetOrCreateOperationNode(record.Operation, graph);
       if (record.OwningMethod is not null && !_operationOwningMethods.ContainsKey(record.Operation))
       {
         _operationOwningMethods[record.Operation] = record.OwningMethod;
       }
 
+      var operationNode = GetOrCreateOperationNode(record.Operation, graph);
       if (record.ParentOperation is not null)
       {
         var parentNode = GetOrCreateOperationNode(record.ParentOperation, graph);

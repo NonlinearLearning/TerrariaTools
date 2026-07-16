@@ -7,6 +7,7 @@ using RoslynPrototype.Application;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Rewrite;
 using Rules;
+using System.Reflection;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -712,6 +713,118 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     }
 
     [Fact]
+    public void CompilationScanCache_MaterializesOnlyRequestedSyntaxTrees()
+    {
+        var trees = new[]
+        {
+            CSharpSyntaxTree.ParseText("namespace Demo; public sealed class First { }", path: "First.cs"),
+            CSharpSyntaxTree.ParseText("namespace Demo; public sealed class Second { }", path: "Second.cs"),
+            CSharpSyntaxTree.ParseText("namespace Demo; public sealed class Third { }", path: "Third.cs")
+        };
+        var compilation = CreateCompilation(trees);
+        var runtime = DeletionAnalysisRuntime.CreateDefault();
+        var cache = GetDeleteClassCompilationScanCache(runtime, compilation);
+
+        Assert.Equal(0, GetPrivateIntField(cache, "_materializedTreeCount"));
+
+        var firstScan = GetTreeScan(cache, trees[0]);
+        Assert.Equal(1, GetPrivateIntField(cache, "_materializedTreeCount"));
+
+        var firstScanAgain = GetTreeScan(cache, trees[0]);
+        Assert.Same(firstScan, firstScanAgain);
+        Assert.Equal(1, GetPrivateIntField(cache, "_materializedTreeCount"));
+
+        var secondScan = GetTreeScan(cache, trees[1]);
+        Assert.NotNull(secondScan);
+        Assert.Equal(2, GetPrivateIntField(cache, "_materializedTreeCount"));
+    }
+
+    [Fact]
+    public void TreeScan_BuildsIndexesOnlyWhenQueried()
+    {
+        var tree = CSharpSyntaxTree.ParseText(
+          """
+          namespace Demo;
+
+          public delegate int Handler(PlayerInput input, int frame);
+
+          public sealed class PlayerInput
+          {
+          }
+
+          public sealed class Runner
+          {
+            public int Run(Handler handler)
+            {
+              return handler(null, 1);
+            }
+          }
+          """,
+          path: "TreeScan.cs");
+        var compilation = CreateCompilation(new[] { tree });
+        var runtime = DeletionAnalysisRuntime.CreateDefault();
+        var cache = GetDeleteClassCompilationScanCache(runtime, compilation);
+        var scan = GetTreeScan(cache, tree);
+        var semanticModel = compilation.GetSemanticModel(tree);
+        var root = tree.GetRoot();
+        var delegateSymbol = (INamedTypeSymbol)semanticModel.GetDeclaredSymbol(
+          root.DescendantNodes().OfType<DelegateDeclarationSyntax>().Single(),
+          CancellationToken.None)!;
+        var invokeMethod = delegateSymbol.DelegateInvokeMethod!;
+        var playerInputSymbol = (INamedTypeSymbol)semanticModel.GetDeclaredSymbol(
+          root.DescendantNodes().OfType<ClassDeclarationSyntax>().Single(type => type.Identifier.ValueText == "PlayerInput"),
+          CancellationToken.None)!;
+
+        AssertIndexBuildCounts(
+          scan,
+          invocation: 0,
+          mappedInvocation: 0,
+          elementAccess: 0,
+          expression: 0,
+          typeSyntax: 0);
+
+        var typeBindings = GetTypeSyntaxBindings(scan, playerInputSymbol);
+        Assert.Single(typeBindings);
+        AssertIndexBuildCounts(
+          scan,
+          invocation: 0,
+          mappedInvocation: 0,
+          elementAccess: 0,
+          expression: 0,
+          typeSyntax: 1);
+
+        var invocationBindings = GetInvocationBindings(scan, invokeMethod);
+        Assert.Single(invocationBindings);
+        AssertIndexBuildCounts(
+          scan,
+          invocation: 1,
+          mappedInvocation: 0,
+          elementAccess: 0,
+          expression: 0,
+          typeSyntax: 1);
+
+        var expressionBindings = GetExpressionBindings(scan, delegateSymbol);
+        Assert.NotEmpty(expressionBindings);
+        AssertIndexBuildCounts(
+          scan,
+          invocation: 1,
+          mappedInvocation: 0,
+          elementAccess: 0,
+          expression: 1,
+          typeSyntax: 1);
+
+        var mappedInvocationBindings = GetMappedInvocationBindings(scan, invokeMethod);
+        Assert.Single(mappedInvocationBindings);
+        AssertIndexBuildCounts(
+          scan,
+          invocation: 1,
+          mappedInvocation: 1,
+          elementAccess: 0,
+          expression: 1,
+          typeSyntax: 1);
+    }
+
+    [Fact]
     public void AnalyzeFromArgs_RemovesUnusedUsingsAcrossMultipleFilesDuringSharedCleanupPass()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "cleanup-multi-file-usings");
@@ -884,6 +997,89 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
             MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
           },
           new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    private static object GetDeleteClassCompilationScanCache(DeletionAnalysisRuntime runtime, Compilation compilation)
+    {
+        return GetCompilationCache(
+          runtime,
+          compilation,
+          static currentCompilation =>
+          {
+              var cacheType = typeof(DeleteClassParameterShrinkAnalyzer).GetNestedType(
+                "CompilationScanCache",
+                BindingFlags.NonPublic)!;
+              return Activator.CreateInstance(cacheType, currentCompilation)!;
+          });
+    }
+
+    private static object GetTreeScan(object cache, SyntaxTree tree)
+    {
+        return cache.GetType()
+          .GetMethod("GetTreeScan", BindingFlags.Instance | BindingFlags.Public)!
+          .Invoke(cache, new object[] { tree })!;
+    }
+
+    private static IReadOnlyList<object> GetInvocationBindings(object scan, IMethodSymbol methodSymbol)
+    {
+        return InvokeScanListMethod(scan, "GetInvocationBindings", methodSymbol);
+    }
+
+    private static IReadOnlyList<object> GetMappedInvocationBindings(object scan, IMethodSymbol methodSymbol)
+    {
+        return InvokeScanListMethod(scan, "GetMappedInvocationBindings", methodSymbol);
+    }
+
+    private static IReadOnlyList<object> GetExpressionBindings(object scan, INamedTypeSymbol delegateSymbol)
+    {
+        return InvokeScanListMethod(scan, "GetExpressionBindings", delegateSymbol);
+    }
+
+    private static IReadOnlyList<object> GetTypeSyntaxBindings(object scan, INamedTypeSymbol targetSymbol)
+    {
+        return InvokeScanListMethod(scan, "GetTypeSyntaxBindings", targetSymbol);
+    }
+
+    private static IReadOnlyList<object> InvokeScanListMethod(object scan, string methodName, object argument)
+    {
+        return ((System.Collections.IEnumerable)scan.GetType()
+          .GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public)!
+          .Invoke(scan, new[] { argument })!)
+          .Cast<object>()
+          .ToList();
+    }
+
+    private static int GetPrivateIntField(object instance, string fieldName)
+    {
+        return (int)instance.GetType()
+          .GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)!
+          .GetValue(instance)!;
+    }
+
+    private static void AssertIndexBuildCounts(
+      object scan,
+      int invocation,
+      int mappedInvocation,
+      int elementAccess,
+      int expression,
+      int typeSyntax)
+    {
+        Assert.Equal(invocation, GetPrivateIntField(scan, "_invocationIndexBuildCount"));
+        Assert.Equal(mappedInvocation, GetPrivateIntField(scan, "_mappedInvocationIndexBuildCount"));
+        Assert.Equal(elementAccess, GetPrivateIntField(scan, "_elementAccessIndexBuildCount"));
+        Assert.Equal(expression, GetPrivateIntField(scan, "_expressionIndexBuildCount"));
+        Assert.Equal(typeSyntax, GetPrivateIntField(scan, "_typeSyntaxIndexBuildCount"));
+    }
+
+    private static TCache GetCompilationCache<TCache>(
+      DeletionAnalysisRuntime runtime,
+      Compilation compilation,
+      Func<Compilation, TCache> factory)
+    {
+        var method = typeof(DeletionAnalysisRuntime)
+          .GetMethod("GetOrCreateCompilationCache", BindingFlags.Instance | BindingFlags.NonPublic)!
+          .MakeGenericMethod(typeof(TCache));
+        return (TCache)method.Invoke(runtime, new object[] { compilation, factory })!;
     }
 
     private sealed class AnalyzerTestContext

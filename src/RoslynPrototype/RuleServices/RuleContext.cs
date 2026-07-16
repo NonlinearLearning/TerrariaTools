@@ -50,6 +50,9 @@ public sealed class RuleContext :
 
     public MarkAnalysisTelemetry MarkAnalysisTelemetry => _markAnalysisSnapshot.Telemetry;
 
+    public RoslynCpgStructureViewCacheTelemetry StructureViewCacheTelemetry =>
+      RoslynCpgStructureViewBuilder.GetCacheTelemetry(_analysisContext);
+
     public MarkAnalysisSnapshot.MarkRuleTelemetryScope BeginMarkRuleTelemetry(
       int ruleOrder,
       string ruleId,
@@ -128,7 +131,7 @@ public sealed class RuleContext :
     }
 
     public RoslynCpgSliceResult QuerySliceBackward(
-      string sinkNodeId,
+      NodeId sinkNodeId,
       RoslynCpgSliceQueryOptions options)
     {
         return _markAnalysisSnapshot.QuerySliceBackward(sinkNodeId, options);
@@ -193,16 +196,14 @@ public sealed class RuleContext :
         return _analysisContext.Graph.NodesByKind(kind).ToList();
     }
 
-    public IReadOnlyList<RoslynCpgEdge> GetGraphEdgesByKind(string sourceId, RoslynCpgEdgeKind kind)
+    public IReadOnlyList<RoslynCpgEdge> GetGraphEdgesByKind(NodeId sourceNodeId, RoslynCpgEdgeKind kind)
     {
-        return _analysisContext.Graph.GetOutgoingEdges(sourceId)
-          .Where(edge => edge.Kind == kind)
-          .ToList();
+        return _analysisContext.Graph.GetOutgoingEdges(sourceNodeId, kind);
     }
 
-    public RoslynCpgNode? FindGraphNodeById(string nodeId)
+    public RoslynCpgNode? FindGraphNodeById(NodeId nodeId)
     {
-        return _analysisContext.Graph.Nodes.FirstOrDefault(node => node.Id == nodeId);
+        return _analysisContext.Graph.GetNode(nodeId);
     }
 
 }

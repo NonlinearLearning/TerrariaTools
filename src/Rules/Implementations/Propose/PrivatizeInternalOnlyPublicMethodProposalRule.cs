@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Lifting;
@@ -84,7 +85,10 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
       {
         DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
         DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-        DecisionCpgFactory.CreateRelation("accessibility-to-private", anchorFragment, replacementFragment)
+        DecisionCpgFactory.CreateRelation(
+          RoslynCpgDecisionRelationKind.AccessibilityToPrivate,
+          anchorFragment,
+          replacementFragment)
       },
       DecisionCpgFactory.CreateSyntaxBindings(
         (anchorFragment, anchorNode),

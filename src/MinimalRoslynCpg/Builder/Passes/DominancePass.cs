@@ -120,7 +120,8 @@ public sealed partial class RoslynCpgBuilder
             }
 
             nodesByBlockOrdinal[block.Ordinal] = nodes
-                .OrderBy(node => node.Id, StringComparer.Ordinal)
+                .OrderBy(node => node.NodeId)
+                .ThenBy(node => node.FullName, StringComparer.Ordinal)
                 .ToArray();
         }
 
@@ -164,12 +165,24 @@ public sealed partial class RoslynCpgBuilder
         foreach (var block in controlFlowGraph.Blocks)
         {
             controlNodesByBlockOrdinal[block.Ordinal] = nodesByBlockOrdinal[block.Ordinal]
-                .OrderByDescending(node => block.BranchValue is not null && node.SpanStart == block.BranchValue.Syntax.SpanStart)
-                .ThenBy(node => node.Id, StringComparer.Ordinal)
+                .OrderBy(node => GetControlNodeKindPriority(node.Kind))
+                .ThenByDescending(node => (node.SpanEnd ?? int.MinValue) - (node.SpanStart ?? int.MaxValue))
+                .ThenBy(node => node.NodeId)
                 .FirstOrDefault();
         }
 
         return controlNodesByBlockOrdinal;
+    }
+
+    private static int GetControlNodeKindPriority(RoslynCpgNodeKind kind)
+    {
+        return kind switch
+        {
+            RoslynCpgNodeKind.OpBinary => 1,
+            RoslynCpgNodeKind.OpConditional => 2,
+            RoslynCpgNodeKind.Operation => 3,
+            _ => 4
+        };
     }
 
     private static Dictionary<int, IReadOnlySet<int>> BuildSuccessorsByBlockOrdinal(ControlFlowGraph controlFlowGraph)

@@ -19,7 +19,10 @@ public static class DeleteDecisionFactory
         {
             var sourceFragment = CreateFragment(sourceNode, "source");
             fragments.Add(sourceFragment);
-            relations.Add(DecisionCpgFactory.CreateRelation("derived-from", sourceFragment, anchorFragment));
+            relations.Add(DecisionCpgFactory.CreateRelation(
+              MinimalRoslynCpg.Contracts.RoslynCpgDecisionRelationKind.DerivedFrom,
+              sourceFragment,
+              anchorFragment));
             bindings.Add((sourceFragment, sourceNode));
         }
 

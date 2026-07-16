@@ -50,16 +50,19 @@ public sealed class MinimalRoslynCpgCli
         if (anchorMatches.Count > 1)
         {
             Console.Error.WriteLine($"Anchor {DescribeAnchor(options.LocalView.AnchorSelector)} matched multiple nodes:");
-            foreach (var node in anchorMatches.OrderBy(node => node.Id, StringComparer.Ordinal))
+            foreach (var node in anchorMatches
+              .OrderBy(node => node.NodeId)
+              .ThenBy(node => node.FullName, StringComparer.Ordinal)
+              .ThenBy(node => node.Name, StringComparer.Ordinal))
             {
-                Console.Error.WriteLine($"- {FormatNode(node)}");
+                Console.Error.WriteLine($"- {FormatNode(graph, node)}");
             }
 
             return 1;
         }
 
         var localView = graph.ExtractLocalView(
-          anchorMatches[0].Id,
+          anchorMatches[0].NodeId!.Value,
           options.LocalView.Hops,
           options.LocalView.Direction,
           options.LocalView.EdgeKinds);
@@ -68,7 +71,7 @@ public sealed class MinimalRoslynCpgCli
             WriteLocalViewJson(localView, options.JsonOutPath);
         }
 
-        WriteLocalViewSummary(localView, options.LocalView.Direction, options.LocalView.EdgeKinds);
+        WriteLocalViewSummary(graph, localView, options.LocalView.Direction, options.LocalView.EdgeKinds);
         return 0;
     }
 
@@ -79,7 +82,7 @@ public sealed class MinimalRoslynCpgCli
     {
         string? inputPath = null;
         string? view = null;
-        string? anchorId = null;
+        string? anchorNodeId = null;
         string? anchorFullName = null;
         string? anchorName = null;
         string? jsonOutPath = null;
@@ -100,8 +103,8 @@ public sealed class MinimalRoslynCpgCli
                 case "--view":
                     view = ReadRequiredValue(args, ref index, "--view");
                     break;
-                case "--anchor-id":
-                    anchorId = ReadRequiredValue(args, ref index, "--anchor-id");
+                case "--anchor-node-id":
+                    anchorNodeId = ReadRequiredValue(args, ref index, "--anchor-node-id");
                     break;
                 case "--anchor-full-name":
                     anchorFullName = ReadRequiredValue(args, ref index, "--anchor-full-name");
@@ -145,10 +148,10 @@ public sealed class MinimalRoslynCpgCli
                 throw new ArgumentException($"Unsupported view: {view}");
             }
 
-            var selector = BuildAnchorSelector(anchorId, anchorFullName, anchorName);
+            var selector = BuildAnchorSelector(anchorNodeId, anchorFullName, anchorName);
             localView = new LocalViewOptions(selector, hops, direction, edgeKinds);
         }
-        else if (anchorId is not null || anchorFullName is not null || anchorName is not null)
+        else if (anchorNodeId is not null || anchorFullName is not null || anchorName is not null)
         {
             throw new ArgumentException("Anchor options require --view local.");
         }
@@ -218,29 +221,34 @@ public sealed class MinimalRoslynCpgCli
     /// <summary>
     /// 解析唯一有效的锚点选择器，并拒绝歧义输入。
     /// </summary>
-    private static AnchorSelector BuildAnchorSelector(string? anchorId, string? anchorFullName, string? anchorName)
+    private static AnchorSelector BuildAnchorSelector(string? anchorNodeId, string? anchorFullName, string? anchorName)
     {
         var providedCount = 0;
-        providedCount += anchorId is null ? 0 : 1;
+        providedCount += anchorNodeId is null ? 0 : 1;
         providedCount += anchorFullName is null ? 0 : 1;
         providedCount += anchorName is null ? 0 : 1;
         if (providedCount != 1)
         {
             throw new ArgumentException(
-              "Exactly one anchor selector is required: --anchor-id, --anchor-full-name, or --anchor-name.");
+              "Exactly one anchor selector is required: --anchor-node-id, --anchor-full-name, or --anchor-name.");
         }
 
-        if (anchorId is not null)
+        if (anchorNodeId is not null)
         {
-            return new AnchorSelector(AnchorSelectorKind.Id, anchorId);
+            if (!uint.TryParse(anchorNodeId, out var parsed))
+            {
+                throw new ArgumentException("--anchor-node-id must be an unsigned integer.");
+            }
+
+            return new AnchorSelector(AnchorSelectorKind.NodeId, anchorNodeId, new NodeId(parsed));
         }
 
         if (anchorFullName is not null)
         {
-            return new AnchorSelector(AnchorSelectorKind.FullName, anchorFullName);
+            return new AnchorSelector(AnchorSelectorKind.FullName, anchorFullName, null);
         }
 
-        return new AnchorSelector(AnchorSelectorKind.Name, anchorName!);
+        return new AnchorSelector(AnchorSelectorKind.Name, anchorName!, null);
     }
 
     /// <summary>
@@ -250,8 +258,8 @@ public sealed class MinimalRoslynCpgCli
     {
         return selector.Kind switch
         {
-            AnchorSelectorKind.Id => graph.Nodes
-              .Where(node => string.Equals(node.Id, selector.Value, StringComparison.Ordinal))
+            AnchorSelectorKind.NodeId => graph.Nodes
+              .Where(node => node.NodeId == selector.NodeId)
               .ToList(),
             AnchorSelectorKind.FullName => graph.Nodes
               .Where(node => string.Equals(node.FullName, selector.Value, StringComparison.Ordinal))
@@ -267,7 +275,7 @@ public sealed class MinimalRoslynCpgCli
     {
         return selector.Kind switch
         {
-            AnchorSelectorKind.Id => $"id '{selector.Value}'",
+            AnchorSelectorKind.NodeId => $"nodeId '{selector.Value}'",
             AnchorSelectorKind.FullName => $"fullName '{selector.Value}'",
             AnchorSelectorKind.Name => $"name '{selector.Value}'",
             _ => selector.Value,
@@ -301,7 +309,7 @@ public sealed class MinimalRoslynCpgCli
         {
             Anchor = new
             {
-                localView.Anchor.Id,
+                NodeId = localView.Anchor.NodeId!.Value,
                 Kind = localView.Anchor.Kind.ToString(),
                 localView.Anchor.DisplayKind,
                 localView.Anchor.Name,
@@ -312,16 +320,16 @@ public sealed class MinimalRoslynCpgCli
             },
             localView.Hops,
             Nodes = localView.Nodes
-              .OrderBy(node => node.Id, StringComparer.Ordinal)
+              .OrderBy(node => node.NodeId)
               .Select(node => new
               {
-                  node.Id,
+                  NodeId = node.NodeId!.Value,
                   Kind = node.Kind.ToString(),
                   node.DisplayKind,
                   node.Name,
                   node.FullName,
                   node.Signature,
-                  node.DispatchKind,
+                  DispatchKind = node.DispatchKind?.ToString(),
                   node.TypeFullName,
                   node.FilePath,
                   node.SpanStart,
@@ -329,14 +337,14 @@ public sealed class MinimalRoslynCpgCli
                   node.IsImplicit,
               }),
             Edges = localView.Edges
-              .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
+              .OrderBy(edge => edge.SourceNodeId)
               .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
-              .ThenBy(edge => edge.TargetId, StringComparer.Ordinal)
+              .ThenBy(edge => edge.TargetNodeId)
               .Select(edge => new
               {
-                  edge.SourceId,
+                  SourceNodeId = edge.SourceNodeId.Value,
                   Kind = edge.Kind.ToString(),
-                  edge.TargetId,
+                  TargetNodeId = edge.TargetNodeId.Value,
               }),
         };
 
@@ -344,9 +352,9 @@ public sealed class MinimalRoslynCpgCli
         Console.WriteLine($"Wrote local view JSON: {outputPath}");
     }
 
-    private static void WriteLocalViewSummary(RoslynCpgLocalView localView, RoslynCpgViewDirection direction, IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds)
+    private static void WriteLocalViewSummary(RoslynCpgGraph graph, RoslynCpgLocalView localView, RoslynCpgViewDirection direction, IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds)
     {
-        Console.WriteLine($"Anchor: {FormatNode(localView.Anchor)}");
+        Console.WriteLine($"Anchor: {FormatNode(graph, localView.Anchor)}");
         Console.WriteLine($"Hops: {localView.Hops}");
         Console.WriteLine($"Direction: {direction}");
         Console.WriteLine($"EdgeKinds: {FormatEdgeKinds(edgeKinds)}");
@@ -361,25 +369,25 @@ public sealed class MinimalRoslynCpgCli
         }
 
         Console.WriteLine("Nodes");
-        foreach (var node in localView.Nodes.OrderBy(node => node.Id, StringComparer.Ordinal))
+        foreach (var node in localView.Nodes.OrderBy(node => node.NodeId))
         {
-            Console.WriteLine($"- {FormatNode(node)}");
+            Console.WriteLine($"- {FormatNode(graph, node)}");
         }
 
         Console.WriteLine("Edges");
         foreach (var edge in localView.Edges
-                   .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
+                   .OrderBy(edge => edge.SourceNodeId)
                    .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
-                   .ThenBy(edge => edge.TargetId, StringComparer.Ordinal))
+                   .ThenBy(edge => edge.TargetNodeId))
         {
-            Console.WriteLine($"- {edge.SourceId} -[{edge.Kind}]-> {edge.TargetId}");
+            Console.WriteLine($"- {edge.SourceNodeId} -[{edge.Kind}]-> {edge.TargetNodeId}");
         }
     }
 
-    private static string FormatNode(RoslynCpgNode node)
+    private static string FormatNode(RoslynCpgGraph graph, RoslynCpgNode node)
     {
-        var identity = node.FullName ?? node.Name ?? node.Text ?? node.DisplayKind;
-        return $"{node.Id} | {node.Kind} | {identity}";
+        var identity = graph.GetDisplayText(node);
+        return $"{node.NodeId} | {node.Kind} | {identity}";
     }
 
     private static string FormatEdgeKinds(IReadOnlyCollection<RoslynCpgEdgeKind>? edgeKinds)
@@ -397,7 +405,7 @@ public sealed class MinimalRoslynCpgCli
         Console.WriteLine("MinimalRoslynCpg");
         Console.WriteLine("Usage:");
         Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path]");
-        Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path] --view local --anchor-id <id> [options]");
+        Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path] --view local --anchor-node-id <nodeId> [options]");
         Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path] --view local --anchor-full-name <fullName> [options]");
         Console.WriteLine("  dotnet run --project .\\src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj [input-path] --view local --anchor-name <name> [options]");
         Console.WriteLine("Options:");
@@ -432,11 +440,11 @@ public sealed class MinimalRoslynCpgCli
       RoslynCpgViewDirection Direction,
       IReadOnlyCollection<RoslynCpgEdgeKind>? EdgeKinds);
 
-    private sealed record AnchorSelector(AnchorSelectorKind Kind, string Value);
+    private sealed record AnchorSelector(AnchorSelectorKind Kind, string Value, NodeId? NodeId);
 
     private enum AnchorSelectorKind
     {
-        Id,
+        NodeId,
         FullName,
         Name,
     }

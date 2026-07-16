@@ -38,7 +38,7 @@ public sealed class DeletionCommandHost
                   inputPath,
                   options,
                   runtime);
-                runtimeMetricsLog?.Complete();
+                runtimeMetricsLog?.Complete(directoryResult);
                 return directoryResult;
             }
 
@@ -52,25 +52,26 @@ public sealed class DeletionCommandHost
 
             if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
             {
-                runtimeMetricsLog?.Complete();
+                runtimeMetricsLog?.Complete(result);
                 return result;
             }
 
             if (DeletionApplicationOptions.ShouldWriteBack(options))
             {
-                File.WriteAllText(inputPath, result.RewrittenSource, Encoding.UTF8);
+                File.WriteAllText(inputPath, result.RewrittenSource ?? source, Encoding.UTF8);
             }
 
             if (!DeletionApplicationOptions.ShouldWriteDiff(options))
             {
-                runtimeMetricsLog?.Complete();
+                runtimeMetricsLog?.Complete(result);
                 return result;
             }
 
             var diffPath = DeletionDiffPathResolver.ResolveDiffPath(inputPath, options);
             File.WriteAllText(diffPath, result.DiffText, Encoding.UTF8);
-            runtimeMetricsLog?.Complete();
-            return result with { DiffFilePath = diffPath };
+            var finalizedResult = result with { DiffFilePath = diffPath };
+            runtimeMetricsLog?.Complete(finalizedResult);
+            return finalizedResult;
         }
         catch
         {

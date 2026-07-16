@@ -47,11 +47,14 @@ public sealed partial class RoslynCpgBuilder
     private readonly Dictionary<string, RoslynCpgNode> _methodReturnNodes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RoslynCpgNode> _methodEntryNodes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RoslynCpgNode> _methodExitNodes = new(StringComparer.Ordinal);
+    private readonly Dictionary<RoslynCpgNode, string> _symbolKeysByNode = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<RoslynCpgNode, string> _methodOwnerSymbolKeysByBoundaryNode = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<RoslynCpgNode, int> _methodParameterOrdinalsByNode = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, List<IMethodSymbol>> _methodSymbolsByFullName = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<IMethodSymbol>> _methodSymbolsByNameAndSignature = new(StringComparer.Ordinal);
     private readonly Dictionary<string, List<INamedTypeSymbol>> _baseTypeCache = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, HashSet<string>> _cfgPredecessorsByNodeId = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, HashSet<string>> _cfgSuccessorsByNodeId = new(StringComparer.Ordinal);
+    private readonly Dictionary<RoslynCpgNode, HashSet<RoslynCpgNode>> _cfgPredecessorsByNode = new();
+    private readonly Dictionary<RoslynCpgNode, HashSet<RoslynCpgNode>> _cfgSuccessorsByNode = new();
     private readonly Dictionary<IInvocationOperation, RoslynCpgNode> _callSiteNodesByInvocation =
       new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, RoslynCpgNode> _propertyAccessorCallSiteNodesByKey = new(StringComparer.Ordinal);
@@ -61,11 +64,6 @@ public sealed partial class RoslynCpgBuilder
     private readonly Dictionary<string, int> _operationBackedTypeInfoFallbackCountBySyntaxKind = new(StringComparer.Ordinal);
     private readonly List<INamedTypeSymbol> _declaredTypes = new();
     private readonly RoslynCpgBuilderOptions _options;
-    private int _operationSequence;
-    private int _referenceSequence;
-    private int _typeReferenceSequence;
-    private int _callSiteSequence;
-    private int _memberAccessSequence;
     private int _operationBackedTypeInfoResolvedCount;
     private int _operationBackedTypeInfoFallbackCount;
     private int _operationBackedTypeInfoMissingOperationCount;
@@ -91,7 +89,6 @@ public sealed partial class RoslynCpgBuilder
     private sealed record DefinitionFact(string LocationKey, string? BaseKey, string Category, string? PathKey = null);
     private sealed record DataFlowOperationIndex(
         IReadOnlyDictionary<IOperation, RoslynCpgNode> NodesByOperation,
-        IReadOnlyDictionary<IOperation, string> NodeIdsByOperation,
         IReadOnlyDictionary<IOperation, IMethodSymbol> OwningMethods);
 
     public RoslynCpgBuilder(RoslynCpgBuilderOptions? options = null)
@@ -126,11 +123,14 @@ public sealed partial class RoslynCpgBuilder
         _methodReturnNodes.Clear();
         _methodEntryNodes.Clear();
         _methodExitNodes.Clear();
+        _symbolKeysByNode.Clear();
+        _methodOwnerSymbolKeysByBoundaryNode.Clear();
+        _methodParameterOrdinalsByNode.Clear();
         _methodSymbolsByFullName.Clear();
         _methodSymbolsByNameAndSignature.Clear();
         _baseTypeCache.Clear();
-        _cfgPredecessorsByNodeId.Clear();
-        _cfgSuccessorsByNodeId.Clear();
+        _cfgPredecessorsByNode.Clear();
+        _cfgSuccessorsByNode.Clear();
         _callSiteNodesByInvocation.Clear();
         _propertyAccessorCallSiteNodesByKey.Clear();
         _pendingOperationSyntaxTypeNodes.Clear();
@@ -138,11 +138,6 @@ public sealed partial class RoslynCpgBuilder
         _matchedOperationSyntaxTypeNodes.Clear();
         _operationBackedTypeInfoFallbackCountBySyntaxKind.Clear();
         _declaredTypes.Clear();
-        _operationSequence = 0;
-        _referenceSequence = 0;
-        _typeReferenceSequence = 0;
-        _callSiteSequence = 0;
-        _memberAccessSequence = 0;
         _operationBackedTypeInfoResolvedCount = 0;
         _operationBackedTypeInfoFallbackCount = 0;
         _operationBackedTypeInfoMissingOperationCount = 0;
@@ -157,6 +152,9 @@ public sealed partial class RoslynCpgBuilder
         var buildPlan = ResolveCapabilityBuildPlan();
         var executedPassNames = new List<string>();
         var skippedPassNames = new List<string>();
+        long syntaxBuildElapsedMilliseconds = 0;
+        long operationBuildElapsedMilliseconds = 0;
+        long freezeQueryIndexElapsedMilliseconds = 0;
         var operationBuildStrategy = buildPlan.RequiresMethodModel
             ? CreateOperationBuildStrategy(context)
             : new OperationBuildStrategy(
@@ -166,16 +164,22 @@ public sealed partial class RoslynCpgBuilder
                 OperationRoots: Array.Empty<OperationRootPlan>());
         var usePartitionedSyntaxPass = ShouldUsePartitionedSyntaxPass(context, operationBuildStrategy.OperationRoots);
 
+        var syntaxBuildStopwatch = Stopwatch.StartNew();
         RunSyntaxPass(context, usePartitionedSyntaxPass, operationBuildStrategy.OperationRoots);
+        syntaxBuildStopwatch.Stop();
+        syntaxBuildElapsedMilliseconds = syntaxBuildStopwatch.ElapsedMilliseconds;
         executedPassNames.Add(nameof(SyntaxPass));
 
         if (buildPlan.RequiresMethodModel)
         {
+            var operationBuildStopwatch = Stopwatch.StartNew();
             MethodDecorationPass.Instance.Run(this, context);
             executedPassNames.Add(nameof(MethodDecorationPass));
 
             RunPartitionedOperationPass(context, operationBuildStrategy.OperationRoots);
             CompleteOperationBackedSyntaxTypes(context);
+            operationBuildStopwatch.Stop();
+            operationBuildElapsedMilliseconds = operationBuildStopwatch.ElapsedMilliseconds;
             executedPassNames.Add(nameof(OperationPass));
         }
         else
@@ -197,6 +201,9 @@ public sealed partial class RoslynCpgBuilder
         RunOptionalPass(buildPlan.RequiresDominance, DominancePass.Instance, context, executedPassNames, skippedPassNames);
         RunOptionalPass(buildPlan.RequiresControlDependence, ControlDependencePass.Instance, context, executedPassNames, skippedPassNames);
 
+        var freezeTelemetry = context.Graph.FreezeQueryIndex();
+        freezeQueryIndexElapsedMilliseconds = freezeTelemetry.TotalElapsedMilliseconds;
+
         LastBuildTelemetry = new RoslynCpgBuildTelemetry(
           _options.BuildMode,
           operationBuildStrategy.ExecutedMode,
@@ -205,6 +212,11 @@ public sealed partial class RoslynCpgBuilder
           operationBuildStrategy.SourceLineCount,
           operationBuildStrategy.UsePartitionedOperationBuild ? operationBuildStrategy.OperationRoots.Count : 0,
           _options.EffectiveMaxDegreeOfParallelism,
+          OperationBuildElapsedMilliseconds: operationBuildElapsedMilliseconds,
+          SyntaxBuildElapsedMilliseconds: syntaxBuildElapsedMilliseconds,
+          DataFlowBuildElapsedMilliseconds: _dataFlowPassTelemetry.TotalElapsedMilliseconds,
+          FreezeQueryIndexElapsedMilliseconds: freezeQueryIndexElapsedMilliseconds,
+          FreezeTelemetry: freezeTelemetry,
           _syntaxPassTelemetry,
           _methodDecorationTelemetry,
           _dataFlowPassTelemetry,
@@ -213,8 +225,9 @@ public sealed partial class RoslynCpgBuilder
           ExecutedPassNames: executedPassNames,
           SkippedPassNames: skippedPassNames,
           GraphSnapshotVersion: "capability-v1",
-          InterproceduralDataFlowTelemetry: _interproceduralDataFlowTelemetry);
-        context.Graph.FreezeQueryIndex();
+          InterproceduralDataFlowTelemetry: _interproceduralDataFlowTelemetry,
+          GraphNodeCount: context.Graph.Nodes.Count,
+          GraphEdgeCount: context.Graph.CurrentEdgeCount);
         return context.Graph;
     }
 
@@ -310,26 +323,31 @@ public sealed partial class RoslynCpgBuilder
     internal void RunInterproceduralDataFlowPass(RoslynCpgBuildContext context)
     {
         var graph = context.Graph;
-        var nodesById = graph.Nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
-        var dataFlowEdges = graph.Edges
+        var dataFlowEdges = graph.PendingEdges
           .Where(edge => edge.Kind == RoslynCpgEdgeKind.DataFlow)
           .ToArray();
         var plans = new List<InterproceduralDataFlowPlan>();
         var recordedReturnMethods = new HashSet<string>(StringComparer.Ordinal);
         var cuts = new Dictionary<string, int>(StringComparer.Ordinal);
         var options = _options.EffectiveInterproceduralDataFlowOptions;
+        var methodBoundaryNodes = graph.Nodes
+          .Where(node => node.Kind is RoslynCpgNodeKind.MethodParameter or RoslynCpgNodeKind.MethodReturn)
+          .ToArray();
 
         foreach (var callSite in graph.Nodes
           .Where(node => node.Kind == RoslynCpgNodeKind.CallSite)
           .OrderBy(node => node.FullName, StringComparer.Ordinal)
           .ThenBy(node => node.SpanStart)
-          .ThenBy(node => node.Id, StringComparer.Ordinal))
+          .ThenBy(NodeSortKey, StringComparer.Ordinal))
         {
-            var targets = graph.Edges
-              .Where(edge => edge.Kind == RoslynCpgEdgeKind.CallTargets && edge.SourceId == callSite.Id)
-              .Select(edge => edge.TargetId)
-              .Distinct(StringComparer.Ordinal)
-              .OrderBy(targetId => targetId, StringComparer.Ordinal)
+            var targets = graph.PendingEdges
+              .Where(edge =>
+                edge.Kind == RoslynCpgEdgeKind.CallTargets &&
+                ReferenceEquals(edge.SourceNode, callSite))
+              .Select(edge => edge.TargetNode)
+              .Distinct()
+              .OrderBy(target => target.FullName, StringComparer.Ordinal)
+              .ThenBy(NodeSortKey, StringComparer.Ordinal)
               .ToArray();
             if (targets.Length == 0)
             {
@@ -343,11 +361,15 @@ public sealed partial class RoslynCpgBuilder
                 continue;
             }
 
-            var targetMethodId = targets[0];
-            var parameterPrefix = $"methodparam:{targetMethodId}:";
-            var returnNodeId = $"methodreturn:{targetMethodId}";
-            var hasInternalBoundary = nodesById.ContainsKey(returnNodeId) ||
-              nodesById.Keys.Any(nodeId => nodeId.StartsWith(parameterPrefix, StringComparison.Ordinal));
+            var targetMethodNode = targets[0];
+            if (!TryGetSymbolKey(targetMethodNode, out var targetMethodSymbolKey))
+            {
+                RecordCut(cuts, "UnresolvedTarget");
+                continue;
+            }
+
+            var hasInternalBoundary = methodBoundaryNodes.Any(node =>
+              IsMethodBoundaryNode(node, targetMethodSymbolKey));
             if (!hasInternalBoundary)
             {
                 RecordCut(cuts, "ExternalTarget");
@@ -355,32 +377,39 @@ public sealed partial class RoslynCpgBuilder
             }
 
             var callSitePlans = dataFlowEdges
-              .Where(edge => edge.TargetId.StartsWith(parameterPrefix, StringComparison.Ordinal))
+              .Where(edge =>
+                edge.TargetNode.Kind == RoslynCpgNodeKind.MethodParameter &&
+                IsMethodBoundaryNode(edge.TargetNode, targetMethodSymbolKey))
               .Select(edge => new InterproceduralDataFlowPlan(
-                callSite.Id,
-                targetMethodId,
-                edge.SourceId,
-                edge.TargetId,
+                callSite,
+                targetMethodNode,
+                edge.SourceNode,
+                edge.TargetNode,
                 RoslynCpgInterproceduralBridgeKind.ArgumentToParameter,
-                ParseArgumentOrdinal(edge.TargetId)))
+                ParseArgumentOrdinal(edge.TargetNode)))
               .Concat(dataFlowEdges
-                .Where(edge => edge.SourceId == returnNodeId && edge.TargetId == callSite.Id)
+                .Where(edge =>
+                  edge.SourceNode.Kind == RoslynCpgNodeKind.MethodReturn &&
+                  ReferenceEquals(edge.TargetNode, callSite) &&
+                  IsMethodBoundaryNode(edge.SourceNode, targetMethodSymbolKey))
                 .Select(edge => new InterproceduralDataFlowPlan(
-                  callSite.Id,
-                  targetMethodId,
-                  edge.SourceId,
-                  edge.TargetId,
+                  callSite,
+                  targetMethodNode,
+                  edge.SourceNode,
+                  edge.TargetNode,
                   RoslynCpgInterproceduralBridgeKind.MethodReturnToCallResult)))
               .ToList();
-            if (recordedReturnMethods.Add(targetMethodId))
+            if (recordedReturnMethods.Add(targetMethodNode.FullName ?? string.Empty))
             {
                 callSitePlans.AddRange(dataFlowEdges
-                  .Where(edge => edge.TargetId == returnNodeId)
+                  .Where(edge =>
+                    edge.TargetNode.Kind == RoslynCpgNodeKind.MethodReturn &&
+                    IsMethodBoundaryNode(edge.TargetNode, targetMethodSymbolKey))
                   .Select(edge => new InterproceduralDataFlowPlan(
-                    callSite.Id,
-                    targetMethodId,
-                    edge.SourceId,
-                    edge.TargetId,
+                    callSite,
+                    targetMethodNode,
+                    edge.SourceNode,
+                    edge.TargetNode,
                     RoslynCpgInterproceduralBridgeKind.ReturnToMethodReturn)));
             }
 
@@ -399,21 +428,23 @@ public sealed partial class RoslynCpgBuilder
 
         var orderedPlans = plans
           .Distinct()
-          .OrderBy(plan => plan.CallSiteId, StringComparer.Ordinal)
-          .ThenBy(plan => plan.TargetMethodId, StringComparer.Ordinal)
+          .OrderBy(plan => NodeSortKey(plan.CallSiteNode), StringComparer.Ordinal)
+          .ThenBy(plan => NodeSortKey(plan.TargetMethodNode), StringComparer.Ordinal)
           .ThenBy(plan => plan.ArgumentOrdinal)
           .ThenBy(plan => plan.BridgeKind)
-          .ThenBy(plan => plan.SourceNodeId, StringComparer.Ordinal)
-          .ThenBy(plan => plan.TargetNodeId, StringComparer.Ordinal)
+          .ThenBy(plan => NodeSortKey(plan.SourceNode), StringComparer.Ordinal)
+          .ThenBy(plan => NodeSortKey(plan.TargetNode), StringComparer.Ordinal)
           .ToArray();
         foreach (var plan in orderedPlans)
         {
+            var callSiteContext = BuildPendingNodeCallSiteContext(plan.CallSiteNode);
             graph.AddEdge(
-                nodesById[plan.SourceNodeId],
-                nodesById[plan.TargetNodeId],
+                plan.SourceNode,
+                plan.TargetNode,
                 RoslynCpgEdgeKind.InterproceduralDataFlow,
-                plan.Label,
-                plan.CallSiteId);
+                RoslynCpgEdgeLabel.ForInterproceduralBridge(plan.BridgeKind),
+                callSiteContext.ToContextId(),
+                callSiteContext);
         }
 
         _interproceduralDataFlowTelemetry = new RoslynCpgInterproceduralDataFlowTelemetry(
@@ -422,12 +453,36 @@ public sealed partial class RoslynCpgBuilder
           new Dictionary<string, int>(cuts, StringComparer.Ordinal));
     }
 
-    private static int ParseArgumentOrdinal(string methodParameterId)
+    private bool IsMethodBoundaryNode(RoslynCpgNode boundaryNode, string targetMethodSymbolKey)
     {
-        var separator = methodParameterId.LastIndexOf(':');
-        return separator >= 0 && int.TryParse(methodParameterId[(separator + 1)..], out var ordinal)
+        return _methodOwnerSymbolKeysByBoundaryNode.TryGetValue(boundaryNode, out var boundaryMethodSymbolKey) &&
+          string.Equals(boundaryMethodSymbolKey, targetMethodSymbolKey, StringComparison.Ordinal);
+    }
+
+    private int ParseArgumentOrdinal(RoslynCpgNode methodParameterNode)
+    {
+        return _methodParameterOrdinalsByNode.TryGetValue(methodParameterNode, out var ordinal)
           ? ordinal
           : -1;
+    }
+
+    private static string NodeSortKey(RoslynCpgNode node)
+    {
+        return $"{node.Kind}|{node.FullName}|{node.Name}|{node.FilePath}|{node.SpanStart}|{node.SpanEnd}";
+    }
+
+    private static RoslynCpgCallSiteContext BuildPendingNodeCallSiteContext(RoslynCpgNode node)
+    {
+        return new RoslynCpgCallSiteContext(
+          node.FilePath ?? string.Empty,
+          node.SpanStart ?? -1,
+          node.SpanEnd ?? -1,
+          node.FullName ?? node.Name ?? node.DisplayKind);
+    }
+
+    private bool TryGetSymbolKey(RoslynCpgNode node, out string symbolKey)
+    {
+        return _symbolKeysByNode.TryGetValue(node, out symbolKey!);
     }
 
     private static void RecordCut(IDictionary<string, int> cuts, string reason)
@@ -520,43 +575,76 @@ public sealed partial class RoslynCpgBuilder
             return;
         }
 
-        AddCfgNeighbor(_cfgSuccessorsByNodeId, sourceNode.Id, targetNode.Id);
-        AddCfgNeighbor(_cfgPredecessorsByNodeId, targetNode.Id, sourceNode.Id);
+        AddCfgNeighbor(_cfgSuccessorsByNode, sourceNode, targetNode);
+        AddCfgNeighbor(_cfgPredecessorsByNode, targetNode, sourceNode);
     }
 
-    private IReadOnlyCollection<string> GetCachedCfgPredecessors(string nodeId)
+    private IReadOnlyCollection<RoslynCpgNode> GetCachedCfgPredecessors(RoslynCpgNode node)
     {
-        return _cfgPredecessorsByNodeId.TryGetValue(nodeId, out var predecessors)
+        return _cfgPredecessorsByNode.TryGetValue(node, out var predecessors)
           ? predecessors
-          : Array.Empty<string>();
+          : Array.Empty<RoslynCpgNode>();
     }
 
-    private IReadOnlyCollection<string> GetCachedCfgSuccessors(string nodeId)
+    private IReadOnlyCollection<RoslynCpgNode> GetCachedCfgSuccessors(RoslynCpgNode node)
     {
-        return _cfgSuccessorsByNodeId.TryGetValue(nodeId, out var successors)
+        return _cfgSuccessorsByNode.TryGetValue(node, out var successors)
           ? successors
-          : Array.Empty<string>();
+          : Array.Empty<RoslynCpgNode>();
     }
 
     private static void AddCfgNeighbor(
-      Dictionary<string, HashSet<string>> neighborsByNodeId,
-      string nodeId,
-      string neighborNodeId)
+      Dictionary<RoslynCpgNode, HashSet<RoslynCpgNode>> neighborsByNode,
+      RoslynCpgNode node,
+      RoslynCpgNode neighborNode)
     {
-        if (!neighborsByNodeId.TryGetValue(nodeId, out var neighbors))
+        if (!neighborsByNode.TryGetValue(node, out var neighbors))
         {
-            neighbors = new HashSet<string>(StringComparer.Ordinal);
-            neighborsByNodeId[nodeId] = neighbors;
+            neighbors = new HashSet<RoslynCpgNode>();
+            neighborsByNode[node] = neighbors;
         }
 
-        neighbors.Add(neighborNodeId);
+        neighbors.Add(neighborNode);
     }
 
     private static string PropertyAccessorCallSiteKey(
       IPropertyReferenceOperation propertyReference,
       IMethodSymbol accessorMethod)
     {
-        return $"{propertyReference.Syntax.SpanStart}:{propertyReference.Syntax.Span.End}:{accessorMethod.Name}";
+        return $"{PropertyAccessorCallSitePrefix}:{BuildStableFilePath(propertyReference.Syntax.SyntaxTree.FilePath)}:{propertyReference.Syntax.SpanStart}:{propertyReference.Syntax.Span.End}:{ComposeInvocationMethodFullName(accessorMethod)}";
+    }
+
+    private const string PropertyAccessorCallSitePrefix = "callsite-property";
+
+    private static string BuildStableFilePath(string? filePath)
+    {
+        return string.IsNullOrWhiteSpace(filePath)
+          ? string.Empty
+          : Path.GetFullPath(filePath);
+    }
+
+    private static string ComposeOperationPath(IOperation operation)
+    {
+        var segments = new Stack<int>();
+        for (var current = operation; current.Parent is not null; current = current.Parent)
+        {
+            var childIndex = 0;
+            var found = false;
+            foreach (var child in current.Parent.ChildOperations)
+            {
+                if (ReferenceEquals(child, current))
+                {
+                    found = true;
+                    break;
+                }
+
+                childIndex += 1;
+            }
+
+            segments.Push(found ? childIndex : -1);
+        }
+
+        return segments.Count == 0 ? "root" : string.Join(".", segments);
     }
 
 
@@ -567,10 +655,8 @@ public sealed partial class RoslynCpgBuilder
             return existing;
         }
 
-        _operationSequence += 1;
         var kind = MapOperationKind(operation);
         var node = graph.AddNode(new RoslynCpgNode(
-          Id: $"op:{_operationSequence}:{operation.Kind}:{operation.Syntax.SpanStart}:{operation.Syntax.Span.End}",
           Kind: kind,
           DisplayKind: operation.Kind.ToString(),
           Name: ResolveOperationName(operation),
@@ -580,7 +666,6 @@ public sealed partial class RoslynCpgBuilder
           FilePath: operation.Syntax.SyntaxTree.FilePath,
           SpanStart: operation.Syntax.SpanStart,
           SpanEnd: operation.Syntax.Span.End,
-          Text: Shorten(operation.Syntax.ToString()),
           IsImplicit: operation.IsImplicit));
         _operationNodes[operation] = node;
         return node;
@@ -590,12 +675,9 @@ public sealed partial class RoslynCpgBuilder
     {
         var nodesByOperation = new Dictionary<IOperation, RoslynCpgNode>(
             (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
-        var nodeIdsByOperation = new Dictionary<IOperation, string>(
-            (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
         foreach (var operationNode in _operationNodes)
         {
             nodesByOperation.Add(operationNode.Key, operationNode.Value);
-            nodeIdsByOperation.Add(operationNode.Key, operationNode.Value.Id);
         }
 
         var owningMethods = new Dictionary<IOperation, IMethodSymbol>(
@@ -605,7 +687,7 @@ public sealed partial class RoslynCpgBuilder
             owningMethods.Add(operationOwner.Key, operationOwner.Value);
         }
 
-        return new DataFlowOperationIndex(nodesByOperation, nodeIdsByOperation, owningMethods);
+        return new DataFlowOperationIndex(nodesByOperation, owningMethods);
     }
 
     private void AddDeclaredSymbolEdges(SyntaxNode syntax, RoslynCpgNode syntaxNode, RoslynCpgGraph graph, SemanticModel semanticModel)
@@ -712,9 +794,7 @@ public sealed partial class RoslynCpgBuilder
         var symbolNode = GetOrCreateSymbolNode(symbol, graph);
         graph.AddEdge(syntaxNode, symbolNode, RoslynCpgEdgeKind.ReferencesSymbol);
 
-        _referenceSequence += 1;
         var referenceNode = graph.AddNode(new RoslynCpgNode(
-          Id: $"ref:{_referenceSequence}:{syntax.SpanStart}:{syntax.Span.End}",
           Kind: RoslynCpgNodeKind.Reference,
           DisplayKind: nameof(RoslynCpgNodeKind.Reference),
           Name: syntaxNode.Name,
@@ -722,8 +802,7 @@ public sealed partial class RoslynCpgBuilder
           TypeFullName: symbolNode.TypeFullName,
           FilePath: syntaxNode.FilePath,
           SpanStart: syntaxNode.SpanStart,
-          SpanEnd: syntaxNode.SpanEnd,
-          Text: syntaxNode.Text));
+          SpanEnd: syntaxNode.SpanEnd));
         graph.AddEdge(syntaxNode, referenceNode, RoslynCpgEdgeKind.SyntaxChild);
         graph.AddEdge(referenceNode, symbolNode, RoslynCpgEdgeKind.Ref);
         AddEvalTypeEdge(referenceNode, SymbolTypeOf(symbol), graph);
@@ -775,9 +854,7 @@ public sealed partial class RoslynCpgBuilder
             return;
         }
 
-        _typeReferenceSequence += 1;
         var typeRefNode = graph.AddNode(new RoslynCpgNode(
-          Id: $"typeref:{_typeReferenceSequence}:{syntax.SpanStart}:{syntax.Span.End}",
           Kind: RoslynCpgNodeKind.TypeRef,
           DisplayKind: nameof(RoslynCpgNodeKind.TypeRef),
           Name: typeSymbol.Name,
@@ -785,8 +862,7 @@ public sealed partial class RoslynCpgBuilder
           TypeFullName: ComposeTypeFullName(typeSymbol),
           FilePath: syntaxNode.FilePath,
           SpanStart: syntaxNode.SpanStart,
-          SpanEnd: syntaxNode.SpanEnd,
-          Text: syntaxNode.Text));
+          SpanEnd: syntaxNode.SpanEnd));
         graph.AddEdge(syntaxNode, typeRefNode, RoslynCpgEdgeKind.SyntaxChild);
         var typeNode = GetOrCreateSymbolNode(typeSymbol, graph);
         graph.AddEdge(typeRefNode, typeNode, RoslynCpgEdgeKind.RefersToType);
@@ -801,7 +877,6 @@ public sealed partial class RoslynCpgBuilder
         }
 
         var symbolNode = graph.AddNode(new RoslynCpgNode(
-          Id: symbolKey,
           Kind: MapSymbolKind(symbol),
           DisplayKind: symbol.Kind.ToString(),
           Name: symbol.Name,
@@ -811,8 +886,8 @@ public sealed partial class RoslynCpgBuilder
           TypeFullName: ComposeTypeFullName(SymbolTypeOf(symbol)),
           FilePath: symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
           SpanStart: symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start,
-          SpanEnd: symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
-          Text: symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)));
+          SpanEnd: symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
+        _symbolKeysByNode[symbolNode] = symbolKey;
         _symbolNodes[symbolKey] = symbolNode;
         if (symbol is IMethodSymbol registeredMethodSymbol)
         {
@@ -831,7 +906,6 @@ public sealed partial class RoslynCpgBuilder
         }
 
         var typeDeclNode = graph.AddNode(new RoslynCpgNode(
-          Id: key,
           Kind: RoslynCpgNodeKind.TypeDecl,
           DisplayKind: nameof(RoslynCpgNodeKind.TypeDecl),
           Name: symbol.Name,
@@ -840,8 +914,7 @@ public sealed partial class RoslynCpgBuilder
           TypeFullName: ComposeTypeFullName(symbol),
           FilePath: symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
           SpanStart: symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start,
-          SpanEnd: symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
-          Text: symbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)));
+          SpanEnd: symbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
         _typeDeclNodes[key] = typeDeclNode;
         return typeDeclNode;
     }
@@ -1111,125 +1184,191 @@ public sealed partial class RoslynCpgBuilder
         };
     }
 
-    private static string ComposeCallDispatchKind(IMethodSymbol methodSymbol, bool hasInstance = true)
+    private static RoslynCpgDispatchKind ComposeCallDispatchKind(IMethodSymbol methodSymbol, bool hasInstance = true)
     {
-        var prefix = IsInternalMethod(methodSymbol) ? "internal-" : "external-";
+        var flags = (IsInternalMethod(methodSymbol)
+          ? RoslynCpgDispatchFlags.Internal
+          : RoslynCpgDispatchFlags.External) |
+          RoslynCpgDispatchFlags.Dispatch;
         if (methodSymbol.IsExtensionMethod)
         {
-            return prefix + (hasInstance ? "extension-instance" : "extension-static");
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags |
+              RoslynCpgDispatchFlags.Extension |
+              (hasInstance ? RoslynCpgDispatchFlags.Instance : RoslynCpgDispatchFlags.Static));
         }
 
         if (methodSymbol.MethodKind == MethodKind.ExplicitInterfaceImplementation ||
             methodSymbol.ExplicitInterfaceImplementations.Length > 0)
         {
-            return prefix + "interface-implementation";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.InterfaceImplementation);
         }
 
         if (!hasInstance || methodSymbol.IsStatic)
         {
-            return prefix + "static";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Static);
         }
 
         if (methodSymbol.ContainingType?.TypeKind == TypeKind.Interface)
         {
-            return prefix + "interface-dispatch";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Interface | RoslynCpgDispatchFlags.Dispatch);
         }
 
         if (methodSymbol.IsOverride)
         {
-            return prefix + "override-dispatch";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Override | RoslynCpgDispatchFlags.Dispatch);
         }
 
         if (methodSymbol.IsAbstract || methodSymbol.IsVirtual)
         {
-            return prefix + "virtual-dispatch";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Virtual | RoslynCpgDispatchFlags.Dispatch);
         }
 
-        return prefix + "static";
+        return new RoslynCpgDispatchKind(
+          RoslynCpgDispatchCategory.Method,
+          flags | RoslynCpgDispatchFlags.Static);
     }
 
-    private static string ComposePropertyAccessorDispatchKind(IMethodSymbol methodSymbol, bool hasInstance)
+    private static RoslynCpgDispatchKind ComposePropertyAccessorDispatchKind(IMethodSymbol methodSymbol, bool hasInstance)
     {
         var baseDispatch = ComposeCallDispatchKind(methodSymbol, hasInstance);
         var isIndexer = methodSymbol.AssociatedSymbol is IPropertySymbol { Parameters.Length: > 0 };
+        var accessorFlags = isIndexer ? RoslynCpgDispatchFlags.Indexer : RoslynCpgDispatchFlags.None;
         if (methodSymbol.Name.StartsWith("get_", StringComparison.Ordinal))
         {
-            return baseDispatch + (isIndexer ? "-indexer-get" : "-property-get");
+            return baseDispatch with
+            {
+              Flags = baseDispatch.Flags | accessorFlags | RoslynCpgDispatchFlags.PropertyGet
+            };
         }
 
         if (methodSymbol.Name.StartsWith("set_", StringComparison.Ordinal))
         {
-            return baseDispatch + (isIndexer ? "-indexer-set" : "-property-set");
+            return baseDispatch with
+            {
+              Flags = baseDispatch.Flags | accessorFlags | RoslynCpgDispatchFlags.PropertySet
+            };
         }
 
         return methodSymbol.AssociatedSymbol is IPropertySymbol
-          ? baseDispatch + (isIndexer ? "-indexer-accessor" : "-property-accessor")
+          ? baseDispatch with
+          {
+            Flags = baseDispatch.Flags | accessorFlags | RoslynCpgDispatchFlags.PropertyAccessor
+          }
           : baseDispatch;
     }
 
-    private static string ComposeResolvedDispatchKind(IMethodSymbol resolvedMethod, IMethodSymbol requestedMethod, ITypeSymbol? receiverType, string baseDispatchKind)
+    private static RoslynCpgDispatchKind ComposeResolvedDispatchKind(
+      IMethodSymbol resolvedMethod,
+      IMethodSymbol requestedMethod,
+      ITypeSymbol? receiverType,
+      RoslynCpgDispatchKind baseDispatchKind)
     {
         if (!IsInternalMethod(resolvedMethod))
         {
-            return baseDispatchKind + "-external-fallback";
+            return baseDispatchKind with
+            {
+              Flags = baseDispatchKind.Flags | RoslynCpgDispatchFlags.ExternalFallback
+            };
         }
 
         if (string.Equals(ComposeMethodFullName(resolvedMethod), ComposeMethodFullName(requestedMethod), StringComparison.Ordinal))
         {
-            return baseDispatchKind + "-exact";
+            return baseDispatchKind with
+            {
+              Flags = baseDispatchKind.Flags | RoslynCpgDispatchFlags.Exact
+            };
         }
 
         if (receiverType is INamedTypeSymbol namedReceiverType && resolvedMethod.ContainingType is not null)
         {
             if (SymbolEqualityComparer.Default.Equals(resolvedMethod.ContainingType, namedReceiverType))
             {
-                return baseDispatchKind + "-receiver-exact";
+                return baseDispatchKind with
+                {
+                  Flags = baseDispatchKind.Flags | RoslynCpgDispatchFlags.ReceiverExact
+                };
             }
 
             if (InheritsFrom(namedReceiverType, resolvedMethod.ContainingType))
             {
-                return baseDispatchKind + "-hierarchy";
+                return baseDispatchKind with
+                {
+                  Flags = baseDispatchKind.Flags | RoslynCpgDispatchFlags.Hierarchy
+                };
             }
         }
 
-        return baseDispatchKind + "-fallback";
+        return baseDispatchKind with
+        {
+          Flags = baseDispatchKind.Flags | RoslynCpgDispatchFlags.Fallback
+        };
     }
 
-    private static string ComposeMethodDispatchKind(IMethodSymbol methodSymbol)
+    private static RoslynCpgDispatchKind ComposeMethodDispatchKind(IMethodSymbol methodSymbol)
     {
-        var prefix = IsInternalMethod(methodSymbol) ? "internal-" : "external-";
+        var flags = (IsInternalMethod(methodSymbol)
+          ? RoslynCpgDispatchFlags.Internal
+          : RoslynCpgDispatchFlags.External) |
+          RoslynCpgDispatchFlags.Definition;
         if (methodSymbol.IsExtensionMethod || methodSymbol.ReducedFrom is not null)
         {
-            return prefix + "extension-definition";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Extension);
         }
 
         if (methodSymbol.MethodKind == MethodKind.ExplicitInterfaceImplementation ||
             methodSymbol.ExplicitInterfaceImplementations.Length > 0)
         {
-            return prefix + "interface-implementation";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.InterfaceImplementation);
         }
 
         if (methodSymbol.ContainingType?.TypeKind == TypeKind.Interface)
         {
-            return prefix + "interface-definition";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Interface);
         }
 
         if (methodSymbol.IsOverride)
         {
-            return prefix + "override-definition";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Override);
         }
 
         if (methodSymbol.IsAbstract)
         {
-            return prefix + "abstract-definition";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Abstract);
         }
 
         if (methodSymbol.IsVirtual)
         {
-            return prefix + "virtual-definition";
+            return new RoslynCpgDispatchKind(
+              RoslynCpgDispatchCategory.Method,
+              flags | RoslynCpgDispatchFlags.Virtual);
         }
 
-        return prefix + (methodSymbol.IsStatic ? "static-definition" : "instance-definition");
+        return new RoslynCpgDispatchKind(
+          RoslynCpgDispatchCategory.Method,
+          flags |
+          (methodSymbol.IsStatic ? RoslynCpgDispatchFlags.Static : RoslynCpgDispatchFlags.Instance));
     }
 
     private static bool IsInternalMethod(IMethodSymbol methodSymbol)

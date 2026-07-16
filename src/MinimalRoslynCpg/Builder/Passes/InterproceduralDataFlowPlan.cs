@@ -1,4 +1,5 @@
 using MinimalRoslynCpg.Contracts;
+using MinimalRoslynCpg.Model;
 
 namespace MinimalRoslynCpg.Builder.Passes;
 
@@ -6,12 +7,9 @@ namespace MinimalRoslynCpg.Builder.Passes;
 /// Immutable, deterministically ordered boundary edge candidate produced after local flow is available.
 /// </summary>
 internal sealed record InterproceduralDataFlowPlan(
-  string CallSiteId,
-  string TargetMethodId,
-  string SourceNodeId,
-  string TargetNodeId,
+  RoslynCpgNode CallSiteNode,
+  RoslynCpgNode TargetMethodNode,
+  RoslynCpgNode SourceNode,
+  RoslynCpgNode TargetNode,
   RoslynCpgInterproceduralBridgeKind BridgeKind,
-  int ArgumentOrdinal = -1)
-{
-  public string Label => BridgeKind.ToString();
-}
+  int ArgumentOrdinal = -1);

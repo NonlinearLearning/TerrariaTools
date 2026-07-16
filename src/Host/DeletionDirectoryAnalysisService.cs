@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using MinimalRoslynCpg.Builder;
+using RoslynPrototype.Analysis;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Lifting;
 using RoslynPrototype.Marking;
@@ -58,7 +60,9 @@ internal sealed class DeletionDirectoryAnalysisService
         var analysisFilePaths = ResolveAnalysisFilePaths(filePaths, sourcesByPath, options);
         var trees = ParseTrees(filePaths, sourcesByPath);
         var compilation = RoslynCompilationFactory.CreateCompilation(trees.Values);
-        var fileResults = AnalyzeFilesInParallel(
+        var aggregation = new DirectoryResultAggregator(directoryPath, options);
+        var editedFileResults = new List<IndexedFileAnalysisResult>();
+        AnalyzeFilesInParallel(
           analysisFilePaths,
           trees,
           compilation,
@@ -70,19 +74,29 @@ internal sealed class DeletionDirectoryAnalysisService
             options,
             runtime,
             semanticModel,
-            root));
+            root),
+          (index, filePath, result) =>
+          {
+              if (DeletionApplicationOptions.ShouldUseDeleteClassUsingCleanup(options) &&
+                  result.Edits.Count > 0)
+              {
+                  editedFileResults.Add(new IndexedFileAnalysisResult(index, filePath, result));
+                  return;
+              }
+
+              aggregation.AddFileResult(filePath, result);
+          });
 
         if (DeletionApplicationOptions.ShouldUseDeleteClassUsingCleanup(options))
         {
-            ApplyDeleteClassCleanup(analysisFilePaths, sourcesByPath, fileResults);
+            ApplyDeleteClassCleanup(analysisFilePaths, sourcesByPath, editedFileResults);
+            foreach (var editedFileResult in editedFileResults.OrderBy(item => item.Index))
+            {
+                aggregation.AddFileResult(editedFileResult.FilePath, editedFileResult.Result);
+            }
         }
 
-        var result = FinalizeDirectoryResults(
-          directoryPath,
-          options,
-          analysisFilePaths,
-          fileResults,
-          new AnalysisStats(
+        var result = aggregation.BuildResult(new AnalysisStats(
             filePaths.Count,
             analysisFilePaths.Count,
             0,
@@ -92,7 +106,7 @@ internal sealed class DeletionDirectoryAnalysisService
           ? Array.Empty<AnalysisDiagnostic>()
           : DeletionPostRewriteDiagnostics.GetRewriteDiagnostics(
             sourcesByPath,
-            BuildRewrittenSources(analysisFilePaths, fileResults));
+            aggregation.GetRewrittenSources());
         return result with { Diagnostics = diagnostics };
     }
 
@@ -123,7 +137,8 @@ internal sealed class DeletionDirectoryAnalysisService
         var unreferencedMethodsByPath = FindUnreferencedMethodDeclarationsByPath(compilation);
         var candidateMethodCount = CountUnreferencedMethodCandidates(compilation);
         var deletedMethodCount = unreferencedMethodsByPath.Values.Sum(methods => methods.Count);
-        var fileResults = AnalyzeFilesInParallel(
+        var aggregation = new DirectoryResultAggregator(directoryPath, options);
+        AnalyzeFilesInParallel(
           filePaths,
           trees,
           compilation,
@@ -135,15 +150,11 @@ internal sealed class DeletionDirectoryAnalysisService
             ? matches
             : Array.Empty<MethodDeclarationSyntax>();
               return AnalyzeSingleFileForUnreferencedMethods(semanticModel, root, methodDeclarations);
-          });
+          },
+          (_, filePath, result) => aggregation.AddFileResult(filePath, result));
 
         stopwatch.Stop();
-        return FinalizeDirectoryResults(
-          directoryPath,
-          options,
-          filePaths,
-          fileResults,
-          new AnalysisStats(
+        return aggregation.BuildResult(new AnalysisStats(
             filePaths.Count,
             filePaths.Count,
             candidateMethodCount,
@@ -429,20 +440,23 @@ internal sealed class DeletionDirectoryAnalysisService
         return method.ReducedFrom?.OriginalDefinition ?? method.OriginalDefinition;
     }
 
-    private static PrototypeAnalysisResult[] AnalyzeFilesInParallel(
+    private static void AnalyzeFilesInParallel(
       IReadOnlyList<string> filePaths,
       IReadOnlyDictionary<string, SyntaxTree> trees,
       CSharpCompilation compilation,
       IReadOnlyDictionary<string, string> options,
       DeletionAnalysisRuntime runtime,
-      Func<string, SyntaxTree, SemanticModel, SyntaxNode, PrototypeAnalysisResult> analyzeFile)
+      Func<string, SyntaxTree, SemanticModel, SyntaxNode, PrototypeAnalysisResult> analyzeFile,
+      Action<int, string, PrototypeAnalysisResult> onCompleted)
     {
         using var timingLog = PerFileTimingLog.Create(options);
         using var phaseTimingLogs = PerFilePhaseTimingLogs.Create(options);
+        using var memoryDiagnosticsLog = PerFileMemoryDiagnosticsLog.Create(options);
         PrototypeAnalysisResult AnalyzeAndRecord(
           string filePath,
           SyntaxTree tree)
         {
+            var initialAllocatedBytes = GC.GetTotalAllocatedBytes(precise: false);
             var totalStopwatch = Stopwatch.StartNew();
             var semanticModelStopwatch = Stopwatch.StartNew();
             var semanticModel = compilation.GetSemanticModel(tree);
@@ -456,41 +470,71 @@ internal sealed class DeletionDirectoryAnalysisService
               semanticModelStopwatch.ElapsedMilliseconds,
               totalStopwatch.ElapsedMilliseconds,
               result.Timings);
-            return result;
+            memoryDiagnosticsLog?.Write(
+              filePath,
+              totalStopwatch.ElapsedMilliseconds,
+              GC.GetTotalAllocatedBytes(precise: false) - initialAllocatedBytes,
+              result.CpgBuildTelemetry,
+              result.StructureViewCacheTelemetry);
+            return result.Edits.Count == 0
+              ? result with { RewrittenSource = null }
+              : result;
         }
 
         if (!runtime.ExecutionOptions.EnableDirectoryParallelism ||
             runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism == 1 ||
             filePaths.Count <= 1)
         {
-            var serialResults = new PrototypeAnalysisResult[filePaths.Count];
             for (var index = 0; index < filePaths.Count; index++)
             {
                 var filePath = filePaths[index];
                 var tree = trees[filePath];
-                serialResults[index] = AnalyzeAndRecord(filePath, tree);
+                onCompleted(index, filePath, AnalyzeAndRecord(filePath, tree));
             }
 
-            return serialResults;
+            return;
         }
 
-        var orderedResults = runtime.Scheduler.RunOrderedAsync(
-            filePaths.Count,
-            runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-            (index, cancellationToken) =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var filePath = filePaths[index];
-                var tree = trees[filePath];
-                return Task.Run(
-                  () => AnalyzeAndRecord(filePath, tree),
-                  cancellationToken);
-            },
-            runtime.ExecutionOptions.CancellationToken)
-          .GetAwaiter()
-          .GetResult();
+        var publishLock = new object();
+        var nextPublishIndex = 0;
+        var completedFlags = new bool[filePaths.Count];
+        var completedResults = new PrototypeAnalysisResult?[filePaths.Count];
 
-        return orderedResults.ToArray();
+        runtime.Scheduler.RunOrderedAsync(
+          filePaths.Count,
+          runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+          (index, cancellationToken) =>
+          {
+              cancellationToken.ThrowIfCancellationRequested();
+              var filePath = filePaths[index];
+              var tree = trees[filePath];
+              return Task.Run(
+                () =>
+                {
+                    var result = AnalyzeAndRecord(filePath, tree);
+                    lock (publishLock)
+                    {
+                        completedFlags[index] = true;
+                        completedResults[index] = result;
+                        while (nextPublishIndex < filePaths.Count &&
+                               completedFlags[nextPublishIndex])
+                        {
+                            var readyIndex = nextPublishIndex;
+                            var readyFilePath = filePaths[readyIndex];
+                            var readyResult = completedResults[readyIndex]!;
+                            completedResults[nextPublishIndex] = null;
+                            nextPublishIndex += 1;
+                            onCompleted(readyIndex, readyFilePath, readyResult);
+                        }
+                    }
+
+                    return 0;
+                },
+                cancellationToken);
+          },
+          runtime.ExecutionOptions.CancellationToken)
+        .GetAwaiter()
+        .GetResult();
     }
 
     private sealed class PerFileTimingLog : IDisposable
@@ -611,9 +655,132 @@ internal sealed class DeletionDirectoryAnalysisService
         }
     }
 
+    private sealed class PerFileMemoryDiagnosticsLog : IDisposable
+    {
+        private const int BufferCapacity = 256;
+        private readonly Channel<PerFileMemoryDiagnosticsEntry> _entries;
+        private readonly Task _writerTask;
+        private readonly StreamWriter _writer;
+
+        private PerFileMemoryDiagnosticsLog(string filePath)
+        {
+            var directoryPath = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directoryPath))
+            {
+                Directory.CreateDirectory(directoryPath);
+            }
+
+            _writer = new StreamWriter(
+              new FileStream(filePath, FileMode.Append, FileAccess.Write, FileShare.Read, bufferSize: 4096, useAsync: true));
+            _entries = Channel.CreateBounded<PerFileMemoryDiagnosticsEntry>(new BoundedChannelOptions(BufferCapacity)
+            {
+                FullMode = BoundedChannelFullMode.Wait,
+                SingleReader = true,
+                SingleWriter = false
+            });
+            _writerTask = WriteEntriesAsync();
+        }
+
+        internal static PerFileMemoryDiagnosticsLog? Create(IReadOnlyDictionary<string, string> options)
+        {
+            var filePath = DeletionApplicationOptions.ResolvePerFileMemoryDiagnosticsLogPath(options);
+            return filePath is null ? null : new PerFileMemoryDiagnosticsLog(filePath);
+        }
+
+        internal void Write(
+          string filePath,
+          long elapsedMilliseconds,
+          long allocatedBytes,
+          RoslynCpgBuildTelemetry? cpgBuildTelemetry,
+          RoslynCpgStructureViewCacheTelemetry? structureViewCacheTelemetry)
+        {
+            var memoryInfo = GC.GetGCMemoryInfo();
+            using var process = Process.GetCurrentProcess();
+            var dataFlow = cpgBuildTelemetry?.DataFlowPassTelemetry;
+            var syntax = cpgBuildTelemetry?.SyntaxPassTelemetry;
+            var entry = new PerFileMemoryDiagnosticsEntry(
+              filePath,
+              elapsedMilliseconds,
+              allocatedBytes,
+              memoryInfo.HeapSizeBytes,
+              memoryInfo.TotalCommittedBytes,
+              memoryInfo.FragmentedBytes,
+              process.WorkingSet64,
+              process.PrivateMemorySize64,
+              GC.CollectionCount(2),
+              ThreadPool.ThreadCount,
+              ThreadPool.PendingWorkItemCount,
+              cpgBuildTelemetry?.GraphNodeCount ?? 0,
+              cpgBuildTelemetry?.GraphEdgeCount ?? 0,
+              syntax?.SyntaxNodeCount ?? 0,
+              syntax?.SyntaxTokenCount ?? 0,
+              cpgBuildTelemetry?.PartitionCount ?? 0,
+              cpgBuildTelemetry?.OperationChildBufferRentCount ?? 0,
+              dataFlow?.FlowNodeCount ?? 0,
+              dataFlow?.DefinitionFactCount ?? 0,
+              dataFlow?.CandidateEdgeCount ?? 0,
+              dataFlow?.PeakBufferedCandidateBatchCount ?? 0,
+              structureViewCacheTelemetry?.RequestCount ?? 0,
+              structureViewCacheTelemetry?.CacheHitCount ?? 0,
+              structureViewCacheTelemetry?.CacheMissCount ?? 0,
+              structureViewCacheTelemetry?.UniqueFragmentSetCount ?? 0,
+              structureViewCacheTelemetry?.MaxCachedViewCount ?? 0,
+              structureViewCacheTelemetry?.CacheHitRate ?? 0,
+              DateTime.UtcNow);
+            _entries.Writer.WriteAsync(entry).AsTask().GetAwaiter().GetResult();
+        }
+
+        public void Dispose()
+        {
+            _entries.Writer.TryComplete();
+            _writerTask.GetAwaiter().GetResult();
+            _writer.Dispose();
+        }
+
+        private async Task WriteEntriesAsync()
+        {
+            await foreach (var entry in _entries.Reader.ReadAllAsync())
+            {
+                await _writer.WriteLineAsync(JsonSerializer.Serialize(entry));
+            }
+
+            await _writer.FlushAsync();
+        }
+    }
+
     private sealed record PerFileTimingLogEntry(
       [property: JsonPropertyName("filePath")] string FilePath,
       [property: JsonPropertyName("elapsedMs")] long ElapsedMilliseconds,
+      [property: JsonPropertyName("completedAtUtc")] DateTime CompletedAtUtc);
+
+    private sealed record PerFileMemoryDiagnosticsEntry(
+      [property: JsonPropertyName("filePath")] string FilePath,
+      [property: JsonPropertyName("elapsedMs")] long ElapsedMilliseconds,
+      [property: JsonPropertyName("allocatedBytes")] long AllocatedBytes,
+      [property: JsonPropertyName("managedHeapBytes")] long ManagedHeapBytes,
+      [property: JsonPropertyName("managedCommittedBytes")] long ManagedCommittedBytes,
+      [property: JsonPropertyName("managedFragmentedBytes")] long ManagedFragmentedBytes,
+      [property: JsonPropertyName("workingSetBytes")] long WorkingSetBytes,
+      [property: JsonPropertyName("privateBytes")] long PrivateBytes,
+      [property: JsonPropertyName("gen2CollectionCount")] int Gen2CollectionCount,
+      [property: JsonPropertyName("threadPoolThreadCount")] int ThreadPoolThreadCount,
+      [property: JsonPropertyName("threadPoolPendingWorkItemCount")] long ThreadPoolPendingWorkItemCount,
+      [property: JsonPropertyName("cpgNodeCount")] int CpgNodeCount,
+      [property: JsonPropertyName("cpgEdgeCount")] int CpgEdgeCount,
+      [property: JsonPropertyName("syntaxNodeCount")] int SyntaxNodeCount,
+      [property: JsonPropertyName("syntaxTokenCount")] int SyntaxTokenCount,
+      [property: JsonPropertyName("cpgPartitionCount")] int CpgPartitionCount,
+      [property: JsonPropertyName("operationChildBufferRentCount")] int OperationChildBufferRentCount,
+      [property: JsonPropertyName("dataFlowNodeCount")] int DataFlowNodeCount,
+      [property: JsonPropertyName("dataFlowDefinitionFactCount")] int DataFlowDefinitionFactCount,
+      [property: JsonPropertyName("dataFlowCandidateEdgeCount")] int DataFlowCandidateEdgeCount,
+      [property: JsonPropertyName("peakBufferedCandidateBatchCount")] int PeakBufferedCandidateBatchCount,
+      [property: JsonPropertyName("structureViewCacheRequestCount")] long StructureViewCacheRequestCount,
+      [property: JsonPropertyName("structureViewCacheHitCount")] long StructureViewCacheHitCount,
+      [property: JsonPropertyName("structureViewCacheMissCount")] long StructureViewCacheMissCount,
+      [property: JsonPropertyName("structureViewUniqueFragmentSetCount")] int StructureViewUniqueFragmentSetCount,
+      [property: JsonPropertyName("structureViewMaxCachedViewCount")] int StructureViewMaxCachedViewCount,
+      [property: JsonPropertyName("structureViewCacheHitRate")] double StructureViewCacheHitRate,
       [property: JsonPropertyName("completedAtUtc")] DateTime CompletedAtUtc);
 
     private static IReadOnlyList<string> ResolveAnalysisFilePaths(
@@ -639,136 +806,43 @@ internal sealed class DeletionDirectoryAnalysisService
         return source.Contains(targetClassName, StringComparison.Ordinal);
     }
 
-    private PrototypeAnalysisResult FinalizeDirectoryResults(
-      string directoryPath,
-      IReadOnlyDictionary<string, string> options,
-      IReadOnlyList<string> filePaths,
-      IReadOnlyList<PrototypeAnalysisResult> fileResults,
-      AnalysisStats? stats = null)
-    {
-        var seedMarks = new List<MarkRecord>();
-        var propagatedMarks = new List<PropagatedMarkRecord>();
-        var liftedMarks = new List<LiftedMarkRecord>();
-        var decisions = new List<RuleDecision>();
-        var edits = new List<RewriteEdit>();
-        var rewrittenSources = new Dictionary<string, string>(StringComparer.Ordinal);
-        var diffSections = new List<string>();
-        var diffRootPath = DeletionDiffPathResolver.ResolveDirectoryDiffRoot(directoryPath, options);
-        var diffFilePaths = new List<string>();
-
-        for (var index = 0; index < filePaths.Count; index++)
-        {
-            var filePath = filePaths[index];
-            var result = fileResults[index];
-            seedMarks.AddRange(result.SeedMarks);
-            propagatedMarks.AddRange(result.PropagatedMarks);
-            liftedMarks.AddRange(result.LiftedMarks);
-            decisions.AddRange(result.Decisions);
-            edits.AddRange(result.Edits);
-
-            if (result.Edits.Count == 0)
-            {
-                continue;
-            }
-
-            rewrittenSources[filePath] = result.RewrittenSource;
-            diffSections.Add($"### {filePath}{Environment.NewLine}{result.DiffText}");
-            if (DeletionApplicationOptions.ShouldWriteDiff(options))
-            {
-                var fileDiffPath = DeletionDiffPathResolver.ResolveFileDiffPath(
-                  directoryPath,
-                  filePath,
-                  diffRootPath);
-                Directory.CreateDirectory(Path.GetDirectoryName(fileDiffPath)!);
-                File.WriteAllText(fileDiffPath, result.DiffText, Encoding.UTF8);
-                diffFilePaths.Add(fileDiffPath);
-            }
-        }
-
-        if (DeletionApplicationOptions.ShouldWriteBack(options))
-        {
-            foreach (var (filePath, rewrittenSource) in rewrittenSources)
-            {
-                File.WriteAllText(filePath, rewrittenSource, Encoding.UTF8);
-            }
-        }
-
-        var diffText = string.Join(
-          $"{Environment.NewLine}{Environment.NewLine}",
-          diffSections);
-        string? diffPath = null;
-        if (diffFilePaths.Count > 0 && DeletionApplicationOptions.ShouldWriteDiff(options))
-        {
-            diffPath = diffRootPath;
-        }
-
-        return new PrototypeAnalysisResult(
-          seedMarks,
-          propagatedMarks,
-          liftedMarks,
-          decisions,
-          edits,
-          $"<multi-file:{rewrittenSources.Count}>",
-          diffText,
-          diffPath,
-          stats,
-          Timings: AggregateAnalysisPhaseTimings(fileResults));
-    }
-
     private void ApplyDeleteClassCleanup(
       IReadOnlyList<string> filePaths,
       IReadOnlyDictionary<string, string> sourcesByPath,
-      PrototypeAnalysisResult[] fileResults)
+      List<IndexedFileAnalysisResult> fileResults)
     {
         var projectSourcesByPath = new Dictionary<string, string>(
           filePaths.Count,
           StringComparer.Ordinal);
+        var editedResultsByPath = fileResults.ToDictionary(
+          item => item.FilePath,
+          item => item,
+          StringComparer.Ordinal);
         for (var index = 0; index < filePaths.Count; index++)
         {
             var filePath = filePaths[index];
-            projectSourcesByPath[filePath] = fileResults[index].Edits.Count > 0
-              ? fileResults[index].RewrittenSource
+            projectSourcesByPath[filePath] = editedResultsByPath.TryGetValue(filePath, out var editedFileResult)
+              ? editedFileResult.Result.RewrittenSource!
               : sourcesByPath[filePath];
         }
 
         var cleanupProjectState = new DeleteClassPostRewriteCleanupService.CleanupProjectState(
           projectSourcesByPath);
 
-        for (var index = 0; index < filePaths.Count; index++)
+        for (var index = 0; index < fileResults.Count; index++)
         {
-            var filePath = filePaths[index];
-            var result = fileResults[index];
-            if (result.Edits.Count == 0)
-            {
-                continue;
-            }
-
-            fileResults[index] = _cleanupService.ApplyUsingCleanup(
+            var fileResult = fileResults[index];
+            var filePath = fileResult.FilePath;
+            var result = _cleanupService.ApplyUsingCleanup(
+              filePath,
+              fileResult.Result,
+              cleanupProjectState);
+            result = _cleanupService.ApplyEmptyNamespaceCleanup(
               filePath,
               result,
               cleanupProjectState);
-            fileResults[index] = _cleanupService.ApplyEmptyNamespaceCleanup(
-              filePath,
-              fileResults[index],
-              cleanupProjectState);
+            fileResults[index] = fileResult with { Result = result };
         }
-    }
-
-    private static Dictionary<string, string> BuildRewrittenSources(
-      IReadOnlyList<string> filePaths,
-      IReadOnlyList<PrototypeAnalysisResult> fileResults)
-    {
-        var rewrittenSources = new Dictionary<string, string>(StringComparer.Ordinal);
-        for (var index = 0; index < filePaths.Count; index++)
-        {
-            var result = fileResults[index];
-            if (result.Edits.Count > 0)
-            {
-                rewrittenSources[filePaths[index]] = result.RewrittenSource;
-            }
-        }
-
-        return rewrittenSources;
     }
 
     private static Dictionary<string, string> ReadSources(IReadOnlyList<string> filePaths)
@@ -836,28 +910,145 @@ internal sealed class DeletionDirectoryAnalysisService
           null);
     }
 
-    private static AnalysisPhaseTimings? AggregateAnalysisPhaseTimings(
-      IReadOnlyList<PrototypeAnalysisResult> fileResults)
+    private sealed record IndexedFileAnalysisResult(
+      int Index,
+      string FilePath,
+      PrototypeAnalysisResult Result);
+
+    private sealed class DirectoryResultAggregator
     {
-        var phaseTimings = fileResults
-          .Select(result => result.Timings)
-          .Where(timings => timings is not null)
-          .Cast<AnalysisPhaseTimings>()
-          .ToList();
-        if (phaseTimings.Count == 0)
+        private readonly string _directoryPath;
+        private readonly IReadOnlyDictionary<string, string> _options;
+        private readonly string _diffRootPath;
+        private readonly List<MarkRecord> _seedMarks = new();
+        private readonly List<PropagatedMarkRecord> _propagatedMarks = new();
+        private readonly List<LiftedMarkRecord> _liftedMarks = new();
+        private readonly List<RuleDecision> _decisions = new();
+        private readonly List<RewriteEdit> _edits = new();
+        private readonly Dictionary<string, string> _rewrittenSources = new(StringComparer.Ordinal);
+        private readonly List<string> _diffSections = new();
+        private readonly List<string> _diffFilePaths = new();
+        private long _preparationMilliseconds;
+        private long _cpgBuildMilliseconds;
+        private long _markMilliseconds;
+        private long _propagateMilliseconds;
+        private long _liftMilliseconds;
+        private long _decideMilliseconds;
+        private long _rewriteMilliseconds;
+        private long _totalMilliseconds;
+        private int _timedFileCount;
+
+        internal DirectoryResultAggregator(
+          string directoryPath,
+          IReadOnlyDictionary<string, string> options)
         {
-            return null;
+            _directoryPath = directoryPath;
+            _options = options;
+            _diffRootPath = DeletionDiffPathResolver.ResolveDirectoryDiffRoot(directoryPath, options);
         }
 
-        return new AnalysisPhaseTimings(
-          phaseTimings.Sum(timings => timings.PreparationMilliseconds),
-          phaseTimings.Sum(timings => timings.CpgBuildMilliseconds),
-          phaseTimings.Sum(timings => timings.MarkMilliseconds),
-          phaseTimings.Sum(timings => timings.PropagateMilliseconds),
-          phaseTimings.Sum(timings => timings.LiftMilliseconds),
-          phaseTimings.Sum(timings => timings.DecideMilliseconds),
-          phaseTimings.Sum(timings => timings.RewriteMilliseconds),
-          phaseTimings.Sum(timings => timings.TotalMilliseconds));
+        internal void AddFileResult(string filePath, PrototypeAnalysisResult result)
+        {
+            _seedMarks.AddRange(result.SeedMarks);
+            _propagatedMarks.AddRange(result.PropagatedMarks);
+            _liftedMarks.AddRange(result.LiftedMarks);
+            _decisions.AddRange(result.Decisions);
+            _edits.AddRange(result.Edits);
+            AddTimings(result.Timings);
+
+            if (result.Edits.Count == 0)
+            {
+                return;
+            }
+
+            if (result.RewrittenSource is not null)
+            {
+                _rewrittenSources[filePath] = result.RewrittenSource;
+            }
+
+            _diffSections.Add($"### {filePath}{Environment.NewLine}{result.DiffText}");
+            if (DeletionApplicationOptions.ShouldWriteDiff(_options))
+            {
+                var fileDiffPath = DeletionDiffPathResolver.ResolveFileDiffPath(
+                  _directoryPath,
+                  filePath,
+                  _diffRootPath);
+                Directory.CreateDirectory(Path.GetDirectoryName(fileDiffPath)!);
+                File.WriteAllText(fileDiffPath, result.DiffText, Encoding.UTF8);
+                _diffFilePaths.Add(fileDiffPath);
+            }
+        }
+
+        internal Dictionary<string, string> GetRewrittenSources()
+        {
+            return new Dictionary<string, string>(_rewrittenSources, StringComparer.Ordinal);
+        }
+
+        internal PrototypeAnalysisResult BuildResult(AnalysisStats? stats = null)
+        {
+            if (DeletionApplicationOptions.ShouldWriteBack(_options))
+            {
+                foreach (var (filePath, rewrittenSource) in _rewrittenSources)
+                {
+                    File.WriteAllText(filePath, rewrittenSource, Encoding.UTF8);
+                }
+            }
+
+            var diffText = string.Join(
+              $"{Environment.NewLine}{Environment.NewLine}",
+              _diffSections);
+            var diffPath = _diffFilePaths.Count > 0 && DeletionApplicationOptions.ShouldWriteDiff(_options)
+              ? _diffRootPath
+              : null;
+
+            return new PrototypeAnalysisResult(
+              _seedMarks,
+              _propagatedMarks,
+              _liftedMarks,
+              _decisions,
+              _edits,
+              $"<multi-file:{_rewrittenSources.Count}>",
+              diffText,
+              diffPath,
+              stats,
+              Timings: BuildTimings());
+        }
+
+        private void AddTimings(AnalysisPhaseTimings? timings)
+        {
+            if (timings is null)
+            {
+                return;
+            }
+
+            _timedFileCount += 1;
+            _preparationMilliseconds += timings.PreparationMilliseconds;
+            _cpgBuildMilliseconds += timings.CpgBuildMilliseconds;
+            _markMilliseconds += timings.MarkMilliseconds;
+            _propagateMilliseconds += timings.PropagateMilliseconds;
+            _liftMilliseconds += timings.LiftMilliseconds;
+            _decideMilliseconds += timings.DecideMilliseconds;
+            _rewriteMilliseconds += timings.RewriteMilliseconds;
+            _totalMilliseconds += timings.TotalMilliseconds;
+        }
+
+        private AnalysisPhaseTimings? BuildTimings()
+        {
+            if (_timedFileCount == 0)
+            {
+                return null;
+            }
+
+            return new AnalysisPhaseTimings(
+              _preparationMilliseconds,
+              _cpgBuildMilliseconds,
+              _markMilliseconds,
+              _propagateMilliseconds,
+              _liftMilliseconds,
+              _decideMilliseconds,
+              _rewriteMilliseconds,
+              _totalMilliseconds);
+        }
     }
 
     private static IEnumerable<string> EnumerateSourceFiles(string directoryPath)

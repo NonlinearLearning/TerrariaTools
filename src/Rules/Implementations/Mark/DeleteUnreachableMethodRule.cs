@@ -51,7 +51,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
             }
 
             var methodNode = FindMethodNodeBySymbol(context, methodSymbol);
-            if (methodNode is null || reachableMethods.Contains(methodNode.Id))
+            if (methodNode?.NodeId is null || reachableMethods.Contains(methodNode.NodeId.Value))
             {
                 continue;
             }
@@ -68,9 +68,9 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 从入口方法出发，沿调用图做最小广度优先遍历，收集可达方法。
     /// </summary>
-    private static HashSet<string> FindReachableMethodIds(RuleContext context, IReadOnlyDictionary<string, MethodDeclarationSyntax> methodSyntaxById)
+    private static HashSet<NodeId> FindReachableMethodIds(RuleContext context, IReadOnlyDictionary<NodeId, MethodDeclarationSyntax> methodSyntaxById)
     {
-        var reachable = new HashSet<string>(StringComparer.Ordinal);
+        var reachable = new HashSet<NodeId>();
         var worklist = new Queue<RoslynCpgNode>();
         var methodNodes = context.GetGraphNodesByKind(RoslynCpgNodeKind.Method);
         var symbolMethodToMethod = BuildSymbolMethodMap(context, methodNodes);
@@ -79,7 +79,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
         if (entrySymbol is not null)
         {
             var entryNode = FindMethodNodeBySymbol(context, entrySymbol);
-            if (entryNode is not null && reachable.Add(entryNode.Id))
+            if (entryNode?.NodeId is not null && reachable.Add(entryNode.NodeId.Value))
             {
                 worklist.Enqueue(entryNode);
             }
@@ -89,7 +89,7 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
         {
             foreach (var entryMethod in methodNodes.Where(IsEntryMethod))
             {
-                if (reachable.Add(entryMethod.Id))
+                if (entryMethod.NodeId.HasValue && reachable.Add(entryMethod.NodeId.Value))
                 {
                     worklist.Enqueue(entryMethod);
                 }
@@ -99,22 +99,29 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
         while (worklist.Count > 0)
         {
             var current = worklist.Dequeue();
-            if (!methodSyntaxById.TryGetValue(current.Id, out var methodSyntax))
+            if (!current.NodeId.HasValue || !methodSyntaxById.TryGetValue(current.NodeId.Value, out var methodSyntax))
             {
                 continue;
             }
 
             foreach (var callSiteNode in GetCallSitesForMethod(context, methodSyntax))
             {
-                foreach (var targetSymbolNode in GetOutgoingTargets(context, callSiteNode.Id, RoslynCpgEdgeKind.CallTargets)
+                if (!callSiteNode.NodeId.HasValue)
+                {
+                    continue;
+                }
+
+                foreach (var targetSymbolNode in GetOutgoingTargets(context, callSiteNode.NodeId.Value, RoslynCpgEdgeKind.CallTargets)
                            .Where(node => node.Kind == RoslynCpgNodeKind.SymbolMethod))
                 {
-                    if (!symbolMethodToMethod.TryGetValue(targetSymbolNode.Id, out var targetMethodNode))
+                    if (!targetSymbolNode.NodeId.HasValue ||
+                        !symbolMethodToMethod.TryGetValue(targetSymbolNode.NodeId.Value, out var targetMethodNode) ||
+                        !targetMethodNode.NodeId.HasValue)
                     {
                         continue;
                     }
 
-                    if (reachable.Add(targetMethodNode.Id))
+                    if (reachable.Add(targetMethodNode.NodeId.Value))
                     {
                         worklist.Enqueue(targetMethodNode);
                     }
@@ -128,17 +135,17 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 把方法符号节点映射回对应的方法抽象节点，便于沿调用目标回到方法级可达性。
     /// </summary>
-    private static IReadOnlyDictionary<string, RoslynCpgNode> BuildSymbolMethodMap(RuleContext context, IReadOnlyList<RoslynCpgNode> methodNodes)
+    private static IReadOnlyDictionary<NodeId, RoslynCpgNode> BuildSymbolMethodMap(RuleContext context, IReadOnlyList<RoslynCpgNode> methodNodes)
     {
         var methodByLocation = methodNodes
-          .Where(node => node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
+          .Where(node => node.NodeId.HasValue && node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
           .ToDictionary(node => BuildLocationKey(node.FilePath!, node.SpanStart!.Value, node.SpanEnd!.Value), StringComparer.Ordinal);
 
         return context.GetGraphNodesByKind(RoslynCpgNodeKind.SymbolMethod)
-          .Where(node => node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
+          .Where(node => node.NodeId.HasValue && node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
           .Select(node => new { SymbolNode = node, MethodNode = ResolveMethodNode(node, methodByLocation) })
           .Where(item => item.MethodNode is not null)
-          .ToDictionary(item => item.SymbolNode.Id, item => item.MethodNode!, StringComparer.Ordinal);
+          .ToDictionary(item => item.SymbolNode.NodeId!.Value, item => item.MethodNode!);
     }
 
     /// <summary>
@@ -158,11 +165,11 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 读取某个图节点沿指定边种类指向的所有目标节点。
     /// </summary>
-    private static IEnumerable<RoslynCpgNode> GetOutgoingTargets(RuleContext context, string sourceId, RoslynCpgEdgeKind edgeKind)
+    private static IEnumerable<RoslynCpgNode> GetOutgoingTargets(RuleContext context, NodeId sourceNodeId, RoslynCpgEdgeKind edgeKind)
     {
-        var targetIds = context.GetGraphEdgesByKind(sourceId, edgeKind)
-          .Select(edge => edge.TargetId)
-          .ToHashSet(StringComparer.Ordinal);
+        var targetIds = context.GetGraphEdgesByKind(sourceNodeId, edgeKind)
+          .Select(edge => edge.TargetNodeId)
+          .ToHashSet();
 
         foreach (var targetId in targetIds)
         {
@@ -228,9 +235,9 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
     /// <summary>
     /// 为每个方法抽象节点建立到源码方法声明的映射。
     /// </summary>
-    private static IReadOnlyDictionary<string, MethodDeclarationSyntax> BuildMethodSyntaxMap(RuleContext context, SyntaxNode root)
+    private static IReadOnlyDictionary<NodeId, MethodDeclarationSyntax> BuildMethodSyntaxMap(RuleContext context, SyntaxNode root)
     {
-        var map = new Dictionary<string, MethodDeclarationSyntax>(StringComparer.Ordinal);
+        var map = new Dictionary<NodeId, MethodDeclarationSyntax>();
         foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
         {
             var methodSymbol = context.SemanticModel.GetDeclaredSymbol(method) as IMethodSymbol;
@@ -240,9 +247,9 @@ public sealed class DeleteUnreachableMethodRule : RuleDefinitionMark
             }
 
             var methodNode = FindMethodNodeBySymbol(context, methodSymbol);
-            if (methodNode is not null)
+            if (methodNode?.NodeId is not null)
             {
-                map[methodNode.Id] = method;
+                map[methodNode.NodeId.Value] = method;
             }
         }
 

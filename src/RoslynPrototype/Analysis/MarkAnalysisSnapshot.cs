@@ -206,7 +206,7 @@ public sealed class MarkAnalysisSnapshot
     }
 
     public RoslynCpgSliceResult QuerySliceBackward(
-      string sinkNodeId,
+      NodeId sinkNodeId,
       RoslynCpgSliceQueryOptions options)
     {
         var key = SliceQueryKey.Create(sinkNodeId, options);
@@ -349,14 +349,14 @@ public sealed class MarkAnalysisSnapshot
     private readonly record struct TargetMatchKey(SyntaxNode SyntaxNode, string TargetNames);
 
     private readonly record struct SliceQueryKey(
-      string SinkNodeId,
+      NodeId SinkNodeId,
       string AllowedEdgeKinds,
       int MaxHops,
       int MaxPaths,
       int MaxDefinitions,
       int MaxCallDepth)
     {
-        public static SliceQueryKey Create(string sinkNodeId, RoslynCpgSliceQueryOptions options)
+        public static SliceQueryKey Create(NodeId sinkNodeId, RoslynCpgSliceQueryOptions options)
         {
             return new SliceQueryKey(
               sinkNodeId,

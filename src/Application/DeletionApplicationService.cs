@@ -137,7 +137,7 @@ public sealed class DeletionApplicationService
     var rewriteStopwatch = Stopwatch.StartNew();
     var rewriteResult = ShouldSkipRewrite(analysisContext.RuleContext)
       ? new PrototypeRewriteResult(
-        analysisContext.Root.ToFullString(),
+        null,
         Array.Empty<RewriteEdit>(),
         string.Empty)
       : _rewriter.Rewrite(
@@ -166,7 +166,8 @@ public sealed class DeletionApplicationService
         rewriteStopwatch.ElapsedMilliseconds,
         totalStopwatch.ElapsedMilliseconds),
       CpgBuildTelemetry: analysisContext.CpgBuildTelemetry,
-      MarkAnalysisTelemetry: analysisContext.RuleContext.MarkAnalysisTelemetry);
+      MarkAnalysisTelemetry: analysisContext.RuleContext.MarkAnalysisTelemetry,
+      StructureViewCacheTelemetry: analysisContext.RuleContext.StructureViewCacheTelemetry);
   }
 
   private DeletionAnalysisContext BuildAnalysisContext(

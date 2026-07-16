@@ -1407,9 +1407,12 @@ public sealed class DeleteClassParameterShrinkAnalyzer
       Compilation compilation,
       DeletionAnalysisRuntime runtime)
     {
-        return runtime.GetOrCreateCompilationCache(
+        var cache = runtime.GetOrCreateCompilationCache(
           compilation,
-          static key => new CompilationScanCache(key)).TreeScans;
+          static key => new CompilationScanCache(key));
+        return compilation.SyntaxTrees
+          .Select(cache.GetTreeScan)
+          .ToList();
     }
 
     private static TreeScan GetTreeScan(
@@ -1514,67 +1517,27 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
     private sealed class CompilationScanCache
     {
-        private readonly Dictionary<SyntaxTree, TreeScan> _treeScans;
+        private readonly Compilation _compilation;
+        private readonly ConcurrentDictionary<SyntaxTree, Lazy<TreeScan>> _treeScans;
+        private int _materializedTreeCount;
 
         public CompilationScanCache(Compilation compilation)
         {
-            _treeScans = new Dictionary<SyntaxTree, TreeScan>(ReferenceEqualityComparer.Instance);
-            foreach (var tree in compilation.SyntaxTrees)
-            {
-                _treeScans[tree] = BuildTreeScan(compilation, tree);
-            }
-            TreeScans = _treeScans.Values.ToList();
+            _compilation = compilation;
+            _treeScans = new ConcurrentDictionary<SyntaxTree, Lazy<TreeScan>>(ReferenceEqualityComparer.Instance);
         }
-
-        public IReadOnlyList<TreeScan> TreeScans { get; }
 
         public TreeScan GetTreeScan(SyntaxTree tree)
         {
-            return _treeScans[tree];
-        }
-
-        private static TreeScan BuildTreeScan(Compilation compilation, SyntaxTree tree)
-        {
-            var semanticModel = compilation.GetSemanticModel(tree);
-            var root = tree.GetRoot();
-            var invocationBindings = root.DescendantNodes()
-              .OfType<InvocationExpressionSyntax>()
-              .Select(invocation => new InvocationBinding(
-                invocation,
-                ResolveMethodSymbol(semanticModel, invocation),
-                semanticModel.GetOperation(invocation, CancellationToken.None) as IInvocationOperation))
-              .ToList();
-            var elementAccessBindings = root.DescendantNodes()
-              .OfType<ElementAccessExpressionSyntax>()
-              .Select(elementAccess => new ElementAccessBinding(
-                elementAccess,
-                ResolveIndexerSymbol(semanticModel, elementAccess),
-                semanticModel.GetOperation(elementAccess, CancellationToken.None) as IPropertyReferenceOperation))
-              .ToList();
-            var expressionBindings = root.DescendantNodes()
-              .OfType<ExpressionSyntax>()
-              .Select(expression =>
-              {
-                  var typeInfo = semanticModel.GetTypeInfo(expression, CancellationToken.None);
-                  return new ExpressionBinding(
-                    expression,
-                    semanticModel.GetOperation(expression, CancellationToken.None),
-                    typeInfo.ConvertedType);
-              })
-              .ToList();
-            var typeSyntaxBindings = root.DescendantNodes()
-              .OfType<TypeSyntax>()
-              .Select(typeSyntax => new TypeSyntaxBinding(
-                typeSyntax,
-                semanticModel.GetSymbolInfo(typeSyntax, CancellationToken.None).Symbol))
-              .ToList();
-            return new TreeScan(
+            return _treeScans.GetOrAdd(
               tree,
-              semanticModel,
-              invocationBindings,
-              elementAccessBindings,
-              expressionBindings,
-              typeSyntaxBindings);
+              currentTree => new Lazy<TreeScan>(
+                () =>
+                {
+                    Interlocked.Increment(ref _materializedTreeCount);
+                    return new TreeScan(_compilation, currentTree);
+                },
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
         }
     }
 
@@ -1638,36 +1601,68 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
     private sealed class TreeScan
     {
-        private readonly Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> _invocationsByMethodSymbol;
-        private readonly Dictionary<IPropertySymbol, IReadOnlyList<ElementAccessBinding>> _elementAccessesByPropertySymbol;
-        private readonly Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> _mappedInvocationsByMethodSymbol;
-        private readonly Dictionary<INamedTypeSymbol, IReadOnlyList<ExpressionBinding>> _expressionsByConvertedType;
-        private readonly Dictionary<INamedTypeSymbol, IReadOnlyList<TypeSyntaxBinding>> _typeSyntaxesByResolvedSymbol;
+        private readonly Compilation _compilation;
+        private readonly Lazy<SemanticModel> _semanticModel;
+        private readonly Lazy<IReadOnlyList<InvocationBinding>> _invocationBindings;
+        private readonly Lazy<IReadOnlyList<ElementAccessBinding>> _elementAccessBindings;
+        private readonly Lazy<IReadOnlyList<ExpressionBinding>> _expressionBindings;
+        private readonly Lazy<IReadOnlyList<TypeSyntaxBinding>> _typeSyntaxBindings;
+        private readonly Lazy<Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>>> _invocationsByMethodSymbol;
+        private readonly Lazy<Dictionary<IPropertySymbol, IReadOnlyList<ElementAccessBinding>>> _elementAccessesByPropertySymbol;
+        private readonly Lazy<Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>>> _mappedInvocationsByMethodSymbol;
+        private readonly Lazy<Dictionary<INamedTypeSymbol, IReadOnlyList<ExpressionBinding>>> _expressionsByConvertedType;
+        private readonly Lazy<Dictionary<INamedTypeSymbol, IReadOnlyList<TypeSyntaxBinding>>> _typeSyntaxesByResolvedSymbol;
+        private int _invocationIndexBuildCount;
+        private int _mappedInvocationIndexBuildCount;
+        private int _elementAccessIndexBuildCount;
+        private int _expressionIndexBuildCount;
+        private int _typeSyntaxIndexBuildCount;
 
         public TreeScan(
-          SyntaxTree syntaxTree,
-          SemanticModel semanticModel,
-          IReadOnlyList<InvocationBinding> invocationBindings,
-          IReadOnlyList<ElementAccessBinding> elementAccessBindings,
-          IReadOnlyList<ExpressionBinding> expressionBindings,
-          IReadOnlyList<TypeSyntaxBinding> typeSyntaxBindings)
+          Compilation compilation,
+          SyntaxTree syntaxTree)
         {
+            _compilation = compilation;
             SyntaxTree = syntaxTree;
-            SemanticModel = semanticModel;
-            _invocationsByMethodSymbol = BuildInvocationIndex(invocationBindings);
-            _mappedInvocationsByMethodSymbol = BuildMappedInvocationIndex(invocationBindings);
-            _elementAccessesByPropertySymbol = BuildElementAccessIndex(elementAccessBindings);
-            _expressionsByConvertedType = BuildExpressionIndex(expressionBindings);
-            _typeSyntaxesByResolvedSymbol = BuildTypeSyntaxIndex(typeSyntaxBindings);
+            _semanticModel = CreateLazy(() => _compilation.GetSemanticModel(SyntaxTree));
+            _invocationBindings = CreateLazy(BuildInvocationBindings);
+            _elementAccessBindings = CreateLazy(BuildElementAccessBindings);
+            _expressionBindings = CreateLazy(BuildExpressionBindings);
+            _typeSyntaxBindings = CreateLazy(BuildTypeSyntaxBindings);
+            _invocationsByMethodSymbol = CreateLazy(() =>
+            {
+                Interlocked.Increment(ref _invocationIndexBuildCount);
+                return BuildInvocationIndex(_invocationBindings.Value);
+            });
+            _mappedInvocationsByMethodSymbol = CreateLazy(() =>
+            {
+                Interlocked.Increment(ref _mappedInvocationIndexBuildCount);
+                return BuildMappedInvocationIndex(_invocationBindings.Value);
+            });
+            _elementAccessesByPropertySymbol = CreateLazy(() =>
+            {
+                Interlocked.Increment(ref _elementAccessIndexBuildCount);
+                return BuildElementAccessIndex(_elementAccessBindings.Value);
+            });
+            _expressionsByConvertedType = CreateLazy(() =>
+            {
+                Interlocked.Increment(ref _expressionIndexBuildCount);
+                return BuildExpressionIndex(_expressionBindings.Value);
+            });
+            _typeSyntaxesByResolvedSymbol = CreateLazy(() =>
+            {
+                Interlocked.Increment(ref _typeSyntaxIndexBuildCount);
+                return BuildTypeSyntaxIndex(_typeSyntaxBindings.Value);
+            });
         }
 
         public SyntaxTree SyntaxTree { get; }
 
-        public SemanticModel SemanticModel { get; }
+        public SemanticModel SemanticModel => _semanticModel.Value;
 
         public IReadOnlyList<InvocationBinding> GetInvocationBindings(IMethodSymbol methodSymbol)
         {
-            return _invocationsByMethodSymbol.TryGetValue(methodSymbol, out var bindings)
+            return _invocationsByMethodSymbol.Value.TryGetValue(methodSymbol, out var bindings)
               ? bindings
               : Array.Empty<InvocationBinding>();
         }
@@ -1677,7 +1672,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             var results = new Dictionary<string, InvocationBinding>(StringComparer.Ordinal);
             foreach (var lookupSymbol in GetMethodLookupSymbols(methodSymbol))
             {
-                if (!_mappedInvocationsByMethodSymbol.TryGetValue(lookupSymbol, out var bindings))
+                if (!_mappedInvocationsByMethodSymbol.Value.TryGetValue(lookupSymbol, out var bindings))
                 {
                     continue;
                 }
@@ -1696,7 +1691,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             var results = new Dictionary<string, ElementAccessBinding>(StringComparer.Ordinal);
             foreach (var lookupSymbol in GetPropertyLookupSymbols(propertySymbol))
             {
-                if (!_elementAccessesByPropertySymbol.TryGetValue(lookupSymbol, out var bindings))
+                if (!_elementAccessesByPropertySymbol.Value.TryGetValue(lookupSymbol, out var bindings))
                 {
                     continue;
                 }
@@ -1712,16 +1707,72 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
         public IReadOnlyList<ExpressionBinding> GetExpressionBindings(INamedTypeSymbol delegateSymbol)
         {
-            return _expressionsByConvertedType.TryGetValue(delegateSymbol, out var bindings)
+            return _expressionsByConvertedType.Value.TryGetValue(delegateSymbol, out var bindings)
               ? bindings
               : Array.Empty<ExpressionBinding>();
         }
 
         public IReadOnlyList<TypeSyntaxBinding> GetTypeSyntaxBindings(INamedTypeSymbol targetSymbol)
         {
-            return _typeSyntaxesByResolvedSymbol.TryGetValue(targetSymbol, out var bindings)
+            return _typeSyntaxesByResolvedSymbol.Value.TryGetValue(targetSymbol, out var bindings)
               ? bindings
               : Array.Empty<TypeSyntaxBinding>();
+        }
+
+        private IReadOnlyList<InvocationBinding> BuildInvocationBindings()
+        {
+            var root = SyntaxTree.GetRoot();
+            return root.DescendantNodes()
+              .OfType<InvocationExpressionSyntax>()
+              .Select(invocation => new InvocationBinding(
+                invocation,
+                ResolveMethodSymbol(SemanticModel, invocation),
+                SemanticModel.GetOperation(invocation, CancellationToken.None) as IInvocationOperation))
+              .ToList();
+        }
+
+        private IReadOnlyList<ElementAccessBinding> BuildElementAccessBindings()
+        {
+            var root = SyntaxTree.GetRoot();
+            return root.DescendantNodes()
+              .OfType<ElementAccessExpressionSyntax>()
+              .Select(elementAccess => new ElementAccessBinding(
+                elementAccess,
+                ResolveIndexerSymbol(SemanticModel, elementAccess),
+                SemanticModel.GetOperation(elementAccess, CancellationToken.None) as IPropertyReferenceOperation))
+              .ToList();
+        }
+
+        private IReadOnlyList<ExpressionBinding> BuildExpressionBindings()
+        {
+            var root = SyntaxTree.GetRoot();
+            return root.DescendantNodes()
+              .OfType<ExpressionSyntax>()
+              .Select(expression =>
+              {
+                  var typeInfo = SemanticModel.GetTypeInfo(expression, CancellationToken.None);
+                  return new ExpressionBinding(
+                    expression,
+                    SemanticModel.GetOperation(expression, CancellationToken.None),
+                    typeInfo.ConvertedType);
+              })
+              .ToList();
+        }
+
+        private IReadOnlyList<TypeSyntaxBinding> BuildTypeSyntaxBindings()
+        {
+            var root = SyntaxTree.GetRoot();
+            return root.DescendantNodes()
+              .OfType<TypeSyntax>()
+              .Select(typeSyntax => new TypeSyntaxBinding(
+                typeSyntax,
+                SemanticModel.GetSymbolInfo(typeSyntax, CancellationToken.None).Symbol))
+              .ToList();
+        }
+
+        private static Lazy<T> CreateLazy<T>(Func<T> factory)
+        {
+            return new Lazy<T>(factory, LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
         private static Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> BuildInvocationIndex(

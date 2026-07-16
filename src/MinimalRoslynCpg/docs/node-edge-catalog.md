@@ -128,7 +128,7 @@ dotnet run --project .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj `
 
 Current local-view behavior:
 
-- exactly one anchor selector is required: `--anchor-id`, `--anchor-full-name`, or `--anchor-name`
+- exactly one anchor selector is required: `--anchor-node-id`, `--anchor-full-name`, or `--anchor-name`
 - traversal is breadth-first by hop count
 - traversal can be limited to `incoming`, `outgoing`, or `both`
 - traversal can be filtered by `--edge-kinds`

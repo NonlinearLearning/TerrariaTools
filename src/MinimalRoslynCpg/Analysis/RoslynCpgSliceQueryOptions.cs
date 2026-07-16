@@ -1,4 +1,5 @@
 using MinimalRoslynCpg.Contracts;
+using MinimalRoslynCpg.Model;
 
 namespace MinimalRoslynCpg.Analysis;
 
@@ -45,9 +46,9 @@ public sealed record RoslynCpgQueryTelemetry(
 /// Represents one stable source-to-sink path found by a CPG slice query.
 /// </summary>
 public sealed record RoslynCpgSlicePath(
-    string SourceNodeId,
-    string SinkNodeId,
-    IReadOnlyList<string> NodeIds);
+    NodeId SourceNodeId,
+    NodeId SinkNodeId,
+    IReadOnlyList<NodeId> NodeIds);
 
 /// <summary>
 /// Contains the bounded, deterministic result of a CPG slice query.

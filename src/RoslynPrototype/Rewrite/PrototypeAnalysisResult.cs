@@ -35,7 +35,7 @@ public sealed record PrototypeAnalysisResult(
   /// <summary>
   /// 应用所有编辑后的完整源码文本。
   /// </summary>
-  string RewrittenSource,
+  string? RewrittenSource,
   /// <summary>
   /// 面向调试和落盘的文本差异摘要。
   /// </summary>
@@ -63,7 +63,11 @@ public sealed record PrototypeAnalysisResult(
   /// <summary>
   /// 可选的 Mark 阶段快照遥测，用于量化重复工作是否减少。
   /// </summary>
-  MarkAnalysisTelemetry? MarkAnalysisTelemetry = null);
+  MarkAnalysisTelemetry? MarkAnalysisTelemetry = null,
+  /// <summary>
+  /// 可选的 Structure View 结果缓存遥测，用于评估缓存命中率和保留规模。
+  /// </summary>
+  RoslynCpgStructureViewCacheTelemetry? StructureViewCacheTelemetry = null);
 
 /// <summary>
 /// 单次分析运行的阶段耗时明细。

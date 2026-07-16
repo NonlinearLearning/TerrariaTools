@@ -7,7 +7,7 @@ public sealed record PrototypeRewriteResult(
   /// <summary>
   /// 应用所有改写后的完整源码文本。
   /// </summary>
-  string RewrittenSource,
+  string? RewrittenSource,
   /// <summary>
   /// 本次改写生成的最小编辑集合。
   /// </summary>

@@ -167,6 +167,50 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void AnalyzeFromArgs_ForDirectory_PerFileMemoryDiagnosticsLog_WritesCpgAndRuntimeMetrics()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "per-file-memory-diagnostics-project");
+        var firstFilePath = Path.Combine(projectDirectory, "First.cs");
+        var secondFilePath = Path.Combine(projectDirectory, "Second.cs");
+        var diagnosticsLogPath = Path.Combine(_tempDirectory, "analysis", "per-file-memory.jsonl");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(firstFilePath, "namespace Demo; public sealed class First { public int Run(int value) => value + 1; }");
+        File.WriteAllText(secondFilePath, "namespace Demo; public sealed class Second { public int Run(int value) => value * 2; }");
+        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+
+        _ = host.AnalyzeFromArgs(new[]
+        {
+          projectDirectory,
+          "--max-degree-of-parallelism",
+          "1",
+          "--per-file-memory-diagnostics-log",
+          diagnosticsLogPath,
+          "--no-diff"
+        });
+
+        var records = File.ReadLines(diagnosticsLogPath)
+          .Select(line => JsonDocument.Parse(line).RootElement.Clone())
+          .ToList();
+
+        Assert.Equal(2, records.Count);
+        Assert.Equal(
+          new[] { firstFilePath, secondFilePath }.OrderBy(path => path, StringComparer.Ordinal),
+          records
+            .Select(record => record.GetProperty("filePath").GetString())
+            .OrderBy(path => path, StringComparer.Ordinal));
+        Assert.All(records, record =>
+        {
+            Assert.True(record.GetProperty("allocatedBytes").GetInt64() >= 0);
+            Assert.True(record.GetProperty("managedHeapBytes").GetInt64() >= 0);
+            Assert.True(record.GetProperty("workingSetBytes").GetInt64() > 0);
+            Assert.True(record.GetProperty("cpgNodeCount").GetInt32() > 0);
+            Assert.True(record.GetProperty("cpgEdgeCount").GetInt32() > 0);
+            Assert.True(record.GetProperty("syntaxNodeCount").GetInt32() > 0);
+            Assert.True(record.GetProperty("completedAtUtc").GetDateTime() <= DateTime.UtcNow);
+        });
+    }
+
+    [Fact]
     public void AnalyzeFromArgs_RuntimeMetricsLog_WritesCompletedAnalysisMetrics()
     {
         var sourcePath = Path.Combine(_tempDirectory, "runtime-metrics.cs");
@@ -200,6 +244,26 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.True(completed.GetProperty("workingSetBytes").GetInt64() >= 0);
         Assert.True(completed.GetProperty("threadPoolThreadCount").GetInt32() >= 0);
         Assert.True(completed.GetProperty("threadPoolPendingWorkItemCount").GetInt64() >= 0);
+        var analysisSummary = completed.GetProperty("analysisSummary");
+        Assert.True(analysisSummary.TryGetProperty("timings", out var timings));
+        Assert.True(timings.GetProperty("cpgBuildMs").GetInt64() >= 0);
+        Assert.True(timings.GetProperty("analysisTotalMs").GetInt64() >= 0);
+        Assert.True(analysisSummary.TryGetProperty("cpg", out var cpg));
+        Assert.True(cpg.GetProperty("graphNodeCount").GetInt32() > 0);
+        Assert.True(cpg.GetProperty("graphEdgeCount").GetInt32() > 0);
+        Assert.True(cpg.GetProperty("operationElapsedMs").GetInt64() >= 0);
+        Assert.True(cpg.GetProperty("syntaxElapsedMs").GetInt64() >= 0);
+        Assert.True(cpg.GetProperty("dataFlowCandidateEdgeCount").GetInt32() >= 0);
+        Assert.True(cpg.GetProperty("freezeElapsedMs").GetInt64() >= 0);
+        Assert.True(cpg.TryGetProperty("freeze", out var freeze));
+        Assert.True(freeze.GetProperty("assignNodeIdsElapsedMs").GetInt64() >= 0);
+        Assert.True(freeze.GetProperty("populateEdgeBucketsElapsedMs").GetInt64() >= 0);
+        Assert.True(freeze.GetProperty("orderEdgesElapsedMs").GetInt64() >= 0);
+        Assert.True(freeze.GetProperty("distinctAnchorCount").GetInt32() > 0);
+        Assert.True(analysisSummary.TryGetProperty("mark", out var mark));
+        Assert.True(mark.GetProperty("ruleCount").GetInt32() >= 0);
+        Assert.True(analysisSummary.TryGetProperty("structureView", out var structureView));
+        Assert.True(structureView.GetProperty("requestCount").GetInt64() >= 0);
     }
 
     [Fact]
@@ -253,6 +317,25 @@ public sealed class PipelineComponentTests : IDisposable
                 Assert.True(record.GetProperty("completedAtUtc").GetDateTime() <= DateTime.UtcNow);
             });
         }
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_WithSkipRewrite_DoesNotRetainRewrittenSource()
+    {
+        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var result = application.AnalyzeFromArgs(new[]
+        {
+          "--target-name",
+          "s",
+          "--skip-rewrite",
+          "--no-diff"
+        });
+
+        Assert.NotEmpty(result.Decisions);
+        Assert.Empty(result.Edits);
+        Assert.Null(result.RewrittenSource);
+        Assert.Empty(result.DiffText);
     }
 
     [Fact]
@@ -4602,6 +4685,18 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Contains(lines, line => line.StartsWith("PROPAGATED [", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("LIFTED [", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.StartsWith("DECISION Delete [", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("PreparationMs: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("CpgBuildMs: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("GraphNodes: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("OperationMs: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("SyntaxMs: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("FreezeAssignNodeIdsMs: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("FreezePopulateEdgeBucketsMs: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("FreezeOrderEdgesMs: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("DataFlowCandidateEdges: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("FreezeMs: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("MarkRuleCount: ", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.StartsWith("StructureViewRequests: ", StringComparison.Ordinal));
         Assert.Contains(lines, line => string.Equals(line, "--- Rewritten Source ---", StringComparison.Ordinal));
         Assert.Contains(lines, line => line.Contains("return offset;", StringComparison.Ordinal));
         Assert.DoesNotContain(lines, line => line.StartsWith("ScannedFiles:", StringComparison.Ordinal));
@@ -5374,12 +5469,12 @@ public sealed class PipelineComponentTests : IDisposable
         {
             var structureView = context.StructureView;
             Assert.NotNull(structureView);
-            var viewNodeIds = structureView!.Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+            var viewNodeIds = structureView!.Nodes.Select(node => node.NodeId).ToHashSet();
             Assert.NotEmpty(seedMarks);
             Assert.All(
               seedMarks,
               mark => Assert.True(
-                mark.PrimaryGraphNode is not null && viewNodeIds.Contains(mark.PrimaryGraphNode.Id),
+                mark.PrimaryGraphNode?.NodeId is not null && viewNodeIds.Contains(mark.PrimaryGraphNode.NodeId),
                 $"Rule view does not include primary graph node for seed span {mark.SyntaxNode.Span}."));
 
             var ifStatement = context.Root.DescendantNodes().OfType<IfStatementSyntax>().Single();
@@ -5406,18 +5501,18 @@ public sealed class PipelineComponentTests : IDisposable
         {
             var structureView = context.StructureView;
             Assert.NotNull(structureView);
-            var viewNodeIds = structureView!.Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+            var viewNodeIds = structureView!.Nodes.Select(node => node.NodeId).ToHashSet();
             Assert.NotEmpty(seedMarks);
             Assert.NotEmpty(propagatedMarks);
             Assert.All(
               seedMarks,
               mark => Assert.True(
-                mark.PrimaryGraphNode is not null && viewNodeIds.Contains(mark.PrimaryGraphNode.Id),
+                mark.PrimaryGraphNode?.NodeId is not null && viewNodeIds.Contains(mark.PrimaryGraphNode.NodeId),
                 $"Rule view does not include primary graph node for seed span {mark.SyntaxNode.Span}."));
             Assert.All(
               propagatedMarks,
               mark => Assert.True(
-                mark.Mark.PrimaryGraphNode is not null && viewNodeIds.Contains(mark.Mark.PrimaryGraphNode.Id),
+                mark.Mark.PrimaryGraphNode?.NodeId is not null && viewNodeIds.Contains(mark.Mark.PrimaryGraphNode.NodeId),
                 $"Rule view does not include primary graph node for propagated span {mark.Mark.SyntaxNode.Span}."));
 
             var returnStatement = context.Root.DescendantNodes().OfType<ReturnStatementSyntax>().First();
@@ -5554,7 +5649,7 @@ public sealed class PipelineComponentTests : IDisposable
             mark.SyntaxNode.Span.Length,
             mark.Reason,
             mark.GroupKey,
-            mark.PrimaryGraphNode!.Id))
+            mark.PrimaryGraphNode!.NodeId))
           .ToList();
     }
 

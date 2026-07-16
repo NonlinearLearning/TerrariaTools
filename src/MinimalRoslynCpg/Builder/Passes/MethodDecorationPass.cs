@@ -84,13 +84,13 @@ namespace MinimalRoslynCpg.Builder
     {
       methodSymbol = CanonicalMethodSymbol(methodSymbol);
       var key = $"method:{SymbolId(methodSymbol)}";
+      var methodSymbolKey = SymbolId(methodSymbol);
       if (_methodNodes.TryGetValue(key, out var existing))
       {
         return existing;
       }
 
       var methodNode = graph.AddNode(new RoslynCpgNode(
-        Id: key,
         Kind: RoslynCpgNodeKind.Method,
         DisplayKind: nameof(RoslynCpgNodeKind.Method),
         Name: ComposeMethodName(methodSymbol),
@@ -100,8 +100,8 @@ namespace MinimalRoslynCpg.Builder
         TypeFullName: ComposeTypeFullName(methodSymbol.ReturnType),
         FilePath: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
         SpanStart: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start,
-        SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
-        Text: methodSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)));
+        SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
+      _symbolKeysByNode[methodNode] = methodSymbolKey;
       _methodNodes[key] = methodNode;
       return methodNode;
     }
@@ -110,13 +110,13 @@ namespace MinimalRoslynCpg.Builder
     {
       methodSymbol = CanonicalMethodSymbol(methodSymbol);
       var key = $"methodparam:{SymbolId(methodSymbol)}:{parameterSymbol.Ordinal}";
+      var methodSymbolKey = SymbolId(methodSymbol);
       if (_methodParameterNodes.TryGetValue(key, out var existing))
       {
         return existing;
       }
 
       var parameterNode = graph.AddNode(new RoslynCpgNode(
-        Id: key,
         Kind: RoslynCpgNodeKind.MethodParameter,
         DisplayKind: nameof(RoslynCpgNodeKind.MethodParameter),
         Name: parameterSymbol.Name,
@@ -125,8 +125,9 @@ namespace MinimalRoslynCpg.Builder
         TypeFullName: ComposeTypeFullName(parameterSymbol.Type),
         FilePath: parameterSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
         SpanStart: parameterSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start,
-        SpanEnd: parameterSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
-        Text: parameterSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat)));
+        SpanEnd: parameterSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
+      _methodOwnerSymbolKeysByBoundaryNode[parameterNode] = methodSymbolKey;
+      _methodParameterOrdinalsByNode[parameterNode] = parameterSymbol.Ordinal;
       _methodParameterNodes[key] = parameterNode;
 
       var parameterSymbolNode = GetOrCreateSymbolNode(parameterSymbol, graph);
@@ -139,13 +140,13 @@ namespace MinimalRoslynCpg.Builder
     {
       methodSymbol = CanonicalMethodSymbol(methodSymbol);
       var key = $"methodreturn:{SymbolId(methodSymbol)}";
+      var methodSymbolKey = SymbolId(methodSymbol);
       if (_methodReturnNodes.TryGetValue(key, out var existing))
       {
         return existing;
       }
 
       var returnNode = graph.AddNode(new RoslynCpgNode(
-        Id: key,
         Kind: RoslynCpgNodeKind.MethodReturn,
         DisplayKind: nameof(RoslynCpgNodeKind.MethodReturn),
         Name: $"{ComposeMethodName(methodSymbol)}:return",
@@ -154,8 +155,8 @@ namespace MinimalRoslynCpg.Builder
         TypeFullName: ComposeTypeFullName(methodSymbol.ReturnType),
         FilePath: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
         SpanStart: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
-        SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
-        Text: methodSymbol.Name));
+        SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
+      _methodOwnerSymbolKeysByBoundaryNode[returnNode] = methodSymbolKey;
       _methodReturnNodes[key] = returnNode;
       return returnNode;
     }
@@ -170,7 +171,6 @@ namespace MinimalRoslynCpg.Builder
       }
 
       var entryNode = graph.AddNode(new RoslynCpgNode(
-        Id: key,
         Kind: RoslynCpgNodeKind.MethodEntry,
         DisplayKind: nameof(RoslynCpgNodeKind.MethodEntry),
         Name: $"{ComposeMethodName(methodSymbol)}:entry",
@@ -179,8 +179,7 @@ namespace MinimalRoslynCpg.Builder
         TypeFullName: ComposeTypeFullName(methodSymbol.ReturnType),
         FilePath: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
         SpanStart: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start,
-        SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start,
-        Text: methodSymbol.Name));
+        SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start));
       _methodEntryNodes[key] = entryNode;
       return entryNode;
     }
@@ -195,7 +194,6 @@ namespace MinimalRoslynCpg.Builder
       }
 
       var exitNode = graph.AddNode(new RoslynCpgNode(
-        Id: key,
         Kind: RoslynCpgNodeKind.MethodExit,
         DisplayKind: nameof(RoslynCpgNodeKind.MethodExit),
         Name: $"{ComposeMethodName(methodSymbol)}:exit",
@@ -204,8 +202,7 @@ namespace MinimalRoslynCpg.Builder
         TypeFullName: ComposeTypeFullName(methodSymbol.ReturnType),
         FilePath: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
         SpanStart: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
-        SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
-        Text: methodSymbol.Name));
+        SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
       _methodExitNodes[key] = exitNode;
       return exitNode;
     }

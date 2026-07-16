@@ -15,6 +15,11 @@ internal sealed class DeleteClassPostRewriteCleanupService
       CleanupProjectState cleanupProjectState)
     {
         var currentSource = result.RewrittenSource;
+        if (string.IsNullOrEmpty(currentSource))
+        {
+            return result;
+        }
+
         var cleanupEdits = new List<RewriteEdit>();
         var changed = true;
 
@@ -68,6 +73,11 @@ internal sealed class DeleteClassPostRewriteCleanupService
       CleanupProjectState cleanupProjectState)
     {
         var currentSource = result.RewrittenSource;
+        if (string.IsNullOrEmpty(currentSource))
+        {
+            return result;
+        }
+
         var cleanupEdits = new List<RewriteEdit>();
         var changed = true;
 

@@ -281,7 +281,6 @@ public sealed class DeleteUnreferencedMethodRule : RuleDefinitionMark
     private static RoslynCpgNode CreateMethodGraphNode(IMethodSymbol methodSymbol, MethodDeclarationSyntax method)
     {
         return new RoslynCpgNode(
-          Id: $"fast-method:{method.SyntaxTree.FilePath}:{method.SpanStart}:{method.Span.End}",
           Kind: RoslynCpgNodeKind.Method,
           DisplayKind: nameof(RoslynCpgNodeKind.Method),
           Name: methodSymbol.Name,

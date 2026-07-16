@@ -1,4 +1,5 @@
 using MinimalRoslynCpg.Contracts;
+using MinimalRoslynCpg.Model;
 
 namespace MinimalRoslynCpg.Builder;
 
@@ -97,6 +98,11 @@ public sealed record RoslynCpgBuildTelemetry(
   int SourceLineCount,
   int PartitionCount,
   int MaxDegreeOfParallelism,
+  long OperationBuildElapsedMilliseconds,
+  long SyntaxBuildElapsedMilliseconds,
+  long DataFlowBuildElapsedMilliseconds,
+  long FreezeQueryIndexElapsedMilliseconds,
+  RoslynCpgFreezeTelemetry FreezeTelemetry,
   RoslynCpgSyntaxPassTelemetry SyntaxPassTelemetry,
   RoslynCpgMethodDecorationTelemetry MethodDecorationTelemetry,
   RoslynCpgDataFlowPassTelemetry DataFlowPassTelemetry,
@@ -105,7 +111,9 @@ public sealed record RoslynCpgBuildTelemetry(
   IReadOnlyList<string>? ExecutedPassNames = null,
   IReadOnlyList<string>? SkippedPassNames = null,
   string GraphSnapshotVersion = "legacy-v1",
-  RoslynCpgInterproceduralDataFlowTelemetry? InterproceduralDataFlowTelemetry = null)
+  RoslynCpgInterproceduralDataFlowTelemetry? InterproceduralDataFlowTelemetry = null,
+  int GraphNodeCount = 0,
+  int GraphEdgeCount = 0)
 {
   public static RoslynCpgBuildTelemetry CreateDefault()
   {
@@ -117,6 +125,11 @@ public sealed record RoslynCpgBuildTelemetry(
       SourceLineCount: 0,
       PartitionCount: 0,
       MaxDegreeOfParallelism: 1,
+      OperationBuildElapsedMilliseconds: 0,
+      SyntaxBuildElapsedMilliseconds: 0,
+      DataFlowBuildElapsedMilliseconds: 0,
+      FreezeQueryIndexElapsedMilliseconds: 0,
+      FreezeTelemetry: RoslynCpgFreezeTelemetry.CreateDefault(),
       SyntaxPassTelemetry: RoslynCpgSyntaxPassTelemetry.CreateDefault(),
       MethodDecorationTelemetry: RoslynCpgMethodDecorationTelemetry.CreateDefault(),
       DataFlowPassTelemetry: RoslynCpgDataFlowPassTelemetry.CreateDefault(),

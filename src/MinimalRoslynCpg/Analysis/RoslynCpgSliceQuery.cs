@@ -16,12 +16,12 @@ public sealed class RoslynCpgSliceQuery
         _graph = graph;
     }
 
-    public RoslynCpgSliceResult QueryBackward(string sinkNodeId, RoslynCpgSliceQueryOptions options)
+    public RoslynCpgSliceResult QueryBackward(NodeId sinkNodeId, RoslynCpgSliceQueryOptions options)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(sinkNodeId);
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options);
-        if (_graph.GetNode(sinkNodeId) is null)
+        var sinkNode = _graph.GetNode(sinkNodeId);
+        if (sinkNode is null)
         {
             throw new ArgumentException($"Unknown sink node id: {sinkNodeId}", nameof(sinkNodeId));
         }
@@ -37,12 +37,12 @@ public sealed class RoslynCpgSliceQuery
 
         var queue = new Queue<SliceState>();
         queue.Enqueue(new SliceState(sinkNodeId, Parent: null, options.MaxHops, options.MaxCallDepth, CallStack: string.Empty));
-        var visitedStates = new HashSet<(string NodeId, int RemainingHops, int RemainingCallDepth, string CallStack)>
+        var visitedStates = new HashSet<(NodeId NodeId, int RemainingHops, int RemainingCallDepth, string CallStack)>
         {
             (sinkNodeId, options.MaxHops, options.MaxCallDepth, string.Empty),
         };
         var paths = new List<RoslynCpgSlicePath>();
-        var visitedNodeIds = new HashSet<string>(StringComparer.Ordinal) { sinkNodeId };
+        var visitedNodeIds = new HashSet<NodeId> { sinkNodeId };
         long visitedEdgeCount = 0;
         long interproceduralBridgeExpansionCount = 0;
         var maxObservedCallDepth = 0;
@@ -82,7 +82,7 @@ public sealed class RoslynCpgSliceQuery
                     break;
                 }
 
-                if (ContainsNode(state, edge.SourceId))
+                if (ContainsNode(state, edge.SourceNodeId))
                 {
                     continue;
                 }
@@ -111,7 +111,7 @@ public sealed class RoslynCpgSliceQuery
                 }
 
                 var next = new SliceState(
-                    edge.SourceId,
+                    edge.SourceNodeId,
                     state,
                     state.RemainingHops - 1,
                     remainingCallDepth,
@@ -170,10 +170,10 @@ public sealed class RoslynCpgSliceQuery
         }
 
         var orderedPaths = paths
-            .DistinctBy(path => string.Join("\u001f", path.NodeIds))
-            .OrderBy(path => path.SourceNodeId, StringComparer.Ordinal)
-            .ThenBy(path => path.SinkNodeId, StringComparer.Ordinal)
-            .ThenBy(path => string.Join("\u001f", path.NodeIds), StringComparer.Ordinal)
+            .DistinctBy(path => string.Join("\u001f", path.NodeIds.Select(nodeId => nodeId.Value)))
+            .OrderBy(path => path.SourceNodeId)
+            .ThenBy(path => path.SinkNodeId)
+            .ThenBy(path => string.Join("\u001f", path.NodeIds.Select(nodeId => nodeId.Value)), StringComparer.Ordinal)
             .ToArray();
         var result = new RoslynCpgSliceResult(
             orderedPaths,
@@ -200,13 +200,16 @@ public sealed class RoslynCpgSliceQuery
         return result;
     }
 
-    private static void AddPath(SliceState state, string sinkNodeId, ICollection<RoslynCpgSlicePath> paths)
+    private static void AddPath(SliceState state, NodeId sinkNodeId, ICollection<RoslynCpgSlicePath> paths)
     {
         var nodeIds = EnumeratePathNodeIds(state).ToArray();
-        paths.Add(new RoslynCpgSlicePath(state.NodeId, sinkNodeId, nodeIds));
+        paths.Add(new RoslynCpgSlicePath(
+            state.NodeId,
+            sinkNodeId,
+            nodeIds));
     }
 
-    private static IEnumerable<string> EnumeratePathNodeIds(SliceState state)
+    private static IEnumerable<NodeId> EnumeratePathNodeIds(SliceState state)
     {
         for (var current = state; current is not null; current = current.Parent)
         {
@@ -214,11 +217,11 @@ public sealed class RoslynCpgSliceQuery
         }
     }
 
-    private static bool ContainsNode(SliceState state, string nodeId)
+    private static bool ContainsNode(SliceState state, NodeId nodeId)
     {
         for (var current = state; current is not null; current = current.Parent)
         {
-            if (string.Equals(current.NodeId, nodeId, StringComparison.Ordinal))
+            if (current.NodeId == nodeId)
             {
                 return true;
             }
@@ -243,7 +246,7 @@ public sealed class RoslynCpgSliceQuery
     }
 
     private sealed record SliceState(
-        string NodeId,
+        NodeId NodeId,
         SliceState? Parent,
         int RemainingHops,
         int RemainingCallDepth,
@@ -251,15 +254,18 @@ public sealed class RoslynCpgSliceQuery
 
     private static string GetCallSiteFrame(RoslynCpgEdge edge)
     {
-        if (!string.IsNullOrEmpty(edge.ContextId))
+        if (edge.CallSiteContext is { } callSiteContext)
         {
-            return edge.ContextId;
+            return callSiteContext.ToContextId().Value;
         }
 
-        var separator = edge.Label?.IndexOf('|') ?? -1;
-        return separator is > -1
-            ? edge.Label![(separator + 1)..]
-            : $"edge:{edge.SourceId}>{edge.TargetId}";
+        if (edge.ContextId is { } contextId &&
+            !string.IsNullOrEmpty(contextId.Value))
+        {
+            return contextId.Value;
+        }
+
+        return $"edge:{edge.SourceNodeId}>{edge.TargetNodeId}";
     }
 
     private static bool ContainsCallSiteFrame(string callStack, string frame)
@@ -269,7 +275,7 @@ public sealed class RoslynCpgSliceQuery
     }
 
     private IReadOnlyList<RoslynCpgEdge> GetAllowedIncomingEdges(
-        string nodeId,
+        NodeId nodeId,
         IReadOnlySet<RoslynCpgEdgeKind> allowedKinds)
     {
         var edges = new List<RoslynCpgEdge>();
@@ -280,14 +286,14 @@ public sealed class RoslynCpgSliceQuery
 
         edges.Sort(static (left, right) =>
         {
-            var sourceComparison = StringComparer.Ordinal.Compare(left.SourceId, right.SourceId);
+            var sourceComparison = left.SourceNodeId.CompareTo(right.SourceNodeId);
             return sourceComparison != 0 ? sourceComparison : left.Kind.CompareTo(right.Kind);
         });
         return edges;
     }
 
     private sealed record QueryKey(
-        string SinkNodeId,
+        uint SinkNodeId,
         string GraphSnapshotVersion,
         int EdgeMaskId,
         string EdgeKinds,
@@ -300,11 +306,11 @@ public sealed class RoslynCpgSliceQuery
         int MaxCachedStates,
         int MaxCallerFanout)
     {
-        public static QueryKey Create(RoslynCpgGraph graph, string sinkNodeId, RoslynCpgSliceQueryOptions options)
+        public static QueryKey Create(RoslynCpgGraph graph, NodeId sinkNodeId, RoslynCpgSliceQueryOptions options)
         {
             var edgeKinds = string.Join(",", options.AllowedEdgeKinds.OrderBy(kind => kind));
             return new QueryKey(
-                sinkNodeId,
+                sinkNodeId.Value,
                 graph.GraphSnapshotVersion,
                 graph.GetEdgeMaskId(options.AllowedEdgeKinds),
                 edgeKinds,
