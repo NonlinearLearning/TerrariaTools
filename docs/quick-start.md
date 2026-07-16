@@ -78,62 +78,10 @@ dotnet build .\src\RoslynPrototype\RoslynPrototype.csproj
 dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj .\src\RoslynPrototype\samples\delete-s-object-sample.cs --target-name s
 ```
 
-这个样例会输出：
+这个样例默认不再输出逐行日志摘要。当前可观察结果只保留两类：
 
-1. `SeedMarks`
-2. `PropagatedMarks`
-3. `Decisions`
-4. `Edits`
-5. `RewrittenSource`
-
-目录分析需要查看每个文件完成时间时，传入 `--per-file-timing-log` 指定 JSONL 文件。每个成功完成的文件都会立即追加一行，包含 `filePath`、`elapsedMs` 和 `completedAtUtc`：
-
-```powershell
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- `
-  'D:\source\project' `
-  --max-degree-of-parallelism 16 `
-  --per-file-timing-log .\Build\per-file-timing.jsonl `
-  --no-diff
-```
-
-需要分别定位非编辑阶段时，改用 `--per-file-phase-timing-log-directory`。它会生成 `semantic-model.jsonl`、`cpg-build.jsonl`、`mark.jsonl`、`propagate.jsonl`、`lift.jsonl`、`decide.jsonl` 和 `total.jsonl`；配合 `--skip-rewrite` 只运行到决策阶段，不调用改写器：
-
-```powershell
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- `
-  'D:\source\project' `
-  --max-degree-of-parallelism 16 `
-  --per-file-phase-timing-log-directory .\Build\phase-timing `
-  --skip-rewrite `
-  --no-diff
-```
-
-需要观察单次分析的线程池、GC 和内存变化时，传入 `--runtime-metrics-log`。分析未结束时每五秒追加一条 `running` JSONL 记录，结束时追加一条 `completed` 或 `failed` 记录。比较 DOP 时，每个 DOP 必须顺序执行三次，并为每次运行使用独立日志文件：
-
-```powershell
-foreach ($dop in 8, 12, 14, 16) {
-  foreach ($run in 1..3) {
-    dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- `
-      'D:\source\project\LargeFile.cs' `
-      --max-degree-of-parallelism $dop `
-      --runtime-metrics-log ".\Build\dop-$dop-run-$run.jsonl" `
-      --skip-rewrite `
-      --no-diff
-  }
-}
-```
-
-记录字段包括 `maxDegreeOfParallelism`、`elapsedMs`、`allocatedBytes`、Gen0/1/2 次数、托管堆、工作集和 ThreadPool 状态。每行对应一个时间点，不能把不同 DOP 的累计值直接相加。
-
-需要定位某个文件完成 CPG 分析后的内存状态时，传入 `--per-file-memory-diagnostics-log`。它对每个正常完成的文件追加一条 JSONL，包含该文件的分配增量、托管堆/提交量/碎片、工作集、私有内存、ThreadPool 状态，以及 CPG 节点、边、Syntax、DataFlow 和分区缓冲计数：
-
-```powershell
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- `
-  'D:\source\project' `
-  --max-degree-of-parallelism 1 `
-  --per-file-memory-diagnostics-log .\Build\per-file-memory.jsonl `
-  --skip-rewrite `
-  --no-diff
-```
+1. 改写后的源码写回原文件，需显式传 `--write-back`
+2. diff 文本，默认写到 `.rewrite.diff`，可用 `--no-diff` 关闭，或用 `--diff-out` 改路径
 
 ### 并行度边界
 
