@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
 using Rules;
 
@@ -40,7 +41,10 @@ public static class DeleteClassReplaceDecisionFactory
           {
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-            DecisionCpgFactory.CreateRelation("replaced-with", anchorFragment, replacementFragment)
+            DecisionCpgFactory.CreateRelation(
+              RoslynCpgDecisionRelationKind.ReplacedWith,
+              anchorFragment,
+              replacementFragment)
           },
           DecisionCpgFactory.CreateSyntaxBindings(
             (anchorFragment, anchorNode),
@@ -74,7 +78,10 @@ public static class DeleteClassReplaceDecisionFactory
           {
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-            DecisionCpgFactory.CreateRelation("replaced-with", anchorFragment, replacementFragment)
+            DecisionCpgFactory.CreateRelation(
+              RoslynCpgDecisionRelationKind.ReplacedWith,
+              anchorFragment,
+              replacementFragment)
           },
           DecisionCpgFactory.CreateSyntaxBindings(
             (anchorFragment, anchorNode),
@@ -108,7 +115,10 @@ public static class DeleteClassReplaceDecisionFactory
           {
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-            DecisionCpgFactory.CreateRelation("replaced-with", anchorFragment, replacementFragment)
+            DecisionCpgFactory.CreateRelation(
+              RoslynCpgDecisionRelationKind.ReplacedWith,
+              anchorFragment,
+              replacementFragment)
           },
           DecisionCpgFactory.CreateSyntaxBindings(
             (anchorFragment, anchorNode),
@@ -152,7 +162,10 @@ public static class DeleteClassReplaceDecisionFactory
           {
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-            DecisionCpgFactory.CreateRelation("replaced-with", anchorFragment, replacementFragment)
+            DecisionCpgFactory.CreateRelation(
+              RoslynCpgDecisionRelationKind.ReplacedWith,
+              anchorFragment,
+              replacementFragment)
           },
           DecisionCpgFactory.CreateSyntaxBindings(
             (anchorFragment, anchorNode),
@@ -187,7 +200,10 @@ public static class DeleteClassReplaceDecisionFactory
           {
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-            DecisionCpgFactory.CreateRelation("replaced-with", anchorFragment, replacementFragment)
+            DecisionCpgFactory.CreateRelation(
+              RoslynCpgDecisionRelationKind.ReplacedWith,
+              anchorFragment,
+              replacementFragment)
           },
           DecisionCpgFactory.CreateSyntaxBindings(
             (anchorFragment, anchorNode),

@@ -5,9 +5,9 @@ namespace RoslynPrototype.Tests;
 
 internal static class TextDiffAssert
 {
-    public static void Contains(string expectedFragment, string actualText, string? diffText = null, string? because = null)
+    public static void Contains(string expectedFragment, string? actualText, string? diffText = null, string? because = null)
     {
-        if (actualText.Contains(expectedFragment, StringComparison.Ordinal))
+        if ((actualText ?? string.Empty).Contains(expectedFragment, StringComparison.Ordinal))
         {
             return;
         }
@@ -15,14 +15,14 @@ internal static class TextDiffAssert
         throw new XunitException(BuildContainsFailureMessage(
           "contain",
           expectedFragment,
-          actualText,
+          actualText ?? "<null>",
           diffText,
           because));
     }
 
-    public static void DoesNotContain(string unexpectedFragment, string actualText, string? diffText = null, string? because = null)
+    public static void DoesNotContain(string unexpectedFragment, string? actualText, string? diffText = null, string? because = null)
     {
-        if (!actualText.Contains(unexpectedFragment, StringComparison.Ordinal))
+        if (!(actualText ?? string.Empty).Contains(unexpectedFragment, StringComparison.Ordinal))
         {
             return;
         }
@@ -30,7 +30,7 @@ internal static class TextDiffAssert
         throw new XunitException(BuildContainsFailureMessage(
           "not contain",
           unexpectedFragment,
-          actualText,
+          actualText ?? "<null>",
           diffText,
           because));
     }

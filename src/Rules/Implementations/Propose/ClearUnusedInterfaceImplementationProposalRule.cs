@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Lifting;
@@ -144,7 +145,10 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
       {
         DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
         DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-        DecisionCpgFactory.CreateRelation("cleared-to", anchorFragment, replacementFragment)
+        DecisionCpgFactory.CreateRelation(
+          RoslynCpgDecisionRelationKind.ClearedTo,
+          anchorFragment,
+          replacementFragment)
       },
       DecisionCpgFactory.CreateSyntaxBindings(
         (anchorFragment, anchorNode),

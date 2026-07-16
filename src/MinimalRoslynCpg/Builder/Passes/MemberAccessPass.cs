@@ -53,9 +53,7 @@ public sealed partial class RoslynCpgBuilder
 
     private void AddMemberAccess(IOperation operation, RoslynCpgNode operationNode, ISymbol memberSymbol, ITypeSymbol? instanceType, RoslynCpgGraph graph)
     {
-        _memberAccessSequence += 1;
         var memberAccessNode = graph.AddNode(new RoslynCpgNode(
-          Id: $"memberaccess:{_memberAccessSequence}:{operation.Syntax.SpanStart}:{operation.Syntax.Span.End}",
           Kind: RoslynCpgNodeKind.MemberAccess,
           DisplayKind: nameof(RoslynCpgNodeKind.MemberAccess),
           Name: memberSymbol.Name,
@@ -64,8 +62,7 @@ public sealed partial class RoslynCpgBuilder
           TypeFullName: ComposeTypeFullName(SymbolTypeOf(memberSymbol)),
           FilePath: operationNode.FilePath,
           SpanStart: operationNode.SpanStart,
-          SpanEnd: operationNode.SpanEnd,
-          Text: operationNode.Text));
+          SpanEnd: operationNode.SpanEnd));
         graph.AddEdge(operationNode, memberAccessNode, RoslynCpgEdgeKind.AccessesMember);
 
         var memberNode = GetOrCreateSymbolNode(memberSymbol, graph);

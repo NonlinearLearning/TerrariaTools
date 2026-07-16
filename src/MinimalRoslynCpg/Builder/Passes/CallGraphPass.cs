@@ -43,13 +43,11 @@ public sealed partial class RoslynCpgBuilder
 
     private void AddCallSite(IInvocationOperation invocationOperation, RoslynCpgNode operationNode, RoslynCpgGraph graph)
     {
-        _callSiteSequence += 1;
         var targetMethod = invocationOperation.TargetMethod;
         var resolvedCandidates = targetMethod is null
           ? null
           : ResolvePreferredCallTargets(ResolveCallTargetCandidates(invocationOperation, targetMethod), targetMethod, invocationOperation.Instance?.Type);
         var callSiteNode = graph.AddNode(new RoslynCpgNode(
-          Id: $"callsite:{_callSiteSequence}:{invocationOperation.Syntax.SpanStart}:{invocationOperation.Syntax.Span.End}",
           Kind: RoslynCpgNodeKind.CallSite,
           DisplayKind: nameof(RoslynCpgNodeKind.CallSite),
           Name: targetMethod?.Name ?? operationNode.Name,
@@ -65,8 +63,7 @@ public sealed partial class RoslynCpgBuilder
           TypeFullName: ComposeTypeFullName(invocationOperation.Type),
           FilePath: operationNode.FilePath,
           SpanStart: operationNode.SpanStart,
-          SpanEnd: operationNode.SpanEnd,
-          Text: operationNode.Text));
+          SpanEnd: operationNode.SpanEnd));
         graph.AddEdge(operationNode, callSiteNode, RoslynCpgEdgeKind.SyntaxChild);
         _callSiteNodesByInvocation[invocationOperation] = callSiteNode;
 
@@ -90,14 +87,12 @@ public sealed partial class RoslynCpgBuilder
             return null;
         }
 
-        _callSiteSequence += 1;
         var resolvedCandidates = ResolvePreferredCallTargets(
           ResolveAccessorTargetCandidates(accessorMethod, propertyReference.Instance?.Type),
           accessorMethod,
           propertyReference.Instance?.Type);
         var accessorEvalType = ResolvePropertyAccessorEvalType(propertyReference, accessorMethod);
         var callSiteNode = graph.AddNode(new RoslynCpgNode(
-          Id: $"callsite:property:{_callSiteSequence}:{propertyReference.Syntax.SpanStart}:{propertyReference.Syntax.Span.End}",
           Kind: RoslynCpgNodeKind.CallSite,
           DisplayKind: nameof(RoslynCpgNodeKind.CallSite),
           Name: accessorMethod.Name,
@@ -111,8 +106,7 @@ public sealed partial class RoslynCpgBuilder
           TypeFullName: ComposeTypeFullName(accessorEvalType),
           FilePath: operationNode.FilePath,
           SpanStart: operationNode.SpanStart,
-          SpanEnd: operationNode.SpanEnd,
-          Text: operationNode.Text));
+          SpanEnd: operationNode.SpanEnd));
         graph.AddEdge(operationNode, callSiteNode, RoslynCpgEdgeKind.SyntaxChild);
         _propertyAccessorCallSiteNodesByKey[PropertyAccessorCallSiteKey(propertyReference, accessorMethod)] =
           callSiteNode;

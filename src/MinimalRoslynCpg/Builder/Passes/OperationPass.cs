@@ -110,12 +110,12 @@ namespace MinimalRoslynCpg.Builder
         return;
       }
 
-      var operationNode = GetOrCreateOperationNode(operation, graph);
       if (owningMethod is not null && !_operationOwningMethods.ContainsKey(operation))
       {
         _operationOwningMethods[operation] = owningMethod;
       }
 
+      var operationNode = GetOrCreateOperationNode(operation, graph);
       if (parentOperation is not null)
       {
         var parentNode = GetOrCreateOperationNode(parentOperation, graph);

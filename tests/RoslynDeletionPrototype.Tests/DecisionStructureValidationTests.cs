@@ -106,14 +106,34 @@ public sealed class DecisionStructureValidationTests
         Assert.Equal(SyntaxKind.LogicalAndExpression, (SyntaxKind)resolved.FinalNode.RawKind);
 
         var logicalProposal = proposals.Single(unit =>
-            unit.SyntaxBindings.TryGetValue(unit.Fragments[0].Id, out var node) &&
+            unit.SyntaxBindings.TryGetValue(unit.Fragments[0].NodeId!.Value, out var node) &&
             node.IsKind(SyntaxKind.LogicalAndExpression));
 
         var merged = ResolveMergedUnit(policy, context, logicalProposal);
 
         Assert.Contains(merged.Fragments, fragment =>
-            merged.SyntaxBindings.TryGetValue(fragment.Id, out var node) &&
+            fragment.NodeId.HasValue &&
+            merged.SyntaxBindings.TryGetValue(fragment.NodeId.Value, out var node) &&
                 node.IsKind(SyntaxKind.LogicalAndExpression));
+    }
+
+    [Fact]
+    public void DecisionCpgFactory_CreateFragment_UsesStructuredDecisionActionDispatchKind()
+    {
+        var tree = CSharpSyntaxTree.ParseText("class C { void M() { } }", path: "decision-fragment.cs");
+        var methodNode = tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>().Single();
+
+        var fragment = DecisionCpgFactory.CreateFragment(
+          "fragment:decision-action",
+          methodNode,
+          "anchor",
+          DecisionActionKind.Delete);
+
+        var dispatchKind = Assert.IsType<RoslynCpgDispatchKind>(fragment.DispatchKind);
+        Assert.Equal(RoslynCpgDispatchCategory.DecisionAction, dispatchKind.Category);
+        Assert.Equal(RoslynCpgDispatchFlags.None, dispatchKind.Flags);
+        Assert.Equal(RoslynCpgDecisionActionKind.Delete, dispatchKind.Action);
+        Assert.Equal("Delete", dispatchKind.ToString());
     }
 
     private static (Rules.RuleContext Context, SyntaxNode Root, DeletionRulePipeline Rules) CreateContextAndRules(string source, string? targetName = null)

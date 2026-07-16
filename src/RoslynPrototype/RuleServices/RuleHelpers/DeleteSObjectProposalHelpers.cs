@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using MinimalRoslynCpg.Contracts;
 using RoslynPrototype.Analysis;
 using RoslynPrototype.Lifting;
 using RoslynPrototype.Marking;
@@ -220,7 +221,10 @@ public static class DeleteSObjectProposalHelpers
           {
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-            DecisionCpgFactory.CreateRelation("reduced-to", anchorFragment, replacementFragment)
+            DecisionCpgFactory.CreateRelation(
+              RoslynCpgDecisionRelationKind.ReducedTo,
+              anchorFragment,
+              replacementFragment)
           },
           DecisionCpgFactory.CreateSyntaxBindings(
             (anchorFragment, anchorNode),
@@ -327,7 +331,10 @@ public static class DeleteSObjectProposalHelpers
           {
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-            DecisionCpgFactory.CreateRelation("reduced-to", anchorFragment, replacementFragment)
+            DecisionCpgFactory.CreateRelation(
+              RoslynCpgDecisionRelationKind.ReducedTo,
+              anchorFragment,
+              replacementFragment)
           },
           DecisionCpgFactory.CreateSyntaxBindings(
             (anchorFragment, anchorNode),
@@ -366,7 +373,10 @@ public static class DeleteSObjectProposalHelpers
           {
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-            DecisionCpgFactory.CreateRelation("reduced-to", anchorFragment, replacementFragment)
+            DecisionCpgFactory.CreateRelation(
+              RoslynCpgDecisionRelationKind.ReducedTo,
+              anchorFragment,
+              replacementFragment)
           },
           DecisionCpgFactory.CreateSyntaxBindings(
             (anchorFragment, anchorNode),

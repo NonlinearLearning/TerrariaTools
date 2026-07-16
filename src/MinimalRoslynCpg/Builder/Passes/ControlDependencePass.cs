@@ -51,7 +51,7 @@ public sealed partial class RoslynCpgBuilder
                     {
                         foreach (var dependentNode in overlay.NodesByBlockOrdinal[runner])
                         {
-                            if (dependentNode.Id != controlNode.Id)
+                            if (!ReferenceEquals(dependentNode, controlNode))
                             {
                                 context.Graph.AddEdge(controlNode, dependentNode, RoslynCpgEdgeKind.ControlDependence);
                             }

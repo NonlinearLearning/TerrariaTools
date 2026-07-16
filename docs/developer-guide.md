@@ -133,6 +133,8 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj .\src\RoslynPr
 
 CPG 的 `LargeFileLineThreshold`、`LargeFileMethodThreshold`、`LargeMethodLineSpanThreshold` 和 `SyntaxLargeFileLineThreshold` 目前是内部 builder 配置。CLI 没有大文件专用 DOP；所有文件都复用全局 DOP。新增大文件专用 DOP 时，应保持目录级并发受全局上限控制，并明确 CPG 分片的独立上限与阈值触发条件。
 
+目录分析可通过 `--per-file-memory-diagnostics-log <path>` 输出每个完成文件的 GC、进程和 CPG 结构计数。并发运行时，日志记录的是进程共享状态快照，不能当作单个文件的独占内存。
+
 ## 4. 测试怎么写
 
 如果你要改测试，先读：

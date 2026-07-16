@@ -42,17 +42,16 @@ internal sealed class RoslynCpgBuildContext
     string filePath)
   {
     var graph = new RoslynCpgGraph();
+    graph.RegisterSource(filePath, source);
     var fullPath = Path.GetFullPath(filePath);
     var syntaxTreeNode = graph.AddNode(new RoslynCpgNode(
-      Id: $"tree:{fullPath}",
       Kind: RoslynCpgNodeKind.SyntaxTree,
       DisplayKind: nameof(RoslynCpgNodeKind.SyntaxTree),
       Name: Path.GetFileName(filePath),
       FullName: fullPath,
       FilePath: filePath,
       SpanStart: 0,
-      SpanEnd: source.Length,
-      Text: source));
+      SpanEnd: source.Length));
     return new RoslynCpgBuildContext(
       semanticModel,
       root,

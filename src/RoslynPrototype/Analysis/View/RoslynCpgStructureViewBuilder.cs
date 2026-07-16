@@ -63,8 +63,9 @@ public sealed class RoslynCpgStructureViewBuilder
             .Select(fragment => ResolveGraphNodesInside(graphCache, fragment))
             .ToList();
         var selectedNodeIds = fragmentNodeSets
-            .SelectMany(nodes => nodes.Select(node => node.Id))
-            .ToHashSet(StringComparer.Ordinal);
+            .SelectMany(nodes => nodes.Select(node => node.NodeId))
+            .OfType<NodeId>()
+            .ToHashSet();
         if (selectedNodeIds.Count == 0)
         {
             throw new InvalidOperationException("None of the syntax fragments are bound to graph nodes.");
@@ -73,30 +74,33 @@ public sealed class RoslynCpgStructureViewBuilder
         var selectedEdges = new HashSet<RoslynCpgEdge>();
         AddShortestConnectingPaths(graphCache, fragmentNodeSets, selectedNodeIds, selectedEdges);
 
-        foreach (var edge in graphCache.Edges)
-        {
-            if (selectedNodeIds.Contains(edge.SourceId) && selectedNodeIds.Contains(edge.TargetId))
-            {
-                selectedEdges.Add(edge);
-            }
-        }
+        AddContainedEdges(graphCache, selectedNodeIds, selectedEdges);
 
         var nodes = context.Graph.Nodes
-            .Where(node => selectedNodeIds.Contains(node.Id))
+            .Where(node => node.NodeId.HasValue && selectedNodeIds.Contains(node.NodeId.Value))
             .OrderBy(node => node.SpanStart ?? int.MaxValue)
             .ThenBy(node => node.SpanEnd ?? int.MaxValue)
-            .ThenBy(node => node.Id, StringComparer.Ordinal)
+            .ThenBy(node => node.NodeId)
             .ToList();
         var edges = selectedEdges
-            .Where(edge => selectedNodeIds.Contains(edge.SourceId) && selectedNodeIds.Contains(edge.TargetId))
-            .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
-            .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
-            .ThenBy(edge => edge.Label, StringComparer.Ordinal)
-            .ThenBy(edge => edge.TargetId, StringComparer.Ordinal)
+            .Where(edge =>
+                selectedNodeIds.Contains(edge.SourceNodeId) &&
+                selectedNodeIds.Contains(edge.TargetNodeId))
+            .OrderBy(edge => edge.SourceNodeId)
+            .ThenBy(edge => edge.Kind)
+            .ThenBy(edge => edge.StructuredLabel?.StableKey, StringComparer.Ordinal)
+            .ThenBy(edge => edge.TargetNodeId)
             .ToList();
         var view = new RoslynCpgStructureView(SelectRootNode(fragmentList[0], nodes), nodes, edges);
         runCache.RememberView(cacheKey, view);
         return view;
+    }
+
+    public static RoslynCpgStructureViewCacheTelemetry GetCacheTelemetry(CpgAnalysisContext context)
+    {
+        return RunCaches.TryGetValue(context, out var runCache)
+          ? runCache.CreateTelemetry()
+          : RoslynCpgStructureViewCacheTelemetry.CreateDefault();
     }
 
     /// <summary>
@@ -105,22 +109,29 @@ public sealed class RoslynCpgStructureViewBuilder
     private static IReadOnlyList<RoslynCpgNode> ResolveGraphNodesInside(GraphCache graphCache, SyntaxNode fragment)
     {
         var filePath = fragment.SyntaxTree.FilePath ?? string.Empty;
-        if (!graphCache.NodesByFilePath.TryGetValue(filePath, out var nodes))
+        if (string.IsNullOrEmpty(filePath))
         {
-            return Array.Empty<RoslynCpgNode>();
+            return graphCache.Graph.Nodes
+                .Where(node =>
+                    string.IsNullOrEmpty(node.FilePath) &&
+                    node.SpanStart >= fragment.SpanStart &&
+                    node.SpanEnd <= fragment.Span.End)
+                .OrderBy(node => node.SpanStart ?? int.MaxValue)
+                .ThenBy(node => node.SpanEnd ?? int.MaxValue)
+                .ThenBy(node => node.NodeId)
+                .ThenBy(node => node.FullName, StringComparer.Ordinal)
+                .ToList();
         }
 
-        return nodes
-            .Where(node =>
-                node.SpanStart >= fragment.SpanStart &&
-                node.SpanEnd <= fragment.Span.End)
+        return graphCache.Graph
+            .GetNodesInFileSpan(filePath, fragment.SpanStart, fragment.Span.End)
             .ToList();
     }
 
     /// <summary>
     /// 用主图的全边无向最短路径连接各个离散片段节点集合。
     /// </summary>
-    private static void AddShortestConnectingPaths(GraphCache graphCache, IReadOnlyList<IReadOnlyList<RoslynCpgNode>> fragmentNodeSets, ISet<string> selectedNodeIds, ISet<RoslynCpgEdge> selectedEdges)
+    private static void AddShortestConnectingPaths(GraphCache graphCache, IReadOnlyList<IReadOnlyList<RoslynCpgNode>> fragmentNodeSets, ISet<NodeId> selectedNodeIds, ISet<RoslynCpgEdge> selectedEdges)
     {
         if (fragmentNodeSets.Count < 2)
         {
@@ -132,9 +143,9 @@ public sealed class RoslynCpgStructureViewBuilder
             for (var rightIndex = leftIndex + 1; rightIndex < fragmentNodeSets.Count; rightIndex += 1)
             {
                 var path = FindShortestPath(
-                    graphCache.UndirectedAdjacency,
-                    fragmentNodeSets[leftIndex].Select(node => node.Id).ToHashSet(StringComparer.Ordinal),
-                    fragmentNodeSets[rightIndex].Select(node => node.Id).ToHashSet(StringComparer.Ordinal));
+                    graphCache,
+                    fragmentNodeSets[leftIndex].Select(node => node.NodeId).OfType<NodeId>().ToHashSet(),
+                    fragmentNodeSets[rightIndex].Select(node => node.NodeId).OfType<NodeId>().ToHashSet());
                 if (path is null)
                 {
                     continue;
@@ -142,8 +153,8 @@ public sealed class RoslynCpgStructureViewBuilder
 
                 foreach (var edge in path)
                 {
-                    selectedNodeIds.Add(edge.SourceId);
-                    selectedNodeIds.Add(edge.TargetId);
+                    selectedNodeIds.Add(edge.SourceNodeId);
+                    selectedNodeIds.Add(edge.TargetNodeId);
                     selectedEdges.Add(edge);
                 }
             }
@@ -165,24 +176,9 @@ public sealed class RoslynCpgStructureViewBuilder
     }
 
     /// <summary>
-    /// 将主图所有边转换成无向邻接表，最短链搜索不区分边方向。
-    /// </summary>
-    private static Dictionary<string, List<(string NeighborId, RoslynCpgEdge Edge)>> BuildUndirectedAdjacency(IEnumerable<RoslynCpgEdge> edges)
-    {
-        var adjacency = new Dictionary<string, List<(string NeighborId, RoslynCpgEdge Edge)>>(StringComparer.Ordinal);
-        foreach (var edge in edges)
-        {
-            AddNeighbor(adjacency, edge.SourceId, edge.TargetId, edge);
-            AddNeighbor(adjacency, edge.TargetId, edge.SourceId, edge);
-        }
-
-        return adjacency;
-    }
-
-    /// <summary>
     /// 在无向图上寻找从任一源节点到任一目标节点的最短边链。
     /// </summary>
-    private static IReadOnlyList<RoslynCpgEdge>? FindShortestPath(IReadOnlyDictionary<string, List<(string NeighborId, RoslynCpgEdge Edge)>> adjacency, ISet<string> sourceNodeIds, ISet<string> targetNodeIds)
+    private static IReadOnlyList<RoslynCpgEdge>? FindShortestPath(GraphCache graphCache, ISet<NodeId> sourceNodeIds, ISet<NodeId> targetNodeIds)
     {
         if (sourceNodeIds.Count == 0 || targetNodeIds.Count == 0)
         {
@@ -194,18 +190,13 @@ public sealed class RoslynCpgStructureViewBuilder
             return Array.Empty<RoslynCpgEdge>();
         }
 
-        var queue = new Queue<string>(sourceNodeIds);
-        var visited = sourceNodeIds.ToHashSet(StringComparer.Ordinal);
-        var previous = new Dictionary<string, (string PreviousId, RoslynCpgEdge Edge)>(StringComparer.Ordinal);
+        var queue = new Queue<NodeId>(sourceNodeIds);
+        var visited = sourceNodeIds.ToHashSet();
+        var previous = new Dictionary<NodeId, (NodeId PreviousId, RoslynCpgEdge Edge)>();
         while (queue.Count > 0)
         {
             var currentId = queue.Dequeue();
-            if (!adjacency.TryGetValue(currentId, out var neighbors))
-            {
-                continue;
-            }
-
-            foreach (var (neighborId, edge) in neighbors)
+            foreach (var (neighborId, edge) in graphCache.GetUndirectedNeighbors(currentId))
             {
                 if (!visited.Add(neighborId))
                 {
@@ -228,7 +219,7 @@ public sealed class RoslynCpgStructureViewBuilder
     /// <summary>
     /// 从 BFS 前驱表还原最短路径上的原始主图边。
     /// </summary>
-    private static IReadOnlyList<RoslynCpgEdge> ReconstructPath(IReadOnlyDictionary<string, (string PreviousId, RoslynCpgEdge Edge)> previous, string targetNodeId)
+    private static IReadOnlyList<RoslynCpgEdge> ReconstructPath(IReadOnlyDictionary<NodeId, (NodeId PreviousId, RoslynCpgEdge Edge)> previous, NodeId targetNodeId)
     {
         var path = new List<RoslynCpgEdge>();
         var currentId = targetNodeId;
@@ -243,17 +234,20 @@ public sealed class RoslynCpgStructureViewBuilder
     }
 
     /// <summary>
-    /// 向无向邻接表追加一个方向的邻接项。
+    /// 将当前选中节点集合之间的现有主图边加入视图。
     /// </summary>
-    private static void AddNeighbor(IDictionary<string, List<(string NeighborId, RoslynCpgEdge Edge)>> adjacency, string sourceId, string targetId, RoslynCpgEdge edge)
+    private static void AddContainedEdges(GraphCache graphCache, IReadOnlySet<NodeId> selectedNodeIds, ISet<RoslynCpgEdge> selectedEdges)
     {
-        if (!adjacency.TryGetValue(sourceId, out var neighbors))
+        foreach (var nodeId in selectedNodeIds)
         {
-            neighbors = new List<(string NeighborId, RoslynCpgEdge Edge)>();
-            adjacency[sourceId] = neighbors;
+            foreach (var edge in graphCache.Graph.GetOutgoingEdges(nodeId))
+            {
+                if (selectedNodeIds.Contains(edge.TargetNodeId))
+                {
+                    selectedEdges.Add(edge);
+                }
+            }
         }
-
-        neighbors.Add((targetId, edge));
     }
 
     /// <summary>
@@ -266,7 +260,7 @@ public sealed class RoslynCpgStructureViewBuilder
                 node.SpanStart == firstFragment.SpanStart &&
                 node.SpanEnd == firstFragment.Span.End)
             .OrderBy(node => node.Kind == RoslynCpgNodeKind.SyntaxNode ? 0 : 1)
-            .ThenBy(node => node.Id, StringComparer.Ordinal)
+            .ThenBy(node => node.NodeId)
             .FirstOrDefault()
             ?? nodes.First();
     }
@@ -274,15 +268,62 @@ public sealed class RoslynCpgStructureViewBuilder
     private sealed class AnalysisRunCache
     {
         private readonly ConcurrentDictionary<string, RoslynCpgStructureView> _views = new(StringComparer.Ordinal);
+        private long _hitCount;
+        private long _missCount;
+        private int _maxCachedViewCount;
 
         public bool TryGetView(string cacheKey, out RoslynCpgStructureView view)
         {
-            return _views.TryGetValue(cacheKey, out view!);
+            var hit = _views.TryGetValue(cacheKey, out view!);
+            if (hit)
+            {
+                Interlocked.Increment(ref _hitCount);
+            }
+            else
+            {
+                Interlocked.Increment(ref _missCount);
+            }
+
+            return hit;
         }
 
         public void RememberView(string cacheKey, RoslynCpgStructureView view)
         {
-            _views.TryAdd(cacheKey, view);
+            if (_views.TryAdd(cacheKey, view))
+            {
+                UpdateMaxCachedViewCount(_views.Count);
+            }
+        }
+
+        public RoslynCpgStructureViewCacheTelemetry CreateTelemetry()
+        {
+            var hitCount = Volatile.Read(ref _hitCount);
+            var missCount = Volatile.Read(ref _missCount);
+            var requestCount = hitCount + missCount;
+            return new RoslynCpgStructureViewCacheTelemetry(
+              RequestCount: requestCount,
+              CacheHitCount: hitCount,
+              CacheMissCount: missCount,
+              UniqueFragmentSetCount: _views.Count,
+              MaxCachedViewCount: Volatile.Read(ref _maxCachedViewCount),
+              CacheHitRate: requestCount == 0 ? 0 : (double)hitCount / requestCount);
+        }
+
+        private void UpdateMaxCachedViewCount(int currentCount)
+        {
+            while (true)
+            {
+                var observed = Volatile.Read(ref _maxCachedViewCount);
+                if (currentCount <= observed)
+                {
+                    return;
+                }
+
+                if (Interlocked.CompareExchange(ref _maxCachedViewCount, currentCount, observed) == observed)
+                {
+                    return;
+                }
+            }
         }
     }
 
@@ -290,24 +331,42 @@ public sealed class RoslynCpgStructureViewBuilder
     {
         public GraphCache(RoslynCpgGraph graph)
         {
-            Edges = graph.Edges.ToList();
-            NodesByFilePath = graph.Nodes
-                .GroupBy(node => node.FilePath ?? string.Empty, StringComparer.Ordinal)
-                .ToDictionary(
-                    group => group.Key,
-                    group => (IReadOnlyList<RoslynCpgNode>)group
-                        .OrderBy(node => node.SpanStart ?? int.MaxValue)
-                        .ThenBy(node => node.SpanEnd ?? int.MaxValue)
-                        .ThenBy(node => node.Id, StringComparer.Ordinal)
-                        .ToList(),
-                    StringComparer.Ordinal);
-            UndirectedAdjacency = BuildUndirectedAdjacency(Edges);
+            graph.FreezeQueryIndex();
+            Graph = graph;
+            _undirectedNeighborsByNodeId = new ConcurrentDictionary<NodeId, IReadOnlyList<(NodeId NeighborId, RoslynCpgEdge Edge)>>();
         }
 
-        public IReadOnlyList<RoslynCpgEdge> Edges { get; }
+        private readonly ConcurrentDictionary<NodeId, IReadOnlyList<(NodeId NeighborId, RoslynCpgEdge Edge)>> _undirectedNeighborsByNodeId;
 
-        public IReadOnlyDictionary<string, IReadOnlyList<RoslynCpgNode>> NodesByFilePath { get; }
+        public RoslynCpgGraph Graph { get; }
 
-        public IReadOnlyDictionary<string, List<(string NeighborId, RoslynCpgEdge Edge)>> UndirectedAdjacency { get; }
+        public IReadOnlyList<(NodeId NeighborId, RoslynCpgEdge Edge)> GetUndirectedNeighbors(NodeId nodeId)
+        {
+            return _undirectedNeighborsByNodeId.GetOrAdd(nodeId, BuildUndirectedNeighbors);
+        }
+
+        private IReadOnlyList<(NodeId NeighborId, RoslynCpgEdge Edge)> BuildUndirectedNeighbors(NodeId nodeId)
+        {
+            var neighbors = new List<(NodeId NeighborId, RoslynCpgEdge Edge)>();
+            neighbors.AddRange(Graph.GetOutgoingEdges(nodeId)
+                .Select(edge => (edge.TargetNodeId, edge)));
+            neighbors.AddRange(Graph.GetIncomingEdges(nodeId)
+                .Select(edge => (edge.SourceNodeId, edge)));
+            return neighbors;
+        }
+    }
+}
+
+public sealed record RoslynCpgStructureViewCacheTelemetry(
+  long RequestCount,
+  long CacheHitCount,
+  long CacheMissCount,
+  int UniqueFragmentSetCount,
+  int MaxCachedViewCount,
+  double CacheHitRate)
+{
+    public static RoslynCpgStructureViewCacheTelemetry CreateDefault()
+    {
+        return new RoslynCpgStructureViewCacheTelemetry(0, 0, 0, 0, 0, 0);
     }
 }

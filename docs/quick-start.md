@@ -124,6 +124,17 @@ foreach ($dop in 8, 12, 14, 16) {
 
 记录字段包括 `maxDegreeOfParallelism`、`elapsedMs`、`allocatedBytes`、Gen0/1/2 次数、托管堆、工作集和 ThreadPool 状态。每行对应一个时间点，不能把不同 DOP 的累计值直接相加。
 
+需要定位某个文件完成 CPG 分析后的内存状态时，传入 `--per-file-memory-diagnostics-log`。它对每个正常完成的文件追加一条 JSONL，包含该文件的分配增量、托管堆/提交量/碎片、工作集、私有内存、ThreadPool 状态，以及 CPG 节点、边、Syntax、DataFlow 和分区缓冲计数：
+
+```powershell
+dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- `
+  'D:\source\project' `
+  --max-degree-of-parallelism 1 `
+  --per-file-memory-diagnostics-log .\Build\per-file-memory.jsonl `
+  --skip-rewrite `
+  --no-diff
+```
+
 ### 并行度边界
 
 `--max-degree-of-parallelism N` 是当前唯一的运行时 DOP 选项。省略或无法解析时取 `Environment.ProcessorCount`；可解析但小于 `1` 的值按 `1` 处理。

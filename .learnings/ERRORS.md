@@ -25,3 +25,27 @@ RedirectStandardOutput and RedirectStandardError are same. Give different inputs
 - Related Files: Build/full-regression-20260715.log
 
 ---
+
+## [ERR-20260715-002] apply_patch empty move
+
+**Logged**: 2026-07-15T18:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: docs
+
+### Summary
+`apply_patch` rejects a move-only update with no content hunk.
+
+### Error
+```
+apply_patch verification failed: invalid hunk ... is empty
+```
+
+### Resolution
+- Rename through an `apply_patch` move that also updates the archived file heading.
+
+### Metadata
+- Reproducible: yes
+- Related Files: progress.md, progressinfo
+
+---

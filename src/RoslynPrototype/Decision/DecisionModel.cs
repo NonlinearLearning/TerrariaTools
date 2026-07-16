@@ -104,7 +104,7 @@ public sealed record DecisionUnit
     /// <summary>
     /// 从决策片段节点回到真实 Roslyn 语法节点的绑定表。
     /// </summary>
-    public IReadOnlyDictionary<string, SyntaxNode> SyntaxBindings { get; init; }
+    public IReadOnlyDictionary<NodeId, SyntaxNode> SyntaxBindings { get; init; }
 
     /// <summary>
     /// 显式声明的冲突域键；为空时由引擎按锚点结构推导。
@@ -123,7 +123,7 @@ public sealed record DecisionUnit
 
     public string? GroupKey { get; init; }
 
-    public DecisionUnit(string ruleId, DecisionActionKind action, RoslynCpgNode unitNode, IReadOnlyList<RoslynCpgNode> fragments, IReadOnlyList<RoslynCpgEdge> relations, IReadOnlyDictionary<string, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "", string? groupKey = null)
+    public DecisionUnit(string ruleId, DecisionActionKind action, RoslynCpgNode unitNode, IReadOnlyList<RoslynCpgNode> fragments, IReadOnlyList<RoslynCpgEdge> relations, IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "", string? groupKey = null)
     {
         RuleId = ruleId;
         Action = action;
@@ -190,13 +190,13 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
 
     private static SyntaxNode ResolveBoundSyntaxNode(DecisionUnit unit, RoslynCpgNode fragment)
     {
-        if (unit.SyntaxBindings.TryGetValue(fragment.Id, out var node))
+        if (fragment.NodeId.HasValue && unit.SyntaxBindings.TryGetValue(fragment.NodeId.Value, out var node))
         {
             return node;
         }
 
         throw new InvalidOperationException(
-          $"Decision fragment '{fragment.Id}' does not have a bound syntax node.");
+          $"Decision fragment '{DecisionCpgFactory.BuildNodeKey(fragment)}' does not have a bound syntax node.");
     }
 
     private static IEnumerable<DecisionUnit> MergeBySyntaxCoverage(IReadOnlyList<DecisionUnit> units)
@@ -246,19 +246,25 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
     {
         var rootAnchor = coveringRoot.Fragments[0];
         var childAnchor = child.Fragments[0];
-        var inheritedRelation = DecisionCpgFactory.CreateRelation("inherits", rootAnchor, childAnchor);
+        var inheritedRelation = DecisionCpgFactory.CreateRelation(
+          RoslynCpgDecisionRelationKind.Inherits,
+          rootAnchor,
+          childAnchor);
         var fragments = coveringRoot.Fragments
-          .Concat(child.Fragments.Where(fragment => !coveringRoot.Fragments.Any(existing => existing.Id == fragment.Id)))
+          .Concat(child.Fragments.Where(fragment =>
+            !coveringRoot.Fragments.Any(existing => existing.NodeId == fragment.NodeId)))
           .ToList();
         var relations = coveringRoot.Relations
           .Concat(child.Relations)
           .Append(inheritedRelation)
-          .GroupBy(edge => $"{edge.SourceId}|{edge.TargetId}|{edge.Kind}|{edge.Label}", StringComparer.Ordinal)
+          .GroupBy(
+            edge => $"{edge.SourceNodeId}|{edge.TargetNodeId}|{edge.Kind}|{edge.StructuredLabel?.StableKey}",
+            StringComparer.Ordinal)
           .Select(group => group.First())
           .ToList();
         var syntaxBindings = coveringRoot.SyntaxBindings
           .Concat(child.SyntaxBindings.Where(pair => !coveringRoot.SyntaxBindings.ContainsKey(pair.Key)))
-          .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+          .ToDictionary(pair => pair.Key, pair => pair.Value);
         var reason = string.IsNullOrWhiteSpace(child.Reason)
           ? coveringRoot.Reason
           : string.IsNullOrWhiteSpace(coveringRoot.Reason)
@@ -280,7 +286,8 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
 
     private static SyntaxNode? TryResolveAnchorNode(DecisionUnit unit)
     {
-        return unit.SyntaxBindings.TryGetValue(unit.Fragments[0].Id, out var node)
+        return unit.Fragments[0].NodeId.HasValue &&
+          unit.SyntaxBindings.TryGetValue(unit.Fragments[0].NodeId.Value, out var node)
           ? node
           : null;
     }
@@ -523,7 +530,8 @@ public sealed class RuleDecisionEngine
 
         // 约定第一个片段始终是决策锚点，冲突域也从它开始向外推导。
         var anchorFragment = unit.Fragments[0];
-        if (!unit.SyntaxBindings.TryGetValue(anchorFragment.Id, out var anchorNode))
+        if (!anchorFragment.NodeId.HasValue ||
+            !unit.SyntaxBindings.TryGetValue(anchorFragment.NodeId.Value, out var anchorNode))
         {
             return DecisionCpgFactory.BuildNodeKey(anchorFragment);
         }
@@ -569,7 +577,8 @@ public sealed class RuleDecisionEngine
 
     private static SyntaxNode? TryResolveAnchorNode(DecisionUnit unit)
     {
-        return unit.SyntaxBindings.TryGetValue(unit.Fragments[0].Id, out var node)
+        return unit.Fragments[0].NodeId.HasValue &&
+          unit.SyntaxBindings.TryGetValue(unit.Fragments[0].NodeId.Value, out var node)
           ? node
           : null;
     }
@@ -592,16 +601,18 @@ public static class DecisionCpgFactory
     public static RoslynCpgNode CreateFragment(string fragmentId, SyntaxNode node, string role, DecisionActionKind? localAction = null)
     {
         return new RoslynCpgNode(
-          Id: fragmentId,
           Kind: RoslynCpgNodeKind.DecisionFragment,
           DisplayKind: node.Kind().ToString(),
           Name: role,
           FullName: BuildNodeKey(node),
-          DispatchKind: localAction?.ToString(),
+          DispatchKind: localAction is null
+            ? null
+            : RoslynCpgDispatchKind.ForDecisionAction(MapDecisionActionKind(localAction.Value)),
           FilePath: node.SyntaxTree.FilePath,
           SpanStart: node.Span.Start,
           SpanEnd: node.Span.End,
-          Text: node.ToString());
+          Text: node.ToString(),
+          NodeId: CreateDecisionNodeId(fragmentId));
     }
 
     /// <summary>
@@ -616,8 +627,8 @@ public static class DecisionCpgFactory
     /// <returns>对应的决策单元 CPG 节点。</returns>
     public static RoslynCpgNode CreateUnit(string ruleId, DecisionActionKind action, RoslynCpgNode anchorFragment, string reason, string? conflictKey = null, string? mergeKey = null)
     {
+        var unitIdentity = $"decision-unit:{ruleId}:{anchorFragment.NodeId}:{action}";
         return new RoslynCpgNode(
-          Id: $"decision-unit:{ruleId}:{anchorFragment.Id}:{action}",
           Kind: RoslynCpgNodeKind.DecisionUnit,
           DisplayKind: nameof(RoslynCpgNodeKind.DecisionUnit),
           Name: ruleId,
@@ -626,7 +637,8 @@ public static class DecisionCpgFactory
           FilePath: anchorFragment.FilePath,
           SpanStart: anchorFragment.SpanStart,
           SpanEnd: anchorFragment.SpanEnd,
-          Text: reason);
+          Text: reason,
+          NodeId: CreateDecisionNodeId(unitIdentity));
     }
 
     /// <summary>
@@ -637,23 +649,26 @@ public static class DecisionCpgFactory
     /// <returns>表示包含关系的决策边。</returns>
     public static RoslynCpgEdge CreateContainment(RoslynCpgNode unitNode, RoslynCpgNode fragmentNode)
     {
-        return new RoslynCpgEdge(unitNode.Id, fragmentNode.Id, RoslynCpgEdgeKind.DecisionContains);
+        return new RoslynCpgEdge(unitNode.NodeId!.Value, fragmentNode.NodeId!.Value, RoslynCpgEdgeKind.DecisionContains);
     }
 
     /// <summary>
     /// 创建两个决策片段之间的语义关系边。
     /// </summary>
-    /// <param name="kind">关系标签，例如 derived-from 或 reduced-to。</param>
+    /// <param name="kind">关系标签类型，例如 DerivedFrom 或 ReducedTo。</param>
     /// <param name="fromFragment">关系起点片段。</param>
     /// <param name="toFragment">关系终点片段。</param>
     /// <returns>表示片段语义关系的决策边。</returns>
-    public static RoslynCpgEdge CreateRelation(string kind, RoslynCpgNode fromFragment, RoslynCpgNode toFragment)
+    public static RoslynCpgEdge CreateRelation(
+      RoslynCpgDecisionRelationKind kind,
+      RoslynCpgNode fromFragment,
+      RoslynCpgNode toFragment)
     {
         return new RoslynCpgEdge(
-          fromFragment.Id,
-          toFragment.Id,
+          fromFragment.NodeId!.Value,
+          toFragment.NodeId!.Value,
           RoslynCpgEdgeKind.DecisionRelation,
-          kind);
+          RoslynCpgEdgeLabel.ForDecisionRelation(kind));
     }
 
     /// <summary>
@@ -661,9 +676,26 @@ public static class DecisionCpgFactory
     /// </summary>
     /// <param name="bindings">片段节点与语法节点的绑定对集合。</param>
     /// <returns>以片段节点 id 为键的语法绑定表。</returns>
-    public static Dictionary<string, SyntaxNode> CreateSyntaxBindings(params (RoslynCpgNode Fragment, SyntaxNode Node)[] bindings)
+    public static Dictionary<NodeId, SyntaxNode> CreateSyntaxBindings(params (RoslynCpgNode Fragment, SyntaxNode Node)[] bindings)
     {
-        return bindings.ToDictionary(binding => binding.Fragment.Id, binding => binding.Node, StringComparer.Ordinal);
+        return bindings.ToDictionary(binding => binding.Fragment.NodeId!.Value, binding => binding.Node);
+    }
+
+    private static NodeId CreateDecisionNodeId(string value)
+    {
+        unchecked
+        {
+            const uint offset = 2166136261;
+            const uint prime = 16777619;
+            var hash = offset;
+            foreach (var character in value)
+            {
+                hash ^= character;
+                hash *= prime;
+            }
+
+            return new NodeId(hash == 0 ? 1u : hash);
+        }
     }
 
     /// <summary>
@@ -699,5 +731,16 @@ public static class DecisionCpgFactory
     public static string GetFragmentRole(RoslynCpgNode fragment)
     {
         return fragment.Name ?? string.Empty;
+    }
+
+    private static RoslynCpgDecisionActionKind MapDecisionActionKind(DecisionActionKind action)
+    {
+        return action switch
+        {
+            DecisionActionKind.Skip => RoslynCpgDecisionActionKind.Skip,
+            DecisionActionKind.Delete => RoslynCpgDecisionActionKind.Delete,
+            DecisionActionKind.Replace => RoslynCpgDecisionActionKind.Replace,
+            _ => throw new ArgumentOutOfRangeException(nameof(action)),
+        };
     }
 }

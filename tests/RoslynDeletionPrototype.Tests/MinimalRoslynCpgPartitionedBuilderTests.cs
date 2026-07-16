@@ -48,14 +48,29 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
       .ToArray();
     Assert.NotEmpty(bridgeEdges);
     Assert.All(bridgeEdges, edge => Assert.Contains(
-      edge.Label,
+      Assert.IsType<RoslynCpgInterproceduralBridgeKind>(
+        edge.StructuredLabel!.InterproceduralBridgeKind),
       new[]
       {
-        nameof(RoslynCpgInterproceduralBridgeKind.ArgumentToParameter),
-        nameof(RoslynCpgInterproceduralBridgeKind.ReturnToMethodReturn),
-        nameof(RoslynCpgInterproceduralBridgeKind.MethodReturnToCallResult),
+        RoslynCpgInterproceduralBridgeKind.ArgumentToParameter,
+        RoslynCpgInterproceduralBridgeKind.ReturnToMethodReturn,
+        RoslynCpgInterproceduralBridgeKind.MethodReturnToCallResult,
       }));
-    Assert.All(bridgeEdges, edge => Assert.StartsWith("callsite:", edge.ContextId));
+    Assert.All(
+      bridgeEdges,
+      edge => Assert.StartsWith(
+        "callsite:",
+        Assert.IsType<RoslynCpgContextId>(edge.ContextId).Value,
+        StringComparison.Ordinal));
+    Assert.All(bridgeEdges, edge =>
+    {
+      var callSiteContext = Assert.IsType<RoslynCpgCallSiteContext>(edge.CallSiteContext);
+      Assert.Equal(callSiteContext.ToContextId(), edge.ContextId);
+      Assert.False(string.IsNullOrWhiteSpace(callSiteContext.FilePath));
+      Assert.True(callSiteContext.SpanStart >= 0);
+      Assert.True(callSiteContext.SpanEnd >= callSiteContext.SpanStart);
+      Assert.False(string.IsNullOrWhiteSpace(callSiteContext.DisplayName));
+    });
     Assert.Equal(bridgeEdges.Length, builder.LastBuildTelemetry.InterproceduralDataFlowTelemetry!.BridgeEdgeCount);
     Assert.Contains(RoslynCpgCapability.InterproceduralDataFlow, builder.LastBuildTelemetry.ResolvedCapabilities!);
     Assert.Contains(RoslynCpgCapability.QueryIndex, builder.LastBuildTelemetry.ResolvedCapabilities!);
@@ -120,16 +135,16 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
 
     var graph = new RoslynCpgBuilder(options).BuildFromSource(source, "control-dependence.cs");
 
-    var condition = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpBinary && node.Text == "value > 0");
-    var trueBranchAssignment = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpAssignment && node.Text == "value += 1");
-    var falseBranchAssignment = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpAssignment && node.Text == "value -= 1");
+    var condition = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpBinary && graph.GetDisplayText(node) == "value > 0");
+    var trueBranchAssignment = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpAssignment && graph.GetDisplayText(node) == "value += 1");
+    var falseBranchAssignment = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.OpAssignment && graph.GetDisplayText(node) == "value -= 1");
     var entry = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.MethodEntry && node.Name == "Adjust:entry");
     var exit = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.MethodExit && node.Name == "Adjust:exit");
 
-    Assert.Contains(graph.Controls(condition.Id), edge => edge.TargetId == trueBranchAssignment.Id);
-    Assert.Contains(graph.Controls(condition.Id), edge => edge.TargetId == falseBranchAssignment.Id);
-    Assert.Contains(graph.Dominates(entry.Id), edge => edge.TargetId == condition.Id);
-    Assert.Contains(graph.GetEdges(RoslynCpgEdgeKind.PostDominates), edge => edge.TargetId == exit.Id);
+    Assert.Contains(graph.Controls(RequireNodeId(condition)), edge => edge.TargetNodeId == RequireNodeId(trueBranchAssignment));
+    Assert.Contains(graph.Controls(RequireNodeId(condition)), edge => edge.TargetNodeId == RequireNodeId(falseBranchAssignment));
+    Assert.Contains(graph.Dominates(RequireNodeId(entry)), edge => edge.TargetNodeId == RequireNodeId(condition));
+    Assert.Contains(graph.GetEdges(RoslynCpgEdgeKind.PostDominates), edge => edge.TargetNodeId == RequireNodeId(exit));
   }
 
   [Fact]
@@ -375,6 +390,63 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
   }
 
   [Fact]
+  public void BuildFromSource_PartitionedDataFlow_PreservesComplexMethodLocalFlowShape()
+  {
+    const string source = """
+      namespace Demo;
+
+      public sealed class FlowShapeSample
+      {
+        public int Run(int seed)
+        {
+          var current = seed;
+          if (seed > 0)
+          {
+            current = seed + 1;
+          }
+
+          while (current < 3)
+          {
+            current = current + 1;
+          }
+
+          return Echo(current);
+        }
+
+        private static int Echo(int value)
+        {
+          return value;
+        }
+      }
+      """;
+    var graph = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(4))
+      .BuildFromSource(source, "dataflow-complex-shape.cs");
+
+    Assert.Equal(
+      new[]
+      {
+        "MethodParameter:seed->OpConditional:if (seed > 0)\n    {\n      current = seed + 1;\n    }",
+        "MethodParameter:seed->Operation:var current = seed;",
+        "MethodParameter:value->OpReturn:return value;",
+        "MethodReturn:Echo:return->CallSite:Echo",
+        "MethodReturn:Echo:return->MethodExit:Echo:exit",
+        "MethodReturn:Run:return->MethodExit:Run:exit",
+        "OpBinary:current + 1->OpAssignment:current = current + 1",
+        "OpBinary:seed + 1->OpAssignment:current = seed + 1",
+        "OpInvocation:Echo(current)->MethodReturn:Run:return",
+        "OpInvocation:Echo(current)->OpReturn:return Echo(current);",
+        "OpLocalReference:current->MethodParameter:value",
+        "OpLocalReference:current->OpInvocation:Echo(current)",
+        "OpParameterReference:seed->Operation:current = seed",
+        "OpParameterReference:value->MethodReturn:Echo:return",
+        "OpParameterReference:value->OpReturn:return value;",
+        "OpReturn:return Echo(current);->MethodExit:Run:exit",
+        "OpReturn:return value;->MethodExit:Echo:exit",
+      },
+      DescribeDataFlowEdges(graph));
+  }
+
+  [Fact]
   public void BuildFromSource_LocalDataFlowSample_EmitsExpectedSyntaxSymbolTypeAndOperationRelations()
   {
     const string source =
@@ -401,26 +473,64 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
     var seedReferences = graph.Nodes.Where(node =>
       node.Kind == RoslynCpgNodeKind.SyntaxNode &&
       node.DisplayKind == "IdentifierName" &&
-      node.Text == "seed").ToArray();
+      graph.GetDisplayText(node) == "seed").ToArray();
     var valueReferences = graph.Nodes.Where(node =>
       node.Kind == RoslynCpgNodeKind.SyntaxNode &&
       node.DisplayKind == "IdentifierName" &&
-      node.Text == "value").ToArray();
+      graph.GetDisplayText(node) == "value").ToArray();
 
     Assert.Contains(graph.Edges, edge =>
-      edge.SourceId == methodNode.Id && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
+      edge.SourceNodeId == RequireNodeId(methodNode) && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
     Assert.Contains(graph.Edges, edge =>
-      edge.SourceId == parameterNode.Id && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
+      edge.SourceNodeId == RequireNodeId(parameterNode) && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
     Assert.Contains(graph.Edges, edge =>
-      edge.SourceId == localNode.Id && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
+      edge.SourceNodeId == RequireNodeId(localNode) && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol);
     Assert.All(seedReferences, node => Assert.Contains(graph.Edges, edge =>
-      edge.SourceId == node.Id && edge.Kind == RoslynCpgEdgeKind.ReferencesSymbol));
+      edge.SourceNodeId == RequireNodeId(node) && edge.Kind == RoslynCpgEdgeKind.ReferencesSymbol));
     Assert.All(valueReferences, node => Assert.Contains(graph.Edges, edge =>
-      edge.SourceId == node.Id && edge.Kind == RoslynCpgEdgeKind.ReferencesSymbol));
+      edge.SourceNodeId == RequireNodeId(node) && edge.Kind == RoslynCpgEdgeKind.ReferencesSymbol));
     Assert.Contains(valueReferences, node => graph.Edges.Any(edge =>
-      edge.SourceId == node.Id && edge.Kind == RoslynCpgEdgeKind.HasType));
+      edge.SourceNodeId == RequireNodeId(node) && edge.Kind == RoslynCpgEdgeKind.HasType));
     Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.SyntaxHasOperation);
     Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.OpHasSyntax);
+  }
+
+  [Fact]
+  public void BuildFromSource_PartitionedDataFlow_RepeatedReferencesKeepUniqueDeterministicEdges()
+  {
+    const string source = """
+      namespace Demo;
+
+      public sealed class DuplicateFlowSample
+      {
+        public int Run(int seed)
+        {
+          var value = seed + 1;
+          return value + value + value;
+        }
+      }
+      """;
+    var firstGraph = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(1))
+      .BuildFromSource(source, "duplicate-flow-a.cs");
+    var secondGraph = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(16))
+      .BuildFromSource(source, "duplicate-flow-b.cs");
+
+    var firstEdges = DescribeDataFlowEdges(firstGraph);
+    var secondEdges = DescribeDataFlowEdges(secondGraph);
+
+    Assert.Equal(firstEdges, secondEdges);
+    Assert.Equal(firstEdges.Length, firstEdges.Distinct(StringComparer.Ordinal).Count());
+    Assert.Equal(
+      new[]
+      {
+        "MethodParameter:seed->Operation:var value = seed + 1;",
+        "MethodReturn:Run:return->MethodExit:Run:exit",
+        "OpBinary:seed + 1->Operation:value = seed + 1",
+        "OpBinary:value + value + value->MethodReturn:Run:return",
+        "OpBinary:value + value + value->OpReturn:return value + value + value;",
+        "OpReturn:return value + value + value;->MethodExit:Run:exit",
+      },
+      firstEdges);
   }
 
   [Fact]
@@ -508,7 +618,7 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
         node.Kind == RoslynCpgNodeKind.SyntaxNode && node.DisplayKind == declarationKind).ToArray();
       Assert.True(declarationNodes.Length > 0, $"Missing {declarationKind} syntax node.");
       Assert.All(declarationNodes, node => Assert.Contains(graph.Edges, edge =>
-        edge.SourceId == node.Id && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol));
+        edge.SourceNodeId == RequireNodeId(node) && edge.Kind == RoslynCpgEdgeKind.DeclaresSymbol));
     }
 
     var methodLikeDeclarationKinds = new[]
@@ -529,9 +639,9 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
         node.Kind == RoslynCpgNodeKind.SyntaxNode && node.DisplayKind == declarationKind))
       {
         Assert.Contains(graph.Edges, edge =>
-          edge.SourceId == declarationNode.Id &&
+          edge.SourceNodeId == RequireNodeId(declarationNode) &&
           edge.Kind == RoslynCpgEdgeKind.SyntaxChild &&
-          graph.Nodes.Any(node => node.Id == edge.TargetId && node.Kind == RoslynCpgNodeKind.Method));
+          graph.Nodes.Any(node => node.NodeId == edge.TargetNodeId && node.Kind == RoslynCpgNodeKind.Method));
       }
     }
   }
@@ -608,12 +718,40 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
 
     _ = builder.BuildFromSource(source, filePath);
 
+    Assert.True(builder.LastBuildTelemetry.OperationBuildElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.SyntaxBuildElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.DataFlowBuildElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeQueryIndexElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.AssignDeterministicNodeIdsElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.CreateAnchorsElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.CreateNodeIdTableElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.RemapNodesElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.RemapEdgesElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.BuildQueryIndexElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.PopulateEdgeIndexBucketsElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.OrderEdgesElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.OrderNodesElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.SnapshotHashElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.BuildAdjacencyElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.BuildKindAdjacencyElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.BuildEdgeKindIndexElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.BuildNodeKindIndexElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.BuildFilePathIndexElapsedMilliseconds >= 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.NodeCount > 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.EdgeCount > 0);
+    Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.DistinctAnchorCount > 0);
     Assert.True(builder.LastBuildTelemetry.SyntaxPassTelemetry.TotalElapsedMilliseconds >= 0);
     Assert.True(builder.LastBuildTelemetry.SyntaxPassTelemetry.SyntaxNodeCount > 0);
     Assert.True(builder.LastBuildTelemetry.SyntaxPassTelemetry.SyntaxTokenCount > 0);
     Assert.True(builder.LastBuildTelemetry.DataFlowPassTelemetry.TotalElapsedMilliseconds >= 0);
     Assert.True(builder.LastBuildTelemetry.DataFlowPassTelemetry.MethodBlockCount > 0);
     Assert.True(builder.LastBuildTelemetry.DataFlowPassTelemetry.OrderedOperationCount > 0);
+    Assert.True(
+      builder.LastBuildTelemetry.SyntaxBuildElapsedMilliseconds >=
+      builder.LastBuildTelemetry.SyntaxPassTelemetry.TotalElapsedMilliseconds);
+    Assert.True(
+      builder.LastBuildTelemetry.DataFlowBuildElapsedMilliseconds >=
+      builder.LastBuildTelemetry.DataFlowPassTelemetry.TotalElapsedMilliseconds);
   }
 
   [Fact]
@@ -1119,31 +1257,80 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
     }
   }
 
+  [Fact]
+  public void BuildFromSource_DispatchKinds_AreStructuredForMethodsAndCallSites()
+  {
+    const string source = """
+      namespace Demo;
+
+      public sealed class DispatchSample
+      {
+        private static int Helper(int value) => value + 1;
+
+        public int Run(int value)
+        {
+          return Helper(value);
+        }
+      }
+      """;
+    var graph = new RoslynCpgBuilder().BuildFromSource(source, "dispatch-structured.cs");
+
+    var methodNode = Assert.Single(graph.Nodes, node =>
+      node.Kind == RoslynCpgNodeKind.Method &&
+      node.Name == "Helper");
+    var callSiteNode = Assert.Single(graph.Nodes, node =>
+      node.Kind == RoslynCpgNodeKind.CallSite &&
+      node.Name == "Helper");
+    var methodDispatch = Assert.IsType<RoslynCpgDispatchKind>(methodNode.DispatchKind);
+    var callSiteDispatch = Assert.IsType<RoslynCpgDispatchKind>(callSiteNode.DispatchKind);
+
+    Assert.Equal(RoslynCpgDispatchCategory.Method, methodDispatch.Category);
+    Assert.Equal(
+      RoslynCpgDispatchFlags.Internal |
+      RoslynCpgDispatchFlags.Static |
+      RoslynCpgDispatchFlags.Definition,
+      methodDispatch.Flags);
+    Assert.Null(methodDispatch.Action);
+    Assert.Equal("internal-static-definition", methodDispatch.ToString());
+
+    Assert.Equal(RoslynCpgDispatchCategory.Method, callSiteDispatch.Category);
+    Assert.Equal(
+      RoslynCpgDispatchFlags.Internal |
+      RoslynCpgDispatchFlags.Static |
+      RoslynCpgDispatchFlags.Dispatch |
+      RoslynCpgDispatchFlags.Exact,
+      callSiteDispatch.Flags);
+    Assert.Null(callSiteDispatch.Action);
+    Assert.Equal("internal-static-exact", callSiteDispatch.ToString());
+  }
+
   private static void AssertGraphsEqual(RoslynCpgGraph expected, RoslynCpgGraph actual)
   {
     Assert.Equal(
       expected.Nodes
-        .OrderBy(node => node.Id, StringComparer.Ordinal)
+        .OrderBy(node => node.NodeId)
+        .ThenBy(node => node.FullName, StringComparer.Ordinal)
         .Select(FormatNode)
         .ToArray(),
       actual.Nodes
-        .OrderBy(node => node.Id, StringComparer.Ordinal)
+        .OrderBy(node => node.NodeId)
+        .ThenBy(node => node.FullName, StringComparer.Ordinal)
         .Select(FormatNode)
         .ToArray());
     Assert.Equal(
       expected.Edges
-        .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
+        .OrderBy(edge => edge.SourceNodeId)
         .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
-        .ThenBy(edge => edge.TargetId, StringComparer.Ordinal)
-        .ThenBy(edge => edge.Label, StringComparer.Ordinal)
-        .Select(edge => $"{edge.SourceId}|{edge.Kind}|{edge.TargetId}|{edge.Label}")
+        .ThenBy(edge => edge.TargetNodeId)
+        .ThenBy(edge => edge.StructuredLabel?.StableKey, StringComparer.Ordinal)
+        .Select(edge => $"{edge.SourceNodeId}|{edge.Kind}|{edge.TargetNodeId}|{edge.StructuredLabel?.StableKey}")
         .ToArray(),
       actual.Edges
-        .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
+        .OrderBy(edge => edge.SourceNodeId)
         .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
-        .ThenBy(edge => edge.TargetId, StringComparer.Ordinal)
-        .ThenBy(edge => edge.Label, StringComparer.Ordinal)
-        .Select(edge => $"{edge.SourceId}|{edge.Kind}|{edge.TargetId}|{edge.Label}")
+        .ThenBy(edge => edge.TargetNodeId)
+        .ThenBy(edge => edge.StructuredLabel?.StableKey, StringComparer.Ordinal)
+        .Select(edge => $"{edge.SourceNodeId}|{edge.Kind}|{edge.TargetNodeId}|{edge.StructuredLabel?.StableKey}")
         .ToArray());
   }
 
@@ -1152,12 +1339,14 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
     Assert.Equal(
       expected.Nodes
         .Where(node => node.Kind == RoslynCpgNodeKind.TypeRef)
-        .OrderBy(node => node.Id, StringComparer.Ordinal)
+        .OrderBy(node => node.NodeId)
+        .ThenBy(node => node.FullName, StringComparer.Ordinal)
         .Select(FormatNode)
         .ToArray(),
       actual.Nodes
         .Where(node => node.Kind == RoslynCpgNodeKind.TypeRef)
-        .OrderBy(node => node.Id, StringComparer.Ordinal)
+        .OrderBy(node => node.NodeId)
+        .ThenBy(node => node.FullName, StringComparer.Ordinal)
         .Select(FormatNode)
         .ToArray());
     Assert.Equal(
@@ -1165,21 +1354,21 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
         .Where(edge => edge.Kind is RoslynCpgEdgeKind.HasType
           or RoslynCpgEdgeKind.RefersToType
           or RoslynCpgEdgeKind.SyntaxChild)
-        .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
+        .OrderBy(edge => edge.SourceNodeId)
         .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
-        .ThenBy(edge => edge.TargetId, StringComparer.Ordinal)
-        .ThenBy(edge => edge.Label, StringComparer.Ordinal)
-        .Select(edge => $"{edge.SourceId}|{edge.Kind}|{edge.TargetId}|{edge.Label}")
+        .ThenBy(edge => edge.TargetNodeId)
+        .ThenBy(edge => edge.StructuredLabel?.StableKey, StringComparer.Ordinal)
+        .Select(edge => $"{edge.SourceNodeId}|{edge.Kind}|{edge.TargetNodeId}|{edge.StructuredLabel?.StableKey}")
         .ToArray(),
       actual.Edges
         .Where(edge => edge.Kind is RoslynCpgEdgeKind.HasType
           or RoslynCpgEdgeKind.RefersToType
           or RoslynCpgEdgeKind.SyntaxChild)
-        .OrderBy(edge => edge.SourceId, StringComparer.Ordinal)
+        .OrderBy(edge => edge.SourceNodeId)
         .ThenBy(edge => edge.Kind.ToString(), StringComparer.Ordinal)
-        .ThenBy(edge => edge.TargetId, StringComparer.Ordinal)
-        .ThenBy(edge => edge.Label, StringComparer.Ordinal)
-        .Select(edge => $"{edge.SourceId}|{edge.Kind}|{edge.TargetId}|{edge.Label}")
+        .ThenBy(edge => edge.TargetNodeId)
+        .ThenBy(edge => edge.StructuredLabel?.StableKey, StringComparer.Ordinal)
+        .Select(edge => $"{edge.SourceNodeId}|{edge.Kind}|{edge.TargetNodeId}|{edge.StructuredLabel?.StableKey}")
         .ToArray());
   }
 
@@ -1226,13 +1415,13 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
   {
     return string.Join(
       "|",
-      node.Id,
+      node.NodeId,
       node.Kind,
       node.DisplayKind,
       node.Name,
       node.FullName,
       node.Signature,
-      node.DispatchKind,
+      node.DispatchKind?.ToString(),
       node.TypeFullName,
       node.FilePath,
       node.SpanStart,
@@ -1241,12 +1430,44 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
       node.Text);
   }
 
+  private static string[] DescribeDataFlowEdges(RoslynCpgGraph graph)
+  {
+    return graph.Edges
+      .Where(edge => edge.Kind == RoslynCpgEdgeKind.DataFlow)
+      .Select(edge => $"{DescribeNode(graph, FindNode(graph, edge.SourceNodeId))}->{DescribeNode(graph, FindNode(graph, edge.TargetNodeId))}")
+      .OrderBy(text => text, StringComparer.Ordinal)
+      .ToArray();
+  }
+
+  private static RoslynCpgNode FindNode(RoslynCpgGraph graph, NodeId nodeId)
+  {
+    return graph.GetNode(nodeId);
+  }
+
+  private static string DescribeNode(RoslynCpgGraph graph, RoslynCpgNode node)
+  {
+    var displayText = graph.GetDisplayText(node).Replace("\r\n", "\n", StringComparison.Ordinal);
+    return node.Kind switch
+    {
+      RoslynCpgNodeKind.MethodParameter => $"MethodParameter:{node.Name}",
+      RoslynCpgNodeKind.MethodReturn => $"MethodReturn:{node.Name}",
+      RoslynCpgNodeKind.MethodExit => $"MethodExit:{node.Name}",
+      RoslynCpgNodeKind.CallSite => $"CallSite:{node.Name}",
+      _ => $"{node.Kind}:{displayText}",
+    };
+  }
+
   private static string FormatSemanticFacts(SyntaxNode syntax, Microsoft.CodeAnalysis.SemanticModel semanticModel)
   {
     var declaredSymbol = semanticModel.GetDeclaredSymbol(syntax)?.ToDisplayString() ?? "<null>";
     var referencedSymbol = semanticModel.GetSymbolInfo(syntax).Symbol?.ToDisplayString() ?? "<null>";
     var typeSymbol = semanticModel.GetTypeInfo(syntax).Type?.ToDisplayString() ?? "<null>";
     return $"{declaredSymbol}|{referencedSymbol}|{typeSymbol}";
+  }
+
+  private static NodeId RequireNodeId(RoslynCpgNode node)
+  {
+    return Assert.NotNull(node.NodeId);
   }
 
   private static string CreateLargeSource(int methodCount, int statementsPerMethod)

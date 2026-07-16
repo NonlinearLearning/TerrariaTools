@@ -16,6 +16,11 @@ internal static class DeletionPostRewriteDiagnostics
             return result with { Diagnostics = Array.Empty<AnalysisDiagnostic>() };
         }
 
+        if (string.IsNullOrEmpty(result.RewrittenSource))
+        {
+            return result with { Diagnostics = Array.Empty<AnalysisDiagnostic>() };
+        }
+
         var sourcesByPath = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [filePath] = result.RewrittenSource

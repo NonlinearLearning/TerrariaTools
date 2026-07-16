@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
-using System.Collections.Immutable;
 using System.Diagnostics;
 
 namespace MinimalRoslynCpg.Builder.Passes
@@ -90,8 +89,8 @@ public sealed partial class RoslynCpgBuilder
 
     private sealed record UsedFactPartition(
         int Order,
-        IReadOnlyList<IOperation> OrderedOperations,
-        IReadOnlyDictionary<IOperation, UsedFactRecord> UsedFactsByOperation,
+        IOperation[] OrderedOperations,
+        Dictionary<IOperation, UsedFactRecord> UsedFactsByOperation,
         long EnumerateOrderedOperationsMilliseconds,
         long CollectUsedFactsMilliseconds,
         long CollectUsedFactsTicks,
@@ -100,22 +99,22 @@ public sealed partial class RoslynCpgBuilder
     private sealed record MethodDataFlowPlan(
       int Order,
       string MethodFullName,
-      ImmutableArray<IOperation> OrderedOperations,
-      ImmutableArray<RoslynCpgNode> OperationNodes,
-      ImmutableDictionary<IOperation, UsedFactRecord> UsedFactsByOperation,
-      ImmutableDictionary<string, DefinitionFact> ParameterDefinitionFacts,
-      ImmutableDictionary<string, RoslynCpgNode> NodesById,
-      ImmutableDictionary<IOperation, string> OperationNodeIds,
-      string? ReturnNodeId,
-      string? ExitNodeId,
-      ImmutableDictionary<string, ImmutableArray<string>> Predecessors,
-      ImmutableDictionary<string, ImmutableArray<string>> Successors);
+      IOperation[] OrderedOperations,
+      RoslynCpgNode[] FlowNodes,
+      RoslynCpgNode[] OperationNodes,
+      Dictionary<IOperation, UsedFactRecord> UsedFactsByOperation,
+      Dictionary<RoslynCpgNode, DefinitionFact> ParameterDefinitionFacts,
+      Dictionary<IOperation, RoslynCpgNode> OperationNodesByOperation,
+      RoslynCpgNode? ReturnNode,
+      RoslynCpgNode? ExitNode,
+      Dictionary<RoslynCpgNode, RoslynCpgNode[]> Predecessors,
+      Dictionary<RoslynCpgNode, RoslynCpgNode[]> Successors);
 
-    private sealed record DataFlowEdgeCandidate(string SourceNodeId, string TargetNodeId);
+    private sealed record DataFlowEdgeCandidate(RoslynCpgNode SourceNode, RoslynCpgNode TargetNode);
 
     private sealed record CfgSensitivePartition(
       int Order,
-      IReadOnlyList<DataFlowEdgeCandidate> Edges,
+      DataFlowEdgeCandidate[] Edges,
       long ElapsedMilliseconds,
       long CreateDefinitionFactsMilliseconds,
       long InitializeStateMilliseconds,
@@ -201,7 +200,7 @@ public sealed partial class RoslynCpgBuilder
         prepareFlowNodesStopwatch.Stop();
         metrics.PrepareFlowNodesElapsedMilliseconds = prepareFlowNodesStopwatch.ElapsedMilliseconds;
         metrics.PrepareFlowNodesElapsedTicks = prepareFlowNodesStopwatch.ElapsedTicks;
-        metrics.FrozenOperationNodeCount = operationIndex.NodeIdsByOperation.Count;
+        metrics.FrozenOperationNodeCount = operationIndex.NodesByOperation.Count;
         metrics.PeakBufferedCandidateBatchCount = RunCfgSensitivePartitionsInOrder(
           cfgSensitivePlans,
           graph,
@@ -213,12 +212,12 @@ public sealed partial class RoslynCpgBuilder
         {
             var orderedOperations = partition.OrderedOperations;
             metrics.EnumerateOrderedOperationsElapsedMilliseconds += partition.EnumerateOrderedOperationsMilliseconds;
-            metrics.OrderedOperationCount += orderedOperations.Count;
+            metrics.OrderedOperationCount += orderedOperations.Length;
             metrics.CollectUsedFactsElapsedMilliseconds += partition.CollectUsedFactsMilliseconds;
             metrics.CollectUsedFactsElapsedTicks += partition.CollectUsedFactsTicks;
             metrics.UsedFactCount += partition.UsedFactCount;
-            metrics.UsedFactRecordCount += partition.OrderedOperations.Count;
-            metrics.MethodOperationNodeProjectionCount += partition.OrderedOperations.Count;
+            metrics.UsedFactRecordCount += partition.OrderedOperations.Length;
+            metrics.MethodOperationNodeProjectionCount += partition.OrderedOperations.Length;
 
         }
 
@@ -240,15 +239,16 @@ public sealed partial class RoslynCpgBuilder
     private static UsedFactPartition AnalyzeUsedFactPartition(IBlockOperation methodBlock, int order)
     {
         var orderedOperationsStopwatch = Stopwatch.StartNew();
-        var orderedOperations = methodBlock.DescendantsAndSelf().ToList();
+        var orderedOperations = methodBlock.DescendantsAndSelf().ToArray();
         orderedOperationsStopwatch.Stop();
 
         var usedFactsStopwatch = Stopwatch.StartNew();
         var usedFactsByOperation = new Dictionary<IOperation, UsedFactRecord>(
           ReferenceEqualityComparer.Instance);
         var usedFactCount = 0;
-        foreach (var operation in orderedOperations.AsEnumerable().Reverse())
+        for (var operationIndex = orderedOperations.Length - 1; operationIndex >= 0; operationIndex -= 1)
         {
+            var operation = orderedOperations[operationIndex];
             var directFacts = DirectUsedFacts(operation).ToArray();
             var childRecords = operation.ChildOperations
               .Where(usedFactsByOperation.ContainsKey)
@@ -281,68 +281,70 @@ public sealed partial class RoslynCpgBuilder
         foreach (var partition in usedFactPartitions.OrderBy(partition => partition.Order))
         {
             var methodBlock = methodBlocks[partition.Order];
-            var operationNodes = partition.OrderedOperations
-              .Select(operation => operationIndex.NodesByOperation[operation])
-              .ToList();
-            var parameterDefinitionFacts = new Dictionary<string, DefinitionFact>(StringComparer.Ordinal);
-            var parameterNodes = new List<RoslynCpgNode>();
+            var orderedOperations = partition.OrderedOperations;
+            var operationNodes = new RoslynCpgNode[orderedOperations.Length];
+            var operationNodesByOperation = new Dictionary<IOperation, RoslynCpgNode>(
+              orderedOperations.Length,
+              ReferenceEqualityComparer.Instance);
+            for (var operationOrdinal = 0; operationOrdinal < orderedOperations.Length; operationOrdinal += 1)
+            {
+                var operation = orderedOperations[operationOrdinal];
+                var operationNode = operationIndex.NodesByOperation[operation];
+                operationNodes[operationOrdinal] = operationNode;
+                operationNodesByOperation[operation] = operationNode;
+            }
+
+            var parameterDefinitionFacts = new Dictionary<RoslynCpgNode, DefinitionFact>();
+            var flowNodes = new List<RoslynCpgNode>(operationNodes.Length + 4);
+            var flowNodeSet = new HashSet<RoslynCpgNode>();
             if (operationIndex.OwningMethods.TryGetValue(methodBlock, out var methodSymbol))
             {
                 foreach (var parameter in methodSymbol.Parameters)
                 {
                     var parameterNode = GetOrCreateMethodParameterNode(methodSymbol, parameter, graph);
-                    parameterNodes.Add(parameterNode);
-                    parameterDefinitionFacts[parameterNode.Id] = DefinitionFactForParameter(parameter);
+                    AddUniqueFlowNode(flowNodes, flowNodeSet, parameterNode);
+                    parameterDefinitionFacts[parameterNode] = DefinitionFactForParameter(parameter);
                 }
             }
 
-            var flowNodes = parameterNodes.Concat(operationNodes).ToList();
-            var nodesById = flowNodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
-            var operationNodeIds = partition.OrderedOperations.ToDictionary(
-              operation => operation,
-              operation => operationIndex.NodeIdsByOperation[operation],
-              (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
-            string? returnNodeId = null;
-            string? exitNodeId = null;
+            foreach (var operationNode in operationNodes)
+            {
+                AddUniqueFlowNode(flowNodes, flowNodeSet, operationNode);
+            }
+
+            RoslynCpgNode? returnNode = null;
+            RoslynCpgNode? exitNode = null;
             var methodFullName = $"method-partition-{partition.Order}";
             if (operationIndex.OwningMethods.TryGetValue(methodBlock, out var flowMethodSymbol))
             {
               methodFullName = flowMethodSymbol.ToDisplayString();
-              var returnNode = GetOrCreateMethodReturnNode(flowMethodSymbol, graph);
-              returnNodeId = returnNode.Id;
-              nodesById[returnNode.Id] = returnNode;
-              if (partition.OrderedOperations.OfType<IReturnOperation>().Any(operation => operation.ReturnedValue is not null))
+              returnNode = GetOrCreateMethodReturnNode(flowMethodSymbol, graph);
+              AddUniqueFlowNode(flowNodes, flowNodeSet, returnNode);
+              if (orderedOperations.OfType<IReturnOperation>().Any(operation => operation.ReturnedValue is not null))
               {
-                var exitNode = GetOrCreateMethodExitNode(flowMethodSymbol, graph);
-                exitNodeId = exitNode.Id;
-                nodesById[exitNode.Id] = exitNode;
+                exitNode = GetOrCreateMethodExitNode(flowMethodSymbol, graph);
+                AddUniqueFlowNode(flowNodes, flowNodeSet, exitNode);
               }
             }
-            var flowNodeIds = nodesById.Keys.ToHashSet(StringComparer.Ordinal);
+
             var flowNeighborsStopwatch = Stopwatch.StartNew();
-            var predecessors = SnapshotNeighbors(BuildFlowNeighborsFromCache(flowNodeIds, incoming: true));
-            var successors = SnapshotNeighbors(BuildFlowNeighborsFromCache(flowNodeIds, incoming: false));
+            var predecessors = SnapshotNeighbors(BuildFlowNeighborsFromCache(flowNodeSet, incoming: true));
+            var successors = SnapshotNeighbors(BuildFlowNeighborsFromCache(flowNodeSet, incoming: false));
             flowNeighborsStopwatch.Stop();
             metrics.BuildFlowNeighborsElapsedMilliseconds += flowNeighborsStopwatch.ElapsedMilliseconds;
             plans.Add(new MethodDataFlowPlan(
               partition.Order,
               methodFullName,
-              partition.OrderedOperations.ToImmutableArray(),
-              operationNodes.ToImmutableArray(),
-              partition.UsedFactsByOperation.ToImmutableDictionary(ReferenceEqualityComparer.Instance),
-              parameterDefinitionFacts.ToImmutableDictionary(StringComparer.Ordinal),
-              nodesById.ToImmutableDictionary(StringComparer.Ordinal),
-              operationNodeIds.ToImmutableDictionary(ReferenceEqualityComparer.Instance),
-              returnNodeId,
-              exitNodeId,
-              predecessors.ToImmutableDictionary(
-                pair => pair.Key,
-                pair => pair.Value.ToImmutableArray(),
-                StringComparer.Ordinal),
-              successors.ToImmutableDictionary(
-                pair => pair.Key,
-                pair => pair.Value.ToImmutableArray(),
-                StringComparer.Ordinal)));
+              orderedOperations,
+              flowNodes.ToArray(),
+              operationNodes,
+              partition.UsedFactsByOperation,
+              parameterDefinitionFacts,
+              operationNodesByOperation,
+              returnNode,
+              exitNode,
+              predecessors,
+              successors));
         }
 
         return plans;
@@ -407,8 +409,8 @@ public sealed partial class RoslynCpgBuilder
         foreach (var edge in partition.Edges)
         {
             graph.AddEdge(
-              plan.NodesById[edge.SourceNodeId],
-              plan.NodesById[edge.TargetNodeId],
+              edge.SourceNode,
+              edge.TargetNode,
               RoslynCpgEdgeKind.DataFlow);
         }
         commitStopwatch.Stop();
@@ -421,9 +423,8 @@ public sealed partial class RoslynCpgBuilder
       RoslynCpgDataFlowOptions options)
     {
         var totalStopwatch = Stopwatch.StartNew();
-        var definitionFactsByNodeId = new Dictionary<string, DefinitionFact>(
-          plan.ParameterDefinitionFacts,
-          StringComparer.Ordinal);
+        var definitionFactsByNode = new Dictionary<RoslynCpgNode, DefinitionFact>(
+          plan.ParameterDefinitionFacts);
 
         var createDefinitionFactsStopwatch = Stopwatch.StartNew();
         foreach (var operationNodePair in plan.OrderedOperations.Zip(plan.OperationNodes))
@@ -431,13 +432,13 @@ public sealed partial class RoslynCpgBuilder
             var definedFact = DefinedFact(operationNodePair.First);
             if (definedFact is not null)
             {
-                definitionFactsByNodeId[operationNodePair.Second.Id] = definedFact;
+                definitionFactsByNode[operationNodePair.Second] = definedFact;
             }
         }
         createDefinitionFactsStopwatch.Stop();
 
         var unreachableNodeCount = CountUnreachableNodes(plan);
-        if (definitionFactsByNodeId.Count > options.MaxDefinitionsPerMethod)
+        if (definitionFactsByNode.Count > options.MaxDefinitionsPerMethod)
         {
             ThrowIfBudgetFailure(
               options,
@@ -455,15 +456,15 @@ public sealed partial class RoslynCpgBuilder
               ValueSourceEdgeMilliseconds: 0,
               ReturnFlowEdgeMilliseconds: 0,
               TerminalFlowEdgeMilliseconds: 0,
-              plan.NodesById.Count,
-              definitionFactsByNodeId.Count,
+              plan.FlowNodes.Length,
+              definitionFactsByNode.Count,
               FixpointIterations: 0,
               UnreachableNodeCount: unreachableNodeCount,
               GeneratedCandidateCount: 0,
               OverflowReason: RoslynCpgDataFlowOverflowReason.DefinitionLimitExceeded);
         }
 
-        if (plan.NodesById.Count > options.MaxFlowNodesPerMethod)
+        if (plan.FlowNodes.Length > options.MaxFlowNodesPerMethod)
         {
             ThrowIfBudgetFailure(
               options,
@@ -481,8 +482,8 @@ public sealed partial class RoslynCpgBuilder
               ValueSourceEdgeMilliseconds: 0,
               ReturnFlowEdgeMilliseconds: 0,
               TerminalFlowEdgeMilliseconds: 0,
-              plan.NodesById.Count,
-              definitionFactsByNodeId.Count,
+              plan.FlowNodes.Length,
+              definitionFactsByNode.Count,
               FixpointIterations: 0,
               UnreachableNodeCount: unreachableNodeCount,
               GeneratedCandidateCount: 0,
@@ -490,17 +491,15 @@ public sealed partial class RoslynCpgBuilder
         }
 
         var initializeStateStopwatch = Stopwatch.StartNew();
-        var flowNodeIds = plan.NodesById.Keys;
-        var inSets = flowNodeIds.ToDictionary(
-          nodeId => nodeId,
-          _ => new HashSet<string>(StringComparer.Ordinal),
-          StringComparer.Ordinal);
-        var outSets = flowNodeIds.ToDictionary(
-          nodeId => nodeId,
-          _ => new HashSet<string>(StringComparer.Ordinal),
-          StringComparer.Ordinal);
-        var worklist = new Queue<string>(flowNodeIds);
-        var queued = new HashSet<string>(flowNodeIds, StringComparer.Ordinal);
+        var flowNodes = plan.FlowNodes;
+        var inSets = flowNodes.ToDictionary(
+          node => node,
+          _ => new HashSet<RoslynCpgNode>());
+        var outSets = flowNodes.ToDictionary(
+          node => node,
+          _ => new HashSet<RoslynCpgNode>());
+        var worklist = new Queue<RoslynCpgNode>(flowNodes);
+        var queued = new HashSet<RoslynCpgNode>(flowNodes);
         initializeStateStopwatch.Stop();
 
         var fixpointStopwatch = Stopwatch.StartNew();
@@ -510,25 +509,25 @@ public sealed partial class RoslynCpgBuilder
             fixpointIterations += 1;
             var nodeId = worklist.Dequeue();
             queued.Remove(nodeId);
-            var incomingDefinitions = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var predecessorId in plan.Predecessors[nodeId])
+            var incomingDefinitions = new HashSet<RoslynCpgNode>();
+            foreach (var predecessorNode in plan.Predecessors[nodeId])
             {
-                incomingDefinitions.UnionWith(outSets[predecessorId]);
+                incomingDefinitions.UnionWith(outSets[predecessorNode]);
             }
 
             inSets[nodeId] = incomingDefinitions;
-            var updatedOut = ApplyDefinitionTransfer(nodeId, incomingDefinitions, definitionFactsByNodeId);
+            var updatedOut = ApplyDefinitionTransfer(nodeId, incomingDefinitions, definitionFactsByNode);
             if (updatedOut.SetEquals(outSets[nodeId]))
             {
                 continue;
             }
 
             outSets[nodeId] = updatedOut;
-            foreach (var successorId in plan.Successors[nodeId])
+            foreach (var successorNode in plan.Successors[nodeId])
             {
-                if (queued.Add(successorId))
+                if (queued.Add(successorNode))
                 {
-                    worklist.Enqueue(successorId);
+                    worklist.Enqueue(successorNode);
                 }
             }
         }
@@ -540,12 +539,12 @@ public sealed partial class RoslynCpgBuilder
         {
             foreach (var usedFact in plan.UsedFactsByOperation[operationNodePair.First].EnumerateFacts())
             {
-                foreach (var reachingDefinitionId in inSets[operationNodePair.Second.Id])
+                foreach (var reachingDefinitionNode in inSets[operationNodePair.Second])
                 {
-                    if (definitionFactsByNodeId.TryGetValue(reachingDefinitionId, out var reachingFact) &&
+                    if (definitionFactsByNode.TryGetValue(reachingDefinitionNode, out var reachingFact) &&
                         FactsMatch(reachingFact, usedFact))
                     {
-                        edges.Add(new DataFlowEdgeCandidate(reachingDefinitionId, operationNodePair.Second.Id));
+                        edges.Add(new DataFlowEdgeCandidate(reachingDefinitionNode, operationNodePair.Second));
                     }
                 }
             }
@@ -557,37 +556,37 @@ public sealed partial class RoslynCpgBuilder
             foreach (var sourceOperation in ValueSourceOperations(operation))
             {
                 if (!ReferenceEquals(sourceOperation, operation) &&
-                    plan.OperationNodeIds.TryGetValue(sourceOperation, out var sourceNodeId) &&
-                    plan.OperationNodeIds.TryGetValue(operation, out var targetNodeId))
+                    plan.OperationNodesByOperation.TryGetValue(sourceOperation, out var sourceNode) &&
+                    plan.OperationNodesByOperation.TryGetValue(operation, out var targetNode))
                 {
-                    edges.Add(new DataFlowEdgeCandidate(sourceNodeId, targetNodeId));
+                    edges.Add(new DataFlowEdgeCandidate(sourceNode, targetNode));
                 }
             }
         }
         valueSourceStopwatch.Stop();
         var returnFlowStopwatch = Stopwatch.StartNew();
-        if (plan.ReturnNodeId is not null && plan.ExitNodeId is not null)
+        if (plan.ReturnNode is not null && plan.ExitNode is not null)
         {
             foreach (var returnOperation in plan.OrderedOperations.OfType<IReturnOperation>().Where(operation => operation.ReturnedValue is not null))
             {
-                if (plan.OperationNodeIds.TryGetValue(returnOperation.ReturnedValue!, out var valueNodeId) &&
-                    plan.OperationNodeIds.TryGetValue(returnOperation, out var returnOperationNodeId))
+                if (plan.OperationNodesByOperation.TryGetValue(returnOperation.ReturnedValue!, out var valueNode) &&
+                    plan.OperationNodesByOperation.TryGetValue(returnOperation, out var returnOperationNode))
                 {
-                    edges.Add(new DataFlowEdgeCandidate(valueNodeId, plan.ReturnNodeId));
-                    edges.Add(new DataFlowEdgeCandidate(plan.ReturnNodeId, plan.ExitNodeId));
-                    edges.Add(new DataFlowEdgeCandidate(returnOperationNodeId, plan.ExitNodeId));
+                    edges.Add(new DataFlowEdgeCandidate(valueNode, plan.ReturnNode));
+                    edges.Add(new DataFlowEdgeCandidate(plan.ReturnNode, plan.ExitNode));
+                    edges.Add(new DataFlowEdgeCandidate(returnOperationNode, plan.ExitNode));
                 }
             }
         }
         returnFlowStopwatch.Stop();
         var terminalFlowStopwatch = Stopwatch.StartNew();
-        if (plan.ReturnNodeId is not null && plan.OrderedOperations.FirstOrDefault() is IBlockOperation methodBlock)
+        if (plan.ReturnNode is not null && plan.OrderedOperations.FirstOrDefault() is IBlockOperation methodBlock)
         {
             var terminalOperation = methodBlock.Operations.LastOrDefault();
             if (terminalOperation is not null && !ContainsExplicitReturn(methodBlock) && !StopsSequentialFlow(terminalOperation) &&
-                plan.OperationNodeIds.TryGetValue(terminalOperation, out var terminalNodeId))
+                plan.OperationNodesByOperation.TryGetValue(terminalOperation, out var terminalNode))
             {
-                edges.Add(new DataFlowEdgeCandidate(terminalNodeId, plan.ReturnNodeId));
+                edges.Add(new DataFlowEdgeCandidate(terminalNode, plan.ReturnNode));
             }
         }
         terminalFlowStopwatch.Stop();
@@ -610,8 +609,8 @@ public sealed partial class RoslynCpgBuilder
               valueSourceStopwatch.ElapsedMilliseconds,
               returnFlowStopwatch.ElapsedMilliseconds,
               terminalFlowStopwatch.ElapsedMilliseconds,
-              plan.NodesById.Count,
-              definitionFactsByNodeId.Count,
+              plan.FlowNodes.Length,
+              definitionFactsByNode.Count,
               fixpointIterations,
               unreachableNodeCount,
               edges.Count,
@@ -621,7 +620,7 @@ public sealed partial class RoslynCpgBuilder
 
         return new CfgSensitivePartition(
           plan.Order,
-          edges,
+          edges.ToArray(),
           totalStopwatch.ElapsedMilliseconds,
           createDefinitionFactsStopwatch.ElapsedMilliseconds,
           initializeStateStopwatch.ElapsedMilliseconds,
@@ -630,8 +629,8 @@ public sealed partial class RoslynCpgBuilder
           valueSourceStopwatch.ElapsedMilliseconds,
           returnFlowStopwatch.ElapsedMilliseconds,
           terminalFlowStopwatch.ElapsedMilliseconds,
-          plan.NodesById.Count,
-          definitionFactsByNodeId.Count,
+          plan.FlowNodes.Length,
+          definitionFactsByNode.Count,
           fixpointIterations,
           unreachableNodeCount,
           edges.Count,
@@ -654,9 +653,9 @@ public sealed partial class RoslynCpgBuilder
 
     private static int CountUnreachableNodes(MethodDataFlowPlan plan)
     {
-        var visited = new HashSet<string>(StringComparer.Ordinal);
-        var worklist = new Queue<string>(plan.NodesById.Keys.Where(
-          nodeId => plan.Predecessors[nodeId].Length == 0));
+        var visited = new HashSet<RoslynCpgNode>();
+        var worklist = new Queue<RoslynCpgNode>(plan.FlowNodes
+          .Where(node => plan.Predecessors[node].Length == 0));
         while (worklist.Count > 0)
         {
             var nodeId = worklist.Dequeue();
@@ -665,45 +664,55 @@ public sealed partial class RoslynCpgBuilder
                 continue;
             }
 
-            foreach (var successorId in plan.Successors[nodeId])
+            foreach (var successorNode in plan.Successors[nodeId])
             {
-                if (!visited.Contains(successorId))
+                if (!visited.Contains(successorNode))
                 {
-                    worklist.Enqueue(successorId);
+                    worklist.Enqueue(successorNode);
                 }
             }
         }
 
-        return plan.NodesById.Count - visited.Count;
+        return plan.FlowNodes.Length - visited.Count;
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<string>> SnapshotNeighbors(
-      IReadOnlyDictionary<string, List<string>> neighbors)
+    private static Dictionary<RoslynCpgNode, RoslynCpgNode[]> SnapshotNeighbors(
+      IReadOnlyDictionary<RoslynCpgNode, List<RoslynCpgNode>> neighbors)
     {
         return neighbors.ToDictionary(
           pair => pair.Key,
-          pair => (IReadOnlyList<string>)pair.Value.ToArray(),
-          StringComparer.Ordinal);
+          pair => pair.Value.ToArray());
     }
 
-    private Dictionary<string, List<string>> BuildFlowNeighborsFromCache(HashSet<string> flowNodeIds, bool incoming)
+    private static void AddUniqueFlowNode(
+      List<RoslynCpgNode> flowNodes,
+      HashSet<RoslynCpgNode> flowNodeSet,
+      RoslynCpgNode node)
     {
-        var neighbors = flowNodeIds.ToDictionary(nodeId => nodeId, _ => new List<string>(), StringComparer.Ordinal);
-        foreach (var nodeId in flowNodeIds)
+        if (flowNodeSet.Add(node))
+        {
+            flowNodes.Add(node);
+        }
+    }
+
+    private Dictionary<RoslynCpgNode, List<RoslynCpgNode>> BuildFlowNeighborsFromCache(HashSet<RoslynCpgNode> flowNodes, bool incoming)
+    {
+        var neighbors = flowNodes.ToDictionary(node => node, _ => new List<RoslynCpgNode>());
+        foreach (var node in flowNodes)
         {
             var cachedNeighbors = incoming
-              ? GetCachedCfgPredecessors(nodeId)
-              : GetCachedCfgSuccessors(nodeId);
+              ? GetCachedCfgPredecessors(node)
+              : GetCachedCfgSuccessors(node);
             if (cachedNeighbors.Count == 0)
             {
                 continue;
             }
 
-            foreach (var neighborNodeId in cachedNeighbors)
+            foreach (var neighborNode in cachedNeighbors)
             {
-                if (flowNodeIds.Contains(neighborNodeId))
+                if (flowNodes.Contains(neighborNode))
                 {
-                    neighbors[nodeId].Add(neighborNodeId);
+                    neighbors[node].Add(neighborNode);
                 }
             }
         }
@@ -711,18 +720,21 @@ public sealed partial class RoslynCpgBuilder
         return neighbors;
     }
 
-    private static HashSet<string> ApplyDefinitionTransfer(string nodeId, HashSet<string> incomingDefinitions, Dictionary<string, DefinitionFact> definitionFactsByNodeId)
+    private static HashSet<RoslynCpgNode> ApplyDefinitionTransfer(
+      RoslynCpgNode node,
+      HashSet<RoslynCpgNode> incomingDefinitions,
+      Dictionary<RoslynCpgNode, DefinitionFact> definitionFactsByNode)
     {
-        var outgoingDefinitions = new HashSet<string>(incomingDefinitions, StringComparer.Ordinal);
-        if (!definitionFactsByNodeId.TryGetValue(nodeId, out var definedFact))
+        var outgoingDefinitions = new HashSet<RoslynCpgNode>(incomingDefinitions);
+        if (!definitionFactsByNode.TryGetValue(node, out var definedFact))
         {
             return outgoingDefinitions;
         }
 
-        outgoingDefinitions.RemoveWhere(definitionId =>
-          definitionFactsByNodeId.TryGetValue(definitionId, out var priorFact) &&
+        outgoingDefinitions.RemoveWhere(definitionNode =>
+          definitionFactsByNode.TryGetValue(definitionNode, out var priorFact) &&
           FactsConflict(priorFact, definedFact));
-        outgoingDefinitions.Add(nodeId);
+        outgoingDefinitions.Add(node);
         return outgoingDefinitions;
     }
 
