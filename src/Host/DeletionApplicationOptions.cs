@@ -1,3 +1,4 @@
+using RoslynPrototype.Application.Logging;
 using Rules;
 
 namespace RoslynPrototype.Application;
@@ -60,6 +61,19 @@ internal static class DeletionApplicationOptions
           !IsTrueOption(options, "skip-diff");
     }
 
+    internal static string ResolveDiffView(IReadOnlyDictionary<string, string> options)
+    {
+        if (!options.TryGetValue("diff-view", out var rawValue) ||
+            string.IsNullOrWhiteSpace(rawValue))
+        {
+            return "legacy";
+        }
+
+        return string.Equals(rawValue, "readable", StringComparison.OrdinalIgnoreCase)
+          ? "readable"
+          : "legacy";
+    }
+
     internal static bool IsTrueOption(IReadOnlyDictionary<string, string> options, string key)
     {
         return options.TryGetValue(key, out var rawValue) &&
@@ -97,6 +111,69 @@ internal static class DeletionApplicationOptions
         return options.ContainsKey("delete-class") &&
           IsTrueOption(options, "fast-delete-class-directory") &&
           IsTrueOption(options, "filter-delete-class-files-by-target-name");
+    }
+
+    internal static bool HasAnyTextLogOptions(IReadOnlyDictionary<string, string> options)
+    {
+        return ResolveRuntimeLogPath(options) is not null ||
+          ResolveAnalysisLogPath(options) is not null ||
+          options.ContainsKey("log-level") ||
+          options.ContainsKey("log-categories") ||
+          options.ContainsKey("log-events") ||
+          options.ContainsKey("log-view") ||
+          options.ContainsKey("log-profile");
+    }
+
+    internal static string? ResolveRuntimeLogPath(IReadOnlyDictionary<string, string> options)
+    {
+        if (options.TryGetValue("runtime-log", out var runtimeLogPath) &&
+            !string.IsNullOrWhiteSpace(runtimeLogPath))
+        {
+            return runtimeLogPath;
+        }
+
+        if (options.TryGetValue("runtime-metrics-log", out var legacyRuntimeLogPath) &&
+            !string.IsNullOrWhiteSpace(legacyRuntimeLogPath))
+        {
+            return legacyRuntimeLogPath;
+        }
+
+        return null;
+    }
+
+    internal static string? ResolveAnalysisLogPath(IReadOnlyDictionary<string, string> options)
+    {
+        if (options.TryGetValue("analysis-log", out var analysisLogPath) &&
+            !string.IsNullOrWhiteSpace(analysisLogPath))
+        {
+            return analysisLogPath;
+        }
+
+        if (options.TryGetValue("analysis-events-log", out var analysisEventsLogPath) &&
+            !string.IsNullOrWhiteSpace(analysisEventsLogPath))
+        {
+            return analysisEventsLogPath;
+        }
+
+        if (options.TryGetValue("per-file-timing-log", out var perFileTimingLogPath) &&
+            !string.IsNullOrWhiteSpace(perFileTimingLogPath))
+        {
+            return perFileTimingLogPath;
+        }
+
+        if (options.TryGetValue("per-file-memory-diagnostics-log", out var perFileMemoryDiagnosticsLogPath) &&
+            !string.IsNullOrWhiteSpace(perFileMemoryDiagnosticsLogPath))
+        {
+            return perFileMemoryDiagnosticsLogPath;
+        }
+
+        if (options.TryGetValue("per-file-phase-timing-log-directory", out var legacyDirectoryPath) &&
+            !string.IsNullOrWhiteSpace(legacyDirectoryPath))
+        {
+            return Path.Combine(legacyDirectoryPath, "analysis.log");
+        }
+
+        return null;
     }
 
     internal static int ResolveMaxDegreeOfParallelism(IReadOnlyDictionary<string, string> options)

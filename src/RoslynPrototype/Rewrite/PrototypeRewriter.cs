@@ -11,6 +11,8 @@ namespace RoslynPrototype.Rewrite;
 public sealed class PrototypeRewriter
 {
   private const int NormalizeWhitespaceDepthLimit = 256;
+  private readonly DiffBuilder _diffBuilder = new();
+  private readonly TextDiffRenderer _textDiffRenderer = new();
   private readonly record struct RewritePlanEntry(TextRewriteOperation Operation, RewriteEdit Edit);
   private readonly record struct TextRewriteOperation(TextSpan Span, string ReplacementText);
 
@@ -125,7 +127,11 @@ public sealed class PrototypeRewriter
         effectivePlan.Select(entry => entry.Operation).ToList()),
       root.SyntaxTree.FilePath);
     var edits = effectivePlan.Select(entry => entry.Edit).ToList();
-    return new PrototypeRewriteResult(rewrittenSource, edits, BuildDiffText(edits));
+    var diff = _diffBuilder.Build(edits);
+    return new PrototypeRewriteResult(
+      rewrittenSource,
+      edits,
+      diff);
   }
 
   /// <summary>
@@ -379,30 +385,4 @@ public sealed class PrototypeRewriter
       .Replace("\n", "\r\n", StringComparison.Ordinal);
   }
 
-  /// <summary>
-  /// 把编辑记录格式化成便于查看和落盘的文本差异摘要。
-  /// </summary>
-  public string BuildDiffText(IReadOnlyList<RewriteEdit> edits)
-  {
-    if (edits.Count == 0) {
-      return string.Empty;
-    }
-
-    var builder = new StringBuilder();
-    for (var index = 0; index < edits.Count; index++) {
-      var edit = edits[index];
-      builder.AppendLine($"--- original #{index + 1} {edit.FilePath}:{edit.Span.Start}..{edit.Span.End}");
-      builder.AppendLine(edit.OriginalText);
-      builder.AppendLine($"+++ rewritten #{index + 1}");
-      builder.AppendLine(string.IsNullOrEmpty(edit.ReplacementText)
-        ? "<deleted>"
-        : edit.ReplacementText);
-
-      if (index + 1 < edits.Count) {
-        builder.AppendLine();
-      }
-    }
-
-    return builder.ToString();
-  }
 }

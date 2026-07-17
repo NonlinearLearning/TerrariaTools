@@ -45,13 +45,13 @@ public sealed class GraphAnalyzerTests
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.LocalDeclarationStatement));
 
         Assert.Equal(2, result.Edits.Count);
-        TextDiffAssert.Contains("--- original #1 delete-s-object-sample.cs:", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("var value = s.Seed + offset;", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("+++ rewritten #1", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("<deleted>", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("var value =", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("if (s.IsReady)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("--- original #1 delete-s-object-sample.cs:", result.Diff, result.Diff);
+        TextDiffAssert.Contains("var value = s.Seed + offset;", result.Diff, result.Diff);
+        TextDiffAssert.Contains("+++ rewritten #1", result.Diff, result.Diff);
+        TextDiffAssert.Contains("<deleted>", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("var value =", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("if (s.IsReady)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -61,7 +61,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.DefinitionAssignmentSource;
 
         var result = application.Analyze(source, "definition-assignment.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_DefinitionAssignment_DeletesLocalDeclarationStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_DefinitionAssignment_DeletesLocalDeclarationStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -69,9 +69,9 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.LocalDeclarationStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("var value = s.Seed + offset;", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("var value = s.Seed + offset;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("var value = s.Seed + offset;", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("var value = s.Seed + offset;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.AssignmentStatementSource;
 
         var result = application.Analyze(source, "assignment-statement.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_AssignmentStatement_DeletesExpressionStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_AssignmentStatement_DeletesExpressionStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -89,9 +89,9 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.ExpressionStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("offset += s.Seed;", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("offset += s.Seed;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("offset += s.Seed;", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("offset += s.Seed;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.ComplexDefinitionAssignmentSource;
 
         var result = application.Analyze(source, "complex-definition-assignment.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ComplexDefinitionAssignment_DeletesLocalDeclarationStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ComplexDefinitionAssignment_DeletesLocalDeclarationStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -109,8 +109,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.LocalDeclarationStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("var value = (s.Seed + offset) * values[offset];", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("var value = (s.Seed + offset) * values[offset];", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("var value = (s.Seed + offset) * values[offset];", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("var value = (s.Seed + offset) * values[offset];", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -120,7 +120,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.ChainedAssignmentStatementSource;
 
         var result = application.Analyze(source, "chained-assignment-statement.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ChainedAssignmentStatement_DeletesExpressionStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ChainedAssignmentStatement_DeletesExpressionStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -128,8 +128,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.ExpressionStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("left = right = s.Seed;", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("left = right = s.Seed;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("left = right = s.Seed;", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("left = right = s.Seed;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.DeconstructionAssignmentStatementSource;
 
         var result = application.Analyze(source, "deconstruction-assignment-statement.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_DeconstructionAssignmentStatement_DeletesExpressionStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_DeconstructionAssignmentStatement_DeletesExpressionStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -147,8 +147,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.ExpressionStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("(left, right) = (s.Seed, offset);", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("(left, right) = (s.Seed, offset);", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("(left, right) = (s.Seed, offset);", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("(left, right) = (s.Seed, offset);", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.ObjectInitializerDefinitionAssignmentSource;
 
         var result = application.Analyze(source, "object-initializer-definition-assignment.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ObjectInitializerDefinitionAssignment_DeletesLocalDeclarationStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ObjectInitializerDefinitionAssignment_DeletesLocalDeclarationStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.ObjectCreationExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -166,9 +166,9 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.LocalDeclarationStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("var holder = new Holder", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("Value = s.Seed", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("var holder = new Holder", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("var holder = new Holder", result.Diff, result.Diff);
+        TextDiffAssert.Contains("Value = s.Seed", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("var holder = new Holder", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -178,7 +178,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.ComplexCompoundAssignmentStatementSource;
 
         var result = application.Analyze(source, "complex-compound-assignment-statement.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ComplexCompoundAssignmentStatement_DeletesExpressionStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ComplexCompoundAssignmentStatement_DeletesExpressionStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -186,8 +186,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.ExpressionStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("offset += s.Seed + offset * 2;", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("offset += s.Seed + offset * 2;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("offset += s.Seed + offset * 2;", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("offset += s.Seed + offset * 2;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.AssignmentLeftOperandSource;
 
         var result = application.Analyze(source, "assignment-left-operand.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_AssignmentLeftOperand_DeletesExpressionStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_AssignmentLeftOperand_DeletesExpressionStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.ElementAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -205,8 +205,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.ExpressionStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("values[s.Seed] = offset;", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("values[s.Seed] = offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("values[s.Seed] = offset;", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("values[s.Seed] = offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.DefinitionLeftOperandSource;
 
         var result = application.Analyze(source, "definition-left-operand.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_DefinitionLeftOperand_DeletesLocalDeclarationStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_DefinitionLeftOperand_DeletesLocalDeclarationStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.VariableDeclarator, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -224,8 +224,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.LocalDeclarationStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("var s = offset + 1;", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("var s = offset + 1;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("var s = offset + 1;", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("var s = offset + 1;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -235,7 +235,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.CallArgumentStatementSource;
 
         var result = application.Analyze(source, "call-argument-statement.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_CallArgumentStatement_DeletesExpressionStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_CallArgumentStatement_DeletesExpressionStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.InvocationExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -243,8 +243,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.ExpressionStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("Fun(s.Seed, 3);", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("Fun(s.Seed, 3);", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("Fun(s.Seed, 3);", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("Fun(s.Seed, 3);", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -254,7 +254,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.PropertyAccessDefinitionSource;
 
         var result = application.Analyze(source, "property-access-definition.cs", CreateOptions("Seed"));
-        AppendUnitTestDiff(nameof(Analyze_PropertyAccessDefinition_WhenPropertyNameMatches_DeletesLocalDeclarationStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_PropertyAccessDefinition_WhenPropertyNameMatches_DeletesLocalDeclarationStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -262,8 +262,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.LocalDeclarationStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("var value = holder.Seed;", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("var value = holder.Seed;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("var value = holder.Seed;", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("var value = holder.Seed;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -273,7 +273,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectExpressionSources.IndexAccessDefinitionSource;
 
         var result = application.Analyze(source, "index-access-definition.cs", CreateOptions("values"));
-        AppendUnitTestDiff(nameof(Analyze_IndexAccessDefinition_WhenBaseOrIndexMatches_DeletesLocalDeclarationStatement), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_IndexAccessDefinition_WhenBaseOrIndexMatches_DeletesLocalDeclarationStatement), result.Diff);
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.ElementAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -281,8 +281,8 @@ public sealed class GraphAnalyzerTests
         var decision = Assert.Single(result.Decisions);
         Assert.Equal(DecisionActionKind.Delete, decision.Action);
         Assert.Equal(SyntaxKind.LocalDeclarationStatement, GetNodeKind(decision.FinalNode));
-        TextDiffAssert.Contains("var value = values[s.Seed];", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("var value = values[s.Seed];", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("var value = values[s.Seed];", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("var value = values[s.Seed];", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -305,10 +305,10 @@ public sealed class GraphAnalyzerTests
         });
 
         Assert.Equal(2, result.Edits.Count);
-        TextDiffAssert.Contains("Main", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("Live", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("DeadA", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("DeadB", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("Main", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("Live", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("DeadA", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("DeadB", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -320,11 +320,11 @@ public sealed class GraphAnalyzerTests
         var result = application.Analyze(source, "logical-and-sample.cs", CreateOptions("s"));
 
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Replace && IsNodeKind(decision.FinalNode, SyntaxKind.LogicalAndExpression));
-        TextDiffAssert.Contains("ready", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("s.IsReady", result.DiffText, result.DiffText);
+        TextDiffAssert.Contains("ready", result.Diff, result.Diff);
+        TextDiffAssert.Contains("s.IsReady", result.Diff, result.Diff);
         Assert.DoesNotContain(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.IfStatement));
-        TextDiffAssert.Contains("if (ready)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("if (ready)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -339,8 +339,8 @@ public sealed class GraphAnalyzerTests
         AssertContainsPropagatedKind(result, SyntaxKind.WhileStatement);
         Assert.Single(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.WhileStatement));
-        TextDiffAssert.DoesNotContain("while (s.IsReady)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("while (s.IsReady)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -350,14 +350,14 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.WhileBodySource;
 
         var result = application.Analyze(source, "while-body-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_WhileBody_DeletesLoopHost), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_WhileBody_DeletesLoopHost), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.WhileStatement);
         Assert.Single(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.WhileStatement));
-        TextDiffAssert.DoesNotContain("while (offset > 0)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("while (offset > 0)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -372,8 +372,8 @@ public sealed class GraphAnalyzerTests
         AssertContainsPropagatedKind(result, SyntaxKind.DoStatement);
         Assert.Single(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.DoStatement));
-        TextDiffAssert.DoesNotContain("while (s.IsReady)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("while (s.IsReady)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -383,14 +383,14 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.DoBodySource;
 
         var result = application.Analyze(source, "do-body-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_DoBody_DeletesLoopHost), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_DoBody_DeletesLoopHost), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.DoStatement);
         Assert.Single(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.DoStatement));
-        TextDiffAssert.DoesNotContain("while (offset > 0)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("while (offset > 0)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -400,7 +400,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.SwitchConditionSource;
 
         var result = application.Analyze(source, "switch-condition-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_SwitchCondition_DeletesSwitchHost), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_SwitchCondition_DeletesSwitchHost), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.SwitchStatement);
@@ -415,7 +415,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.SwitchCaseSingleStatementSource;
 
         var result = application.Analyze(source, "switch-case-single-statement.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_SwitchCaseSingleStatement_DeletesSwitchSection), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_SwitchCaseSingleStatement_DeletesSwitchSection), result.Diff);
 
         AssertContainsPropagatedKind(result, SyntaxKind.SwitchSection);
     }
@@ -427,7 +427,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.SwitchCaseBlockStatementSource;
 
         var result = application.Analyze(source, "switch-case-block-statement.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_SwitchCaseBlockStatement_DeletesSwitchSection), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_SwitchCaseBlockStatement_DeletesSwitchSection), result.Diff);
 
         AssertContainsPropagatedKind(result, SyntaxKind.SwitchSection);
     }
@@ -439,7 +439,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.SwitchCaseWithoutBreakSource;
 
         var result = application.Analyze(source, "switch-case-without-break.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_SwitchCaseWithoutBreak_DoesNotDeleteSwitchSectionWhenNotFullyMarked), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_SwitchCaseWithoutBreak_DoesNotDeleteSwitchSectionWhenNotFullyMarked), result.Diff);
 
         Assert.DoesNotContain(result.LiftedMarks, mark => IsNodeKind(mark.Mark.SyntaxNode, SyntaxKind.SwitchSection));
     }
@@ -451,7 +451,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.SwitchCaseWithoutBreakFullyMarkedSource;
 
         var result = application.Analyze(source, "switch-case-without-break-fully-marked.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_SwitchCaseWithoutBreakFullyMarked_DeletesSwitchSection), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_SwitchCaseWithoutBreakFullyMarked_DeletesSwitchSection), result.Diff);
 
         AssertContainsPropagatedKind(result, SyntaxKind.SwitchSection);
     }
@@ -463,7 +463,7 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.SwitchAllNonDefaultCasesMarkedSource;
 
         var result = application.Analyze(source, "switch-all-non-default-cases.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_SwitchAllNonDefaultCasesMarked_DeletesWholeSwitch), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_SwitchAllNonDefaultCasesMarked_DeletesWholeSwitch), result.Diff);
 
         AssertContainsPropagatedKind(result, SyntaxKind.SwitchStatement);
     }
@@ -475,14 +475,14 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.ForConditionSource;
 
         var result = application.Analyze(source, "for-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ForCondition_DeletesLoopHost), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ForCondition_DeletesLoopHost), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.ForStatement);
         Assert.Single(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
-        TextDiffAssert.DoesNotContain("for (; s.IsReady;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("for (; s.IsReady;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -492,14 +492,14 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.ForInitializerDeclarationSource;
 
         var result = application.Analyze(source, "for-initializer-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ForInitializerDeclaration_DeletesLoopHost), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ForInitializerDeclaration_DeletesLoopHost), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.ForStatement);
         Assert.Single(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
-        TextDiffAssert.DoesNotContain("for (var value = s.Seed;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return 0;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("for (var value = s.Seed;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return 0;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -509,14 +509,14 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.ForIncrementorSource;
 
         var result = application.Analyze(source, "for-incrementor-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ForIncrementor_DeletesLoopHost), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ForIncrementor_DeletesLoopHost), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.ForStatement);
         Assert.Single(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
-        TextDiffAssert.DoesNotContain("value += s.Seed", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return 0;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("value += s.Seed", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return 0;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -531,7 +531,7 @@ public sealed class GraphAnalyzerTests
         AssertContainsPropagatedKind(result, SyntaxKind.ReturnStatement);
         Assert.Single(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.ReturnStatement));
-        TextDiffAssert.DoesNotContain("return s.Seed;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("return s.Seed;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -543,10 +543,10 @@ public sealed class GraphAnalyzerTests
         var result = application.Analyze(source, "logical-or-sample.cs", CreateOptions("s"));
 
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Replace && IsNodeKind(decision.FinalNode, SyntaxKind.LogicalOrExpression));
-        TextDiffAssert.Contains("ready", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("s.IsReady", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("if (ready)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("ready", result.Diff, result.Diff);
+        TextDiffAssert.Contains("s.IsReady", result.Diff, result.Diff);
+        TextDiffAssert.Contains("if (ready)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -556,20 +556,20 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.IfElseOnlySource;
 
         var result = application.Analyze(source, "if-else-only.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_IfWithElse_RewritesToElseBody), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_IfWithElse_RewritesToElseBody), result.Diff);
 
         AssertContainsPropagatedKind(result, SyntaxKind.IfStatement);
         AssertContainsPropagatedKind(result, SyntaxKind.ElseClause);
         Assert.Contains(EnumerateEffectiveNodes(result), node => IsNodeKind(node, SyntaxKind.Block) && node.ToString().Contains("return value + 2;", StringComparison.Ordinal));
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.IfStatement));
-        TextDiffAssert.Contains("--- original #1 if-else-only.cs:", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("if (s.IsReady)", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("else", result.DiffText, result.DiffText);
-        AssertStandaloneStatementDiff(result.DiffText);
-        TextDiffAssert.Contains("<deleted>", result.DiffText, result.DiffText);
-        TextDiffAssert.DoesNotContain("if (s.IsReady)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("else", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("return value + 2;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("--- original #1 if-else-only.cs:", result.Diff, result.Diff);
+        TextDiffAssert.Contains("if (s.IsReady)", result.Diff, result.Diff);
+        TextDiffAssert.Contains("else", result.Diff, result.Diff);
+        AssertStandaloneStatementDiff(result.Diff);
+        TextDiffAssert.Contains("<deleted>", result.Diff, result.Diff);
+        TextDiffAssert.DoesNotContain("if (s.IsReady)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("else", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("return value + 2;", result.RewrittenSource, result.Diff);
         Assert.Contains("public int Compute(Box s, int value)", result.RewrittenSource, StringComparison.Ordinal);
         Assert.Contains("{\r\n    }\r\n}", result.RewrittenSource, StringComparison.Ordinal);
     }
@@ -581,15 +581,15 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.IfElseIfElseSource;
 
         var result = application.Analyze(source, "if-elseif-else.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_IfWithElseIfElse_RewritesToRemainingElseIfChain), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_IfWithElseIfElse_RewritesToRemainingElseIfChain), result.Diff);
 
         AssertContainsPropagatedKind(result, SyntaxKind.IfStatement);
         Assert.Contains(EnumerateEffectiveNodes(result), node => IsNodeKind(node, SyntaxKind.IfStatement) && node.Parent is ElseClauseSyntax);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Replace && IsNodeKind(decision.FinalNode, SyntaxKind.IfStatement));
-        TextDiffAssert.DoesNotContain("if (s.IsReady)", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("if (s.IsReady)", result.RewrittenSource, result.Diff);
         Assert.StartsWith("namespace Demo;", result.RewrittenSource, StringComparison.Ordinal);
-        TextDiffAssert.Contains("if (fallback)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return 3;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("if (fallback)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return 3;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -601,19 +601,19 @@ public sealed class GraphAnalyzerTests
         var exception = Record.Exception(() => application.Analyze(source, "elseif-else.cs", CreateOptions("s")));
         Assert.Null(exception);
         var result = application.Analyze(source, "elseif-else.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ElseIfWithElse_RewritesElseIfToElse), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ElseIfWithElse_RewritesElseIfToElse), result.Diff);
 
         Assert.Contains(EnumerateEffectiveNodes(result), node => IsNodeKind(node, SyntaxKind.IfStatement) && node.Parent is ElseClauseSyntax);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Replace && IsNodeKind(decision.FinalNode, SyntaxKind.ElseClause));
         Assert.DoesNotContain(result.Decisions, decision => decision.Action == DecisionActionKind.Replace && IsNodeKind(decision.FinalNode, SyntaxKind.IfStatement) && decision.FinalNode.Parent is ElseClauseSyntax);
-        TextDiffAssert.Contains("--- original #1 elseif-else.cs:", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("if (ready)", result.DiffText, result.DiffText);
-        TextDiffAssert.Contains("else if (s.IsReady)", result.DiffText, result.DiffText);
-        AssertStandaloneStatementDiff(result.DiffText);
-        TextDiffAssert.Contains("if (ready)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("else if (s.IsReady)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("else", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return 3;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("--- original #1 elseif-else.cs:", result.Diff, result.Diff);
+        TextDiffAssert.Contains("if (ready)", result.Diff, result.Diff);
+        TextDiffAssert.Contains("else if (s.IsReady)", result.Diff, result.Diff);
+        AssertStandaloneStatementDiff(result.Diff);
+        TextDiffAssert.Contains("if (ready)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("else if (s.IsReady)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("else", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return 3;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -623,15 +623,15 @@ public sealed class GraphAnalyzerTests
         var source = SObjectControlFlowSources.ElseIfWithoutTailSource;
 
         var result = application.Analyze(source, "elseif-no-tail.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ElseIfWithoutTail_DeletesOwningElseClause), result.DiffText);
+        AppendUnitTestDiff(nameof(Analyze_ElseIfWithoutTail_DeletesOwningElseClause), result.Diff);
 
         Assert.Contains(EnumerateEffectiveNodes(result), node => IsNodeKind(node, SyntaxKind.IfStatement) && node.Parent is ElseClauseSyntax);
         AssertContainsPropagatedKind(result, SyntaxKind.ElseClause);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.ElseClause));
-        TextDiffAssert.Contains("if (ready)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("else if (s.IsReady)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("return 2;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return 3;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("if (ready)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("else if (s.IsReady)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("return 2;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return 3;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -646,9 +646,9 @@ public sealed class GraphAnalyzerTests
         Assert.Empty(result.PropagatedMarks);
         Assert.Empty(result.Decisions);
         Assert.Empty(result.Edits);
-        TextDiffAssert.Contains("MainEntry", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("Dead();", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("public static void Dead()", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("MainEntry", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("Dead();", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("public static void Dead()", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -849,3 +849,4 @@ public sealed class GraphAnalyzerTests
 
     }
 }
+

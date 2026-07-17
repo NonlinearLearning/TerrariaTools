@@ -1,4 +1,5 @@
 using System.Text;
+using RoslynPrototype.Rewrite;
 using Xunit.Sdk;
 
 namespace RoslynPrototype.Tests;
@@ -47,6 +48,36 @@ internal static class TextDiffAssert
           actualText,
           diffText,
           because));
+    }
+
+    public static void Contains(string expectedFragment, string? actualText, DiffDocument diff, string? because = null)
+    {
+        Contains(expectedFragment, actualText, Render(diff), because: because);
+    }
+
+    public static void Contains(string expectedFragment, DiffDocument actualText, DiffDocument diff, string? because = null)
+    {
+        Contains(expectedFragment, Render(actualText), Render(diff), because: because);
+    }
+
+    public static void DoesNotContain(string unexpectedFragment, string? actualText, DiffDocument diff, string? because = null)
+    {
+        DoesNotContain(unexpectedFragment, actualText, Render(diff), because: because);
+    }
+
+    public static void DoesNotContain(string unexpectedFragment, DiffDocument actualText, DiffDocument diff, string? because = null)
+    {
+        DoesNotContain(unexpectedFragment, Render(actualText), Render(diff), because: because);
+    }
+
+    public static void Equal(string expectedText, string? actualText, DiffDocument diff, string? because = null)
+    {
+        Equal(expectedText, actualText, Render(diff), because: because);
+    }
+
+    public static void Equal(string expectedText, DiffDocument actualText, DiffDocument diff, string? because = null)
+    {
+        Equal(expectedText, Render(actualText), Render(diff), because: because);
     }
 
     private static string BuildContainsFailureMessage(string expectation, string fragment, string actualText, string? diffText, string? because)
@@ -99,5 +130,10 @@ internal static class TextDiffAssert
         }
 
         builder.AppendLine(diffText.TrimEnd());
+    }
+
+    private static string Render(DiffDocument diff)
+    {
+        return new TextDiffRenderer().RenderLegacy(diff);
     }
 }

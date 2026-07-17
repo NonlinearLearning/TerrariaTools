@@ -1,7 +1,7 @@
 namespace RoslynPrototype.Rewrite;
 
 /// <summary>
-/// 封装一次改写执行后的源码结果、编辑列表和差异文本。
+/// 封装一次改写执行后的源码结果、编辑列表和结构化 diff。
 /// </summary>
 public sealed record PrototypeRewriteResult(
   /// <summary>
@@ -13,6 +13,9 @@ public sealed record PrototypeRewriteResult(
   /// </summary>
   IReadOnlyList<RewriteEdit> Edits,
   /// <summary>
-  /// 面向调试和落盘的文本差异摘要。
+  /// 结构化 diff 文档，作为 rewrite 子系统的主 diff 结果。
   /// </summary>
-  string DiffText);
+  DiffDocument Diff)
+{
+  public DiffSummary DiffSummary => Diff.Summary;
+}
