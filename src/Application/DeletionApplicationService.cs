@@ -139,7 +139,7 @@ public sealed class DeletionApplicationService
       ? new PrototypeRewriteResult(
         null,
         Array.Empty<RewriteEdit>(),
-        string.Empty)
+        DiffDocument.Empty)
       : _rewriter.Rewrite(
         analysisContext.Root,
         analysisContext.SemanticModel,
@@ -154,7 +154,7 @@ public sealed class DeletionApplicationService
       filteredDecisions,
       rewriteResult.Edits,
       rewriteResult.RewrittenSource,
-      rewriteResult.DiffText,
+      rewriteResult.Diff,
       null,
       Timings: new AnalysisPhaseTimings(
         analysisContext.PreparationMilliseconds,

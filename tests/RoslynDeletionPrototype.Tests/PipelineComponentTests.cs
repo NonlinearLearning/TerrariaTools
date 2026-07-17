@@ -102,7 +102,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(result.Decisions);
         Assert.Empty(result.Edits);
         Assert.Null(result.RewrittenSource);
-        Assert.Empty(result.DiffText);
+        Assert.Empty(result.Diff);
     }
 
     [Fact]
@@ -1239,9 +1239,9 @@ public sealed class PipelineComponentTests : IDisposable
         var result = rewriter.Rewrite(root, semanticModel, decisions);
 
         Assert.Equal(2, result.Edits.Count);
-        TextDiffAssert.Contains("default(int)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("var temp = value + 1;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("<deleted>", result.DiffText, result.DiffText);
+        TextDiffAssert.Contains("default(int)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("var temp = value + 1;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("<deleted>", result.Diff, result.Diff);
     }
 
     [Fact]
@@ -1276,8 +1276,8 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.Null(exception);
         var result = rewriter.Rewrite(root, semanticModel, decisions);
-        TextDiffAssert.Contains("return -1;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("else if (flag1)", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("return -1;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("else if (flag1)", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -1322,8 +1322,8 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.Null(exception);
         var result = rewriter.Rewrite(root, semanticModel, decisions);
-        TextDiffAssert.DoesNotContain("if (ready)", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return 2;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("if (ready)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return 2;", result.RewrittenSource, result.Diff);
         Assert.Single(result.Edits);
     }
 
@@ -1364,6 +1364,38 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void AnalyzeFromArgs_WithReadableDiffView_WritesReadableDiffFile()
+    {
+        var filePath = Path.Combine(_tempDirectory, "delete-s-object-readable.cs");
+        var rawDiffPath = Path.Combine(_tempDirectory, "delete-s-object-readable.diff");
+        File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
+        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var result = application.AnalyzeFromArgs(new[]
+        {
+            filePath,
+            "--target-name",
+            "s",
+            "--diff-out",
+            rawDiffPath,
+            "--diff-view",
+            "readable"
+        });
+
+        Assert.NotNull(result.DiffFilePath);
+        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
+        Assert.Equal(result.Diff.Summary, result.DiffSummary);
+
+        var diffText = File.ReadAllText(rawDiffPath);
+        Assert.Contains("diff-summary files=1 edits=", diffText, StringComparison.Ordinal);
+        Assert.Contains("=== file", diffText, StringComparison.Ordinal);
+        Assert.Contains("edit #1 kind=", diffText, StringComparison.Ordinal);
+        Assert.Contains("--- before", diffText, StringComparison.Ordinal);
+        Assert.Contains("+++ after", diffText, StringComparison.Ordinal);
+        Assert.Equal(diffText, new TextDiffRenderer().Render(result.Diff, "readable"));
+    }
+
+    [Fact]
     public void AnalyzeFromArgs_UsesDefaultSourceWhenInputPathIsMissing()
     {
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
@@ -1374,7 +1406,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(result.PropagatedMarks);
         Assert.Equal(2, result.Edits.Count);
         Assert.Null(result.DiffFilePath);
-        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -1422,8 +1454,8 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Null(result.DiffFilePath);
         Assert.False(File.Exists(expectedDiffPath));
         var rewrittenSource = File.ReadAllText(filePath);
-        TextDiffAssert.Contains("return value;", rewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("var value = s.Seed + offset;", rewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("return value;", rewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("var value = s.Seed + offset;", rewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -1692,7 +1724,7 @@ public sealed class PipelineComponentTests : IDisposable
           "*.rewrite.diff",
           SearchOption.AllDirectories));
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("private int KeepAlive()", rewrittenServiceSource, result.DiffText);
+        TextDiffAssert.Contains("private int KeepAlive()", rewrittenServiceSource, result.Diff);
         Assert.DoesNotContain("private int DeadPrivate()", rewrittenServiceSource, StringComparison.Ordinal);
     }
 
@@ -1891,9 +1923,9 @@ public sealed class PipelineComponentTests : IDisposable
           result.Decisions,
           decision => decision.FinalNode is PropertyDeclarationSyntax &&
             decision.Action == DecisionActionKind.Delete);
-        TextDiffAssert.DoesNotContain("private PlayerInput _field;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("public PlayerInput Current { get; set; }", result.RewrittenSource, result.DiffText);
-        Assert.DoesNotContain("public int Create(PlayerInput input)", result.DiffText, StringComparison.Ordinal);
+        TextDiffAssert.DoesNotContain("private PlayerInput _field;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("public PlayerInput Current { get; set; }", result.RewrittenSource, result.Diff);
+        Assert.DoesNotContain("public int Create(PlayerInput input)", result.Diff, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1939,7 +1971,7 @@ public sealed class PipelineComponentTests : IDisposable
               StringComparison.Ordinal) &&
             mark.Mark.SyntaxNode is VariableDeclaratorSyntax declarator &&
             string.Equals(declarator.Identifier.ValueText, "input", StringComparison.Ordinal));
-        TextDiffAssert.DoesNotContain("var input = new PlayerInput();", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("var input = new PlayerInput();", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -2038,8 +2070,8 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.DoesNotContain(
           "private PlayerInput CreatePrivate()",
           result.RewrittenSource,
-          result.DiffText);
-        Assert.DoesNotContain("public int Keep()", result.DiffText, StringComparison.Ordinal);
+          result.Diff);
+        Assert.DoesNotContain("public int Keep()", result.Diff, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2095,8 +2127,8 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.DoesNotContain(
           "public PlayerInput CreatePublic()",
           result.RewrittenSource,
-          result.DiffText);
-        Assert.DoesNotContain("public int Keep()", result.DiffText, StringComparison.Ordinal);
+          result.Diff);
+        Assert.DoesNotContain("public int Keep()", result.Diff, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2162,12 +2194,12 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "private int ApplyPrivate(int frame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return ApplyPrivate(frame);",
           rewrittenSource,
-          result.DiffText);
-        Assert.DoesNotContain("public void Keep(int frame)", result.DiffText, StringComparison.Ordinal);
+          result.Diff);
+        Assert.DoesNotContain("public void Keep(int frame)", result.Diff, StringComparison.Ordinal);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2224,11 +2256,11 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "private int ApplyPrivate(int frame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return ApplyPrivate(frame: frame);",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2280,7 +2312,7 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "private int ApplyPrivate(PlayerInput input, int frame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         var diagnostics = result.Diagnostics ?? throw new InvalidOperationException("Expected diagnostics.");
         Assert.NotEmpty(diagnostics);
     }
@@ -2335,19 +2367,19 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "private int ApplyOptional(int frame, int scale = 1)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return ApplyOptional(frame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "ApplyOptional(frame, scale: 2)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "ApplyOptional(frame, scale: 3)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2399,11 +2431,11 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "private int ApplyParams(int frame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return ApplyParams(frame) + ApplyParams(1);",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2470,12 +2502,12 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "public int ApplyPublic(int frame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return ApplyPublic(frame);",
           rewrittenSource,
-          result.DiffText);
-        Assert.DoesNotContain("public void Keep(int frame)", result.DiffText, StringComparison.Ordinal);
+          result.Diff);
+        Assert.DoesNotContain("public void Keep(int frame)", result.Diff, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2531,11 +2563,11 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "int ApplyLocal(int localFrame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return ApplyLocal(frame);",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
     }
 
     [Fact]
@@ -2591,11 +2623,11 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "int ApplyLocal(int localFrame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return ApplyLocal(localFrame: frame);",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2649,19 +2681,19 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "int ApplyLocal(int localFrame, int scale = 1)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return ApplyLocal(frame)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "ApplyLocal(frame, scale: 2)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "ApplyLocal(frame, scale: 3)",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2717,11 +2749,11 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "public int this[int index] => index;",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return buffer[frame];",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
     }
 
     [Fact]
@@ -2776,11 +2808,11 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "public int this[int index] => index;",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.Contains(
           "return buffer[index: frame];",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2837,10 +2869,10 @@ public sealed class PipelineComponentTests : IDisposable
           decision => decision.FinalNode is MethodDeclarationSyntax method &&
             string.Equals(method.Identifier.ValueText, "Apply", StringComparison.Ordinal) &&
             decision.Action == DecisionActionKind.Replace);
-        TextDiffAssert.Contains("public delegate int Handler(int frame);", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("private int Apply(int frame)", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("Handler handler = Apply;", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return handler(frame) + handler.Invoke(frame);", rewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public delegate int Handler(int frame);", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("private int Apply(int frame)", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("Handler handler = Apply;", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return handler(frame) + handler.Invoke(frame);", rewrittenSource, result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2891,9 +2923,9 @@ public sealed class PipelineComponentTests : IDisposable
           result.Decisions,
           decision => decision.FinalNode is ParenthesizedLambdaExpressionSyntax &&
             decision.Action == DecisionActionKind.Replace);
-        TextDiffAssert.Contains("public delegate int Handler(int frame);", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("Handler handler = (currentFrame) => currentFrame;", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return handler(frame);", rewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public delegate int Handler(int frame);", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("Handler handler = (currentFrame) => currentFrame;", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return handler(frame);", rewrittenSource, result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2940,8 +2972,8 @@ public sealed class PipelineComponentTests : IDisposable
           decision => decision.FinalNode is DelegateDeclarationSyntax delegateDeclaration &&
             string.Equals(delegateDeclaration.Identifier.ValueText, "Handler", StringComparison.Ordinal) &&
             decision.Action == DecisionActionKind.Replace);
-        TextDiffAssert.Contains("public delegate int Handler(int frame);", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return handler(frame) + alias.Invoke(frame);", rewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public delegate int Handler(int frame);", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return handler(frame) + alias.Invoke(frame);", rewrittenSource, result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -2993,8 +3025,8 @@ public sealed class PipelineComponentTests : IDisposable
           decision => decision.FinalNode is MethodDeclarationSyntax method &&
             string.Equals(method.Identifier.ValueText, "Score", StringComparison.Ordinal) &&
             decision.Action == DecisionActionKind.Replace);
-        TextDiffAssert.Contains("public static int Score(this int value, int frame)", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return frame.Score(1) + InputExtensions.Score(frame, 2);", rewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public static int Score(this int value, int frame)", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return frame.Score(1) + InputExtensions.Score(frame, 2);", rewrittenSource, result.Diff);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -3042,7 +3074,7 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains(
           "public delegate void Apply(int frame);",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Contains("public delegate int Keep(int frame);", rewrittenSource, StringComparison.Ordinal);
     }
 
@@ -3100,11 +3132,11 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.DoesNotContain(
           "PlayerInput Create();",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         TextDiffAssert.DoesNotContain(
           "void Apply(PlayerInput input);",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Contains("int Keep();", rewrittenSource, StringComparison.Ordinal);
     }
 
@@ -3155,7 +3187,7 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.DoesNotContain(
           "PlayerInput Current { get; }",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Contains("int Keep { get; }", rewrittenSource, StringComparison.Ordinal);
     }
 
@@ -3211,7 +3243,7 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.DoesNotContain(
           "event PlayerInputHandler Changed;",
           rewrittenSource,
-          result.DiffText);
+          result.Diff);
         Assert.Contains("event System.Action KeepAlive;", rewrittenSource, StringComparison.Ordinal);
     }
 
@@ -3252,8 +3284,8 @@ public sealed class PipelineComponentTests : IDisposable
         var rewrittenSource = File.ReadAllText(sourceFilePath);
 
         Assert.Contains("int this[string key] { get; }", rewrittenSource, StringComparison.Ordinal);
-        TextDiffAssert.DoesNotContain("PlayerInput this[int index] { get; }", rewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("int this[PlayerInput input] { get; }", rewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("PlayerInput this[int index] { get; }", rewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("int this[PlayerInput input] { get; }", rewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -3307,8 +3339,8 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.DoesNotContain(
           "public static int Score(this PlayerInput input)",
           result.RewrittenSource,
-          result.DiffText);
-        Assert.DoesNotContain("public static int Keep(this int value)", result.DiffText, StringComparison.Ordinal);
+          result.Diff);
+        Assert.DoesNotContain("public static int Keep(this int value)", result.Diff, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3363,8 +3395,8 @@ public sealed class PipelineComponentTests : IDisposable
             string.Equals(simpleBaseType.Type.ToString(), "IPlayerInputConsumer", StringComparison.Ordinal) &&
             decision.Action == DecisionActionKind.Delete);
         var rewrittenSource = File.ReadAllText(sourceFilePath);
-        TextDiffAssert.Contains("public sealed class Single", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("public sealed class Multi : IOther", rewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public sealed class Single", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("public sealed class Multi : IOther", rewrittenSource, result.Diff);
         Assert.DoesNotContain("Single : PlayerInput", rewrittenSource, StringComparison.Ordinal);
         Assert.DoesNotContain("IPlayerInputConsumer, IOther", rewrittenSource, StringComparison.Ordinal);
 
@@ -3423,8 +3455,8 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.DoesNotContain(
           "List<PlayerInput> items;",
           result.RewrittenSource,
-          result.DiffText);
-        Assert.DoesNotContain("public int GetItems()", result.DiffText, StringComparison.Ordinal);
+          result.Diff);
+        Assert.DoesNotContain("public int GetItems()", result.Diff, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -3518,9 +3550,9 @@ public sealed class PipelineComponentTests : IDisposable
               StringComparison.Ordinal));
 
         var rewrittenSource = File.ReadAllText(sourceFilePath);
-        TextDiffAssert.DoesNotContain("public delegate void Apply(PlayerInput input);", rewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("internal delegate PlayerInput Build();", rewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("public delegate void Keep(int frame);", rewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("public delegate void Apply(PlayerInput input);", rewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("internal delegate PlayerInput Build();", rewrittenSource, result.Diff);
+        TextDiffAssert.Contains("public delegate void Keep(int frame);", rewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -3649,9 +3681,9 @@ public sealed class PipelineComponentTests : IDisposable
         });
 
         var rewrittenConsumerSource = File.ReadAllText(consumerFilePath);
-        TextDiffAssert.Contains("using Demo.Extensions;", rewrittenConsumerSource, result.DiffText);
+        TextDiffAssert.Contains("using Demo.Extensions;", rewrittenConsumerSource, result.Diff);
         Assert.DoesNotContain("using Demo.Input;", rewrittenConsumerSource, StringComparison.Ordinal);
-        TextDiffAssert.Contains("1.Twice()", rewrittenConsumerSource, result.DiffText);
+        TextDiffAssert.Contains("1.Twice()", rewrittenConsumerSource, result.Diff);
 
         var rewrittenTrees = new[]
         {
@@ -3733,9 +3765,9 @@ public sealed class PipelineComponentTests : IDisposable
         });
 
         var rewrittenSource = File.ReadAllText(sourceFilePath);
-        TextDiffAssert.Contains("namespace Demo", rewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("namespace Demo", rewrittenSource, result.Diff);
         Assert.DoesNotContain("class PlayerInput", rewrittenSource, StringComparison.Ordinal);
-        TextDiffAssert.Contains("public sealed class Placeholder", rewrittenSource, result.DiffText);
+        TextDiffAssert.Contains("public sealed class Placeholder", rewrittenSource, result.Diff);
 
         var rewrittenTree = CSharpSyntaxTree.ParseText(rewrittenSource, path: sourceFilePath);
         var errors = CreateCompilation(rewrittenTree)
@@ -3792,13 +3824,13 @@ public sealed class PipelineComponentTests : IDisposable
         });
 
         var rewrittenConsumerSource = File.ReadAllText(consumerFilePath);
-        TextDiffAssert.Contains("using Demo.Input;", rewrittenConsumerSource, result.DiffText);
-        TextDiffAssert.Contains("using System;", rewrittenConsumerSource, result.DiffText);
-        TextDiffAssert.Contains("namespace Demo;", rewrittenConsumerSource, result.DiffText);
+        TextDiffAssert.Contains("using Demo.Input;", rewrittenConsumerSource, result.Diff);
+        TextDiffAssert.Contains("using System;", rewrittenConsumerSource, result.Diff);
+        TextDiffAssert.Contains("namespace Demo;", rewrittenConsumerSource, result.Diff);
         Assert.DoesNotContain("PlayerInput.Enabled", rewrittenConsumerSource, StringComparison.Ordinal);
 
         var rewrittenClassSource = File.ReadAllText(classFilePath);
-        TextDiffAssert.Contains("namespace Demo.Input;", rewrittenClassSource, result.DiffText);
+        TextDiffAssert.Contains("namespace Demo.Input;", rewrittenClassSource, result.Diff);
         Assert.DoesNotContain("class PlayerInput", rewrittenClassSource, StringComparison.Ordinal);
     }
 
@@ -3992,8 +4024,8 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(result.SeedMarks);
         Assert.NotEmpty(result.Edits);
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("private int Used()", rewrittenServiceSource, result.DiffText);
-        TextDiffAssert.Contains("private int Helper()", rewrittenServiceSource, result.DiffText);
+        TextDiffAssert.Contains("private int Used()", rewrittenServiceSource, result.Diff);
+        TextDiffAssert.Contains("private int Helper()", rewrittenServiceSource, result.Diff);
         Assert.DoesNotContain("private int Unused()", rewrittenServiceSource, StringComparison.Ordinal);
         Assert.DoesNotContain("private int DeadCaller()", rewrittenServiceSource, StringComparison.Ordinal);
         Assert.DoesNotContain("private int DeadCallee()", rewrittenServiceSource, StringComparison.Ordinal);
@@ -4053,7 +4085,7 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.NotEmpty(result.Edits);
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("public int PublicApi()", rewrittenServiceSource, result.DiffText);
+        TextDiffAssert.Contains("public int PublicApi()", rewrittenServiceSource, result.Diff);
         Assert.DoesNotContain("private int PrivateDead()", rewrittenServiceSource, StringComparison.Ordinal);
     }
 
@@ -4110,8 +4142,8 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.NotEmpty(result.Edits);
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("private int DelegateTarget()", rewrittenServiceSource, result.DiffText);
-        TextDiffAssert.Contains("private int LocalTarget()", rewrittenServiceSource, result.DiffText);
+        TextDiffAssert.Contains("private int DelegateTarget()", rewrittenServiceSource, result.Diff);
+        TextDiffAssert.Contains("private int LocalTarget()", rewrittenServiceSource, result.Diff);
         Assert.DoesNotContain("private int DeadPrivate()", rewrittenServiceSource, StringComparison.Ordinal);
 
         var rewrittenTrees = new[]
@@ -4189,9 +4221,9 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.NotEmpty(result.Edits);
         var rewrittenSecondPartialSource = File.ReadAllText(secondPartialPath);
-        TextDiffAssert.Contains("private int UseShared()", rewrittenSecondPartialSource, result.DiffText);
-        TextDiffAssert.Contains("private int SharedHelper()", rewrittenSecondPartialSource, result.DiffText);
-        TextDiffAssert.Contains("private void Initialize()", rewrittenSecondPartialSource, result.DiffText);
+        TextDiffAssert.Contains("private int UseShared()", rewrittenSecondPartialSource, result.Diff);
+        TextDiffAssert.Contains("private int SharedHelper()", rewrittenSecondPartialSource, result.Diff);
+        TextDiffAssert.Contains("private void Initialize()", rewrittenSecondPartialSource, result.Diff);
         Assert.DoesNotContain("private int DeadPartial()", rewrittenSecondPartialSource, StringComparison.Ordinal);
 
         var rewrittenTrees = new[]
@@ -4255,8 +4287,8 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(result.Decisions);
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Replace);
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("value = new global::Demo.Payload();", rewrittenServiceSource, result.DiffText);
-        TextDiffAssert.Contains("return new global::Demo.Payload();", rewrittenServiceSource, result.DiffText);
+        TextDiffAssert.Contains("value = new global::Demo.Payload();", rewrittenServiceSource, result.Diff);
+        TextDiffAssert.Contains("return new global::Demo.Payload();", rewrittenServiceSource, result.Diff);
         Assert.DoesNotContain("return value;", rewrittenServiceSource, StringComparison.Ordinal);
         Assert.DoesNotContain("var payload = new Payload();", rewrittenServiceSource, StringComparison.Ordinal);
 
@@ -4319,7 +4351,7 @@ public sealed class PipelineComponentTests : IDisposable
         });
 
         Assert.Empty(result.Edits);
-        TextDiffAssert.Contains("System.Console.WriteLine(1);", File.ReadAllText(serviceFilePath), result.DiffText);
+        TextDiffAssert.Contains("System.Console.WriteLine(1);", File.ReadAllText(serviceFilePath), result.Diff);
     }
 
     [Fact]
@@ -4358,8 +4390,8 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(result.SeedMarks);
         Assert.NotEmpty(result.Edits);
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("public int Run()", rewrittenServiceSource, result.DiffText);
-        TextDiffAssert.Contains("private int Helper()", rewrittenServiceSource, result.DiffText);
+        TextDiffAssert.Contains("public int Run()", rewrittenServiceSource, result.Diff);
+        TextDiffAssert.Contains("private int Helper()", rewrittenServiceSource, result.Diff);
         Assert.DoesNotContain("public int Helper()", rewrittenServiceSource, StringComparison.Ordinal);
 
         var rewrittenTrees = new[]
@@ -4421,7 +4453,7 @@ public sealed class PipelineComponentTests : IDisposable
         });
 
         Assert.Empty(result.Edits);
-        TextDiffAssert.Contains("public int Helper()", File.ReadAllText(serviceFilePath), result.DiffText);
+        TextDiffAssert.Contains("public int Helper()", File.ReadAllText(serviceFilePath), result.Diff);
     }
 
     [Fact]
@@ -4438,9 +4470,9 @@ public sealed class PipelineComponentTests : IDisposable
         var result = rewriter.Rewrite(root, semanticModel, Array.Empty<RuleDecision>());
 
         Assert.Empty(result.Edits);
-        TextDiffAssert.Contains("public sealed class Sample", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("return value + 1;", result.RewrittenSource, result.DiffText);
-        Assert.Empty(result.DiffText);
+        TextDiffAssert.Contains("public sealed class Sample", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("return value + 1;", result.RewrittenSource, result.Diff);
+        Assert.Empty(result.Diff);
     }
 
     [Fact]
@@ -5285,7 +5317,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Equal(expected.LiftedMarks.Count, actual.LiftedMarks.Count);
         Assert.Equal(expected.Decisions.Count, actual.Decisions.Count);
         Assert.Equal(expected.Edits.Count, actual.Edits.Count);
-        Assert.Equal(expected.DiffText, actual.DiffText);
+        Assert.Equal(expected.Diff.ToString(), actual.Diff.ToString());
 
         var expectedDecisionKeys = expected.Decisions
           .Select(BuildDecisionKey)
@@ -5341,3 +5373,4 @@ public sealed class PipelineComponentTests : IDisposable
           diagnostic.Message);
     }
 }
+

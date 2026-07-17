@@ -7,7 +7,8 @@ namespace RoslynPrototype.Application;
 
 internal sealed class DeleteClassPostRewriteCleanupService
 {
-    private readonly PrototypeRewriter _rewriter = new();
+    private readonly DiffBuilder _diffBuilder = new();
+    private readonly TextDiffRenderer _textDiffRenderer = new();
 
     internal PrototypeAnalysisResult ApplyUsingCleanup(
       string filePath,
@@ -137,11 +138,12 @@ internal sealed class DeleteClassPostRewriteCleanupService
         }
 
         var edits = result.Edits.Concat(cleanupEdits).ToList();
+        var diff = _diffBuilder.Build(edits);
         return result with
         {
-            Edits = edits,
-            RewrittenSource = currentSource,
-            DiffText = _rewriter.BuildDiffText(edits)
+          Edits = edits,
+          RewrittenSource = currentSource,
+          Diff = diff
         };
     }
 

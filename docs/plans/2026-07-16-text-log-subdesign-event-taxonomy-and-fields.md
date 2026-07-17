@@ -22,6 +22,7 @@ The replacement must answer two questions clearly:
 The initial category set is:
 
 - `run`
+- `file`
 - `diag`
 - `cpg`
 - `mark`
@@ -41,6 +42,9 @@ The initial event type set is:
 - `failed`
 - `summary`
 - `snapshot`
+- `warning`
+- `error`
+- `writerFailed`
 
 Each event belongs to exactly one event type.
 

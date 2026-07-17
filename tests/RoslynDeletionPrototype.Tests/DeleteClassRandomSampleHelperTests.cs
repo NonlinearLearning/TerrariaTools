@@ -92,7 +92,7 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
         });
         Assert.True(Directory.Exists(result.CopiedSourceRoot));
         Assert.True(Directory.Exists(result.DiffRoot));
-        Assert.NotEmpty(result.AnalysisResult.DiffText);
+        Assert.NotEmpty(result.AnalysisResult.Diff.Files);
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
 
         Assert.Equal(sampleCount, result.SelectedRelativePaths.Count);
         Assert.False(result.WriteBackApplied);
-        Assert.NotEmpty(result.AnalysisResult.DiffText);
+        Assert.NotEmpty(result.AnalysisResult.Diff.Files);
         Assert.True(result.AnalysisResult.Edits.Count > 0);
         Assert.True(result.Timings.CopyMilliseconds >= 0);
         Assert.True(result.Timings.AnalysisMilliseconds >= 0);
@@ -218,3 +218,4 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
         return stagedSourceDirectory;
     }
 }
+

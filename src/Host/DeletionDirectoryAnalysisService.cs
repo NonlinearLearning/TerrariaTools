@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Builder;
+using RoslynPrototype.Application.Logging;
 using RoslynPrototype.Analysis;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Lifting;
@@ -40,11 +41,12 @@ internal sealed class DeletionDirectoryAnalysisService
     internal async Task<PrototypeAnalysisResult> AnalyzeDirectoryAsync(
       string directoryPath,
       IReadOnlyDictionary<string, string> options,
-      DeletionAnalysisRuntime runtime)
+      DeletionAnalysisRuntime runtime,
+      AnalysisTextLogWriter? analysisWriter = null)
     {
         if (DeletionApplicationOptions.ShouldUseUnreferencedMethodFastPath(options))
         {
-            return AnalyzeDirectoryForUnreferencedMethods(directoryPath, options, runtime);
+            return AnalyzeDirectoryForUnreferencedMethods(directoryPath, options, runtime, analysisWriter);
         }
 
         var filePaths = EnumerateSourceFiles(directoryPath).ToList();
@@ -57,7 +59,7 @@ internal sealed class DeletionDirectoryAnalysisService
         var analysisFilePaths = ResolveAnalysisFilePaths(filePaths, sourcesByPath, options);
         var trees = ParseTrees(filePaths, sourcesByPath);
         var compilation = RoslynCompilationFactory.CreateCompilation(trees.Values);
-        var aggregation = new DirectoryResultAggregator(directoryPath, options);
+        var aggregation = new DirectoryResultAggregator(directoryPath, options, analysisWriter);
         var editedFileResults = new List<IndexedFileAnalysisResult>();
         AnalyzeFilesInParallel(
           analysisFilePaths,
@@ -110,7 +112,8 @@ internal sealed class DeletionDirectoryAnalysisService
     private PrototypeAnalysisResult AnalyzeDirectoryForUnreferencedMethods(
       string directoryPath,
       IReadOnlyDictionary<string, string> options,
-      DeletionAnalysisRuntime runtime)
+      DeletionAnalysisRuntime runtime,
+      AnalysisTextLogWriter? analysisWriter = null)
     {
         var stopwatch = Stopwatch.StartNew();
         var filePaths = EnumerateSourceFiles(directoryPath).ToList();
@@ -119,13 +122,13 @@ internal sealed class DeletionDirectoryAnalysisService
             return new PrototypeAnalysisResult(
               Array.Empty<MarkRecord>(),
               Array.Empty<PropagatedMarkRecord>(),
-              Array.Empty<LiftedMarkRecord>(),
-              Array.Empty<RuleDecision>(),
-              Array.Empty<RewriteEdit>(),
-              string.Empty,
-              string.Empty,
-              null,
-              new AnalysisStats(0, 0, 0, 0, stopwatch.ElapsedMilliseconds));
+          Array.Empty<LiftedMarkRecord>(),
+          Array.Empty<RuleDecision>(),
+          Array.Empty<RewriteEdit>(),
+          string.Empty,
+          DiffDocument.Empty,
+          null,
+          new AnalysisStats(0, 0, 0, 0, stopwatch.ElapsedMilliseconds));
         }
 
         var sourcesByPath = ReadSources(filePaths);
@@ -134,7 +137,7 @@ internal sealed class DeletionDirectoryAnalysisService
         var unreferencedMethodsByPath = FindUnreferencedMethodDeclarationsByPath(compilation);
         var candidateMethodCount = CountUnreferencedMethodCandidates(compilation);
         var deletedMethodCount = unreferencedMethodsByPath.Values.Sum(methods => methods.Count);
-        var aggregation = new DirectoryResultAggregator(directoryPath, options);
+        var aggregation = new DirectoryResultAggregator(directoryPath, options, analysisWriter);
         AnalyzeFilesInParallel(
           filePaths,
           trees,
@@ -189,7 +192,7 @@ internal sealed class DeletionDirectoryAnalysisService
           decisions,
           rewriteResult.Edits,
           rewriteResult.RewrittenSource,
-          rewriteResult.DiffText,
+          rewriteResult.Diff,
           null);
     }
 
@@ -637,7 +640,7 @@ internal sealed class DeletionDirectoryAnalysisService
           Array.Empty<RuleDecision>(),
           Array.Empty<RewriteEdit>(),
           string.Empty,
-          string.Empty,
+          DiffDocument.Empty,
           null);
     }
 
@@ -650,15 +653,21 @@ internal sealed class DeletionDirectoryAnalysisService
     {
         private readonly string _directoryPath;
         private readonly IReadOnlyDictionary<string, string> _options;
+        private readonly AnalysisTextLogWriter? _analysisWriter;
+        private readonly DiffBuilder _diffBuilder = new();
+        private readonly TextDiffRenderer _textDiffRenderer = new();
         private readonly string _diffRootPath;
+        private readonly string _diffView;
         private readonly List<MarkRecord> _seedMarks = new();
         private readonly List<PropagatedMarkRecord> _propagatedMarks = new();
         private readonly List<LiftedMarkRecord> _liftedMarks = new();
         private readonly List<RuleDecision> _decisions = new();
         private readonly List<RewriteEdit> _edits = new();
+        private readonly List<DiffDocument> _diffDocuments = new();
         private readonly Dictionary<string, string> _rewrittenSources = new(StringComparer.Ordinal);
-        private readonly List<string> _diffSections = new();
         private readonly List<string> _diffFilePaths = new();
+        private RoslynCpgBuildTelemetry? _cpgBuildTelemetry;
+        private MarkAnalysisTelemetry? _markAnalysisTelemetry;
         private long _preparationMilliseconds;
         private long _cpgBuildMilliseconds;
         private long _markMilliseconds;
@@ -671,10 +680,13 @@ internal sealed class DeletionDirectoryAnalysisService
 
         internal DirectoryResultAggregator(
           string directoryPath,
-          IReadOnlyDictionary<string, string> options)
+          IReadOnlyDictionary<string, string> options,
+          AnalysisTextLogWriter? analysisWriter)
         {
             _directoryPath = directoryPath;
             _options = options;
+            _analysisWriter = analysisWriter;
+            _diffView = DeletionApplicationOptions.ResolveDiffView(options);
             _diffRootPath = DeletionDiffPathResolver.ResolveDirectoryDiffRoot(directoryPath, options);
         }
 
@@ -685,7 +697,14 @@ internal sealed class DeletionDirectoryAnalysisService
             _liftedMarks.AddRange(result.LiftedMarks);
             _decisions.AddRange(result.Decisions);
             _edits.AddRange(result.Edits);
+            if (result.Diff.Files.Count > 0)
+            {
+                _diffDocuments.Add(result.Diff);
+            }
             AddTimings(result.Timings);
+            AddCpgBuildTelemetry(result.CpgBuildTelemetry);
+            AddMarkAnalysisTelemetry(result.MarkAnalysisTelemetry);
+            _analysisWriter?.WriteResult(filePath, result);
 
             if (result.Edits.Count == 0)
             {
@@ -697,7 +716,6 @@ internal sealed class DeletionDirectoryAnalysisService
                 _rewrittenSources[filePath] = result.RewrittenSource;
             }
 
-            _diffSections.Add($"### {filePath}{Environment.NewLine}{result.DiffText}");
             if (DeletionApplicationOptions.ShouldWriteDiff(_options))
             {
                 var fileDiffPath = DeletionDiffPathResolver.ResolveFileDiffPath(
@@ -705,7 +723,10 @@ internal sealed class DeletionDirectoryAnalysisService
                   filePath,
                   _diffRootPath);
                 Directory.CreateDirectory(Path.GetDirectoryName(fileDiffPath)!);
-                File.WriteAllText(fileDiffPath, result.DiffText, Encoding.UTF8);
+                File.WriteAllText(
+                  fileDiffPath,
+                  _textDiffRenderer.Render(result.Diff.Files.Single(), _diffView),
+                  Encoding.UTF8);
                 _diffFilePaths.Add(fileDiffPath);
             }
         }
@@ -725,9 +746,8 @@ internal sealed class DeletionDirectoryAnalysisService
                 }
             }
 
-            var diffText = string.Join(
-              $"{Environment.NewLine}{Environment.NewLine}",
-              _diffSections);
+            var diff = _diffBuilder.Combine(_diffDocuments);
+            var diffText = _textDiffRenderer.Render(diff, _diffView);
             var diffPath = _diffFilePaths.Count > 0 && DeletionApplicationOptions.ShouldWriteDiff(_options)
               ? _diffRootPath
               : null;
@@ -739,10 +759,12 @@ internal sealed class DeletionDirectoryAnalysisService
               _decisions,
               _edits,
               $"<multi-file:{_rewrittenSources.Count}>",
-              diffText,
+              diff,
               diffPath,
               stats,
-              Timings: BuildTimings());
+              Timings: BuildTimings(),
+              CpgBuildTelemetry: BuildCpgBuildTelemetry(),
+              MarkAnalysisTelemetry: BuildMarkAnalysisTelemetry());
         }
 
         private void AddTimings(AnalysisPhaseTimings? timings)
@@ -779,6 +801,161 @@ internal sealed class DeletionDirectoryAnalysisService
               _decideMilliseconds,
               _rewriteMilliseconds,
               _totalMilliseconds);
+        }
+
+        private void AddCpgBuildTelemetry(RoslynCpgBuildTelemetry? telemetry)
+        {
+            if (telemetry is null)
+            {
+                return;
+            }
+
+            if (_cpgBuildTelemetry is null)
+            {
+                _cpgBuildTelemetry = telemetry;
+                return;
+            }
+
+            _cpgBuildTelemetry = _cpgBuildTelemetry with
+            {
+                SourceLineCount = _cpgBuildTelemetry.SourceLineCount + telemetry.SourceLineCount,
+                PartitionCount = _cpgBuildTelemetry.PartitionCount + telemetry.PartitionCount,
+                MaxDegreeOfParallelism = Math.Max(
+                  _cpgBuildTelemetry.MaxDegreeOfParallelism,
+                  telemetry.MaxDegreeOfParallelism),
+                OperationBuildElapsedMilliseconds =
+                  _cpgBuildTelemetry.OperationBuildElapsedMilliseconds +
+                  telemetry.OperationBuildElapsedMilliseconds,
+                SyntaxBuildElapsedMilliseconds =
+                  _cpgBuildTelemetry.SyntaxBuildElapsedMilliseconds +
+                  telemetry.SyntaxBuildElapsedMilliseconds,
+                DataFlowBuildElapsedMilliseconds =
+                  _cpgBuildTelemetry.DataFlowBuildElapsedMilliseconds +
+                  telemetry.DataFlowBuildElapsedMilliseconds,
+                FreezeQueryIndexElapsedMilliseconds =
+                  _cpgBuildTelemetry.FreezeQueryIndexElapsedMilliseconds +
+                  telemetry.FreezeQueryIndexElapsedMilliseconds,
+                GraphNodeCount = _cpgBuildTelemetry.GraphNodeCount + telemetry.GraphNodeCount,
+                GraphEdgeCount = _cpgBuildTelemetry.GraphEdgeCount + telemetry.GraphEdgeCount
+            };
+        }
+
+        private void AddMarkAnalysisTelemetry(MarkAnalysisTelemetry? telemetry)
+        {
+            if (telemetry is null)
+            {
+                return;
+            }
+
+            if (_markAnalysisTelemetry is null)
+            {
+                _markAnalysisTelemetry = telemetry;
+                return;
+            }
+
+            _markAnalysisTelemetry = new MarkAnalysisTelemetry(
+              _markAnalysisTelemetry.AtomicCandidateIndexHitCount +
+                telemetry.AtomicCandidateIndexHitCount,
+              _markAnalysisTelemetry.AtomicCandidateIndexMissCount +
+                telemetry.AtomicCandidateIndexMissCount,
+              _markAnalysisTelemetry.OperationLookupCacheHitCount +
+                telemetry.OperationLookupCacheHitCount,
+              _markAnalysisTelemetry.OperationLookupCacheMissCount +
+                telemetry.OperationLookupCacheMissCount,
+              _markAnalysisTelemetry.GraphBindingIndexHitCount +
+                telemetry.GraphBindingIndexHitCount,
+              _markAnalysisTelemetry.GraphBindingIndexMissCount +
+                telemetry.GraphBindingIndexMissCount,
+              _markAnalysisTelemetry.RegionCacheHitCount +
+                telemetry.RegionCacheHitCount,
+              _markAnalysisTelemetry.RegionCacheMissCount +
+                telemetry.RegionCacheMissCount,
+              _markAnalysisTelemetry.TargetMatchCacheHitCount +
+                telemetry.TargetMatchCacheHitCount,
+              _markAnalysisTelemetry.TargetMatchCacheMissCount +
+                telemetry.TargetMatchCacheMissCount,
+              _markAnalysisTelemetry.SliceQueryCacheHitCount +
+                telemetry.SliceQueryCacheHitCount,
+              _markAnalysisTelemetry.SliceQueryCacheMissCount +
+                telemetry.SliceQueryCacheMissCount,
+              MergeRuleTelemetry(
+                _markAnalysisTelemetry.RuleTelemetry,
+                telemetry.RuleTelemetry));
+        }
+
+        private RoslynCpgBuildTelemetry? BuildCpgBuildTelemetry()
+        {
+            return _cpgBuildTelemetry;
+        }
+
+        private MarkAnalysisTelemetry? BuildMarkAnalysisTelemetry()
+        {
+            return _markAnalysisTelemetry;
+        }
+
+        private static IReadOnlyList<MarkRuleTelemetry> MergeRuleTelemetry(
+          IReadOnlyList<MarkRuleTelemetry> left,
+          IReadOnlyList<MarkRuleTelemetry> right)
+        {
+            var merged = new Dictionary<(int RuleOrder, string RuleId, string? GroupKey), MarkRuleTelemetry>();
+
+            foreach (var telemetry in left.Concat(right))
+            {
+                var key = (telemetry.RuleOrder, telemetry.RuleId, telemetry.GroupKey);
+                if (!merged.TryGetValue(key, out var existing))
+                {
+                    merged[key] = telemetry;
+                    continue;
+                }
+
+                merged[key] = existing with
+                {
+                    ElapsedMilliseconds =
+                      existing.ElapsedMilliseconds + telemetry.ElapsedMilliseconds,
+                    CandidateMarkCount =
+                      existing.CandidateMarkCount + telemetry.CandidateMarkCount,
+                    AcceptedMarkCount =
+                      existing.AcceptedMarkCount + telemetry.AcceptedMarkCount,
+                    GraphBindingFallbackCount =
+                      existing.GraphBindingFallbackCount +
+                      telemetry.GraphBindingFallbackCount,
+                    AtomicCandidateIndexHitCount =
+                      existing.AtomicCandidateIndexHitCount +
+                      telemetry.AtomicCandidateIndexHitCount,
+                    AtomicCandidateIndexMissCount =
+                      existing.AtomicCandidateIndexMissCount +
+                      telemetry.AtomicCandidateIndexMissCount,
+                    OperationLookupCacheHitCount =
+                      existing.OperationLookupCacheHitCount +
+                      telemetry.OperationLookupCacheHitCount,
+                    OperationLookupCacheMissCount =
+                      existing.OperationLookupCacheMissCount +
+                      telemetry.OperationLookupCacheMissCount,
+                    GraphBindingIndexHitCount =
+                      existing.GraphBindingIndexHitCount +
+                      telemetry.GraphBindingIndexHitCount,
+                    GraphBindingIndexMissCount =
+                      existing.GraphBindingIndexMissCount +
+                      telemetry.GraphBindingIndexMissCount,
+                    RegionCacheHitCount =
+                      existing.RegionCacheHitCount +
+                      telemetry.RegionCacheHitCount,
+                    RegionCacheMissCount =
+                      existing.RegionCacheMissCount +
+                      telemetry.RegionCacheMissCount,
+                    TargetMatchCacheHitCount =
+                      existing.TargetMatchCacheHitCount +
+                      telemetry.TargetMatchCacheHitCount,
+                    TargetMatchCacheMissCount =
+                      existing.TargetMatchCacheMissCount +
+                      telemetry.TargetMatchCacheMissCount
+                };
+            }
+
+            return merged.Values
+              .OrderBy(item => item.RuleOrder)
+              .ThenBy(item => item.RuleId, StringComparer.Ordinal)
+              .ToList();
         }
     }
 

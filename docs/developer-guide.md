@@ -133,7 +133,9 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj .\src\RoslynPr
 
 CPG 的 `LargeFileLineThreshold`、`LargeFileMethodThreshold`、`LargeMethodLineSpanThreshold` 和 `SyntaxLargeFileLineThreshold` 目前是内部 builder 配置。CLI 没有大文件专用 DOP；所有文件都复用全局 DOP。新增大文件专用 DOP 时，应保持目录级并发受全局上限控制，并明确 CPG 分片的独立上限与阈值触发条件。
 
-目录分析当前不再提供运行时或逐文件日志输出；可观察产物只保留改写结果和 diff。
+目录分析支持文本 `.log` 输出；`--runtime-log` 记录 run / cpg / mark 汇总，`--analysis-log` 记录 file / phase / memory 事件。旧的 `--runtime-metrics-log`、`--per-file-timing-log`、`--per-file-memory-diagnostics-log` 继续作为兼容别名保留。
+
+rewrite diff 现在同时保留结构化 `DiffDocument` 和兼容 `DiffText`。CLI 默认输出 `legacy` 视图；需要人工阅读更友好的文本时，用 `--diff-view readable`。
 
 ## 4. 测试怎么写
 

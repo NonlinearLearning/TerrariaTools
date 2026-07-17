@@ -255,7 +255,7 @@ Profiles define defaults for:
 ### `benchmark`
 
 - level: `DEBUG`
-- categories: `run,cpg,mark,phase,memory,io`
+- categories: `run,file,diag,cpg,mark,phase,memory,io`
 - event types: `started,sampled,completed,failed,summary,snapshot`
 - view: `benchmark`
 

@@ -32,10 +32,10 @@ public sealed class DeletionApplicationServiceFlowTests
           decision.Action == DecisionActionKind.Delete &&
           IsNodeKind(decision.FinalNode, SyntaxKind.MethodDeclaration));
         Assert.Equal(2, result.Edits.Count);
-        TextDiffAssert.DoesNotContain("var value = s.Seed + 1;", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("public static void Main()", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("public static int Live(Box s)", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("var value = s.Seed + 1;", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("public static void Main()", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("public static int Live(Box s)", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -52,9 +52,9 @@ public sealed class DeletionApplicationServiceFlowTests
         Assert.All(result.SeedMarks, mark =>
           Assert.Equal(SyntaxKind.MethodDeclaration, (SyntaxKind)mark.SyntaxNode.RawKind));
         Assert.Single(result.Decisions);
-        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("public static void Live()", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("public static void Helper()", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("public static void Live()", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("public static void Helper()", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
@@ -71,8 +71,8 @@ public sealed class DeletionApplicationServiceFlowTests
         Assert.Contains(result.SeedMarks, mark =>
           IsNodeKind(mark.SyntaxNode, SyntaxKind.MethodDeclaration));
         Assert.Single(result.Decisions);
-        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.DiffText);
-        TextDiffAssert.Contains("var value = s.Seed + 1;", result.RewrittenSource, result.DiffText);
+        TextDiffAssert.DoesNotContain("public static void Dead()", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("var value = s.Seed + 1;", result.RewrittenSource, result.Diff);
     }
 
     private static DeletionApplicationService CreateApplication()
@@ -109,3 +109,4 @@ public sealed class DeletionApplicationServiceFlowTests
           .Concat(result.LiftedMarks.Select(mark => mark.Mark.SyntaxNode));
     }
 }
+

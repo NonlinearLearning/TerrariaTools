@@ -83,6 +83,18 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj .\src\RoslynPr
 1. 改写后的源码写回原文件，需显式传 `--write-back`
 2. diff 文本，默认写到 `.rewrite.diff`，可用 `--no-diff` 关闭，或用 `--diff-out` 改路径
 
+diff 视图默认是 `legacy`。如果你要更可读的文本格式，额外传：
+
+```powershell
+--diff-view readable
+```
+
+如果需要文本日志，额外传：
+
+```powershell
+--runtime-log .\Build\runtime.log --analysis-log .\Build\analysis.log --log-profile benchmark
+```
+
 ### 并行度边界
 
 `--max-degree-of-parallelism N` 是当前唯一的运行时 DOP 选项。省略或无法解析时取 `Environment.ProcessorCount`；可解析但小于 `1` 的值按 `1` 处理。

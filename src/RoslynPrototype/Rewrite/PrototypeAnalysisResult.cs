@@ -37,9 +37,9 @@ public sealed record PrototypeAnalysisResult(
   /// </summary>
   string? RewrittenSource,
   /// <summary>
-  /// 面向调试和落盘的文本差异摘要。
+  /// 结构化 diff 文档，作为分析结果的主 diff 载体。
   /// </summary>
-  string DiffText,
+  DiffDocument Diff,
   /// <summary>
   /// 若已落盘差异文件，则保存其路径；否则为空。
   /// </summary>
@@ -67,7 +67,10 @@ public sealed record PrototypeAnalysisResult(
   /// <summary>
   /// 可选的 Structure View 结果缓存遥测，用于评估缓存命中率和保留规模。
   /// </summary>
-  RoslynCpgStructureViewCacheTelemetry? StructureViewCacheTelemetry = null);
+  RoslynCpgStructureViewCacheTelemetry? StructureViewCacheTelemetry = null)
+{
+  public DiffSummary DiffSummary => Diff.Summary;
+}
 
 /// <summary>
 /// 单次分析运行的阶段耗时明细。
