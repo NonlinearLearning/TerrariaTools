@@ -79,6 +79,7 @@ internal sealed class DeletionDirectoryAnalysisService
               if (DeletionApplicationOptions.ShouldUseDeleteClassUsingCleanup(options) &&
                   result.Edits.Count > 0)
               {
+                  aggregation.RecordDeferredDiff(filePath, result.Edits.Count);
                   editedFileResults.Add(new IndexedFileAnalysisResult(index, filePath, result));
                   return;
               }
@@ -88,11 +89,12 @@ internal sealed class DeletionDirectoryAnalysisService
 
         if (DeletionApplicationOptions.ShouldUseDeleteClassUsingCleanup(options))
         {
+            var cleanupStopwatch = Stopwatch.StartNew();
+            analysisWriter?.WriteDiffCleanupStarted(editedFileResults.Count);
             ApplyDeleteClassCleanup(analysisFilePaths, sourcesByPath, editedFileResults);
-            foreach (var editedFileResult in editedFileResults.OrderBy(item => item.Index))
-            {
-                aggregation.AddFileResult(editedFileResult.FilePath, editedFileResult.Result);
-            }
+            cleanupStopwatch.Stop();
+            analysisWriter?.WriteDiffCleanupCompleted(editedFileResults.Count, cleanupStopwatch.ElapsedMilliseconds);
+            await aggregation.AddDeferredFileResultsAsync(editedFileResults, runtime);
         }
 
         var result = aggregation.BuildResult(new AnalysisStats(
@@ -193,7 +195,10 @@ internal sealed class DeletionDirectoryAnalysisService
           rewriteResult.Edits,
           rewriteResult.RewrittenSource,
           rewriteResult.Diff,
-          null);
+          null,
+          RewritePlans: rewriteResult.Operations is { Count: > 0 }
+            ? new[] { new PrototypeFileRewritePlan(root.SyntaxTree.FilePath, rewriteResult.Operations) }
+            : Array.Empty<PrototypeFileRewritePlan>());
     }
 
     private static IReadOnlyDictionary<string, IReadOnlyList<MethodDeclarationSyntax>>
@@ -665,7 +670,9 @@ internal sealed class DeletionDirectoryAnalysisService
         private readonly List<RewriteEdit> _edits = new();
         private readonly List<DiffDocument> _diffDocuments = new();
         private readonly Dictionary<string, string> _rewrittenSources = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, IReadOnlyList<RewritePlanEdit>> _rewritePlans = new(StringComparer.Ordinal);
         private readonly List<string> _diffFilePaths = new();
+        private readonly Stopwatch _diffStopwatch = new();
         private RoslynCpgBuildTelemetry? _cpgBuildTelemetry;
         private MarkAnalysisTelemetry? _markAnalysisTelemetry;
         private long _preparationMilliseconds;
@@ -677,6 +684,22 @@ internal sealed class DeletionDirectoryAnalysisService
         private long _rewriteMilliseconds;
         private long _totalMilliseconds;
         private int _timedFileCount;
+        private int _deferredDiffFileCount;
+        private int _writtenDiffFileCount;
+        private long _diffWriteMilliseconds;
+
+        private sealed record DiffWriteWorkItem(
+          int Index,
+          string FilePath,
+          string DiffFilePath,
+          DiffDocument DiffDocument,
+          int EditCount);
+
+        private sealed record DiffWriteResult(
+          int Index,
+          string FilePath,
+          string DiffFilePath,
+          int EditCount);
 
         internal DirectoryResultAggregator(
           string directoryPath,
@@ -690,13 +713,99 @@ internal sealed class DeletionDirectoryAnalysisService
             _diffRootPath = DeletionDiffPathResolver.ResolveDirectoryDiffRoot(directoryPath, options);
         }
 
+        internal void RecordDeferredDiff(string filePath, int editCount)
+        {
+            if (_deferredDiffFileCount == 0)
+            {
+                _diffStopwatch.Start();
+            }
+
+            _deferredDiffFileCount++;
+            _analysisWriter?.WriteDiffPending(filePath, editCount);
+        }
+
         internal void AddFileResult(string filePath, PrototypeAnalysisResult result)
+        {
+            AddFileResultCore(filePath, result);
+
+            if (result.Edits.Count == 0 || !DeletionApplicationOptions.ShouldWriteDiff(_options))
+            {
+                return;
+            }
+
+            var writtenDiff = WriteDiff(new DiffWriteWorkItem(
+              0,
+              filePath,
+              DeletionDiffPathResolver.ResolveFileDiffPath(_directoryPath, filePath, _diffRootPath),
+              result.Diff,
+              result.Edits.Count));
+            CommitWrittenDiff(writtenDiff);
+        }
+
+        internal async Task AddDeferredFileResultsAsync(
+          IReadOnlyList<IndexedFileAnalysisResult> fileResults,
+          DeletionAnalysisRuntime runtime)
+        {
+            var orderedFileResults = fileResults.OrderBy(item => item.Index).ToArray();
+            if (!DeletionApplicationOptions.ShouldWriteDiff(_options))
+            {
+                foreach (var fileResult in orderedFileResults)
+                {
+                    AddFileResultCore(fileResult.FilePath, fileResult.Result);
+                }
+
+                return;
+            }
+
+            var workItems = orderedFileResults
+              .Select(fileResult => new DiffWriteWorkItem(
+                fileResult.Index,
+                fileResult.FilePath,
+                DeletionDiffPathResolver.ResolveFileDiffPath(
+                  _directoryPath,
+                  fileResult.FilePath,
+                  _diffRootPath),
+                fileResult.Result.Diff,
+                fileResult.Result.Edits.Count))
+              .ToArray();
+            var writeStopwatch = Stopwatch.StartNew();
+            var writtenDiffs = await runtime.Scheduler.RunOrderedAsync(
+              workItems.Length,
+              runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+              (index, cancellationToken) =>
+              {
+                  cancellationToken.ThrowIfCancellationRequested();
+                  return Task.FromResult(WriteDiff(workItems[index]));
+              },
+              runtime.ExecutionOptions.CancellationToken);
+            writeStopwatch.Stop();
+            _diffWriteMilliseconds = writeStopwatch.ElapsedMilliseconds;
+
+            for (var index = 0; index < orderedFileResults.Length; index++)
+            {
+                var fileResult = orderedFileResults[index];
+                AddFileResultCore(fileResult.FilePath, fileResult.Result);
+                CommitWrittenDiff(writtenDiffs[index]);
+            }
+        }
+
+        private void AddFileResultCore(string filePath, PrototypeAnalysisResult result)
         {
             _seedMarks.AddRange(result.SeedMarks);
             _propagatedMarks.AddRange(result.PropagatedMarks);
             _liftedMarks.AddRange(result.LiftedMarks);
             _decisions.AddRange(result.Decisions);
             _edits.AddRange(result.Edits);
+            if (result.RewritePlans is not null)
+            {
+                foreach (var rewritePlan in result.RewritePlans)
+                {
+                    if (rewritePlan.Operations.Count > 0)
+                    {
+                        _rewritePlans[rewritePlan.FilePath] = rewritePlan.Operations;
+                    }
+                }
+            }
             if (result.Diff.Files.Count > 0)
             {
                 _diffDocuments.Add(result.Diff);
@@ -715,20 +824,30 @@ internal sealed class DeletionDirectoryAnalysisService
             {
                 _rewrittenSources[filePath] = result.RewrittenSource;
             }
+        }
 
-            if (DeletionApplicationOptions.ShouldWriteDiff(_options))
-            {
-                var fileDiffPath = DeletionDiffPathResolver.ResolveFileDiffPath(
-                  _directoryPath,
-                  filePath,
-                  _diffRootPath);
-                Directory.CreateDirectory(Path.GetDirectoryName(fileDiffPath)!);
-                File.WriteAllText(
-                  fileDiffPath,
-                  _textDiffRenderer.Render(result.Diff.Files.Single(), _diffView),
-                  Encoding.UTF8);
-                _diffFilePaths.Add(fileDiffPath);
-            }
+        private DiffWriteResult WriteDiff(DiffWriteWorkItem workItem)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(workItem.DiffFilePath)!);
+            File.WriteAllText(
+              workItem.DiffFilePath,
+              _textDiffRenderer.Render(workItem.DiffDocument.Files.Single(), _diffView),
+              Encoding.UTF8);
+            return new DiffWriteResult(
+              workItem.Index,
+              workItem.FilePath,
+              workItem.DiffFilePath,
+              workItem.EditCount);
+        }
+
+        private void CommitWrittenDiff(DiffWriteResult writtenDiff)
+        {
+            _diffFilePaths.Add(writtenDiff.DiffFilePath);
+            _writtenDiffFileCount++;
+            _analysisWriter?.WriteDiffWritten(
+              writtenDiff.FilePath,
+              writtenDiff.DiffFilePath,
+              writtenDiff.EditCount);
         }
 
         internal Dictionary<string, string> GetRewrittenSources()
@@ -738,6 +857,16 @@ internal sealed class DeletionDirectoryAnalysisService
 
         internal PrototypeAnalysisResult BuildResult(AnalysisStats? stats = null)
         {
+            if (_deferredDiffFileCount > 0)
+            {
+                _diffStopwatch.Stop();
+                _analysisWriter?.WriteDiffSummary(
+                  _deferredDiffFileCount,
+                  _writtenDiffFileCount,
+                  _diffStopwatch.ElapsedMilliseconds,
+                  _diffWriteMilliseconds);
+            }
+
             if (DeletionApplicationOptions.ShouldWriteBack(_options))
             {
                 foreach (var (filePath, rewrittenSource) in _rewrittenSources)
@@ -747,7 +876,6 @@ internal sealed class DeletionDirectoryAnalysisService
             }
 
             var diff = _diffBuilder.Combine(_diffDocuments);
-            var diffText = _textDiffRenderer.Render(diff, _diffView);
             var diffPath = _diffFilePaths.Count > 0 && DeletionApplicationOptions.ShouldWriteDiff(_options)
               ? _diffRootPath
               : null;
@@ -764,7 +892,11 @@ internal sealed class DeletionDirectoryAnalysisService
               stats,
               Timings: BuildTimings(),
               CpgBuildTelemetry: BuildCpgBuildTelemetry(),
-              MarkAnalysisTelemetry: BuildMarkAnalysisTelemetry());
+              MarkAnalysisTelemetry: BuildMarkAnalysisTelemetry(),
+              RewritePlans: _rewritePlans
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => new PrototypeFileRewritePlan(pair.Key, pair.Value))
+                .ToArray());
         }
 
         private void AddTimings(AnalysisPhaseTimings? timings)

@@ -10,5 +10,7 @@ internal enum TextLogEventType
     Snapshot = 5,
     Warning = 6,
     Error = 7,
-    WriterFailed = 8
+    WriterFailed = 8,
+    Pending = 9,
+    Written = 10
 }

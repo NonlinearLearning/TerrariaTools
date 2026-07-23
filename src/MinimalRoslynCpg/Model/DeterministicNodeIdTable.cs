@@ -37,6 +37,18 @@ public sealed class DeterministicNodeIdTable
     return _ids.TryGetValue(anchor, out nodeId);
   }
 
+  public NodeId GetRequiredId(StableNodeAnchor anchor)
+  {
+    return _ids.TryGetValue(anchor, out var nodeId)
+      ? nodeId
+      : throw new KeyNotFoundException($"Stable anchor was not preallocated: {anchor}.");
+  }
+
+  public bool Contains(StableNodeAnchor anchor)
+  {
+    return _ids.ContainsKey(anchor);
+  }
+
   public int Count => _ids.Count;
 
   public IReadOnlyDictionary<StableNodeAnchor, NodeId> Snapshot()

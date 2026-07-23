@@ -1,6 +1,13 @@
 namespace RoslynPrototype.Rewrite;
 
 /// <summary>
+/// Contains the portable text operations and display edits produced from rule decisions.
+/// </summary>
+public sealed record PrototypeRewritePlan(
+  IReadOnlyList<RewritePlanEdit> Operations,
+  IReadOnlyList<RewriteEdit> Edits);
+
+/// <summary>
 /// 封装一次改写执行后的源码结果、编辑列表和结构化 diff。
 /// </summary>
 public sealed record PrototypeRewriteResult(
@@ -15,7 +22,11 @@ public sealed record PrototypeRewriteResult(
   /// <summary>
   /// 结构化 diff 文档，作为 rewrite 子系统的主 diff 结果。
   /// </summary>
-  DiffDocument Diff)
+  DiffDocument Diff,
+  /// <summary>
+  /// 可回放的精确文本操作，不等同于展示用 diff 编辑。
+  /// </summary>
+  IReadOnlyList<RewritePlanEdit>? Operations = null)
 {
   public DiffSummary DiffSummary => Diff.Summary;
 }

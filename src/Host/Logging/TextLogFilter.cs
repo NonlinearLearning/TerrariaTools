@@ -120,7 +120,7 @@ internal sealed class TextLogFilter
             "benchmark" => new TextLogProfileSettings(
                 TextLogLevel.Debug,
                 TextLogView.Benchmark,
-                new[] { TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag, TextLogCategory.Phase, TextLogCategory.Memory, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Io },
+                new[] { TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag, TextLogCategory.Phase, TextLogCategory.Memory, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Io, TextLogCategory.Diff },
                 new[]
                 {
                     TextLogEventType.Started,
@@ -128,7 +128,9 @@ internal sealed class TextLogFilter
                     TextLogEventType.Completed,
                     TextLogEventType.Failed,
                     TextLogEventType.Summary,
-                    TextLogEventType.Snapshot
+                    TextLogEventType.Snapshot,
+                    TextLogEventType.Pending,
+                    TextLogEventType.Written
                 }),
             _ => null
         };

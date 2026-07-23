@@ -39,9 +39,11 @@ internal sealed class RoslynCpgBuildContext
     SemanticModel semanticModel,
     SyntaxNode root,
     string source,
-    string filePath)
+    string filePath,
+    DeterministicNodeIdTable? preallocatedNodeIds = null,
+    StableNodeIdentityFactory? identityFactory = null)
   {
-    var graph = new RoslynCpgGraph();
+    var graph = new RoslynCpgGraph(preallocatedNodeIds, identityFactory);
     graph.RegisterSource(filePath, source);
     var fullPath = Path.GetFullPath(filePath);
     var syntaxTreeNode = graph.AddNode(new RoslynCpgNode(
@@ -61,7 +63,32 @@ internal sealed class RoslynCpgBuildContext
       syntaxTreeNode);
   }
 
-  internal static RoslynCpgBuildContext CreateFromSource(string source, string filePath)
+  internal static RoslynCpgBuildContext CreateAnchorDiscovery(
+    SemanticModel semanticModel,
+    SyntaxNode root,
+    string source,
+    string filePath,
+    StableNodeIdentityFactory identityFactory,
+    Action<StableNodeAnchor> observeAnchor)
+  {
+    var graph = RoslynCpgGraph.CreateAnchorDiscovery(identityFactory, observeAnchor);
+    graph.RegisterSource(filePath, source);
+    var syntaxTreeNode = graph.AddNode(new RoslynCpgNode(
+      Kind: RoslynCpgNodeKind.SyntaxTree,
+      DisplayKind: nameof(RoslynCpgNodeKind.SyntaxTree),
+      Name: Path.GetFileName(filePath),
+      FullName: Path.GetFullPath(filePath),
+      FilePath: filePath,
+      SpanStart: 0,
+      SpanEnd: source.Length));
+    return new RoslynCpgBuildContext(semanticModel, root, source, filePath, graph, syntaxTreeNode);
+  }
+
+  internal static RoslynCpgBuildContext CreateFromSource(
+    string source,
+    string filePath,
+    DeterministicNodeIdTable? preallocatedNodeIds = null,
+    StableNodeIdentityFactory? identityFactory = null)
   {
     var syntaxTree = CSharpSyntaxTree.ParseText(source, path: filePath);
     var compilation = CSharpCompilation.Create(
@@ -69,6 +96,21 @@ internal sealed class RoslynCpgBuildContext
       syntaxTrees: new[] { syntaxTree },
       references: RoslynCpgBuilder.CreateMetadataReferences());
     var semanticModel = compilation.GetSemanticModel(syntaxTree, ignoreAccessibility: true);
-    return Create(semanticModel, syntaxTree.GetRoot(), source, filePath);
+    return Create(semanticModel, syntaxTree.GetRoot(), source, filePath, preallocatedNodeIds, identityFactory);
+  }
+
+  internal static RoslynCpgBuildContext CreateFromSourceAnchorDiscovery(
+    string source,
+    string filePath,
+    StableNodeIdentityFactory identityFactory,
+    Action<StableNodeAnchor> observeAnchor)
+  {
+    var syntaxTree = CSharpSyntaxTree.ParseText(source, path: filePath);
+    var compilation = CSharpCompilation.Create(
+      assemblyName: Path.GetFileNameWithoutExtension(filePath),
+      syntaxTrees: new[] { syntaxTree },
+      references: RoslynCpgBuilder.CreateMetadataReferences());
+    var semanticModel = compilation.GetSemanticModel(syntaxTree, ignoreAccessibility: true);
+    return CreateAnchorDiscovery(semanticModel, syntaxTree.GetRoot(), source, filePath, identityFactory, observeAnchor);
   }
 }

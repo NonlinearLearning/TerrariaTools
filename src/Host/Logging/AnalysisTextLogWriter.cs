@@ -50,7 +50,8 @@ internal sealed class AnalysisTextLogWriter
           new[]
           {
             new TextLogField("path", sink.Path),
-            new TextLogField("records", sink.RecordsWritten)
+            new TextLogField("records", sink.RecordsWritten),
+            new TextLogField("batches", sink.BatchesWritten)
           });
     }
 
@@ -68,6 +69,44 @@ internal sealed class AnalysisTextLogWriter
             new TextLogField("errorType", exception.GetType().FullName),
             new TextLogField("error", exception.Message)
           });
+    }
+
+    public void WriteDiffPending(string filePath, int editCount)
+    {
+        Emit(TextLogLevel.Debug, TextLogCategory.Diff, TextLogEventType.Pending,
+          "diff pending", filePath, new[] { new TextLogField("edits", editCount) });
+    }
+
+    public void WriteDiffCleanupStarted(int pendingFileCount)
+    {
+        Emit(TextLogLevel.Debug, TextLogCategory.Diff, TextLogEventType.Started,
+          "diff cleanup started", null,
+          new[] { new TextLogField("pendingFiles", pendingFileCount) });
+    }
+
+    public void WriteDiffCleanupCompleted(int pendingFileCount, long elapsedMilliseconds)
+    {
+        Emit(TextLogLevel.Debug, TextLogCategory.Diff, TextLogEventType.Completed,
+          "diff cleanup completed", null,
+          new[] { new TextLogField("pendingFiles", pendingFileCount), new TextLogField("elapsedMs", elapsedMilliseconds) });
+    }
+
+    public void WriteDiffWritten(string filePath, string diffPath, int editCount)
+    {
+        Emit(TextLogLevel.Debug, TextLogCategory.Diff, TextLogEventType.Written,
+          "diff written", filePath,
+          new[] { new TextLogField("path", diffPath), new TextLogField("edits", editCount) });
+    }
+
+    public void WriteDiffSummary(
+      int pendingFileCount,
+      int writtenFileCount,
+      long elapsedMilliseconds,
+      long writeElapsedMilliseconds)
+    {
+        Emit(TextLogLevel.Debug, TextLogCategory.Diff, TextLogEventType.Summary,
+          "diff summary", null,
+          new[] { new TextLogField("pendingFiles", pendingFileCount), new TextLogField("writtenFiles", writtenFileCount), new TextLogField("failedFiles", 0), new TextLogField("elapsedMs", elapsedMilliseconds), new TextLogField("writeElapsedMs", writeElapsedMilliseconds) });
     }
 
     public void WriteFileCompleted(string filePath, long elapsedMilliseconds)
@@ -134,7 +173,7 @@ internal sealed class AnalysisTextLogWriter
       TextLogCategory category,
       TextLogEventType eventType,
       string message,
-      string filePath,
+      string? filePath,
       IReadOnlyList<TextLogField>? fields,
       string? phase = null)
     {
