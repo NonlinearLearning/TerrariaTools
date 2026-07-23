@@ -207,7 +207,7 @@ public sealed class DeletionApplicationService
     var cpgBuildStopwatch = Stopwatch.StartNew();
     var builderOptions = RoslynCpgBuilderOptions.CreateDefault() with
     {
-      MaxDegreeOfParallelism = runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+      MaxDegreeOfParallelism = runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism,
       RequestedCapabilities = new DeletionRulePipeline(_markers, _propagators, _lifters, _proposers)
         .GetRequiredCapabilities()
     };

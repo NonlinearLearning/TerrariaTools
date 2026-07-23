@@ -131,6 +131,31 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void Analyze_RuntimeConfiguredCpgDop_ReportsCpgOverride()
+    {
+        var source = PipelineSources.RuntimeConfiguredDopSource;
+        var runtime = new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(
+            MaxDegreeOfParallelism: 12,
+            CpgMaxDegreeOfParallelism: 1),
+          new DeletionAnalysisEpoch(0, 0, 0));
+        var application = new DeletionApplicationService(
+          Array.Empty<RuleDefinitionMark>(),
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>());
+
+        var result = application.Analyze(
+          source,
+          "runtime-cpg-override.cs",
+          new Dictionary<string, string>(),
+          runtime);
+
+        Assert.Equal(12, runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
+        Assert.Equal(1, result.CpgBuildTelemetry!.MaxDegreeOfParallelism);
+    }
+
+    [Fact]
     public void CreateFromOptions_WithCpgDopOverride_UsesExplicitCpgValue()
     {
         var runtime = DeletionAnalysisRuntime.CreateFromOptions(
