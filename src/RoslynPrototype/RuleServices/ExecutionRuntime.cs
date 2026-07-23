@@ -9,9 +9,13 @@ public sealed record RoslynPrototypeExecutionOptions(
   bool EnableDirectoryParallelism = true,
   bool EnableGroupParallelism = false,
   bool EnableHelperParallelism = true,
-  CancellationToken CancellationToken = default)
+  CancellationToken CancellationToken = default,
+  int? CpgMaxDegreeOfParallelism = null)
 {
   public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
+
+  public int EffectiveCpgMaxDegreeOfParallelism =>
+    CpgMaxDegreeOfParallelism ?? EffectiveMaxDegreeOfParallelism;
 
   public static RoslynPrototypeExecutionOptions CreateDefault()
   {
@@ -139,7 +143,8 @@ public sealed class DeletionAnalysisRuntime
       ResolveMaxDegreeOfParallelism(options),
       EnableDirectoryParallelism: !IsTrueOption(options, "disable-directory-parallelism"),
       EnableGroupParallelism: IsTrueOption(options, "enable-group-parallelism"),
-      EnableHelperParallelism: !IsTrueOption(options, "disable-helper-parallelism"));
+      EnableHelperParallelism: !IsTrueOption(options, "disable-helper-parallelism"),
+      CpgMaxDegreeOfParallelism: ResolveCpgMaxDegreeOfParallelism(options));
   }
 
   public static DeletionAnalysisRuntime CreateFromOptions(
@@ -213,5 +218,22 @@ public sealed class DeletionAnalysisRuntime
     }
 
     return Math.Max(1, parsedValue);
+  }
+
+  private static int? ResolveCpgMaxDegreeOfParallelism(
+    IReadOnlyDictionary<string, string> options)
+  {
+    if (!options.TryGetValue("cpg-max-degree-of-parallelism", out var rawValue))
+    {
+      return null;
+    }
+
+    if (!int.TryParse(rawValue, out var parsedValue) || parsedValue <= 0)
+    {
+      throw new ArgumentException(
+        "--cpg-max-degree-of-parallelism requires a positive integer.");
+    }
+
+    return parsedValue;
   }
 }

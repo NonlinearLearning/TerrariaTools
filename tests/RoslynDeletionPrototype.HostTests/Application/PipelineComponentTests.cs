@@ -131,6 +131,49 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void CreateFromOptions_WithCpgDopOverride_UsesExplicitCpgValue()
+    {
+        var runtime = DeletionAnalysisRuntime.CreateFromOptions(
+          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+          {
+            ["max-degree-of-parallelism"] = "12",
+            ["cpg-max-degree-of-parallelism"] = "1"
+          });
+
+        Assert.Equal(12, runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
+        Assert.Equal(1, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
+    }
+
+    [Fact]
+    public void CreateFromOptions_WithoutCpgDopOverride_InheritsGlobalValue()
+    {
+        var runtime = DeletionAnalysisRuntime.CreateFromOptions(
+          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+          {
+            ["max-degree-of-parallelism"] = "12"
+          });
+
+        Assert.Equal(12, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("invalid")]
+    [InlineData("true")]
+    public void CreateFromOptions_WithInvalidCpgDopOverride_ThrowsArgumentException(string value)
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+          DeletionAnalysisRuntime.CreateFromOptions(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["cpg-max-degree-of-parallelism"] = value
+            }));
+
+        Assert.Contains("--cpg-max-degree-of-parallelism", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MarkingEngine_Run_WithGroupParallelism_RunsIndependentRulesConcurrently()
     {
         var source = PipelineSources.ConcurrentMarkingSource;
