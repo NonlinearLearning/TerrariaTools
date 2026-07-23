@@ -55,6 +55,47 @@ internal static class DeletionApplicationOptions
           string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static string? ResolveRewritePlanOutPath(IReadOnlyDictionary<string, string> options)
+    {
+        return ResolveRequiredPathOption(options, "rewrite-plan-out");
+    }
+
+    internal static string? ResolveRewritePlanInPath(IReadOnlyDictionary<string, string> options)
+    {
+        return ResolveRequiredPathOption(options, "rewrite-plan-in");
+    }
+
+    internal static void ValidateRewritePlanOptions(IReadOnlyDictionary<string, string> options)
+    {
+        var outputPath = ResolveRewritePlanOutPath(options);
+        var inputPath = ResolveRewritePlanInPath(options);
+        if (outputPath is not null && inputPath is not null)
+        {
+            throw new ArgumentException("--rewrite-plan-out and --rewrite-plan-in cannot be combined.");
+        }
+
+        if (inputPath is not null &&
+            (options.ContainsKey("delete-class") || options.ContainsKey("target-name") || IsTrueOption(options, "skip-rewrite")))
+        {
+            throw new ArgumentException("--rewrite-plan-in cannot be combined with analysis-driving options.");
+        }
+    }
+
+    private static string? ResolveRequiredPathOption(IReadOnlyDictionary<string, string> options, string key)
+    {
+        if (!options.TryGetValue(key, out var value))
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"--{key} requires a non-empty directory path.");
+        }
+
+        return value;
+    }
+
     internal static bool ShouldWriteDiff(IReadOnlyDictionary<string, string> options)
     {
         return !IsTrueOption(options, "no-diff") &&

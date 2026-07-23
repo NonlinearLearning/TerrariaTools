@@ -1,0 +1,4 @@
+[
+  operation=delete anchor=17,
+  operation=replace anchor=42 replacement=value + 1
+]

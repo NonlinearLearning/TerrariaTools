@@ -28,20 +28,21 @@ public sealed partial class RoslynCpgBuilder
 {
     internal void RunControlFlowPass(RoslynCpgBuildContext context)
     {
-        AddMethodLevelControlFlow(context.Graph);
+        AddMethodLevelControlFlow(context);
     }
 
-    private void AddMethodLevelControlFlow(RoslynCpgGraph graph)
+    private void AddMethodLevelControlFlow(RoslynCpgBuildContext context)
     {
-        var operations = _operationNodes.Keys.ToList();
-        foreach (var methodBlock in operations.OfType<IBlockOperation>())
+        var graph = context.Graph;
+        foreach (var rootPlan in GetOperationRootPlans(context.Root, context.SemanticModel))
         {
-            if (!IsMethodRootBlock(methodBlock))
+            if (context.SemanticModel.GetOperation(rootPlan.BodySyntax) is not IBlockOperation methodBlock ||
+                !IsMethodRootBlock(methodBlock))
             {
                 continue;
             }
 
-            if (_operationOwningMethods.TryGetValue(methodBlock, out var methodSymbol))
+            if (rootPlan.OwningMethod is IMethodSymbol methodSymbol)
             {
                 var entryNode = GetOrCreateMethodEntryNode(methodSymbol, graph);
                 var parameterNodes = methodSymbol.Parameters

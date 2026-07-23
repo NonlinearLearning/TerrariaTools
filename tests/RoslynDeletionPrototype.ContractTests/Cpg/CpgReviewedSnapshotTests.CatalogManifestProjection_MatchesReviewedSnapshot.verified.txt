@@ -1,0 +1,4 @@
+[
+  build=alpha shard=file-skeleton span=0-60,
+  build=alpha shard=method span=12-30
+]

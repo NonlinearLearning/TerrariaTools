@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
+    <ProjectReference Include="..\..\src\RoslynPrototype\RoslynPrototype.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -9,5 +9,6 @@ internal enum TextLogCategory
     Cpg = 4,
     Mark = 5,
     Diag = 6,
-    Io = 7
+    Io = 7,
+    Diff = 8
 }

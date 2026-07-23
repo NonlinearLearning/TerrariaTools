@@ -67,10 +67,21 @@ public sealed record PrototypeAnalysisResult(
   /// <summary>
   /// 可选的 Structure View 结果缓存遥测，用于评估缓存命中率和保留规模。
   /// </summary>
-  RoslynCpgStructureViewCacheTelemetry? StructureViewCacheTelemetry = null)
+  RoslynCpgStructureViewCacheTelemetry? StructureViewCacheTelemetry = null,
+  /// <summary>
+  /// 按文件保留的可回放文本操作，不等同于展示用 diff 编辑。
+  /// </summary>
+  IReadOnlyList<PrototypeFileRewritePlan>? RewritePlans = null)
 {
   public DiffSummary DiffSummary => Diff.Summary;
 }
+
+/// <summary>
+/// 关联到单个源文件的精确改写操作。
+/// </summary>
+public sealed record PrototypeFileRewritePlan(
+  string FilePath,
+  IReadOnlyList<RewritePlanEdit> Operations);
 
 /// <summary>
 /// 单次分析运行的阶段耗时明细。

@@ -26,6 +26,7 @@ public sealed class DeletionCommandHost
     {
         var inputPath = args.FirstOrDefault(path => !path.StartsWith("--", StringComparison.Ordinal));
         var options = DeletionApplicationOptions.Parse(args);
+        DeletionApplicationOptions.ValidateRewritePlanOptions(options);
         var runtime = DeletionApplicationOptions.CreateRuntime(options);
         var diffView = DeletionApplicationOptions.ResolveDiffView(options);
         EmitLegacyTextLogWarnings(options);
@@ -58,11 +59,28 @@ public sealed class DeletionCommandHost
             PrototypeAnalysisResult result;
             if (inputPath is not null && Directory.Exists(inputPath))
             {
-                result = await new DeletionDirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
-                  inputPath,
-                  options,
-                  runtime,
-                  analysisWriter);
+                var replayPlanPath = DeletionApplicationOptions.ResolveRewritePlanInPath(options);
+                if (replayPlanPath is not null)
+                {
+                    result = await new RewritePlanReplayService().ReplayAsync(
+                      inputPath,
+                      replayPlanPath,
+                      options,
+                      runtime);
+                }
+                else
+                {
+                    result = await new DeletionDirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
+                      inputPath,
+                      options,
+                      runtime,
+                      analysisWriter);
+                    var capturePlanPath = DeletionApplicationOptions.ResolveRewritePlanOutPath(options);
+                    if (capturePlanPath is not null)
+                    {
+                        CaptureRewritePlan(inputPath, capturePlanPath, result);
+                    }
+                }
             }
             else
             {
@@ -140,6 +158,34 @@ public sealed class DeletionCommandHost
             analysisSink?.Flush();
             runtimeSink?.Flush();
         }
+    }
+
+    private static void CaptureRewritePlan(
+      string inputRoot,
+      string artifactRoot,
+      PrototypeAnalysisResult result)
+    {
+        var plans = (result.RewritePlans ?? Array.Empty<PrototypeFileRewritePlan>())
+          .Where(plan => plan.Operations.Count > 0)
+          .Select(plan =>
+          {
+              var fullPath = Path.GetFullPath(plan.FilePath);
+              var relativePath = Path.GetRelativePath(inputRoot, fullPath);
+              var sourceBytes = File.ReadAllBytes(fullPath);
+              return new RewritePlanFile(
+                relativePath,
+                RewritePlanArtifactService.ComputeSha256(sourceBytes),
+                plan.Operations
+                  .OrderByDescending(operation => operation.Start)
+                  .ThenByDescending(operation => operation.Length)
+                  .ToArray());
+          })
+          .ToArray();
+        new RewritePlanArtifactService().Write(
+          artifactRoot,
+          inputRoot,
+          Directory.EnumerateFiles(inputRoot, "*.cs", SearchOption.AllDirectories).Count(),
+          plans);
     }
 
     private static void EmitLegacyTextLogWarnings(IReadOnlyDictionary<string, string> options)
