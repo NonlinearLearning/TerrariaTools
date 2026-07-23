@@ -50,6 +50,8 @@ public sealed record RoslynCpgSlicePath(
     NodeId SinkNodeId,
     IReadOnlyList<NodeId> NodeIds);
 
+public sealed record CpgShardUnavailableResult(NodeId NodeId, string Reason);
+
 /// <summary>
 /// Contains the bounded, deterministic result of a CPG slice query.
 /// </summary>
@@ -59,4 +61,6 @@ public sealed record RoslynCpgSliceResult(
     string? TruncationReason,
     long VisitedNodeCount,
     long VisitedEdgeCount,
-    RoslynCpgQueryTelemetry? Telemetry = null);
+    RoslynCpgQueryTelemetry? Telemetry = null,
+    IReadOnlyList<CpgShardUnavailableResult>? UnavailableShards = null,
+    CpgShardQueryTelemetry? ShardTelemetry = null);

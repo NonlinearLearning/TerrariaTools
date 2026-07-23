@@ -1,5 +1,6 @@
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
+using MinimalRoslynCpg.Persistence;
 
 namespace MinimalRoslynCpg.Analysis;
 
@@ -8,7 +9,8 @@ namespace MinimalRoslynCpg.Analysis;
 /// </summary>
 public sealed class RoslynCpgSliceQuery
 {
-    private readonly RoslynCpgGraph _graph;
+    private readonly RoslynCpgGraph? _graph;
+    private readonly CpgShardQueryResolver? _shardResolver;
     private readonly Dictionary<QueryKey, RoslynCpgSliceResult> _cache = new();
 
     public RoslynCpgSliceQuery(RoslynCpgGraph graph)
@@ -16,10 +18,19 @@ public sealed class RoslynCpgSliceQuery
         _graph = graph;
     }
 
+    public RoslynCpgSliceQuery(CpgShardQueryResolver shardResolver)
+    {
+        _shardResolver = shardResolver ?? throw new ArgumentNullException(nameof(shardResolver));
+    }
+
     public RoslynCpgSliceResult QueryBackward(NodeId sinkNodeId, RoslynCpgSliceQueryOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options);
+        if (_graph is null)
+        {
+            throw new InvalidOperationException("A shard-backed query must use QueryBackwardAsync.");
+        }
         var sinkNode = _graph.GetNode(sinkNodeId);
         if (sinkNode is null)
         {
@@ -200,6 +211,96 @@ public sealed class RoslynCpgSliceQuery
         return result;
     }
 
+    public async Task<RoslynCpgSliceResult> QueryBackwardAsync(
+        NodeId sinkNodeId,
+        RoslynCpgSliceQueryOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ValidateOptions(options);
+        if (_shardResolver is null)
+        {
+            return QueryBackward(sinkNodeId, options);
+        }
+
+        var unavailable = new List<CpgShardUnavailableResult>();
+        var graph = await LoadFrontierGraphAsync(sinkNodeId, options.MaxHops, unavailable, cancellationToken);
+        if (graph.GetNode(sinkNodeId) is null)
+        {
+            return new RoslynCpgSliceResult(
+                Array.Empty<RoslynCpgSlicePath>(),
+                WasTruncated: false,
+                TruncationReason: null,
+                VisitedNodeCount: 0,
+                VisitedEdgeCount: 0,
+                Telemetry: null,
+                UnavailableShards: unavailable,
+                ShardTelemetry: _shardResolver.GetTelemetry());
+        }
+
+        var result = new RoslynCpgSliceQuery(graph).QueryBackward(sinkNodeId, options);
+        return result with
+        {
+            UnavailableShards = unavailable,
+            ShardTelemetry = _shardResolver.GetTelemetry(),
+        };
+    }
+
+    private async Task<RoslynCpgGraph> LoadFrontierGraphAsync(
+        NodeId sinkNodeId,
+        int maxHops,
+        ICollection<CpgShardUnavailableResult> unavailable,
+        CancellationToken cancellationToken)
+    {
+        var nodes = new Dictionary<NodeId, RoslynCpgNode>();
+        var edges = new HashSet<RoslynCpgEdge>();
+        var visited = new HashSet<NodeId> { sinkNodeId };
+        var frontier = new[] { sinkNodeId };
+        for (var hop = 0; hop <= maxHops && frontier.Length > 0; hop += 1)
+        {
+            foreach (var nodeId in frontier.OrderBy(value => value))
+            {
+                var shards = await _shardResolver!.FindByNodeAsync(nodeId, cancellationToken);
+                if (shards.Count == 0)
+                {
+                    unavailable.Add(new CpgShardUnavailableResult(nodeId, "anchorUnavailable"));
+                    continue;
+                }
+
+                foreach (var shard in shards)
+                {
+                    var shardGraph = CpgFrozenShardGraphReader.ReadGraph(shard);
+                    foreach (var node in shardGraph.Nodes)
+                    {
+                        nodes.TryAdd(node.NodeId!.Value, node);
+                    }
+
+                    foreach (var edge in shardGraph.Edges)
+                    {
+                        edges.Add(edge);
+                    }
+
+                    foreach (var boundaryEdge in CpgFrozenShardGraphReader.ReadBoundaryEdges(shard))
+                    {
+                        edges.Add(boundaryEdge);
+                    }
+                }
+            }
+
+            frontier = edges
+                .Where(edge => visited.Contains(edge.TargetNodeId))
+                .Select(edge => edge.SourceNodeId)
+                .Where(visited.Add)
+                .OrderBy(value => value)
+                .ToArray();
+        }
+
+        var includedEdges = edges
+            .Where(edge => nodes.ContainsKey(edge.SourceNodeId) && nodes.ContainsKey(edge.TargetNodeId))
+            .ToArray();
+        return RoslynCpgGraph.CreateFrozen(nodes.Values, includedEdges);
+    }
+
     private static void AddPath(SliceState state, NodeId sinkNodeId, ICollection<RoslynCpgSlicePath> paths)
     {
         var nodeIds = EnumeratePathNodeIds(state).ToArray();
@@ -281,7 +382,7 @@ public sealed class RoslynCpgSliceQuery
         var edges = new List<RoslynCpgEdge>();
         foreach (var edgeKind in allowedKinds.OrderBy(kind => kind))
         {
-            edges.AddRange(_graph.GetIncomingEdges(nodeId, edgeKind));
+            edges.AddRange(_graph!.GetIncomingEdges(nodeId, edgeKind));
         }
 
         edges.Sort(static (left, right) =>

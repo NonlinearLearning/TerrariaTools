@@ -65,7 +65,7 @@ internal sealed class DeleteClassPostRewriteCleanupService
             }
         }
 
-        return MergeCleanupEdits(result, currentSource, cleanupEdits);
+        return MergeCleanupEdits(filePath, result, currentSource, cleanupEdits);
     }
 
     internal PrototypeAnalysisResult ApplyEmptyNamespaceCleanup(
@@ -124,10 +124,11 @@ internal sealed class DeleteClassPostRewriteCleanupService
             changed = true;
         }
 
-        return MergeCleanupEdits(result, currentSource, cleanupEdits);
+        return MergeCleanupEdits(filePath, result, currentSource, cleanupEdits);
     }
 
     private PrototypeAnalysisResult MergeCleanupEdits(
+      string filePath,
       PrototypeAnalysisResult result,
       string currentSource,
       IReadOnlyList<RewriteEdit> cleanupEdits)
@@ -139,11 +140,22 @@ internal sealed class DeleteClassPostRewriteCleanupService
 
         var edits = result.Edits.Concat(cleanupEdits).ToList();
         var diff = _diffBuilder.Build(edits);
+        var originalSource = File.ReadAllText(filePath);
+        var operations = new[]
+        {
+          new RewritePlanEdit(0, originalSource.Length, originalSource, currentSource)
+        };
+        var rewrittenSource = new PrototypeRewriter().ExecutePlan(
+          originalSource,
+          filePath,
+          new PrototypeRewritePlan(operations, edits)).RewrittenSource;
+        var rewritePlans = new[] { new PrototypeFileRewritePlan(filePath, operations) };
         return result with
         {
           Edits = edits,
-          RewrittenSource = currentSource,
-          Diff = diff
+          RewrittenSource = rewrittenSource,
+          Diff = diff,
+          RewritePlans = rewritePlans
         };
     }
 

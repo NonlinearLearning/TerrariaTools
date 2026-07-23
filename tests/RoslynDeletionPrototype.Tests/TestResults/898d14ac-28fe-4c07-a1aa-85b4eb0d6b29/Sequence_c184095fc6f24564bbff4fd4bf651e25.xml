@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<TestSequence>
+  <Test Name="RoslynPrototype.Tests.DeleteClassRandomSampleHelperTests.Execute_TerrariaCodeSet_ReportsPhaseTimingsWithoutApplyingFinalWriteBack" DisplayName="RoslynPrototype.Tests.DeleteClassRandomSampleHelperTests.Execute_TerrariaCodeSet_ReportsPhaseTimingsWithoutApplyingFinalWriteBack" Source="D:\ProjectItem\SourceCode\Net\NL\Build\test\Debug\net10.0\RoslynDeletionPrototype.Tests.dll" Completed="False" />
+</TestSequence>

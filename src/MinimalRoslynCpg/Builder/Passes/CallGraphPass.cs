@@ -28,13 +28,13 @@ public sealed partial class RoslynCpgBuilder
 {
     internal void RunCallGraphPass(RoslynCpgBuildContext context)
     {
-        foreach (var invocationOperation in _operationNodes.Keys.OfType<IInvocationOperation>())
+        foreach (var invocationOperation in EnumerateOperationRoots(context).OfType<IInvocationOperation>())
         {
             var operationNode = GetOrCreateOperationNode(invocationOperation, context.Graph);
             AddCallSite(invocationOperation, operationNode, context.Graph);
         }
 
-        foreach (var propertyReferenceOperation in _operationNodes.Keys.OfType<IPropertyReferenceOperation>())
+        foreach (var propertyReferenceOperation in EnumerateOperationRoots(context).OfType<IPropertyReferenceOperation>())
         {
             var operationNode = GetOrCreateOperationNode(propertyReferenceOperation, context.Graph);
             AddPropertyAccessorCallSite(propertyReferenceOperation, operationNode, context.Graph);

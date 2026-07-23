@@ -5,6 +5,7 @@ namespace RoslynPrototype.Application.Logging;
 
 internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
 {
+    private const int BatchRecordCapacity = 64;
     private readonly Channel<TextLogWorkItem> _channel;
     private readonly StreamWriter _writer;
     private readonly TextLogFormatter _formatter;
@@ -13,6 +14,7 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
     private readonly object _failureLock = new();
     private Exception? _failure;
     private bool _disposed;
+    private int _batchCount;
     private int _recordCount;
 
     public TextLogFileSink(string path, TextLogFormatter formatter, TextLogFilter filter)
@@ -35,6 +37,8 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
     public string Path { get; }
 
     public int RecordsWritten => Volatile.Read(ref _recordCount);
+
+    public int BatchesWritten => Volatile.Read(ref _batchCount);
 
     public static TextLogFileSink Create(string path, TextLogFormatter formatter, TextLogFilter filter)
     {
@@ -80,6 +84,7 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
 
     private async Task DrainAsync()
     {
+        var batch = new List<string>(BatchRecordCapacity);
         try
         {
             while (await _channel.Reader.WaitToReadAsync().ConfigureAwait(false))
@@ -88,6 +93,7 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
                 {
                     if (workItem.IsFlush)
                     {
+                        await WriteBatchAsync(batch).ConfigureAwait(false);
                         await _writer.FlushAsync().ConfigureAwait(false);
                         workItem.FlushCompletion!.SetResult();
                         continue;
@@ -95,16 +101,21 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
 
                     if (workItem.IsComplete)
                     {
+                        await WriteBatchAsync(batch).ConfigureAwait(false);
                         await _writer.FlushAsync().ConfigureAwait(false);
                         workItem.FlushCompletion!.SetResult();
                         return;
                     }
 
-                    var line = _formatter.Format(workItem.TextLogEvent!, _filter.View);
-                    await _writer.WriteLineAsync(line).ConfigureAwait(false);
-                    Interlocked.Increment(ref _recordCount);
+                    batch.Add(_formatter.Format(workItem.TextLogEvent!, _filter.View));
+                    if (batch.Count == BatchRecordCapacity)
+                    {
+                        await WriteBatchAsync(batch).ConfigureAwait(false);
+                    }
                 }
             }
+
+            await WriteBatchAsync(batch).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -115,6 +126,25 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
 
             throw;
         }
+    }
+
+    private async Task WriteBatchAsync(List<string> batch)
+    {
+        if (batch.Count == 0)
+        {
+            return;
+        }
+
+        var text = new StringBuilder();
+        foreach (var line in batch)
+        {
+            text.AppendLine(line);
+        }
+
+        await _writer.WriteAsync(text.ToString()).ConfigureAwait(false);
+        Interlocked.Add(ref _recordCount, batch.Count);
+        Interlocked.Increment(ref _batchCount);
+        batch.Clear();
     }
 
     private void DisposeCore()

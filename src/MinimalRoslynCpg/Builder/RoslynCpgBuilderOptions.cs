@@ -25,7 +25,9 @@ public sealed record RoslynCpgBuilderOptions(
   int SyntaxLargeFileLineThreshold = 800,
   IReadOnlyCollection<RoslynCpgCapability>? RequestedCapabilities = null,
   RoslynCpgDataFlowOptions? DataFlowOptions = null,
-  RoslynCpgInterproceduralDataFlowOptions? InterproceduralDataFlowOptions = null)
+  RoslynCpgInterproceduralDataFlowOptions? InterproceduralDataFlowOptions = null,
+  CpgPersistenceOptions? Persistence = null,
+  bool UsePreallocatedNodeIds = false)
 {
   public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
 
@@ -49,6 +51,51 @@ public sealed record RoslynCpgBuilderOptions(
       SyntaxLargeFileLineThreshold: 800,
       RequestedCapabilities: null);
   }
+}
+
+public sealed record CpgPersistenceOptions(
+  string StoreRoot,
+  string ProfileHash,
+  int SchemaVersion = 1,
+  CpgPersistenceDurabilityMode DurabilityMode = CpgPersistenceDurabilityMode.Strict,
+  bool StreamingMode = false,
+  int StreamingReadCacheCapacity = 8,
+  int MaxBoundaryAdjacencyEdgesPerShard = 2048,
+  int MaxCatalogBatchRows = 1024,
+  int MaxCatalogBatchBytes = 1024 * 1024,
+  int MaxPendingShardPublications = 16,
+  int MaxConcurrentShardExports = 2,
+  int MaxConcurrentShardFileWrites = 2,
+  int StoreLockWaitMilliseconds = 30000)
+{
+  public void Validate()
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(StoreRoot);
+    ArgumentException.ThrowIfNullOrWhiteSpace(ProfileHash);
+    if (SchemaVersion <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(SchemaVersion));
+    }
+
+    if (StreamingReadCacheCapacity <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(StreamingReadCacheCapacity));
+    }
+
+    if (MaxBoundaryAdjacencyEdgesPerShard <= 0 || MaxCatalogBatchRows <= 0 ||
+        MaxCatalogBatchBytes <= 0 || MaxPendingShardPublications <= 0 ||
+        MaxConcurrentShardExports <= 0 ||
+        MaxConcurrentShardFileWrites <= 0 || StoreLockWaitMilliseconds <= 0)
+    {
+      throw new ArgumentOutOfRangeException(nameof(MaxBoundaryAdjacencyEdgesPerShard));
+    }
+  }
+}
+
+public enum CpgPersistenceDurabilityMode
+{
+  Strict,
+  Throughput,
 }
 
 public enum RoslynCpgDataFlowOverflowBehavior
@@ -113,7 +160,11 @@ public sealed record RoslynCpgBuildTelemetry(
   string GraphSnapshotVersion = "legacy-v1",
   RoslynCpgInterproceduralDataFlowTelemetry? InterproceduralDataFlowTelemetry = null,
   int GraphNodeCount = 0,
-  int GraphEdgeCount = 0)
+  int GraphEdgeCount = 0,
+  RoslynCpgStreamingFragmentTelemetry? StreamingFragments = null,
+  RoslynCpgOperationFragmentTelemetry? OperationFragments = null,
+  RoslynCpgPreallocationTelemetry? Preallocation = null,
+  CpgPersistenceTelemetry? Persistence = null)
 {
   public static RoslynCpgBuildTelemetry CreateDefault()
   {
@@ -139,6 +190,84 @@ public sealed record RoslynCpgBuildTelemetry(
       GraphSnapshotVersion: "legacy-v1",
       InterproceduralDataFlowTelemetry: RoslynCpgInterproceduralDataFlowTelemetry.CreateDefault());
   }
+}
+
+public sealed record RoslynCpgPreallocationTelemetry(
+  bool UsedCompatibilityPreflight,
+  int StableAnchorCount,
+  long ElapsedMilliseconds,
+  bool UsedAnchorDiscovery = false);
+
+public sealed record RoslynCpgOperationFragmentTelemetry(
+  int CommittedFragmentCount,
+  int ReleasedFragmentCount,
+  int PeakBufferedFragmentCount,
+  bool ReleasedBuilderOperationState)
+{
+  public static RoslynCpgOperationFragmentTelemetry CreateDefault()
+  {
+    return new RoslynCpgOperationFragmentTelemetry(
+      CommittedFragmentCount: 0,
+      ReleasedFragmentCount: 0,
+      PeakBufferedFragmentCount: 0,
+      ReleasedBuilderOperationState: false);
+  }
+}
+
+public sealed record RoslynCpgStreamingFragmentTelemetry(
+  IReadOnlyList<int> PublishedOrders,
+  IReadOnlyList<string> PublishedKinds,
+  int ReleasedFragmentCount,
+  int PeakRetainedFragmentCount)
+{
+  public static RoslynCpgStreamingFragmentTelemetry CreateDefault()
+  {
+    return new RoslynCpgStreamingFragmentTelemetry(
+      Array.Empty<int>(),
+      Array.Empty<string>(),
+      ReleasedFragmentCount: 0,
+      PeakRetainedFragmentCount: 0);
+  }
+}
+
+public sealed record CpgPersistenceTelemetry(
+  int PrimaryShardCount,
+  int BoundaryAdjacencyShardCount,
+  long PrimaryShardBytes,
+  long BoundaryAdjacencyShardBytes,
+  long BoundaryEdgeCount,
+  long CatalogRowCount,
+  int CatalogBatchCount,
+  long CatalogQueueWaitMilliseconds,
+  long CatalogCommitMilliseconds,
+  long FileWriteMilliseconds,
+  int PeakQueueDepth,
+  int PeakRouterBuffer,
+  int SessionInvalidationCount,
+  int PeakConcurrentFileWrites = 0,
+  int PeakConcurrentShardExports = 0,
+  long StoreLockWaitMilliseconds = 0,
+  long SerializationMilliseconds = 0,
+  long ValidationMilliseconds = 0,
+  long FlushMilliseconds = 0,
+  IReadOnlyList<int>? CatalogBatchRows = null,
+  int ReusedShardCount = 0,
+  int ReuseMissCount = 0,
+  int ReuseRejectedCount = 0,
+  long ReusedShardBytes = 0,
+  long ReadBackMilliseconds = 0,
+  long HashMilliseconds = 0,
+  long StructuralValidationMilliseconds = 0,
+  IReadOnlyList<int>? CatalogBatchPublicationCounts = null,
+  IReadOnlyList<int>? CatalogBatchEstimatedMetadataBytes = null,
+  int PeakReorderBuffer = 0)
+{
+  public static CpgPersistenceTelemetry CreateDefault() => new(
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    CatalogBatchRows: Array.Empty<int>(),
+    CatalogBatchPublicationCounts: Array.Empty<int>(),
+    CatalogBatchEstimatedMetadataBytes: Array.Empty<int>(),
+    PeakReorderBuffer: 0);
 }
 
 public sealed record RoslynCpgInterproceduralDataFlowTelemetry(
@@ -264,7 +393,8 @@ public sealed record RoslynCpgDataFlowPassTelemetry(
   long PrepareFlowNodesElapsedTicks = 0,
   long CollectUsedFactsElapsedTicks = 0,
   int SkippedMethodCount = 0,
-  IReadOnlyList<RoslynCpgMethodDataFlowTelemetry>? MethodTelemetry = null)
+  IReadOnlyList<RoslynCpgMethodDataFlowTelemetry>? MethodTelemetry = null,
+  int ReleasedCfgSensitivePlanCount = 0)
 {
   public static RoslynCpgDataFlowPassTelemetry CreateDefault()
   {

@@ -12,9 +12,30 @@ public sealed class RoslynCpgGraph
     private readonly HashSet<RoslynCpgEdge> _edges = new();
     private readonly HashSet<PendingEdge> _pendingEdges = new();
     private readonly Dictionary<string, string> _sourceByPath = new(StringComparer.Ordinal);
-    private readonly StringInterner _identityInterner = new();
+    private readonly StableNodeIdentityFactory _identityFactory;
+    private readonly DeterministicNodeIdTable? _preallocatedNodeIds;
+    private readonly Action<StableNodeAnchor>? _anchorDiscoveryObserver;
     private RoslynCpgGraphIndex? _queryIndex;
     private RoslynCpgFreezeTelemetry _freezeTelemetry = RoslynCpgFreezeTelemetry.CreateDefault();
+
+    public RoslynCpgGraph(
+        DeterministicNodeIdTable? preallocatedNodeIds = null,
+        StableNodeIdentityFactory? identityFactory = null,
+        Action<StableNodeAnchor>? anchorDiscoveryObserver = null)
+    {
+        _preallocatedNodeIds = preallocatedNodeIds;
+        _identityFactory = identityFactory ?? new StableNodeIdentityFactory();
+        _anchorDiscoveryObserver = anchorDiscoveryObserver;
+    }
+
+    internal static RoslynCpgGraph CreateAnchorDiscovery(
+      StableNodeIdentityFactory identityFactory,
+      Action<StableNodeAnchor> observeAnchor)
+    {
+        ArgumentNullException.ThrowIfNull(identityFactory);
+        ArgumentNullException.ThrowIfNull(observeAnchor);
+        return new RoslynCpgGraph(identityFactory: identityFactory, anchorDiscoveryObserver: observeAnchor);
+    }
 
     public IReadOnlyCollection<RoslynCpgNode> Nodes =>
       _queryIndex is null ? _mutableNodesByAnchor.Values : _nodesByNodeId.Values;
@@ -25,9 +46,76 @@ public sealed class RoslynCpgGraph
 
     internal IReadOnlyCollection<PendingEdge> PendingEdges => _pendingEdges;
 
+    internal DeterministicNodeIdTable RequirePreallocatedNodeIds()
+    {
+        return _preallocatedNodeIds ?? throw new InvalidOperationException(
+          "Streaming shard publication requires preallocated NodeIds.");
+    }
+
+    internal MutableGraphFacts SnapshotMutableFacts()
+    {
+        EnsureMutable();
+        return new MutableGraphFacts(
+          _mutableNodesByAnchor.Values.ToArray(),
+          _pendingEdges.ToArray());
+    }
+
     public bool HasQueryIndex => _queryIndex is not null;
 
     public string GraphSnapshotVersion => RequireQueryIndex().SnapshotVersion;
+
+    public static RoslynCpgGraph CreateFrozen(
+      IEnumerable<RoslynCpgNode> nodes,
+      IEnumerable<RoslynCpgEdge> edges)
+    {
+        ArgumentNullException.ThrowIfNull(nodes);
+        ArgumentNullException.ThrowIfNull(edges);
+        var graph = new RoslynCpgGraph();
+        foreach (var node in nodes)
+        {
+            if (!node.NodeId.HasValue)
+            {
+                throw new ArgumentException("Frozen CPG nodes require NodeId values.", nameof(nodes));
+            }
+
+            graph._nodesByNodeId.Add(node.NodeId.Value, node);
+        }
+
+        foreach (var edge in edges)
+        {
+            if (!graph._nodesByNodeId.ContainsKey(edge.SourceNodeId) ||
+                !graph._nodesByNodeId.ContainsKey(edge.TargetNodeId))
+            {
+                throw new ArgumentException("Frozen CPG edges require known endpoints.", nameof(edges));
+            }
+
+            graph._edges.Add(edge);
+        }
+
+        var indexBuildResult = RoslynCpgGraphIndex.Create(graph._nodesByNodeId.Values, graph._edges);
+        graph._queryIndex = indexBuildResult.Index;
+        graph._freezeTelemetry = new RoslynCpgFreezeTelemetry(
+          TotalElapsedMilliseconds: indexBuildResult.Telemetry.BuildQueryIndexElapsedMilliseconds,
+          AssignDeterministicNodeIdsElapsedMilliseconds: 0,
+          CreateAnchorsElapsedMilliseconds: 0,
+          CreateNodeIdTableElapsedMilliseconds: 0,
+          RemapNodesElapsedMilliseconds: 0,
+          RemapEdgesElapsedMilliseconds: 0,
+          BuildQueryIndexElapsedMilliseconds: indexBuildResult.Telemetry.BuildQueryIndexElapsedMilliseconds,
+          PopulateEdgeIndexBucketsElapsedMilliseconds: indexBuildResult.Telemetry.PopulateEdgeIndexBucketsElapsedMilliseconds,
+          OrderEdgesElapsedMilliseconds: indexBuildResult.Telemetry.OrderEdgesElapsedMilliseconds,
+          OrderNodesElapsedMilliseconds: indexBuildResult.Telemetry.OrderNodesElapsedMilliseconds,
+          SnapshotHashElapsedMilliseconds: indexBuildResult.Telemetry.SnapshotHashElapsedMilliseconds,
+          BuildAdjacencyElapsedMilliseconds: indexBuildResult.Telemetry.BuildAdjacencyElapsedMilliseconds,
+          BuildKindAdjacencyElapsedMilliseconds: indexBuildResult.Telemetry.BuildKindAdjacencyElapsedMilliseconds,
+          BuildEdgeKindIndexElapsedMilliseconds: indexBuildResult.Telemetry.BuildEdgeKindIndexElapsedMilliseconds,
+          BuildNodeKindIndexElapsedMilliseconds: indexBuildResult.Telemetry.BuildNodeKindIndexElapsedMilliseconds,
+          BuildFilePathIndexElapsedMilliseconds: indexBuildResult.Telemetry.BuildFilePathIndexElapsedMilliseconds,
+          NodeCount: indexBuildResult.Telemetry.NodeCount,
+          EdgeCount: indexBuildResult.Telemetry.EdgeCount,
+          DistinctAnchorCount: graph._nodesByNodeId.Count);
+        return graph;
+    }
 
     /// <summary>
     /// 新增节点；如果同稳定锚点已存在则直接返回已有节点。
@@ -37,6 +125,12 @@ public sealed class RoslynCpgGraph
         EnsureMutable();
         var materializedNode = MaterializeCompatibilityIdentity(node);
         var stableAnchor = materializedNode.StableAnchor!.Value;
+        if (_anchorDiscoveryObserver is not null)
+        {
+            _anchorDiscoveryObserver(stableAnchor);
+            return materializedNode;
+        }
+
         if (!_mutableNodesByAnchor.TryGetValue(stableAnchor, out var existing))
         {
             _mutableNodesByAnchor[stableAnchor] = materializedNode;
@@ -60,6 +154,11 @@ public sealed class RoslynCpgGraph
         EnsureMutable();
         var materializedSource = AddNode(source);
         var materializedTarget = AddNode(target);
+        if (_anchorDiscoveryObserver is not null)
+        {
+            return;
+        }
+
         _pendingEdges.Add(new PendingEdge(
           materializedSource,
           materializedTarget,
@@ -421,13 +520,34 @@ public sealed class RoslynCpgGraph
 
     private RoslynCpgNode MaterializeCompatibilityIdentity(RoslynCpgNode node)
     {
+        var stableAnchor = _identityFactory.GetStableAnchor(node);
+        if (_preallocatedNodeIds is not null)
+        {
+            if (!_preallocatedNodeIds.Contains(stableAnchor))
+            {
+                throw new InvalidOperationException(
+                    $"Stable anchor for '{DescribeNode(node)}' was not included in the supplied preallocated NodeId table.");
+            }
+
+            var nodeId = _preallocatedNodeIds.GetRequiredId(stableAnchor);
+            if (node.NodeId.HasValue && node.NodeId.Value != nodeId)
+            {
+                throw new InvalidOperationException(
+                    $"Preallocated NodeId for '{DescribeNode(node)}' does not match the supplied NodeId.");
+            }
+
+            return node with
+            {
+                NodeId = nodeId,
+                StableAnchor = stableAnchor,
+            };
+        }
+
         if (node.NodeId.HasValue && node.StableAnchor.HasValue)
         {
             return node;
         }
 
-        var role = MapStableNodeRole(node.Kind);
-        var stableAnchor = node.StableAnchor ?? StableNodeAnchor.CreateFallback(node, _identityInterner, role);
         return node with
         {
             NodeId = node.NodeId,
@@ -442,14 +562,20 @@ public sealed class RoslynCpgGraph
         var anchoredNodes = _mutableNodesByAnchor.Values
           .Select(node =>
           {
-              var anchor = node.StableAnchor ?? StableNodeAnchor.CreateFallback(node, _identityInterner, MapStableNodeRole(node.Kind));
+              var anchor = _identityFactory.GetStableAnchor(node);
               return (Node: node, Anchor: anchor);
           })
           .ToArray();
         createAnchorsStopwatch.Stop();
         var createNodeIdTableStopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var nodeIdTable = DeterministicNodeIdTable.Create(anchoredNodes.Select(entry => entry.Anchor));
+        var nodeIdTable = _preallocatedNodeIds ?? DeterministicNodeIdTable.Create(anchoredNodes.Select(entry => entry.Anchor));
         createNodeIdTableStopwatch.Stop();
+        if (_preallocatedNodeIds is not null &&
+            (_preallocatedNodeIds.Count != anchoredNodes.Length ||
+             anchoredNodes.Any(entry => !_preallocatedNodeIds.Contains(entry.Anchor))))
+        {
+            throw new InvalidOperationException("The supplied preallocated NodeId table must exactly match the graph's stable anchors.");
+        }
         var remapNodesStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var remappedNodes = anchoredNodes
           .Select(entry =>
@@ -569,4 +695,8 @@ public sealed class RoslynCpgGraph
       RoslynCpgEdgeLabel? StructuredLabel,
       RoslynCpgContextId? ContextId,
       RoslynCpgCallSiteContext? CallSiteContext);
+
+    internal sealed record MutableGraphFacts(
+      IReadOnlyList<RoslynCpgNode> Nodes,
+      IReadOnlyList<PendingEdge> PendingEdges);
 }

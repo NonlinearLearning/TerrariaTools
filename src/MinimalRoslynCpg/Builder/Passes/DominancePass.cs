@@ -44,10 +44,11 @@ public sealed partial class RoslynCpgBuilder
     {
         _dominanceOverlays.Clear();
 
-        foreach (var methodBlock in _operationNodes.Keys.OfType<IBlockOperation>())
+        foreach (var rootPlan in GetOperationRootPlans(context.Root, context.SemanticModel))
         {
-            if (!IsMethodRootBlock(methodBlock) ||
-                !_operationOwningMethods.TryGetValue(methodBlock, out var methodSymbol))
+            if (context.SemanticModel.GetOperation(rootPlan.BodySyntax) is not IBlockOperation methodBlock ||
+                !IsMethodRootBlock(methodBlock) ||
+                rootPlan.OwningMethod is not IMethodSymbol methodSymbol)
             {
                 continue;
             }
@@ -107,7 +108,7 @@ public sealed partial class RoslynCpgBuilder
             {
                 foreach (var descendant in operation.DescendantsAndSelf())
                 {
-                    AddMappedOperationNode(descendant, nodes);
+                    AddMappedOperationNode(descendant, nodes, graph);
                 }
             }
 
@@ -115,7 +116,7 @@ public sealed partial class RoslynCpgBuilder
             {
                 foreach (var descendant in block.BranchValue.DescendantsAndSelf())
                 {
-                    AddMappedOperationNode(descendant, nodes);
+                    AddMappedOperationNode(descendant, nodes, graph);
                 }
             }
 
@@ -138,23 +139,12 @@ public sealed partial class RoslynCpgBuilder
         };
     }
 
-    private void AddMappedOperationNode(IOperation operation, ISet<RoslynCpgNode> nodes)
+    private void AddMappedOperationNode(
+        IOperation operation,
+        ISet<RoslynCpgNode> nodes,
+        RoslynCpgGraph graph)
     {
-        if (_operationNodes.TryGetValue(operation, out var node))
-        {
-            nodes.Add(node);
-            return;
-        }
-
-        foreach (var (candidateOperation, candidateNode) in _operationNodes)
-        {
-            if (candidateOperation.Kind == operation.Kind &&
-                candidateOperation.Syntax.SyntaxTree == operation.Syntax.SyntaxTree &&
-                candidateOperation.Syntax.Span == operation.Syntax.Span)
-            {
-                nodes.Add(candidateNode);
-            }
-        }
+        nodes.Add(GetOrCreateOperationNode(operation, graph));
     }
 
     private static Dictionary<int, RoslynCpgNode?> MapControlNodesByBlockOrdinal(

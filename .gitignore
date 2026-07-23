@@ -23,3 +23,5 @@ FormatTool
 .VSCodeCounter
 progressinfo.md
 待办事项.md
+BenchmarkDotNet.Artifacts
+tools

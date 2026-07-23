@@ -286,8 +286,9 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
 
     private static SyntaxNode? TryResolveAnchorNode(DecisionUnit unit)
     {
-        return unit.Fragments[0].NodeId.HasValue &&
-          unit.SyntaxBindings.TryGetValue(unit.Fragments[0].NodeId.Value, out var node)
+        var nodeId = unit.Fragments[0].NodeId;
+        return nodeId is { } value &&
+          unit.SyntaxBindings.TryGetValue(value, out var node)
           ? node
           : null;
     }
@@ -577,8 +578,9 @@ public sealed class RuleDecisionEngine
 
     private static SyntaxNode? TryResolveAnchorNode(DecisionUnit unit)
     {
-        return unit.Fragments[0].NodeId.HasValue &&
-          unit.SyntaxBindings.TryGetValue(unit.Fragments[0].NodeId.Value, out var node)
+        var nodeId = unit.Fragments[0].NodeId;
+        return nodeId is { } value &&
+          unit.SyntaxBindings.TryGetValue(value, out var node)
           ? node
           : null;
     }

@@ -13,15 +13,26 @@ public sealed class PrototypeRewriter
   private const int NormalizeWhitespaceDepthLimit = 256;
   private readonly DiffBuilder _diffBuilder = new();
   private readonly TextDiffRenderer _textDiffRenderer = new();
-  private readonly record struct RewritePlanEntry(TextRewriteOperation Operation, RewriteEdit Edit);
-  private readonly record struct TextRewriteOperation(TextSpan Span, string ReplacementText);
+  private readonly record struct RewritePlanEntry(RewritePlanEdit Operation, RewriteEdit Edit);
 
   /// <summary>
   /// 根据决策列表对语法树执行删除或替换，并产出最终源码与编辑记录。
   /// </summary>
   public PrototypeRewriteResult Rewrite(SyntaxNode root, SemanticModel semanticModel, IEnumerable<RuleDecision> decisions)
   {
-    var source = root.ToFullString();
+    var plan = BuildPlan(root, semanticModel, decisions);
+
+    return ExecutePlan(root.ToFullString(), root.SyntaxTree.FilePath, plan);
+  }
+
+  /// <summary>
+  /// Converts Roslyn rule decisions into a portable text-only rewrite plan.
+  /// </summary>
+  public PrototypeRewritePlan BuildPlan(
+    SyntaxNode root,
+    SemanticModel semanticModel,
+    IEnumerable<RuleDecision> decisions)
+  {
     var rewritePlan = new List<RewritePlanEntry>();
 
     foreach (var decision in decisions.OrderByDescending(item => item.FinalNode.Span.Length)) {
@@ -121,17 +132,54 @@ public sealed class PrototypeRewriter
     }
 
     var effectivePlan = BuildEffectiveRewritePlan(rewritePlan);
+    return new PrototypeRewritePlan(
+      effectivePlan.Select(entry => entry.Operation).ToList(),
+      effectivePlan.Select(entry => entry.Edit).ToList());
+  }
+
+  /// <summary>
+  /// Applies an in-memory plan without accessing Roslyn semantic data.
+  /// </summary>
+  public PrototypeRewriteResult ExecutePlan(
+    string source,
+    string filePath,
+    PrototypeRewritePlan plan)
+  {
+    ArgumentNullException.ThrowIfNull(source);
+    ArgumentNullException.ThrowIfNull(filePath);
+    ArgumentNullException.ThrowIfNull(plan);
+
     var rewrittenSource = FinalizeRewrittenSource(
-      ApplyTextRewriteOperations(
-        source,
-        effectivePlan.Select(entry => entry.Operation).ToList()),
-      root.SyntaxTree.FilePath);
-    var edits = effectivePlan.Select(entry => entry.Edit).ToList();
-    var diff = _diffBuilder.Build(edits);
+      ApplyTextRewriteOperations(source, plan.Operations),
+      filePath);
+    var diff = _diffBuilder.Build(plan.Edits);
+
     return new PrototypeRewriteResult(
       rewrittenSource,
-      edits,
-      diff);
+      plan.Edits,
+      diff,
+      plan.Operations);
+  }
+
+  /// <summary>
+  /// Applies a persisted file plan without accepting Roslyn syntax or semantic objects.
+  /// </summary>
+  public PrototypeRewriteResult ExecutePlan(
+    string source,
+    string filePath,
+    RewritePlanFile plan)
+  {
+    ArgumentNullException.ThrowIfNull(plan);
+
+    var displayEdits = plan.Edits
+      .Select(edit => new RewriteEdit(
+        filePath,
+        new TextSpan(edit.Start, edit.Length),
+        edit.OriginalText,
+        edit.ReplacementText))
+      .ToList();
+
+    return ExecutePlan(source, filePath, new PrototypeRewritePlan(plan.Edits, displayEdits));
   }
 
   /// <summary>
@@ -206,13 +254,25 @@ public sealed class PrototypeRewriter
   private static RewritePlanEntry CreateDeleteRewritePlanEntry(SyntaxNode originalNode)
   {
     return new RewritePlanEntry(
-      new TextRewriteOperation(originalNode.Span, string.Empty),
+      CreateTextRewriteOperation(originalNode, string.Empty),
       CreateDeleteEdit(originalNode));
   }
 
-  private static TextRewriteOperation CreateTextRewriteOperation(SyntaxNode originalNode, SyntaxNode replacementNode)
+  private static RewritePlanEdit CreateTextRewriteOperation(SyntaxNode originalNode, SyntaxNode replacementNode)
   {
-    return new TextRewriteOperation(originalNode.Span, replacementNode.ToFullString());
+    return CreateTextRewriteOperation(originalNode, replacementNode.ToFullString().Trim());
+  }
+
+  private static RewritePlanEdit CreateTextRewriteOperation(SyntaxNode originalNode, string replacementText)
+  {
+    var sourceText = originalNode.SyntaxTree.GetText();
+    var originalText = sourceText.ToString(originalNode.Span);
+
+    return new RewritePlanEdit(
+      originalNode.Span.Start,
+      originalNode.Span.Length,
+      originalText,
+      replacementText);
   }
 
   private static IReadOnlyList<RewritePlanEntry> BuildEffectiveRewritePlan(IReadOnlyList<RewritePlanEntry> rewritePlan)
@@ -223,15 +283,15 @@ public sealed class PrototypeRewriter
     }
 
     var orderedPlan = rewritePlan
-      .OrderByDescending(entry => entry.Operation.Span.Start)
-      .ThenByDescending(entry => entry.Operation.Span.Length)
+      .OrderByDescending(entry => entry.Operation.Start)
+      .ThenByDescending(entry => entry.Operation.Length)
       .ToList();
     var effectivePlan = new List<RewritePlanEntry>();
 
     foreach (var entry in orderedPlan)
     {
       var overlappingEntries = effectivePlan
-        .Where(existing => existing.Operation.Span.OverlapsWith(entry.Operation.Span))
+        .Where(existing => GetTextSpan(existing.Operation).OverlapsWith(GetTextSpan(entry.Operation)))
         .ToList();
       if (overlappingEntries.Count == 0)
       {
@@ -240,13 +300,13 @@ public sealed class PrototypeRewriter
       }
 
       if (overlappingEntries.Any(overlappingEntry =>
-            overlappingEntry.Operation.Span.Contains(entry.Operation.Span)))
+            GetTextSpan(overlappingEntry.Operation).Contains(GetTextSpan(entry.Operation))))
       {
         continue;
       }
 
       if (overlappingEntries.All(overlappingEntry =>
-            entry.Operation.Span.Contains(overlappingEntry.Operation.Span)))
+            GetTextSpan(entry.Operation).Contains(GetTextSpan(overlappingEntry.Operation))))
       {
         foreach (var overlappingEntry in overlappingEntries)
         {
@@ -258,21 +318,21 @@ public sealed class PrototypeRewriter
       }
 
       var conflictingEntry = overlappingEntries.First(overlappingEntry =>
-        !entry.Operation.Span.Contains(overlappingEntry.Operation.Span) &&
-        !overlappingEntry.Operation.Span.Contains(entry.Operation.Span));
+        !GetTextSpan(entry.Operation).Contains(GetTextSpan(overlappingEntry.Operation)) &&
+        !GetTextSpan(overlappingEntry.Operation).Contains(GetTextSpan(entry.Operation)));
       throw new InvalidOperationException(
         "Partially overlapping rewrite operations are not supported: " +
-        $"{entry.Operation.Span.Start}..{entry.Operation.Span.End} overlaps " +
-        $"{conflictingEntry.Operation.Span.Start}..{conflictingEntry.Operation.Span.End}.");
+        $"{entry.Operation.Start}..{entry.Operation.Start + entry.Operation.Length} overlaps " +
+        $"{conflictingEntry.Operation.Start}..{conflictingEntry.Operation.Start + conflictingEntry.Operation.Length}.");
     }
 
     return effectivePlan
-      .OrderByDescending(entry => entry.Operation.Span.Start)
-      .ThenByDescending(entry => entry.Operation.Span.Length)
+      .OrderByDescending(entry => entry.Operation.Start)
+      .ThenByDescending(entry => entry.Operation.Length)
       .ToList();
   }
 
-  private static string ApplyTextRewriteOperations(string source, IReadOnlyList<TextRewriteOperation> operations)
+  private static string ApplyTextRewriteOperations(string source, IReadOnlyList<RewritePlanEdit> operations)
   {
     if (operations.Count == 0)
     {
@@ -281,25 +341,45 @@ public sealed class PrototypeRewriter
 
     var builder = new StringBuilder(source);
     var orderedOperations = operations
-      .OrderByDescending(operation => operation.Span.Start)
-      .ThenByDescending(operation => operation.Span.Length)
+      .OrderByDescending(operation => operation.Start)
+      .ThenByDescending(operation => operation.Length)
       .ToList();
     var lastAppliedStart = source.Length + 1;
 
     foreach (var operation in orderedOperations)
     {
-      if (operation.Span.End > lastAppliedStart)
+      if (operation.Start < 0 || operation.Length < 0 || operation.Start + operation.Length > source.Length)
       {
         throw new InvalidOperationException(
-          $"Overlapping rewrite operations detected at span {operation.Span.Start}..{operation.Span.End}.");
+          $"Rewrite operation span {operation.Start}..{operation.Start + operation.Length} is outside the source text.");
       }
 
-      builder.Remove(operation.Span.Start, operation.Span.Length);
-      builder.Insert(operation.Span.Start, operation.ReplacementText);
-      lastAppliedStart = operation.Span.Start;
+      if (!string.Equals(
+            source.Substring(operation.Start, operation.Length),
+            operation.OriginalText,
+            StringComparison.Ordinal))
+      {
+        throw new InvalidOperationException(
+          $"Rewrite operation original text does not match source span {operation.Start}..{operation.Start + operation.Length}.");
+      }
+
+      if (operation.Start + operation.Length > lastAppliedStart)
+      {
+        throw new InvalidOperationException(
+          $"Overlapping rewrite operations detected at span {operation.Start}..{operation.Start + operation.Length}.");
+      }
+
+      builder.Remove(operation.Start, operation.Length);
+      builder.Insert(operation.Start, operation.ReplacementText);
+      lastAppliedStart = operation.Start;
     }
 
     return builder.ToString();
+  }
+
+  private static TextSpan GetTextSpan(RewritePlanEdit operation)
+  {
+    return new TextSpan(operation.Start, operation.Length);
   }
 
   private static string FinalizeRewrittenSource(string rewrittenSource, string filePath)
