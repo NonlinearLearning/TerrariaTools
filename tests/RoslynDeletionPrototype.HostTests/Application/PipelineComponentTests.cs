@@ -1253,7 +1253,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_MaxDegreeOfParallelism_KeepsStableResults()
+    public void AnalyzeFromArgs_ForDirectoryDeleteClass_SeparateDirectoryAndCpgDop_KeepsStableResults()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-parallelism-project");
         Directory.CreateDirectory(projectDirectory);
@@ -1306,21 +1306,49 @@ public sealed class PipelineComponentTests : IDisposable
           "--no-diff"
         });
         Assert.NotEmpty(serialResult.Edits);
-        foreach (var maxDegreeOfParallelism in new[] { 16, 64 })
+        foreach (var configuration in new[]
         {
-            var parallelResult = application.AnalyzeFromArgs(new[]
+          (DirectoryDop: 12, CpgDop: 1, DisableDirectoryParallelism: false),
+          (DirectoryDop: 12, CpgDop: 12, DisableDirectoryParallelism: false),
+          (DirectoryDop: 12, CpgDop: 12, DisableDirectoryParallelism: true)
+        })
+        {
+            var arguments = new List<string>
             {
-              projectDirectory,
-              "--delete-class",
-              "PlayerInput",
-              "--max-degree-of-parallelism",
-              maxDegreeOfParallelism.ToString(),
-              "--no-diff"
-            });
+                projectDirectory,
+                "--delete-class",
+                "PlayerInput",
+                "--max-degree-of-parallelism",
+                configuration.DirectoryDop.ToString(),
+                "--cpg-max-degree-of-parallelism",
+                configuration.CpgDop.ToString(),
+                "--no-diff"
+            };
+            if (configuration.DisableDirectoryParallelism)
+            {
+                arguments.Add("--disable-directory-parallelism");
+            }
+
+            var parallelResult = application.AnalyzeFromArgs(arguments.ToArray());
 
             Assert.NotEmpty(parallelResult.Edits);
+            Assert.Equal(configuration.CpgDop, parallelResult.CpgBuildTelemetry!.MaxDegreeOfParallelism);
             AssertEquivalentAnalysisResults(serialResult, parallelResult);
         }
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_WithInvalidCpgDopOverride_ThrowsArgumentException()
+    {
+        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var exception = Assert.Throws<ArgumentException>(() => application.AnalyzeFromArgs(new[]
+        {
+          "--cpg-max-degree-of-parallelism",
+          "0"
+        }));
+
+        Assert.Contains("--cpg-max-degree-of-parallelism", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

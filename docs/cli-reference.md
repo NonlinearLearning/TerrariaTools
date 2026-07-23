@@ -40,7 +40,8 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <source-dir
 | `--no-diff` / `--skip-diff` | 禁止写出 diff。 |
 | `--diff-view legacy|readable` | 选择 diff 文本视图；非 `readable` 值按 `legacy` 处理。 |
 | `--diff-out <path>` | 设置 diff 输出路径或目录。 |
-| `--max-degree-of-parallelism <N>` | 限制目录、规则阶段和 CPG 分片的并发量；缺省或无效值使用处理器数量，最小值为 1。 |
+| `--max-degree-of-parallelism <N>` | 限制目录、规则阶段和默认 CPG 分片的并发量；缺省或无效值使用处理器数量，最小值为 1。 |
+| `--cpg-max-degree-of-parallelism <N>` | 仅覆盖每个文件内 CPG 分片的并发量；缺省时继承 `--max-degree-of-parallelism`，值必须为正整数。 |
 | `--runtime-log <path>` | 写入运行汇总日志。 |
 | `--analysis-log <path>` | 写入文件和阶段分析日志。 |
 | `--log-profile <name>`、`--log-level <level>`、`--log-categories <list>`、`--log-events <list>`、`--log-view <name>` | 控制文本日志的过滤与呈现。 |
@@ -50,6 +51,21 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <source-dir
 | `--filter-delete-class-files-by-target-name` | 仅在快速目录类删除路径下，跳过源码文本中不含目标类名的文件。 |
 
 旧日志选项 `--runtime-metrics-log`、`--per-file-timing-log`、`--per-file-phase-timing-log-directory` 和 `--per-file-memory-diagnostics-log` 仍可用，但宿主会输出弃用提示。
+
+## 并发诊断
+
+以下三条命令用于区分目录并发与文件内 CPG 并发。它们只用于测量，不改变默认值。每个 case 使用相同输入、规则和日志选项，并在单独进程中顺序执行。
+
+```powershell
+# directory=12, cpg=1
+dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --cpg-max-degree-of-parallelism 1 --skip-rewrite --no-diff
+
+# directory=1, cpg=12
+dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --disable-directory-parallelism --cpg-max-degree-of-parallelism 12 --skip-rewrite --no-diff
+
+# directory=12, cpg=12
+dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --cpg-max-degree-of-parallelism 12 --skip-rewrite --no-diff
+```
 
 ## 输出与安全边界
 
