@@ -136,6 +136,7 @@ internal sealed class RunTextLogWriter
     public void WriteCpgSummary(RoslynCpgBuildTelemetry telemetry)
     {
         var freeze = telemetry.FreezeTelemetry;
+        var admission = telemetry.AdmissionTelemetry;
         var operationWindow = telemetry.OperationOrderedWindow ?? RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
         var cfgSensitiveWindow = telemetry.CfgSensitiveOrderedWindow ?? RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
         Emit(
@@ -174,7 +175,14 @@ internal sealed class RunTextLogWriter
             new TextLogField("cfgActiveWorkerPeak", cfgSensitiveWindow.ActiveWorkerPeak),
             new TextLogField("cfgCompletedBufferPeak", cfgSensitiveWindow.CompletedButUncommittedPeak),
             new TextLogField("cfgCommitWaitMs", cfgSensitiveWindow.CommitWaitMilliseconds),
-            new TextLogField("cfgWindowBlockedMs", cfgSensitiveWindow.WindowBlockedMilliseconds)
+            new TextLogField("cfgWindowBlockedMs", cfgSensitiveWindow.WindowBlockedMilliseconds),
+            new TextLogField("requestedCpgDop", admission?.RequestedDegree ?? telemetry.MaxDegreeOfParallelism),
+            new TextLogField("grantedCpgDop", admission?.GrantedDegree ?? telemetry.MaxDegreeOfParallelism),
+            new TextLogField("cpgAdmissionWaitMs", admission?.WaitMilliseconds ?? 0),
+            new TextLogField("cpgAdmissionActiveLeases", admission?.ActiveLeaseCountAtGrant ?? 0),
+            new TextLogField("cpgAdmissionDegreeHighWater", admission?.GrantedDegreeHighWaterMark ?? 0),
+            new TextLogField("cpgAdmissionPolicy", admission?.Policy.ToString() ?? "none"),
+            new TextLogField("cpgAdmissionDegreeCap", admission?.MaxDegreePerLease ?? telemetry.MaxDegreeOfParallelism)
           });
     }
 

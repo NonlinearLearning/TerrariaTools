@@ -123,6 +123,27 @@ internal sealed class AnalysisTextLogWriter
           });
     }
 
+    public void WriteDirectoryPublicationSummary(
+      int fileCount,
+      int unpublishedCountPeak,
+      long waitToPublishMilliseconds,
+      int oldestUnpublishedIndex)
+    {
+        Emit(
+          TextLogLevel.Debug,
+          TextLogCategory.File,
+          TextLogEventType.Summary,
+          "directory source-order publication summary",
+          null,
+          new[]
+          {
+            new TextLogField("files", fileCount),
+            new TextLogField("unpublishedCountPeak", unpublishedCountPeak),
+            new TextLogField("waitToPublishMs", waitToPublishMilliseconds),
+            new TextLogField("oldestUnpublishedIndex", oldestUnpublishedIndex)
+          });
+    }
+
     public void WritePhaseCompleted(string filePath, string phase, long elapsedMilliseconds)
     {
         Emit(

@@ -181,6 +181,17 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Equal(12, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
     }
 
+    [Fact]
+    public void RuntimeLifecycle_PreservesCpgBuildAdmissionBudget()
+    {
+        var runtime = new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 4, CpgMaxDegreeOfParallelism: 3),
+          new DeletionAnalysisEpoch(0, 0, 0));
+
+        Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.InvalidateCaches().CpgBuildAdmissionBudget);
+        Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.NextEpoch().CpgBuildAdmissionBudget);
+    }
+
     [Theory]
     [InlineData("0")]
     [InlineData("-1")]
@@ -1332,9 +1343,58 @@ public sealed class PipelineComponentTests : IDisposable
             var parallelResult = application.AnalyzeFromArgs(arguments.ToArray());
 
             Assert.NotEmpty(parallelResult.Edits);
-            Assert.Equal(configuration.CpgDop, parallelResult.CpgBuildTelemetry!.MaxDegreeOfParallelism);
+            var expectedGrantedCpgDop = configuration.DisableDirectoryParallelism
+              ? configuration.CpgDop
+              : Math.Min(configuration.CpgDop, Math.Max(1, configuration.CpgDop / 2));
+            Assert.Equal(expectedGrantedCpgDop, parallelResult.CpgBuildTelemetry!.MaxDegreeOfParallelism);
             AssertEquivalentAnalysisResults(serialResult, parallelResult);
         }
+    }
+
+    [Fact]
+    public async Task AnalyzeDirectoryAsync_SourceOrderPublicationBacklog_RecordsAnalysisLogTelemetry()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "directory-publication-backlog-project");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "A.Slow.cs"),
+          "namespace Demo; public sealed class SlowFile { public int Run() => 1; }",
+          Encoding.UTF8);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "B.Fast.cs"),
+          "namespace Demo; public sealed class FastFileOne { public int Run() => 2; }",
+          Encoding.UTF8);
+        var analysisLogPath = Path.Combine(_tempDirectory, "directory-publication-backlog.log");
+        var delayRule = new FileDelayMarkRule();
+        var host = new DeletionCommandHost(new DeletionRulePipeline(
+          new RuleDefinitionMark[] { delayRule },
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>()));
+
+        await host.AnalyzeFromArgsAsync(new[]
+        {
+            projectDirectory,
+            "--max-degree-of-parallelism",
+            "2",
+            "--cpg-max-degree-of-parallelism",
+            "2",
+            "--analysis-log",
+            analysisLogPath,
+            "--log-profile",
+            "benchmark",
+            "--no-diff"
+        });
+
+        var summaryLine = File.ReadAllLines(analysisLogPath)
+          .Single(line =>
+            line.Contains("cat=file evt=summary", StringComparison.Ordinal) &&
+            line.Contains("msg=\"directory source-order publication summary\"", StringComparison.Ordinal));
+
+        Assert.True(ExtractNamedLongField(summaryLine, "unpublishedCountPeak") >= 1);
+        Assert.True(ExtractNamedLongField(summaryLine, "oldestUnpublishedIndex") >= 0);
+        Assert.True(ExtractNamedLongField(summaryLine, "waitToPublishMs") > 0);
+        Assert.True(delayRule.FastFileEntered.IsCompletedSuccessfully);
     }
 
     [Fact]
@@ -5177,6 +5237,52 @@ public sealed class PipelineComponentTests : IDisposable
           diagnostic.Start,
           diagnostic.End,
           diagnostic.Message);
+    }
+
+    private static long ExtractNamedLongField(string line, string fieldName)
+    {
+        var prefix = $"{fieldName}=";
+        var startIndex = line.IndexOf(prefix, StringComparison.Ordinal);
+        Assert.True(startIndex >= 0, $"Missing field '{fieldName}' in log line: {line}");
+        startIndex += prefix.Length;
+        var endIndex = line.IndexOf(' ', startIndex);
+        var rawValue = endIndex >= 0
+          ? line[startIndex..endIndex]
+          : line[startIndex..];
+        return long.Parse(rawValue);
+    }
+
+    private sealed class FileDelayMarkRule : RuleDefinitionMark
+    {
+        private readonly TaskCompletionSource _fastFileEntered = new(
+          TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override string RuleId { get; } = "TEST-DIRECTORY-PUBLICATION-BACKLOG-001";
+
+        public override string GroupKey { get; } = "TEST-DIRECTORY-PUBLICATION-BACKLOG";
+
+        public override string Name { get; } = "Delay one file to force directory publication backlog telemetry.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+          new[] { SyntaxKind.CompilationUnit };
+
+        public Task FastFileEntered => _fastFileEntered.Task;
+
+        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        {
+            var fileName = Path.GetFileName(root.SyntaxTree.FilePath);
+            if (string.Equals(fileName, "A.Slow.cs", StringComparison.Ordinal))
+            {
+                _fastFileEntered.Task.Wait(TimeSpan.FromSeconds(5));
+                Thread.Sleep(100);
+            }
+            else
+            {
+                _fastFileEntered.TrySetResult();
+            }
+
+            yield break;
+        }
     }
 }
 

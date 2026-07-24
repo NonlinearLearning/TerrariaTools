@@ -204,10 +204,57 @@ public sealed class DeletionApplicationService
     SyntaxNode root,
     long preparationMilliseconds = 0)
   {
+    if (runtime.CurrentCpgBuildAdmissionLease is not null)
+    {
+      return BuildAnalysisContextCore(
+        source,
+        filePath,
+        options,
+        runtime,
+        semanticModel,
+        root,
+        preparationMilliseconds);
+    }
+
+    using var lease = runtime.CpgBuildAdmissionBudget
+      .AcquireAsync(
+        runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism,
+        runtime.ExecutionOptions.CancellationToken,
+        CpgBuildAdmissionPolicy.WholeBuild)
+      .GetAwaiter()
+      .GetResult();
+    using var scope = runtime.PushCpgBuildAdmissionLease(lease);
+    return BuildAnalysisContextCore(
+      source,
+      filePath,
+      options,
+      runtime,
+      semanticModel,
+      root,
+      preparationMilliseconds);
+  }
+
+  private DeletionAnalysisContext BuildAnalysisContextCore(
+    string source,
+    string filePath,
+    IReadOnlyDictionary<string, string> options,
+    DeletionAnalysisRuntime runtime,
+    SemanticModel semanticModel,
+    SyntaxNode root,
+    long preparationMilliseconds)
+  {
     var cpgBuildStopwatch = Stopwatch.StartNew();
     var builderOptions = RoslynCpgBuilderOptions.CreateDefault() with
     {
-      MaxDegreeOfParallelism = runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism,
+      MaxDegreeOfParallelism = runtime.CurrentCpgBuildAdmissionLease!.GrantedDegree,
+      AdmissionTelemetry = new CpgBuildAdmissionTelemetry(
+        runtime.CurrentCpgBuildAdmissionLease.RequestedDegree,
+        runtime.CurrentCpgBuildAdmissionLease.GrantedDegree,
+        runtime.CurrentCpgBuildAdmissionLease.WaitMilliseconds,
+        runtime.CurrentCpgBuildAdmissionLease.ActiveLeaseCountAtGrant,
+        runtime.CurrentCpgBuildAdmissionLease.GrantedDegreeHighWaterMark,
+        runtime.CurrentCpgBuildAdmissionLease.Policy,
+        runtime.CurrentCpgBuildAdmissionLease.MaxDegreePerLease),
       RequestedCapabilities = new DeletionRulePipeline(_markers, _propagators, _lifters, _proposers)
         .GetRequiredCapabilities()
     };

@@ -29,7 +29,8 @@ public sealed record RoslynCpgBuilderOptions(
   CpgPersistenceOptions? Persistence = null,
   bool UsePreallocatedNodeIds = false,
   int? OrderedResultReorderAllowance = null,
-  int MaxOrderedResultRecordCount = 250_000)
+  int MaxOrderedResultRecordCount = 250_000,
+  CpgBuildAdmissionTelemetry? AdmissionTelemetry = null)
 {
   public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
 
@@ -173,7 +174,8 @@ public sealed record RoslynCpgBuildTelemetry(
   RoslynCpgPreallocationTelemetry? Preallocation = null,
   CpgPersistenceTelemetry? Persistence = null,
   RoslynCpgOrderedWorkWindowTelemetry? OperationOrderedWindow = null,
-  RoslynCpgOrderedWorkWindowTelemetry? CfgSensitiveOrderedWindow = null)
+  RoslynCpgOrderedWorkWindowTelemetry? CfgSensitiveOrderedWindow = null,
+  CpgBuildAdmissionTelemetry? AdmissionTelemetry = null)
 {
   public static RoslynCpgBuildTelemetry CreateDefault()
   {
@@ -222,6 +224,15 @@ public sealed record RoslynCpgOperationFragmentTelemetry(
       ReleasedBuilderOperationState: false);
   }
 }
+
+public sealed record CpgBuildAdmissionTelemetry(
+  int RequestedDegree,
+  int GrantedDegree,
+  long WaitMilliseconds,
+  int ActiveLeaseCountAtGrant,
+  int GrantedDegreeHighWaterMark,
+  CpgBuildAdmissionPolicy Policy,
+  int MaxDegreePerLease);
 
 public sealed record RoslynCpgOrderedWorkWindowTelemetry(
   int ActiveWorkerPeak,

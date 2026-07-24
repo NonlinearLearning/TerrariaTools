@@ -359,7 +359,8 @@ public sealed partial class RoslynCpgBuilder
           Preallocation: preallocation,
           Persistence: persistenceTelemetry,
           OperationOrderedWindow: _operationOrderedWindow,
-          CfgSensitiveOrderedWindow: _cfgSensitiveOrderedWindow);
+          CfgSensitiveOrderedWindow: _cfgSensitiveOrderedWindow,
+          AdmissionTelemetry: _options.AdmissionTelemetry);
         return context.Graph;
         }
         finally
