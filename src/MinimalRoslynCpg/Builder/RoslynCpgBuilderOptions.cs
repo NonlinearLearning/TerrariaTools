@@ -176,7 +176,11 @@ public sealed record RoslynCpgBuildTelemetry(
   CpgPersistenceTelemetry? Persistence = null,
   RoslynCpgOrderedWorkWindowTelemetry? OperationOrderedWindow = null,
   RoslynCpgOrderedWorkWindowTelemetry? CfgSensitiveOrderedWindow = null,
-  CpgBuildAdmissionTelemetry? AdmissionTelemetry = null)
+  CpgBuildAdmissionTelemetry? AdmissionTelemetry = null,
+  bool PersistenceHit = false,
+  long BaseRestoreElapsedMilliseconds = 0,
+  long RuntimeBindingElapsedMilliseconds = 0,
+  string? PersistenceFallbackReason = null)
 {
   public static RoslynCpgBuildTelemetry CreateDefault()
   {

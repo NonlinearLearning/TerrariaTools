@@ -13,6 +13,8 @@ internal sealed record CpgShardBuildResult(
   RoslynCpgStreamingFragmentTelemetry StreamingFragments,
   CpgPersistenceTelemetry Persistence);
 
+internal sealed record CpgBaseRestoreResult(CpgFrozenShardGraphFacts Facts);
+
 internal sealed class CpgShardBuildCoordinator
 {
   private static Action<object>? _exportCheckpointObserver;
@@ -153,14 +155,14 @@ internal sealed class CpgShardBuildCoordinator
       peakRetainedFragmentCount), session.Telemetry);
   }
 
-  internal async Task<Model.RoslynCpgGraph?> TryRestoreAsync(
+  internal async Task<CpgBaseRestoreResult?> TryRestoreBaseAsync(
     RoslynCpgBuildContext context,
     CancellationToken cancellationToken)
   {
     var catalogPath = Path.Combine(_options.StoreRoot, "catalog.db");
     if (File.Exists(catalogPath))
     {
-      return await TryRestoreFromCatalogAsync(context, catalogPath, cancellationToken);
+      return await TryRestoreBaseFromCatalogAsync(context, catalogPath, cancellationToken);
     }
 
     using var storeLock = await CpgShardStoreLock.AcquireAsync(
@@ -175,10 +177,10 @@ internal sealed class CpgShardBuildCoordinator
       await rebuildingCatalog.RebuildFromShardHeadersAsync(_options.StoreRoot, cancellationToken);
     }
 
-    return await TryRestoreFromCatalogAsync(context, catalogPath, cancellationToken);
+    return await TryRestoreBaseFromCatalogAsync(context, catalogPath, cancellationToken);
   }
 
-  private async Task<Model.RoslynCpgGraph?> TryRestoreFromCatalogAsync(
+  private async Task<CpgBaseRestoreResult?> TryRestoreBaseFromCatalogAsync(
     RoslynCpgBuildContext context,
     string catalogPath,
     CancellationToken cancellationToken)
@@ -206,7 +208,7 @@ internal sealed class CpgShardBuildCoordinator
           shards.Add(await store.ReadAsync(location, cancellationToken));
         }
 
-        return CpgFrozenShardGraphReader.ReadGraph(shards);
+        return new CpgBaseRestoreResult(CpgFrozenShardGraphReader.ReadMutableFacts(shards));
       }
       catch (IOException)
       {
@@ -227,7 +229,9 @@ internal sealed class CpgShardBuildCoordinator
     try
     {
       var shard = await store.TryReadAsync(lease.Location, lookup, cancellationToken);
-      return shard is null ? null : CpgFrozenShardGraphReader.ReadGraph(shard);
+      return shard is null
+        ? null
+        : new CpgBaseRestoreResult(CpgFrozenShardGraphReader.ReadMutableFacts(new[] { shard }));
     }
     catch (IOException)
     {

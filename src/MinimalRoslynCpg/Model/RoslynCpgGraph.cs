@@ -137,7 +137,40 @@ public sealed class RoslynCpgGraph
             return materializedNode;
         }
 
-        return existing;
+        var merged = MergeNode(existing, materializedNode);
+        _mutableNodesByAnchor[stableAnchor] = merged;
+        return merged;
+    }
+
+    internal void ImportMutableFacts(
+      IEnumerable<RoslynCpgNode> nodes,
+      IEnumerable<RoslynCpgEdge> edges)
+    {
+        ArgumentNullException.ThrowIfNull(nodes);
+        ArgumentNullException.ThrowIfNull(edges);
+
+        EnsureMutable();
+        var nodesById = new Dictionary<NodeId, RoslynCpgNode>();
+        foreach (var node in nodes)
+        {
+            if (!node.NodeId.HasValue)
+            {
+                throw new InvalidDataException("Persisted CPG nodes require NodeIds.");
+            }
+
+            nodesById[node.NodeId.Value] = AddNode(node);
+        }
+
+        foreach (var edge in edges)
+        {
+            if (!nodesById.TryGetValue(edge.SourceNodeId, out var source) ||
+                !nodesById.TryGetValue(edge.TargetNodeId, out var target))
+            {
+                throw new InvalidDataException("A persisted CPG edge references a node that was not restored.");
+            }
+
+            AddEdge(source, target, edge.Kind, edge.StructuredLabel, edge.ContextId, edge.CallSiteContext);
+        }
     }
 
     /// <summary>
@@ -552,6 +585,24 @@ public sealed class RoslynCpgGraph
         {
             NodeId = node.NodeId,
             StableAnchor = stableAnchor,
+        };
+    }
+
+    private static RoslynCpgNode MergeNode(RoslynCpgNode existing, RoslynCpgNode candidate)
+    {
+        return existing with
+        {
+            DisplayKind = string.IsNullOrEmpty(candidate.DisplayKind) ? existing.DisplayKind : candidate.DisplayKind,
+            Name = candidate.Name ?? existing.Name,
+            FullName = candidate.FullName ?? existing.FullName,
+            Signature = candidate.Signature ?? existing.Signature,
+            DispatchKind = candidate.DispatchKind ?? existing.DispatchKind,
+            TypeFullName = candidate.TypeFullName ?? existing.TypeFullName,
+            FilePath = candidate.FilePath ?? existing.FilePath,
+            SpanStart = candidate.SpanStart ?? existing.SpanStart,
+            SpanEnd = candidate.SpanEnd ?? existing.SpanEnd,
+            Text = candidate.Text ?? existing.Text,
+            IsImplicit = existing.IsImplicit || candidate.IsImplicit,
         };
     }
 
