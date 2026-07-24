@@ -47,6 +47,79 @@ public sealed class DiffModelTests
   }
 
   [Fact]
+  public void PrototypeRewriter_MultipleExpressionDeletes_DirectAndPlanReplaysRemainEquivalentAndCompilable()
+  {
+    const string source = """
+      namespace Demo;
+      public sealed class Sample
+      {
+        public int Run(int left, int right) => left + right;
+      }
+      """;
+    var tree = CSharpSyntaxTree.ParseText(source, path: "sample.cs");
+    var root = tree.GetRoot();
+    var compilation = CreateCompilation(tree);
+    var semanticModel = compilation.GetSemanticModel(tree);
+    var identifiers = root.DescendantNodes().OfType<IdentifierNameSyntax>()
+      .Where(node => node.Identifier.ValueText is "left" or "right")
+      .ToArray();
+    var decisions = identifiers.Select(identifier => new RuleDecision(
+      identifier,
+      identifier,
+      DecisionActionKind.Delete,
+      "Replace parameter use with its default value.")).ToArray();
+    var rewriter = new PrototypeRewriter();
+
+    var direct = rewriter.Rewrite(root, semanticModel, decisions);
+    var plan = rewriter.BuildPlan(root, semanticModel, decisions);
+    var replayed = rewriter.ExecutePlan(source, "sample.cs", plan);
+    var persisted = rewriter.ExecutePlan(source, "sample.cs", new RewritePlanFile("sample.cs", "unused", plan.Operations));
+    var rewrittenSource = Assert.IsType<string>(replayed.RewrittenSource);
+    var operations = Assert.IsAssignableFrom<IReadOnlyList<RewritePlanEdit>>(replayed.Operations);
+    var errors = CreateCompilation(CSharpSyntaxTree.ParseText(rewrittenSource, path: "sample.cs"))
+      .GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).ToArray();
+
+    Assert.Equal(direct.RewrittenSource, replayed.RewrittenSource);
+    Assert.Equal(direct.RewrittenSource, persisted.RewrittenSource);
+    Assert.Equal(direct.Edits, replayed.Edits);
+    Assert.Equal(direct.Diff.ToString(), replayed.Diff.ToString());
+    Assert.Equal(2, operations.Count);
+    Assert.Empty(errors);
+  }
+
+  [Fact]
+  public void PrototypeRewriter_ExecutePlan_WhenOperationsOverlap_ThrowsInvalidOperationException()
+  {
+    const string source = "class Sample { }";
+    var plan = new PrototypeRewritePlan(
+      new[]
+      {
+        new RewritePlanEdit(0, 5, "class", "struct"),
+        new RewritePlanEdit(3, 5, "ss Sa", "")
+      },
+      Array.Empty<RewriteEdit>());
+
+    var exception = Assert.Throws<InvalidOperationException>(() =>
+      new PrototypeRewriter().ExecutePlan(source, "sample.cs", plan));
+
+    Assert.Contains("Overlapping rewrite operations", exception.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void PrototypeRewriter_ExecutePlan_WhenOriginalTextIsStale_ThrowsInvalidOperationException()
+  {
+    const string source = "class Sample { }";
+    var plan = new PrototypeRewritePlan(
+      new[] { new RewritePlanEdit(0, 5, "struct", "class") },
+      Array.Empty<RewriteEdit>());
+
+    var exception = Assert.Throws<InvalidOperationException>(() =>
+      new PrototypeRewriter().ExecutePlan(source, "sample.cs", plan));
+
+    Assert.Contains("original text does not match", exception.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void PrototypeRewriter_Rewrite_ProducesDiffDocumentAndLegacyDiffText()
   {
     const string source = RewriteSources.SimpleValueReturnSource;
@@ -121,6 +194,15 @@ public sealed class DiffModelTests
     Assert.Contains("edit #1 kind=Replace span=2..5", rendered);
     Assert.Contains("--- before", rendered);
     Assert.Contains("+++ after", rendered);
+  }
+
+  private static CSharpCompilation CreateCompilation(SyntaxTree tree)
+  {
+    return CSharpCompilation.Create(
+      "RewriteContractTests",
+      new[] { tree },
+      new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
+      new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
   }
 }
 
