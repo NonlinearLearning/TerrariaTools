@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
 using RoslynPrototype.Application;
 using RoslynPrototype.Tests.TestCodeSet.DeleteClassDirectory;
@@ -15,6 +16,42 @@ public sealed class TextLogSystemTests : IDisposable
     {
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"roslyn-prototype-text-log-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
+    }
+
+    [Fact]
+    public void WriteMemorySnapshot_WhenDebugSnapshotIsFiltered_DoesNotInvokeSampler()
+    {
+        var loggingAssembly = typeof(DeletionCommandHost).Assembly;
+        var filterType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogFilter")!;
+        var writerType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.AnalysisTextLogWriter")!;
+        var levelType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogLevel")!;
+        var viewType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogView")!;
+        var categoryType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogCategory")!;
+        var eventType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogEventType")!;
+        var filter = Activator.CreateInstance(
+          filterType,
+          BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+          binder: null,
+          new object[]
+          {
+            Enum.Parse(levelType, "Info"),
+            Enum.Parse(viewType, "Normal"),
+            Array.CreateInstance(categoryType, 0),
+            Array.CreateInstance(eventType, 0)
+          },
+          culture: null)!;
+        var sampled = 0;
+        Action sampler = () => sampled++;
+        var writer = Activator.CreateInstance(
+          writerType,
+          BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+          binder: null,
+          new object?[] { null, filter, null, "test", sampler },
+          culture: null)!;
+
+        writerType.GetMethod("WriteMemorySnapshot")!.Invoke(writer, new object[] { "ignored.cs" });
+
+        Assert.Equal(0, sampled);
     }
 
     [Fact]
@@ -98,6 +135,9 @@ public sealed class TextLogSystemTests : IDisposable
         var publicationSummary = ParseLine(analysisLines.Single(line =>
           line.Contains("cat=file evt=summary", StringComparison.Ordinal) &&
           line.Contains("msg=\"directory source-order publication summary\"", StringComparison.Ordinal)));
+        var performanceSummary = ParseLine(runtimeLines.Single(line =>
+          line.Contains("cat=run evt=summary", StringComparison.Ordinal) &&
+          line.Contains("msg=\"directory performance summary\"", StringComparison.Ordinal)));
 
         Assert.True(long.Parse(cpgSummary["nodes"]) > 0);
         Assert.True(long.Parse(cpgSummary["edges"]) > 0);
@@ -118,6 +158,12 @@ public sealed class TextLogSystemTests : IDisposable
         Assert.True(long.Parse(publicationSummary["unpublishedCountPeak"]) >= 0);
         Assert.True(long.Parse(publicationSummary["waitToPublishMs"]) >= 0);
         Assert.True(int.Parse(publicationSummary["oldestUnpublishedIndex"]) >= -1);
+        Assert.True(long.Parse(markSummary["atomicCandidates"]) > 0);
+        Assert.True(long.Parse(markSummary["regionFactsCreated"]) >= 0);
+        Assert.True(long.Parse(markSummary["targetMatchQueries"]) >= 0);
+        Assert.True(long.Parse(performanceSummary["directoryAnalysisMs"]) >= 0);
+        Assert.True(long.Parse(performanceSummary["postRewriteDiagnosticsMs"]) >= 0);
+        Assert.True(long.Parse(performanceSummary["runtimeLogWriteMs"]) >= 0);
         Assert.True(long.Parse(completed["elapsedMs"]) > 0);
         Assert.InRange(
           long.Parse(completed["elapsedMs"]),

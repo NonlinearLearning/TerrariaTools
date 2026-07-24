@@ -121,7 +121,12 @@ public sealed class DeletionCommandHost
             {
                 analysisWriter?.WriteIoSummary(analysisSink);
             }
-            runtimeWriter?.Complete(result, "completed", inputPath is not null && Directory.Exists(inputPath) ? "directory" : inputPath is not null ? "single-file" : "demo");
+            var inputKind = inputPath is not null && Directory.Exists(inputPath) ? "directory" : inputPath is not null ? "single-file" : "demo";
+            runtimeWriter?.Complete(result, "completed", inputKind);
+            if (inputKind == "directory" && result.Stats is not null && runtimeSink is not null)
+            {
+                runtimeWriter?.WriteDirectoryPerformanceSummary(result.Stats, runtimeSink);
+            }
             runtimeWriter?.Sample();
             return result;
         }
@@ -239,7 +244,14 @@ public sealed class DeletionCommandHost
           0,
           0,
           0,
-          Array.Empty<MarkRuleTelemetry>());
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          Array.Empty<MarkRuleTelemetry>(),
+          new Dictionary<string, long>(StringComparer.Ordinal));
     }
 
 }

@@ -4,7 +4,7 @@ namespace MinimalRoslynCpg.Persistence.Sqlite;
 
 internal static class SqliteCpgShardSchema
 {
-  internal const int Version = 5;
+  internal const int Version = 6;
 
   internal static async Task EnsureCreatedAsync(SqliteConnection connection, CancellationToken cancellationToken)
   {
@@ -146,6 +146,12 @@ internal static class SqliteCpgShardSchema
         completed_at_utc TEXT NOT NULL,
         shard_count INTEGER NOT NULL,
         shard_bytes INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS session_routing_indexes (
+        build_id TEXT PRIMARY KEY,
+        relative_path TEXT NOT NULL,
+        format_version INTEGER NOT NULL,
+        byte_length INTEGER NOT NULL,
+        payload_hash TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS physical_shard_references (
         shard_path TEXT PRIMARY KEY,
         shard_hash TEXT NOT NULL,
@@ -159,6 +165,7 @@ internal static class SqliteCpgShardSchema
       CREATE INDEX IF NOT EXISTS ix_session_symbols_symbol ON session_symbol_locations(symbol_key);
       CREATE INDEX IF NOT EXISTS ix_session_spans_file_span ON session_span_locations(file_id, span_start, span_length);
       CREATE INDEX IF NOT EXISTS ix_session_reusable_fragments_lookup ON session_reusable_fragments(project_id, relative_path, schema_version, builder_profile_hash, fragment_kind, span_start, span_length, fragment_hash, node_id_fingerprint);
+      CREATE INDEX IF NOT EXISTS ix_session_routing_indexes_build ON session_routing_indexes(build_id);
       CREATE INDEX IF NOT EXISTS ix_physical_shard_references_count ON physical_shard_references(reference_count);
       """;
     await command.ExecuteNonQueryAsync(cancellationToken);

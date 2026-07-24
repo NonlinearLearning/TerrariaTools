@@ -68,9 +68,16 @@ public sealed class RuleContext :
           : Array.Empty<string>();
     }
 
+    public TargetNameDescriptor GetTargetNameDescriptor()
+    {
+        return TryGetOption("target-name", out var targetName)
+          ? _markAnalysisSnapshot.GetTargetNameDescriptor(targetName)
+          : _markAnalysisSnapshot.GetTargetNameDescriptor(null);
+    }
+
     public bool GetCachedTargetMatch(
       SyntaxNode syntaxNode,
-      IReadOnlyList<string> targetNames,
+      TargetNameDescriptor targetNames,
       Func<bool> evaluate)
     {
         return _markAnalysisSnapshot.GetTargetMatch(syntaxNode, targetNames, evaluate);
@@ -112,7 +119,7 @@ public sealed class RuleContext :
           root,
           allowedKinds,
           _analysisContext,
-          _markAnalysisSnapshot.GetAtomicCandidates(root));
+          _markAnalysisSnapshot.GetAtomicCandidates(root, allowedKinds));
     }
 
     public IEnumerable<MethodDeclarationSyntax> EnumerateMethodDeclarations(SyntaxNode root)

@@ -1,0 +1,11 @@
+{
+  "name": "cpg-dop-medium",
+  "largeFileCount": 3,
+  "largeMinBytes": 409600,
+  "largeMaxBytes": 1048576,
+  "smallFileCount": 100,
+  "extensions": [".cs"],
+  "largeSelection": "largest-by-bytes-within-largeMinBytes-and-largeMaxBytes",
+  "smallSelection": "smallest-by-bytes",
+  "tieBreak": "relative-path-ordinal"
+}

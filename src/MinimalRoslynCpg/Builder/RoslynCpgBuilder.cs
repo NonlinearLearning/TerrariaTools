@@ -863,21 +863,9 @@ public sealed partial class RoslynCpgBuilder
         return new DataFlowOperationIndex(nodesByOperation, owningMethods);
     }
 
-    private static IEnumerable<IOperation> EnumerateOperationRoots(RoslynCpgBuildContext context)
+    private static IEnumerable<IOperation> EnumerateOperations(RoslynCpgBuildContext context)
     {
-        foreach (var rootPlan in GetOperationRootPlans(context.Root, context.SemanticModel))
-        {
-            var rootOperation = context.SemanticModel.GetOperation(rootPlan.BodySyntax);
-            if (rootOperation is null)
-            {
-                continue;
-            }
-
-            foreach (var operation in rootOperation.DescendantsAndSelf())
-            {
-                yield return operation;
-            }
-        }
+        return context.OperationInventory.Select(entry => entry.Operation);
     }
 
     private void AddDeclaredSymbolEdges(SyntaxNode syntax, RoslynCpgNode syntaxNode, RoslynCpgGraph graph, SemanticModel semanticModel)

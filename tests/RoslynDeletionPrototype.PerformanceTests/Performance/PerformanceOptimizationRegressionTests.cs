@@ -34,6 +34,42 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     }
 
     [Fact]
+    public void MarkPerformanceFixture_PreservesDopSnapshotsAndCollectsThreeWarmedSamples()
+    {
+        const string source = """
+          public sealed class Box
+          {
+            public int Left { get; }
+            public int Right { get; }
+            public bool Ready { get; }
+            public Box Next { get; }
+          }
+
+          public sealed class Sample
+          {
+            public int Run(Box s, Box other, bool fallback)
+            {
+              var value = s.Next.Left + s.Right + other.Left;
+              return s.Ready && other.Ready && fallback ? value : s.Next.Right;
+            }
+          }
+          """;
+        var serial = MeasureMarkAnalysis(source, 1);
+        _ = MeasureMarkAnalysis(source, 16);
+        var parallelSamples = Enumerable.Range(0, 3)
+          .Select(_ => MeasureMarkAnalysis(source, 16))
+          .ToArray();
+
+        Assert.All(parallelSamples, sample => Assert.Equal(serial.Snapshot, sample.Snapshot));
+        Assert.All(parallelSamples, sample => Assert.True(sample.AllocatedBytes >= 0));
+        Assert.All(parallelSamples, sample => Assert.True(sample.MarkTelemetry.AtomicCandidateCount > 0));
+        Assert.All(parallelSamples, sample => Assert.True(sample.MarkTelemetry.TargetMatchQueryCount > 0));
+        _output.WriteLine(
+          $"Mark samples ms={string.Join(",", parallelSamples.Select(sample => sample.MarkMilliseconds))}; " +
+          $"allocated={string.Join(",", parallelSamples.Select(sample => sample.AllocatedBytes))}");
+    }
+
+    [Fact]
     public void NamedArgumentMethodPlan_RewritesNamedCallsitesAcrossMultipleSyntaxTrees()
     {
         var context = CreateDeleteClassContext(
@@ -878,10 +914,48 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         return (TCache)method.Invoke(runtime, new object[] { compilation, factory })!;
     }
 
+    private static MarkPerformanceMeasurement MeasureMarkAnalysis(string source, int maxDegreeOfParallelism)
+    {
+        var runtime = new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(
+            MaxDegreeOfParallelism: maxDegreeOfParallelism,
+            EnableGroupParallelism: maxDegreeOfParallelism > 1),
+          new DeletionAnalysisEpoch(0, 0, 0));
+        var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["target-name"] = "s, other, s"
+        };
+        var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
+        var result = new DeletionApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
+          source,
+          "mark-performance.cs",
+          options,
+          runtime);
+        var allocatedBytes = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
+        var snapshot = string.Join(
+          "|",
+          result.SeedMarks.Select(mark => $"seed:{mark.RuleId}:{mark.SyntaxNode.Span}")
+            .Concat(result.PropagatedMarks.Select(mark => $"propagate:{mark.RuleId}:{mark.Mark.SyntaxNode.Span}"))
+            .Concat(result.LiftedMarks.Select(mark => $"lift:{mark.RuleId}:{mark.Mark.SyntaxNode.Span}"))
+            .Concat(result.Decisions.Select(decision => $"decision:{decision}"))
+            .Append($"rewrite:{result.RewrittenSource}"));
+        return new MarkPerformanceMeasurement(
+          result.Timings!.MarkMilliseconds,
+          allocatedBytes,
+          result.MarkAnalysisTelemetry!,
+          snapshot);
+    }
+
     private sealed record DiffWritePerformanceMeasurement(
       long WriteElapsedMilliseconds,
       long LifecycleElapsedMilliseconds,
       IReadOnlyDictionary<string, byte[]> DiffFiles);
+
+    private sealed record MarkPerformanceMeasurement(
+      long MarkMilliseconds,
+      long AllocatedBytes,
+      MarkAnalysisTelemetry MarkTelemetry,
+      string Snapshot);
 
     private sealed record DirectoryIoPerformanceMeasurement(
       int AnalyzedFileCount,

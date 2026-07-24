@@ -118,6 +118,23 @@ public sealed class SqliteCpgShardCatalogTests
   }
 
   [Fact]
+  public void CpgShardStoreLock_Dispose_CanBeCalledMoreThanOnce()
+  {
+    var root = CreateTemporaryDirectory();
+    try
+    {
+      var writer = CpgShardStoreLock.Acquire(root);
+
+      writer.Dispose();
+      writer.Dispose();
+    }
+    finally
+    {
+      Directory.Delete(root, recursive: true);
+    }
+  }
+
+  [Fact]
   public async Task RebuildFromShardHeadersAsync_DeletedCatalogAndOrphanShard_RebuildsReadableCatalog()
   {
     var root = CreateTemporaryDirectory();
@@ -494,6 +511,60 @@ public sealed class SqliteCpgShardCatalogTests
       Assert.Single(await catalog.FindBySymbolAsync(
         new CpgSymbolLookup("symbol-1023"),
         CancellationToken.None));
+    }
+    finally
+    {
+      Directory.Delete(root, recursive: true);
+    }
+  }
+
+  [Fact]
+  public async Task CompleteBuildAsync_SharedShard_IncrementsReferenceWithoutRebuildingHistory()
+  {
+    var root = CreateTemporaryDirectory();
+    try
+    {
+      var lookup = CreateLookup();
+      var catalogPath = Path.Combine(root, "catalog.db");
+      var catalog = new SqliteCpgShardCatalog(catalogPath);
+      var location = CreateLocation(root, "shared");
+      var firstBuild = await catalog.BeginBuildAsync(CancellationToken.None);
+      await catalog.StageAsync(
+        firstBuild,
+        new CpgShardLease(lookup, location),
+        CreateShard(lookup),
+        CancellationToken.None);
+      await catalog.CompleteBuildAsync(firstBuild, CancellationToken.None);
+
+      await using (var connection = new SqliteConnection($"Data Source={catalogPath};Pooling=False"))
+      {
+        await connection.OpenAsync();
+        await using var trigger = connection.CreateCommand();
+        trigger.CommandText = """
+          CREATE TRIGGER reject_physical_reference_rebuild
+          BEFORE DELETE ON physical_shard_references
+          BEGIN
+            SELECT RAISE(ABORT, 'physical reference rebuild is not allowed');
+          END;
+          """;
+        await trigger.ExecuteNonQueryAsync();
+      }
+
+      var secondBuild = await catalog.BeginBuildAsync(CancellationToken.None);
+      await catalog.StageAsync(
+        secondBuild,
+        new CpgShardLease(lookup, location),
+        CreateShard(lookup),
+        CancellationToken.None);
+
+      await catalog.CompleteBuildAsync(secondBuild, CancellationToken.None);
+
+      await using var verifyConnection = new SqliteConnection($"Data Source={catalogPath};Pooling=False");
+      await verifyConnection.OpenAsync();
+      await using var reference = verifyConnection.CreateCommand();
+      reference.CommandText = "SELECT reference_count FROM physical_shard_references WHERE shard_path = $path;";
+      reference.Parameters.AddWithValue("$path", location.ShardPath);
+      Assert.Equal(2L, (long)(await reference.ExecuteScalarAsync())!);
     }
     finally
     {

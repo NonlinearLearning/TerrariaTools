@@ -202,7 +202,24 @@ internal sealed class RunTextLogWriter
             new TextLogField("slowestRule", slowestRule?.RuleId),
             new TextLogField("slowestMs", telemetry.RuleTelemetry.Count == 0 ? 0 : telemetry.RuleTelemetry.Max(item => item.ElapsedMilliseconds)),
             new TextLogField("cacheHits", telemetry.OperationLookupCacheHitCount + telemetry.GraphBindingIndexHitCount),
-            new TextLogField("cacheMisses", telemetry.OperationLookupCacheMissCount + telemetry.GraphBindingIndexMissCount)
+            new TextLogField("cacheMisses", telemetry.OperationLookupCacheMissCount + telemetry.GraphBindingIndexMissCount),
+            new TextLogField("atomicCacheHits", telemetry.AtomicCandidateIndexHitCount),
+            new TextLogField("atomicCacheMisses", telemetry.AtomicCandidateIndexMissCount),
+            new TextLogField("operationCacheHits", telemetry.OperationLookupCacheHitCount),
+            new TextLogField("operationCacheMisses", telemetry.OperationLookupCacheMissCount),
+            new TextLogField("bindingCacheHits", telemetry.GraphBindingIndexHitCount),
+            new TextLogField("bindingCacheMisses", telemetry.GraphBindingIndexMissCount),
+            new TextLogField("regionCacheHits", telemetry.RegionCacheHitCount),
+            new TextLogField("regionCacheMisses", telemetry.RegionCacheMissCount),
+            new TextLogField("targetCacheHits", telemetry.TargetMatchCacheHitCount),
+            new TextLogField("targetCacheMisses", telemetry.TargetMatchCacheMissCount),
+            new TextLogField("atomicCandidates", telemetry.AtomicCandidateCount),
+            new TextLogField("atomicCandidatesReturned", telemetry.AtomicCandidatesReturnedCount),
+            new TextLogField("atomicCandidatesByKind", string.Join(",", telemetry.AtomicCandidatesReturnedByKind.Select(entry => $"{entry.Key}:{entry.Value}"))),
+            new TextLogField("regionFactsCreated", telemetry.RegionFactsCreatedCount),
+            new TextLogField("regionFactsReused", telemetry.RegionFactsReusedCount),
+            new TextLogField("targetMatchQueries", telemetry.TargetMatchQueryCount),
+            new TextLogField("targetMatchKeysCreated", telemetry.TargetMatchKeyCreatedCount)
           });
     }
 
@@ -217,6 +234,21 @@ internal sealed class RunTextLogWriter
           {
             new TextLogField("path", sink.Path),
             new TextLogField("records", sink.RecordsWritten)
+          });
+    }
+
+    public void WriteDirectoryPerformanceSummary(AnalysisStats stats, TextLogFileSink sink)
+    {
+        Emit(
+          TextLogLevel.Debug,
+          TextLogCategory.Run,
+          TextLogEventType.Summary,
+          "directory performance summary",
+          fields: new[]
+          {
+            new TextLogField("directoryAnalysisMs", stats.DirectoryAnalysisMilliseconds),
+            new TextLogField("postRewriteDiagnosticsMs", stats.PostRewriteDiagnosticsMilliseconds),
+            new TextLogField("runtimeLogWriteMs", sink.WriteMilliseconds),
           });
     }
 

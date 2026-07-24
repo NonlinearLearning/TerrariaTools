@@ -56,6 +56,7 @@ internal sealed class DeletionDirectoryAnalysisService
             return CreateEmptyDirectoryResult();
         }
 
+        var directoryAnalysisStopwatch = Stopwatch.StartNew();
         var sourcesByPath = await ReadSourcesAsync(filePaths, runtime.ExecutionOptions.CancellationToken);
         var analysisFilePaths = ResolveAnalysisFilePaths(filePaths, sourcesByPath, options);
         var trees = ParseTrees(filePaths, sourcesByPath);
@@ -105,12 +106,23 @@ internal sealed class DeletionDirectoryAnalysisService
             0,
             0,
             0));
+        directoryAnalysisStopwatch.Stop();
+        var diagnosticsStopwatch = Stopwatch.StartNew();
         var diagnostics = DeletionApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options)
           ? Array.Empty<AnalysisDiagnostic>()
           : DeletionPostRewriteDiagnostics.GetRewriteDiagnostics(
             sourcesByPath,
             aggregation.GetRewrittenSources());
-        return result with { Diagnostics = diagnostics };
+        diagnosticsStopwatch.Stop();
+        return result with
+        {
+          Diagnostics = diagnostics,
+          Stats = result.Stats! with
+          {
+            DirectoryAnalysisMilliseconds = directoryAnalysisStopwatch.ElapsedMilliseconds,
+            PostRewriteDiagnosticsMilliseconds = diagnosticsStopwatch.ElapsedMilliseconds,
+          },
+        };
     }
 
     private PrototypeAnalysisResult AnalyzeDirectoryForUnreferencedMethods(
@@ -628,10 +640,12 @@ internal sealed class DeletionDirectoryAnalysisService
             var filePath = fileResult.FilePath;
             var result = _cleanupService.ApplyUsingCleanup(
               filePath,
+              sourcesByPath[filePath],
               fileResult.Result,
               cleanupProjectState);
             result = _cleanupService.ApplyEmptyNamespaceCleanup(
               filePath,
+              sourcesByPath[filePath],
               result,
               cleanupProjectState);
             fileResults[index] = fileResult with { Result = result };
@@ -1140,9 +1154,24 @@ internal sealed class DeletionDirectoryAnalysisService
                 telemetry.SliceQueryCacheHitCount,
               _markAnalysisTelemetry.SliceQueryCacheMissCount +
                 telemetry.SliceQueryCacheMissCount,
+              _markAnalysisTelemetry.AtomicCandidateCount +
+                telemetry.AtomicCandidateCount,
+              _markAnalysisTelemetry.AtomicCandidatesReturnedCount +
+                telemetry.AtomicCandidatesReturnedCount,
+              _markAnalysisTelemetry.RegionFactsCreatedCount +
+                telemetry.RegionFactsCreatedCount,
+              _markAnalysisTelemetry.RegionFactsReusedCount +
+                telemetry.RegionFactsReusedCount,
+              _markAnalysisTelemetry.TargetMatchQueryCount +
+                telemetry.TargetMatchQueryCount,
+              _markAnalysisTelemetry.TargetMatchKeyCreatedCount +
+                telemetry.TargetMatchKeyCreatedCount,
               MergeRuleTelemetry(
                 _markAnalysisTelemetry.RuleTelemetry,
-                telemetry.RuleTelemetry));
+                telemetry.RuleTelemetry),
+              MergeAtomicCandidatesReturnedByKind(
+                _markAnalysisTelemetry.AtomicCandidatesReturnedByKind,
+                telemetry.AtomicCandidatesReturnedByKind));
         }
 
         private RoslynCpgBuildTelemetry? BuildCpgBuildTelemetry()
@@ -1218,6 +1247,18 @@ internal sealed class DeletionDirectoryAnalysisService
               .OrderBy(item => item.RuleOrder)
               .ThenBy(item => item.RuleId, StringComparer.Ordinal)
               .ToList();
+        }
+
+        private static IReadOnlyDictionary<string, long> MergeAtomicCandidatesReturnedByKind(
+          IReadOnlyDictionary<string, long> left,
+          IReadOnlyDictionary<string, long> right)
+        {
+            return left.Concat(right)
+              .GroupBy(entry => entry.Key, StringComparer.Ordinal)
+              .ToDictionary(
+                group => group.Key,
+                group => group.Sum(entry => entry.Value),
+                StringComparer.Ordinal);
         }
     }
 

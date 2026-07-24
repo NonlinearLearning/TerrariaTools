@@ -314,6 +314,73 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void MarkAnalysisSnapshot_ReusesRegionFactsForDistinctAnchorsInOneStatement()
+    {
+        var (context, root) = CreateContext("""
+          public sealed class Sample
+          {
+            public void Run(Box s)
+            {
+              var value = s.Left + s.Right;
+            }
+          }
+
+          public sealed class Box
+          {
+            public int Left { get; }
+            public int Right { get; }
+          }
+          """, "s");
+        var anchors = root.DescendantNodes()
+          .OfType<IdentifierNameSyntax>()
+          .Where(identifier => identifier.Identifier.ValueText == "s")
+          .ToArray();
+
+        var first = context.AnalyzeMarkRegion(anchors[0]);
+        var second = context.AnalyzeMarkRegion(anchors[1]);
+        var telemetry = context.MarkAnalysisTelemetry;
+
+        Assert.Same(anchors[0], first.AnchorNode);
+        Assert.Same(anchors[1], second.AnchorNode);
+        Assert.Same(first.RegionNode, second.RegionNode);
+        Assert.Equal(1, telemetry.RegionFactsCreatedCount);
+        Assert.Equal(1, telemetry.RegionFactsReusedCount);
+    }
+
+    [Fact]
+    public void MarkAnalysisSnapshot_UsesSingleKindBucketAndReusesTargetDescriptorKey()
+    {
+        var (context, root) = CreateContext("""
+          public sealed class Sample
+          {
+            public void Run(Box s, Box other)
+            {
+              var value = s.Left + other.Right;
+            }
+          }
+
+          public sealed class Box
+          {
+            public int Left { get; }
+            public int Right { get; }
+          }
+          """, "s, other, s");
+
+        var memberAccesses = context.EnumerateAllowedExpressions(
+          root,
+          new[] { SyntaxKind.SimpleMemberAccessExpression }).ToArray();
+        var descriptor = context.GetTargetNameDescriptor();
+        var repeatedDescriptor = context.GetTargetNameDescriptor();
+
+        Assert.Equal(new[] { "s", "other" }, descriptor.DisplayNames);
+        Assert.Same(descriptor, repeatedDescriptor);
+        Assert.Equal(
+          memberAccesses.Length,
+          context.MarkAnalysisTelemetry.AtomicCandidatesReturnedCount);
+        Assert.Equal(1, context.MarkAnalysisTelemetry.TargetMatchKeyCreatedCount);
+    }
+
+    [Fact]
     public void PropagationEngine_Run_DeduplicatesSamePropagatedSpan()
     {
         var source = SObjectControlFlowSources.PropagationDedupSource;

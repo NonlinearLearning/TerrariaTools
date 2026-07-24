@@ -1,0 +1,11 @@
+{
+  "name": "cpg-dop-mixed-stress",
+  "largeFileCount": 1,
+  "largeMinBytes": 409600,
+  "largeMaxBytes": 1048576,
+  "smallFileCount": 30,
+  "extensions": [".cs"],
+  "largeSelection": "largest-by-bytes-within-largeMinBytes-and-largeMaxBytes",
+  "smallSelection": "smallest-by-bytes",
+  "tieBreak": "relative-path-ordinal"
+}

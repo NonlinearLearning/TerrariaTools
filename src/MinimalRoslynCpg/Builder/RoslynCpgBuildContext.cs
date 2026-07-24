@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Operations;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
 
@@ -7,6 +8,7 @@ namespace MinimalRoslynCpg.Builder;
 
 internal sealed class RoslynCpgBuildContext
 {
+  private readonly List<OperationInventoryEntry> _operationInventory = new();
   private RoslynCpgBuildContext(
     SemanticModel semanticModel,
     SyntaxNode root,
@@ -34,6 +36,17 @@ internal sealed class RoslynCpgBuildContext
   internal RoslynCpgGraph Graph { get; }
 
   internal RoslynCpgNode SyntaxTreeNode { get; }
+
+  internal IReadOnlyList<OperationInventoryEntry> OperationInventory => _operationInventory;
+
+  internal void AddOperationInventoryEntry(
+    IOperation operation,
+    IMethodSymbol? owningMethod,
+    bool isRoot)
+  {
+    ArgumentNullException.ThrowIfNull(operation);
+    _operationInventory.Add(new OperationInventoryEntry(operation, owningMethod, isRoot));
+  }
 
   internal static RoslynCpgBuildContext Create(
     SemanticModel semanticModel,
@@ -114,3 +127,8 @@ internal sealed class RoslynCpgBuildContext
     return CreateAnchorDiscovery(semanticModel, syntaxTree.GetRoot(), source, filePath, identityFactory, observeAnchor);
   }
 }
+
+internal sealed record OperationInventoryEntry(
+  IOperation Operation,
+  IMethodSymbol? OwningMethod,
+  bool IsRoot);

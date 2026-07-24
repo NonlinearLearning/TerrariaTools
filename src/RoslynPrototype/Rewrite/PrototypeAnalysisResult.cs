@@ -104,7 +104,9 @@ public sealed record AnalysisStats(
   int? AnalyzedFileCount,
   int CandidateMethodCount,
   int DeletedMethodCount,
-  long ElapsedMilliseconds);
+  long ElapsedMilliseconds,
+  long DirectoryAnalysisMilliseconds = 0,
+  long PostRewriteDiagnosticsMilliseconds = 0);
 
 /// <summary>
 /// 改写后编译诊断的稳定输出形状。

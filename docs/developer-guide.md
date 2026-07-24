@@ -71,6 +71,27 @@ pwsh -File .\scripts\Run-PerformanceSuite.ps1 `
 `summary.csv`、`summary.md` 和按 DOP/阶段隔离的日志。该命令仅用于有意的
 性能决策；常规回归继续使用分层测试。
 
+针对目录 DOP 与 CPG DOP 的拆分诊断，可先生成固定的 103 文件小型输入集：不超过
+512 KiB 的 3 个最大 C# 文件加 100 个最小 C# 文件。选择按字节数排序，并以规范化相对路径作为并列排序键；
+脚本会复制文件并写出包含字节数和 SHA-256 的 `manifest.json`，因此每次运行都能核对
+输入没有漂移：
+
+```powershell
+pwsh -File .\scripts\New-CpgDopSmallFixture.ps1 `
+  -SourceRoot "D:\lodes\TR\Backup\New1.27\1.45 2\TR" `
+  -OutputRoot .\Build\cpg-dop-small-fixture-20260724 `
+  -CleanOutput
+```
+
+当前 Terraria 输入集生成结果为 3 个大文件、100 个小文件、共 103 个文件；选择规则见
+[cpg-dop-small-fixture.json](benchmarks/cpg-dop-small-fixture.json)。
+该 fixture 适合先跑 `(directory=12, cpg=1)`、`(directory=1, cpg=12)` 和
+`(directory=12, cpg=12)` 的 warmup 与三次测量；它不是完整 1,503 文件验收替代品。
+
+在该集不再能解释全量退化时，使用 `cpg-dop-medium-fixture.json` 生成包含 3 个
+`0.4-1 MiB` 文件和 100 个小文件的补充集。源目录只有一个 `0.5-1 MiB` 文件，故下界
+保守下调至 0.4 MiB，以保证测试集中仍有三个中等文件；此例外会写入 manifest。
+
 CPG 微基准与 mutation 检查也保持独立：
 
 ```powershell

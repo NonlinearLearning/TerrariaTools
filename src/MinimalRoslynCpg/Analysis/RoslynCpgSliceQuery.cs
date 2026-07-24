@@ -224,7 +224,7 @@ public sealed class RoslynCpgSliceQuery
         }
 
         var unavailable = new List<CpgShardUnavailableResult>();
-        var graph = await LoadFrontierGraphAsync(sinkNodeId, options.MaxHops, unavailable, cancellationToken);
+        var graph = await LoadFrontierGraphAsync(sinkNodeId, options, unavailable, cancellationToken);
         if (graph.GetNode(sinkNodeId) is null)
         {
             return new RoslynCpgSliceResult(
@@ -248,7 +248,7 @@ public sealed class RoslynCpgSliceQuery
 
     private async Task<RoslynCpgGraph> LoadFrontierGraphAsync(
         NodeId sinkNodeId,
-        int maxHops,
+        RoslynCpgSliceQueryOptions options,
         ICollection<CpgShardUnavailableResult> unavailable,
         CancellationToken cancellationToken)
     {
@@ -256,7 +256,10 @@ public sealed class RoslynCpgSliceQuery
         var edges = new HashSet<RoslynCpgEdge>();
         var visited = new HashSet<NodeId> { sinkNodeId };
         var frontier = new[] { sinkNodeId };
-        for (var hop = 0; hop <= maxHops && frontier.Length > 0; hop += 1)
+        var perAnchorEdgeLimit = options.MaxVisitedEdges == int.MaxValue
+            ? int.MaxValue
+            : options.MaxVisitedEdges + 1;
+        for (var hop = 0; hop <= options.MaxHops && frontier.Length > 0; hop += 1)
         {
             foreach (var nodeId in frontier.OrderBy(value => value))
             {
@@ -269,22 +272,26 @@ public sealed class RoslynCpgSliceQuery
 
                 foreach (var shard in shards)
                 {
-                    var shardGraph = CpgFrozenShardGraphReader.ReadGraph(shard);
-                    foreach (var node in shardGraph.Nodes)
+                    var projection = CpgFrozenShardGraphReader.ReadIncomingProjection(
+                        shard,
+                        nodeId,
+                        options.AllowedEdgeKinds,
+                        perAnchorEdgeLimit);
+                    foreach (var node in projection.Nodes.Values)
                     {
                         nodes.TryAdd(node.NodeId!.Value, node);
                     }
 
-                    foreach (var edge in shardGraph.Edges)
+                    foreach (var edge in projection.IncomingEdges)
                     {
                         edges.Add(edge);
                     }
-
-                    foreach (var boundaryEdge in CpgFrozenShardGraphReader.ReadBoundaryEdges(shard))
-                    {
-                        edges.Add(boundaryEdge);
-                    }
                 }
+            }
+
+            if (visited.Count >= options.MaxVisitedNodes)
+            {
+                break;
             }
 
             frontier = edges
@@ -292,6 +299,7 @@ public sealed class RoslynCpgSliceQuery
                 .Select(edge => edge.SourceNodeId)
                 .Where(visited.Add)
                 .OrderBy(value => value)
+                .Take(options.MaxVisitedNodes - visited.Count)
                 .ToArray();
         }
 

@@ -5,6 +5,78 @@ namespace MinimalRoslynCpg.Persistence;
 
 public static class CpgFrozenShardGraphReader
 {
+  /// <summary>
+  /// Restores only the records needed to traverse into <paramref name="targetNodeId"/>.
+  /// The shard payload remains fully deserialized by the store, but this avoids building an
+  /// indexed graph for unrelated shard records during a bounded slice query.
+  /// </summary>
+  public static CpgFrozenShardIncomingProjection ReadIncomingProjection(
+    CpgFrozenShard shard,
+    NodeId targetNodeId,
+    IReadOnlySet<RoslynCpgEdgeKind> allowedEdgeKinds,
+    int maxEdges)
+  {
+    ArgumentNullException.ThrowIfNull(shard);
+    ArgumentNullException.ThrowIfNull(allowedEdgeKinds);
+
+    var nodeIdsByLocalIndex = shard.Nodes.ToDictionary(node => node.LocalIndex, node => new NodeId(node.NodeId));
+    var selectedEdges = new List<RoslynCpgEdge>();
+    var requiredNodeIds = new HashSet<NodeId>();
+    if (nodeIdsByLocalIndex.Values.Contains(targetNodeId))
+    {
+      requiredNodeIds.Add(targetNodeId);
+    }
+    foreach (var edge in shard.Edges)
+    {
+      var sourceNodeId = nodeIdsByLocalIndex[edge.SourceLocalIndex];
+      var targetId = nodeIdsByLocalIndex[edge.TargetLocalIndex];
+      if (targetId != targetNodeId || !Enum.TryParse<RoslynCpgEdgeKind>(edge.Kind, out var kind) ||
+          !allowedEdgeKinds.Contains(kind))
+      {
+        continue;
+      }
+
+      selectedEdges.Add(new RoslynCpgEdge(
+        sourceNodeId,
+        targetId,
+        kind,
+        ParseLabel(edge.Label),
+        edge.ContextId is null ? null : new RoslynCpgContextId(edge.ContextId),
+        CreateCallSiteContext(edge)));
+      requiredNodeIds.Add(sourceNodeId);
+      requiredNodeIds.Add(targetId);
+      if (selectedEdges.Count >= maxEdges)
+      {
+        break;
+      }
+    }
+
+    foreach (var edge in shard.BoundaryEdges ?? Array.Empty<CpgFrozenBoundaryEdge>())
+    {
+      var targetId = new NodeId(edge.TargetNodeId);
+      if (targetId != targetNodeId || !Enum.TryParse<RoslynCpgEdgeKind>(edge.Kind, out var kind) ||
+          !allowedEdgeKinds.Contains(kind))
+      {
+        continue;
+      }
+
+      selectedEdges.Add(CreateBoundaryEdge(edge));
+      requiredNodeIds.Add(new NodeId(edge.SourceNodeId));
+      requiredNodeIds.Add(targetId);
+      if (selectedEdges.Count >= maxEdges)
+      {
+        break;
+      }
+    }
+
+    var nodes = shard.Nodes
+      .Where(node => requiredNodeIds.Contains(new NodeId(node.NodeId)))
+      .OrderBy(node => node.LocalIndex)
+      .Select(CreateNode)
+      .ToDictionary(node => node.NodeId!.Value);
+    return new CpgFrozenShardIncomingProjection(nodes, selectedEdges);
+  }
+
   public static RoslynCpgGraph ReadGraph(IEnumerable<CpgFrozenShard> shards)
   {
     ArgumentNullException.ThrowIfNull(shards);
@@ -50,20 +122,7 @@ public static class CpgFrozenShardGraphReader
     ArgumentNullException.ThrowIfNull(shard);
     var nodes = shard.Nodes
       .OrderBy(node => node.LocalIndex)
-      .Select(node => new RoslynCpgNode(
-        Enum.Parse<RoslynCpgNodeKind>(node.Kind),
-        node.DisplayKind,
-        node.Name,
-        node.FullName,
-        node.Signature,
-        FilePath: node.FilePath,
-        SpanStart: node.SpanStart,
-        SpanEnd: node.SpanEnd,
-        IsImplicit: node.IsImplicit,
-        NodeId: new NodeId(node.NodeId),
-        StableAnchor: new StableNodeAnchor(
-          Enum.Parse<RoslynCpgNodeKind>(node.Kind), node.StableFilePathId, node.StableSpanStart,
-          node.StableSpanEnd, (StableNodeRole)node.StableRole, node.StableOrdinal, node.StableExtraKeyId)))
+      .Select(CreateNode)
       .ToArray();
     var nodeIdsByLocalIndex = shard.Nodes.ToDictionary(node => node.LocalIndex, node => new NodeId(node.NodeId));
     var edges = shard.Edges.Select(edge => new RoslynCpgEdge(
@@ -111,6 +170,25 @@ public static class CpgFrozenShardGraphReader
     throw new InvalidDataException("The CPG shard contains an unknown structured edge label.");
   }
 
+  private static RoslynCpgNode CreateNode(CpgFrozenNode node)
+  {
+    var kind = Enum.Parse<RoslynCpgNodeKind>(node.Kind);
+    return new RoslynCpgNode(
+      kind,
+      node.DisplayKind,
+      node.Name,
+      node.FullName,
+      node.Signature,
+      FilePath: node.FilePath,
+      SpanStart: node.SpanStart,
+      SpanEnd: node.SpanEnd,
+      IsImplicit: node.IsImplicit,
+      NodeId: new NodeId(node.NodeId),
+      StableAnchor: new StableNodeAnchor(
+        kind, node.StableFilePathId, node.StableSpanStart,
+        node.StableSpanEnd, (StableNodeRole)node.StableRole, node.StableOrdinal, node.StableExtraKeyId));
+  }
+
   private static RoslynCpgCallSiteContext? CreateCallSiteContext(CpgFrozenEdge edge)
   {
     if (edge.CallSiteFilePath is null || !edge.CallSiteSpanStart.HasValue ||
@@ -145,3 +223,7 @@ public static class CpgFrozenShardGraphReader
       callSiteContext);
   }
 }
+
+public sealed record CpgFrozenShardIncomingProjection(
+  IReadOnlyDictionary<NodeId, RoslynCpgNode> Nodes,
+  IReadOnlyList<RoslynCpgEdge> IncomingEdges);

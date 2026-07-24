@@ -29,12 +29,17 @@ namespace MinimalRoslynCpg.Builder
   {
     internal void RunOperationPass(RoslynCpgBuildContext context)
     {
-      VisitOperationRoots(GetOperationRootPlans(context.Root, context.SemanticModel), context.Graph, context.SemanticModel);
+      VisitOperationRoots(
+        GetOperationRootPlans(context.Root, context.SemanticModel),
+        context,
+        context.Graph,
+        context.SemanticModel);
       CompleteOperationBackedSyntaxTypes(context);
     }
 
     private void VisitOperationRoots(
       IReadOnlyList<OperationRootPlan> operationRoots,
+      RoslynCpgBuildContext context,
       RoslynCpgGraph graph,
       SemanticModel semanticModel)
     {
@@ -44,7 +49,8 @@ namespace MinimalRoslynCpg.Builder
           semanticModel.GetOperation(operationRoot.BodySyntax),
           parentOperation: null,
           owningMethod: operationRoot.OwningMethod,
-          graph);
+          graph,
+          context);
       }
     }
 
@@ -103,13 +109,19 @@ namespace MinimalRoslynCpg.Builder
       return operationRoots;
     }
 
-    private void AddOperationTree(IOperation? operation, IOperation? parentOperation, IMethodSymbol? owningMethod, RoslynCpgGraph graph)
+    private void AddOperationTree(
+      IOperation? operation,
+      IOperation? parentOperation,
+      IMethodSymbol? owningMethod,
+      RoslynCpgGraph graph,
+      RoslynCpgBuildContext context)
     {
       if (operation is null)
       {
         return;
       }
 
+      context.AddOperationInventoryEntry(operation, owningMethod, parentOperation is null);
       var operationNode = GetOrCreateOperationNode(operation, graph);
       if (parentOperation is not null)
       {
@@ -136,7 +148,7 @@ namespace MinimalRoslynCpg.Builder
 
       foreach (var child in operation.ChildOperations)
       {
-        AddOperationTree(child, operation, owningMethod, graph);
+        AddOperationTree(child, operation, owningMethod, graph, context);
       }
     }
   }

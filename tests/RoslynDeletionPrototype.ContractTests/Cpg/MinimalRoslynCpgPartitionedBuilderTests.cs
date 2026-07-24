@@ -997,6 +997,25 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
   }
 
   [Fact]
+  public void BuildFromSource_OperationConsumers_PreserveCallMemberAndDataFlowAcrossDegreesOfParallelism()
+  {
+    const string source = CpgBuilderSources.DataFlowCallReturnAndProperty;
+    var baseline = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(1))
+      .BuildFromSource(source, "operation-consumer-inventory.cs");
+
+    foreach (var degreeOfParallelism in new[] { 8, 12, 14, 16 })
+    {
+      var graph = new RoslynCpgBuilder(CreateDataFlowPartitionOptions(degreeOfParallelism))
+        .BuildFromSource(source, "operation-consumer-inventory.cs");
+
+      AssertGraphsEqual(baseline, graph);
+      Assert.Contains(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.CallSite);
+      Assert.Contains(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.MemberAccess);
+      Assert.Contains(graph.Edges, edge => edge.Kind == RoslynCpgEdgeKind.DataFlow);
+    }
+  }
+
+  [Fact]
   public void BuildFromSource_DispatchKinds_AreStructuredForMethodsAndCallSites()
   {
     const string source = CpgBuilderSources.DispatchKinds;

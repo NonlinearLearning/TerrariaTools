@@ -59,6 +59,14 @@ public sealed partial class RoslynCpgBuilder
         try
         {
           facts = MaterializeOperationPartition(partition, context.Graph);
+          foreach (var record in partition.Records)
+          {
+            context.AddOperationInventoryEntry(
+              record.Operation,
+              record.OwningMethod,
+              record.ParentOperation is null);
+          }
+
           if (streamingPublisher is not null)
           {
             streamingPublisher.PublishOperationFragmentAsync(context, facts, CancellationToken.None)

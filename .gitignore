@@ -19,9 +19,17 @@ progress.md
 feature_list.json
 AGENTS.md
 scripts
+!scripts/
+scripts/*
+!scripts/New-CpgDopSmallFixture.ps1
 FormatTool
 .VSCodeCounter
 progressinfo.md
 待办事项.md
 BenchmarkDotNet.Artifacts
 tools
+!tools/
+tools/*
+!tools/CpgPersistenceBenchmark/
+!tools/CpgPersistenceBenchmark/*.cs
+!tools/CpgPersistenceBenchmark/*.csproj

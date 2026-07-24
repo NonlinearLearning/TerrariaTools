@@ -115,6 +115,82 @@ public sealed class RoslynCpgSliceQueryTests
     }
 
     [Fact]
+    public async Task QueryBackwardAsync_ShardResolver_ProjectsOnlyReachableShardRecords()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cpg-shard-slice-projection-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var file = new CpgFileKey("project", "input.cs", "source");
+            var lookup = new CpgShardLookup(file, new CpgFragmentKey("method", 0, 10, "method"), 1, "profile");
+            var store = new CpgShardStore(root);
+            var catalog = new SqliteCpgShardCatalog(Path.Combine(root, "catalog.db"));
+            await PublishShardAsync(store, catalog, new CpgFrozenShard(
+                lookup,
+                new[]
+                {
+                    FrozenNode(0, 1, "source"),
+                    FrozenNode(1, 2, "sink"),
+                    new CpgFrozenNode(2, 99, "UnknownNodeKind", "input.cs", null, null, "Unknown", null, null, null, false),
+                },
+                new[] { new CpgFrozenEdge(0, 1, "DataFlow", null, null) },
+                Array.Empty<CpgSymbolLocation>()));
+            var query = new RoslynCpgSliceQuery(new CpgShardQueryResolver(catalog, store, maxCachedBytes: 1024 * 1024));
+            var options = new RoslynCpgSliceQueryOptions(
+                new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+                MaxHops: 1,
+                MaxPaths: 1,
+                MaxDefinitions: 1);
+
+            var result = await query.QueryBackwardAsync(new NodeId(2), options, CancellationToken.None);
+
+            Assert.Equal(new[] { new NodeId(1), new NodeId(2) }, Assert.Single(result.Paths).NodeIds);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task QueryBackwardAsync_ShardResolver_RespectsVisitedNodeBudgetBeforeExpandingFrontier()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cpg-shard-slice-node-budget-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var file = new CpgFileKey("project", "input.cs", "source");
+            var lookup = new CpgShardLookup(file, new CpgFragmentKey("method", 0, 10, "method"), 1, "profile");
+            var store = new CpgShardStore(root);
+            var catalog = new SqliteCpgShardCatalog(Path.Combine(root, "catalog.db"));
+            await PublishShardAsync(store, catalog, new CpgFrozenShard(
+                lookup,
+                new[] { FrozenNode(0, 1, "source"), FrozenNode(1, 2, "sink") },
+                new[] { new CpgFrozenEdge(0, 1, "DataFlow", null, null) },
+                Array.Empty<CpgSymbolLocation>()));
+            var query = new RoslynCpgSliceQuery(new CpgShardQueryResolver(catalog, store, maxCachedBytes: 1024 * 1024));
+            var options = new RoslynCpgSliceQueryOptions(
+                new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+                MaxHops: 4,
+                MaxPaths: 4,
+                MaxDefinitions: 4,
+                MaxVisitedNodes: 1);
+
+            var result = await query.QueryBackwardAsync(new NodeId(2), options, CancellationToken.None);
+
+            Assert.Empty(result.Paths);
+            Assert.True(result.WasTruncated);
+            Assert.Equal("maxVisitedNodes", result.TruncationReason);
+            Assert.Equal(1, result.VisitedNodeCount);
+            Assert.Equal(1, result.ShardTelemetry!.LookupCount);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task QueryBackwardAsync_ShardResolver_MissingAnchorReportsUnavailable()
     {
         var root = Path.Combine(Path.GetTempPath(), "cpg-shard-slice-unavailable-tests", Guid.NewGuid().ToString("N"));

@@ -12,7 +12,7 @@ public static class DeleteSObjectMarkRuleHelpers
     public static IEnumerable<MarkRecord> BuildExpressionMarks(RuleContext context, SyntaxNode root, string ruleId, IReadOnlyCollection<SyntaxKind> allowedKinds)
     {
         var targetNames = ParseTargetNames(context);
-        if (targetNames.Count == 0)
+        if (targetNames.DisplayNames.Count == 0)
         {
             return Array.Empty<MarkRecord>();
         }
@@ -41,7 +41,7 @@ public static class DeleteSObjectMarkRuleHelpers
             marks.Add(MarkRecordFactory.Create(
               ruleId,
               expression,
-              $"Expression is rooted at target '{string.Join(",", targetNames)}' within mark region {markRegion.Span}.") with
+              $"Expression is rooted at target '{string.Join(",", targetNames.DisplayNames)}' within mark region {markRegion.Span}.") with
             {
                 PrimaryGraphNode = primaryGraphNode
             });
@@ -53,7 +53,7 @@ public static class DeleteSObjectMarkRuleHelpers
     public static IEnumerable<MarkRecord> BuildDefinitionLeftValueMarks(RuleContext context, SyntaxNode root, string ruleId)
     {
         var targetNames = ParseTargetNames(context);
-        if (targetNames.Count == 0)
+        if (targetNames.DisplayNames.Count == 0)
         {
             return Array.Empty<MarkRecord>();
         }
@@ -66,7 +66,7 @@ public static class DeleteSObjectMarkRuleHelpers
                 continue;
             }
 
-            if (!targetNames.Contains(declarator.Identifier.ValueText, StringComparer.Ordinal))
+            if (!targetNames.Lookup.Contains(declarator.Identifier.ValueText))
             {
                 continue;
             }
@@ -80,9 +80,9 @@ public static class DeleteSObjectMarkRuleHelpers
         return FinalizeMarks(marks);
     }
 
-    private static IReadOnlyList<string> ParseTargetNames(RuleContext context)
+    private static TargetNameDescriptor ParseTargetNames(RuleContext context)
     {
-        return context.GetNormalizedTargetNames();
+        return context.GetTargetNameDescriptor();
     }
 
     private static IEnumerable<MarkRecord> FinalizeMarks(IEnumerable<MarkRecord> marks)
@@ -94,7 +94,7 @@ public static class DeleteSObjectMarkRuleHelpers
           .ToList();
     }
 
-    private static bool HasRootedObjectAncestorInRegion(RuleContext context, ExpressionSyntax expression, IReadOnlyList<string> targetNames, MarkCodeRegion markRegion)
+    private static bool HasRootedObjectAncestorInRegion(RuleContext context, ExpressionSyntax expression, TargetNameDescriptor targetNames, MarkCodeRegion markRegion)
     {
         foreach (var ancestor in expression.Ancestors().OfType<ExpressionSyntax>())
         {
@@ -126,7 +126,7 @@ public static class DeleteSObjectMarkRuleHelpers
         return false;
     }
 
-    private static bool IsRootedAtTarget(RuleContext context, ExpressionSyntax expression, IReadOnlyList<string> targetNames)
+    private static bool IsRootedAtTarget(RuleContext context, ExpressionSyntax expression, TargetNameDescriptor targetNames)
     {
         return context.GetCachedTargetMatch(expression, targetNames, () =>
         {
@@ -141,34 +141,34 @@ public static class DeleteSObjectMarkRuleHelpers
         });
     }
 
-    private static bool ReferencesTarget(IOperation operation, IReadOnlyList<string> targetNames)
+    private static bool ReferencesTarget(IOperation operation, TargetNameDescriptor targetNames)
     {
         if (operation is ILocalReferenceOperation localReference &&
-            targetNames.Contains(localReference.Local.Name, StringComparer.Ordinal))
+            targetNames.Lookup.Contains(localReference.Local.Name))
         {
             return true;
         }
 
         if (operation is IParameterReferenceOperation parameterReference &&
-            targetNames.Contains(parameterReference.Parameter.Name, StringComparer.Ordinal))
+            targetNames.Lookup.Contains(parameterReference.Parameter.Name))
         {
             return true;
         }
 
         if (operation is IFieldReferenceOperation fieldReference &&
-            targetNames.Contains(fieldReference.Field.Name, StringComparer.Ordinal))
+            targetNames.Lookup.Contains(fieldReference.Field.Name))
         {
             return true;
         }
 
         if (operation is IPropertyReferenceOperation propertyReference &&
-            targetNames.Contains(propertyReference.Property.Name, StringComparer.Ordinal))
+            targetNames.Lookup.Contains(propertyReference.Property.Name))
         {
             return true;
         }
 
         if (operation is IInvocationOperation invocation &&
-            targetNames.Contains(invocation.TargetMethod.Name, StringComparer.Ordinal))
+            targetNames.Lookup.Contains(invocation.TargetMethod.Name))
         {
             return true;
         }
@@ -181,7 +181,7 @@ public static class DeleteSObjectMarkRuleHelpers
 
         if (operation is IObjectCreationOperation objectCreation &&
             objectCreation.Constructor is not null &&
-            targetNames.Contains(objectCreation.Constructor.ContainingType.Name, StringComparer.Ordinal))
+            targetNames.Lookup.Contains(objectCreation.Constructor.ContainingType.Name))
         {
             return true;
         }
@@ -189,7 +189,7 @@ public static class DeleteSObjectMarkRuleHelpers
         if (operation is ILiteralOperation literalOperation &&
             literalOperation.ConstantValue.HasValue &&
             literalOperation.ConstantValue.Value is not null &&
-            targetNames.Contains(literalOperation.ConstantValue.Value.ToString()!, StringComparer.Ordinal))
+            targetNames.Lookup.Contains(literalOperation.ConstantValue.Value.ToString()!))
         {
             return true;
         }
@@ -205,7 +205,7 @@ public static class DeleteSObjectMarkRuleHelpers
         return false;
     }
 
-    private static bool ReferencesTargetMemberBinding(RuleContext context, MemberBindingExpressionSyntax memberBinding, IReadOnlyList<string> targetNames)
+    private static bool ReferencesTargetMemberBinding(RuleContext context, MemberBindingExpressionSyntax memberBinding, TargetNameDescriptor targetNames)
     {
         var symbol = context.SemanticModel.GetSymbolInfo(memberBinding).Symbol;
         if (symbol is null)
@@ -213,15 +213,15 @@ public static class DeleteSObjectMarkRuleHelpers
             return false;
         }
 
-        return targetNames.Contains(symbol.Name, StringComparer.Ordinal);
+        return targetNames.Lookup.Contains(symbol.Name);
     }
 
-    private static bool IsTargetInstanceReference(IInstanceReferenceOperation instanceReference, IReadOnlyList<string> targetNames)
+    private static bool IsTargetInstanceReference(IInstanceReferenceOperation instanceReference, TargetNameDescriptor targetNames)
     {
         return instanceReference.Syntax switch
         {
-            ThisExpressionSyntax => targetNames.Contains("this", StringComparer.Ordinal),
-            BaseExpressionSyntax => targetNames.Contains("base", StringComparer.Ordinal),
+            ThisExpressionSyntax => targetNames.Lookup.Contains("this"),
+            BaseExpressionSyntax => targetNames.Lookup.Contains("base"),
             _ => false
         };
     }

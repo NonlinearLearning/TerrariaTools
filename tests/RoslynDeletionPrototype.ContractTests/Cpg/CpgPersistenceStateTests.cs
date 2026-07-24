@@ -172,6 +172,43 @@ public sealed class CpgPersistenceStateTests
   }
 
   [Fact]
+  public async Task CpgShardBuildSession_DisposeAsync_CanBeCalledMoreThanOnce()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "cpg-persistence-state", Guid.NewGuid().ToString("N"));
+    try
+    {
+      var sessionType = typeof(RoslynCpgBuilder).Assembly.GetType(
+        "MinimalRoslynCpg.Builder.CpgShardBuildSession");
+      Assert.NotNull(sessionType);
+      var beginAsync = sessionType!.GetMethod(
+        "BeginAsync",
+        System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+      Assert.NotNull(beginAsync);
+
+      var beginTask = (Task)beginAsync!.Invoke(
+        null,
+        new object[]
+        {
+          new CpgPersistenceOptions(root, "dispose-idempotent", StreamingMode: true),
+          CancellationToken.None
+        })!;
+      await beginTask;
+      var session = beginTask.GetType().GetProperty("Result")!.GetValue(beginTask);
+      Assert.NotNull(session);
+
+      await InvokeDisposeAsync(sessionType, session!);
+      await InvokeDisposeAsync(sessionType, session!);
+    }
+    finally
+    {
+      if (Directory.Exists(root))
+      {
+        Directory.Delete(root, recursive: true);
+      }
+    }
+  }
+
+  [Fact]
   public async Task ObserveShardWrites_ConcurrentBuilds_KeepCallbacksScoped()
   {
     var firstRoot = Path.Combine(Path.GetTempPath(), "cpg-persistence-state", Guid.NewGuid().ToString("N"));
@@ -247,5 +284,15 @@ public sealed class CpgPersistenceStateTests
     var catalog = new SqliteCpgShardCatalog(Path.Combine(root, "catalog.db"));
     Assert.Empty(await catalog.FindByFileAsync(CreateFileKey(source), 1, profile, CancellationToken.None));
     Assert.Empty(Directory.EnumerateDirectories(Path.Combine(root, "builds")));
+  }
+
+  private static async Task InvokeDisposeAsync(Type sessionType, object session)
+  {
+    var disposeAsync = sessionType.GetMethod(
+      "DisposeAsync",
+      System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+    Assert.NotNull(disposeAsync);
+    var disposeValueTask = Assert.IsType<ValueTask>(disposeAsync!.Invoke(session, Array.Empty<object?>()));
+    await disposeValueTask.AsTask();
   }
 }

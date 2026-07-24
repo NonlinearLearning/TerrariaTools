@@ -39,7 +39,7 @@ public sealed class MarkRegionAnalyzer
   /// <summary>
   /// 优先使用语句边界，否则回退到声明锚点。
   /// </summary>
-  private static SyntaxNode ResolveRegionNode(SyntaxNode anchorNode)
+  internal static SyntaxNode ResolveRegionNode(SyntaxNode anchorNode)
   {
     var statement = anchorNode.FirstAncestorOrSelf<StatementSyntax>();
     if (statement is not null)

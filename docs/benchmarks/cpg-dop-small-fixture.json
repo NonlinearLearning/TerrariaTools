@@ -1,0 +1,10 @@
+{
+  "name": "cpg-dop-small",
+  "largeFileCount": 3,
+  "largeMaxBytes": 524288,
+  "smallFileCount": 100,
+  "extensions": [".cs"],
+  "largeSelection": "largest-by-bytes-at-most-largeMaxBytes",
+  "smallSelection": "smallest-by-bytes",
+  "tieBreak": "relative-path-ordinal"
+}

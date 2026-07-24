@@ -17,6 +17,7 @@ public sealed class CpgShardStoreLock : IDisposable
   private static readonly ConcurrentDictionary<string, byte> ActiveStoreLocks = new(StringComparer.Ordinal);
   private readonly Semaphore _semaphore;
   private readonly string _storeKey;
+  private int _disposed;
 
   private CpgShardStoreLock(Semaphore semaphore, string storeKey)
   {
@@ -75,9 +76,20 @@ public sealed class CpgShardStoreLock : IDisposable
 
   public void Dispose()
   {
+    if (Interlocked.Exchange(ref _disposed, 1) != 0)
+    {
+      return;
+    }
+
     ActiveStoreLocks.TryRemove(_storeKey, out _);
-    _semaphore.Release();
-    _semaphore.Dispose();
+    try
+    {
+      _semaphore.Release();
+    }
+    finally
+    {
+      _semaphore.Dispose();
+    }
   }
 
   private static CpgShardStoreLock AcquireWaiting(
@@ -250,6 +262,8 @@ public sealed class CpgShardStoreLock : IDisposable
       }
 
       _cancellationRegistration.Dispose();
+      Interlocked.Exchange(ref _registeredWait, null)?.Unregister(null);
+      Interlocked.Exchange(ref _cleanupRegistration, null)?.Unregister(null);
       _semaphore.Dispose();
       _waitCallbacksCompleted.Dispose();
     }

@@ -22,6 +22,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
   private readonly long _storeLockWaitMilliseconds;
   private readonly List<CpgShardLocation> _stagedLocations = new();
   private readonly List<CpgReusableCloneRequest> _reusableCloneRequests = new();
+  private readonly List<CpgBuildRoutingShardEntry> _routingEntries = new();
   private readonly HashSet<CpgShardLookup> _publishedLookups = new();
   private Exception? _publicationFault;
   private long _nextPublicationSequence;
@@ -48,6 +49,8 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
   private int _reuseRejectedCount;
   private long _reusedShardBytes;
   private bool _completed;
+  private Task? _disposeTask;
+  private readonly object _disposeGate = new();
 
   private CpgShardBuildSession(
     CpgPersistenceOptions options,
@@ -124,7 +127,28 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     Interlocked.Read(ref _structuralValidationMilliseconds),
     _catalogWriter.BatchPublicationCounts,
     _catalogWriter.BatchEstimatedMetadataBytes,
-    PeakReorderBuffer);
+    PeakReorderBuffer,
+    CatalogActualRowCount: _catalogWriter.ActualRowCount,
+    CatalogStatementCount: _catalogWriter.StatementCount,
+    CatalogTransactionBeginMilliseconds: _catalogWriter.TransactionBeginMilliseconds,
+    CatalogEnsureBuildingMilliseconds: _catalogWriter.EnsureBuildingMilliseconds,
+    CatalogFixedMetadataMilliseconds: _catalogWriter.FixedMetadataMilliseconds,
+    CatalogNodeWriteMilliseconds: _catalogWriter.NodeWriteMilliseconds,
+    CatalogSpanWriteMilliseconds: _catalogWriter.SpanWriteMilliseconds,
+    CatalogSymbolWriteMilliseconds: _catalogWriter.SymbolWriteMilliseconds,
+    CatalogBoundaryWriteMilliseconds: _catalogWriter.BoundaryWriteMilliseconds,
+    CatalogCommitTransactionMilliseconds: _catalogWriter.TransactionCommitMilliseconds,
+    CatalogQueueSaturationMilliseconds: _catalogWriter.QueueSaturationMilliseconds,
+    CatalogAffectedRowCount: _catalogWriter.AffectedRowCount,
+    CatalogUnclassifiedMilliseconds: _catalogWriter.UnclassifiedMilliseconds,
+    CatalogRowMaterializationMilliseconds: _catalogWriter.RowMaterializationMilliseconds,
+    CatalogRowMaterializationAllocatedBytes: _catalogWriter.RowMaterializationAllocatedBytes,
+    CatalogSqlTextBuildMilliseconds: _catalogWriter.SqlTextBuildMilliseconds,
+    CatalogSqlTextBuildAllocatedBytes: _catalogWriter.SqlTextBuildAllocatedBytes,
+    CatalogCommandPrepareMilliseconds: _catalogWriter.CommandPrepareMilliseconds,
+    CatalogCommandPrepareAllocatedBytes: _catalogWriter.CommandPrepareAllocatedBytes,
+    CatalogExecuteNonQueryMilliseconds: _catalogWriter.ExecuteNonQueryMilliseconds,
+    CatalogExecuteNonQueryAllocatedBytes: _catalogWriter.ExecuteNonQueryAllocatedBytes);
 
   internal int PrimaryShardCount => Volatile.Read(ref _primaryShardCount);
   internal int BoundaryAdjacencyShardCount => Volatile.Read(ref _boundaryAdjacencyShardCount);
@@ -255,6 +279,10 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
       {
         _reusableCloneRequests.Add(new CpgReusableCloneRequest(shard.Lookup, candidate));
       }
+      lock (_routingEntries)
+      {
+        _routingEntries.Add(new CpgBuildRoutingShardEntry(shard, candidate.Location));
+      }
       Interlocked.Increment(ref _reusedShardCount);
       Interlocked.Add(ref _reusedShardBytes, candidate.Location.ByteLength);
       Interlocked.Increment(ref _primaryShardCount);
@@ -318,16 +346,37 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     await _catalogDispatcher.WaitAsync(cancellationToken);
     ThrowIfPublicationFaulted();
     await _catalogWriter.CompleteAsync(cancellationToken);
-    foreach (var request in _reusableCloneRequests)
+    CpgReusableCloneRequest[] reusableCloneRequests;
+    lock (_reusableCloneRequests)
     {
-      await _catalog.CloneReusableAsync(
-        BuildId,
-        request.TargetLookup,
-        request.Source,
-        cancellationToken);
+      reusableCloneRequests = _reusableCloneRequests.ToArray();
+    }
+
+    CpgBuildRoutingShardEntry[] routingEntries;
+    lock (_routingEntries)
+    {
+      routingEntries = _routingEntries.ToArray();
+    }
+
+    var routingIndexPath = Path.Combine(_stagingRoot, "routing.cpgidx");
+    var routingIndex = await new CpgBuildRoutingIndexWriter().WriteAsync(
+      routingIndexPath,
+      BuildId,
+      routingEntries,
+      cancellationToken);
+    await _catalog.FinalizeBuildAsync(
+      BuildId,
+      reusableCloneRequests,
+      new CpgBuildRoutingIndexManifest(
+        Path.Combine("builds", BuildId, "routing.cpgidx"),
+        routingIndex.FormatVersion,
+        routingIndex.ByteLength,
+        routingIndex.PayloadHash),
+      cancellationToken);
+    foreach (var request in reusableCloneRequests)
+    {
       _stagedLocations.Add(request.Source.Location);
     }
-    await _catalog.CompleteBuildAsync(BuildId, cancellationToken);
     File.WriteAllText(
       Path.Combine(_stagingRoot, CompletionMarkerFileName),
       BuildId,
@@ -335,7 +384,16 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     _completed = true;
   }
 
-  public async ValueTask DisposeAsync()
+  public ValueTask DisposeAsync()
+  {
+    lock (_disposeGate)
+    {
+      _disposeTask ??= DisposeCoreAsync();
+      return new ValueTask(_disposeTask);
+    }
+  }
+
+  private async Task DisposeCoreAsync()
   {
     try
     {
@@ -454,6 +512,12 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
             nextPublication.ReusableKey,
             CancellationToken.None);
           _stagedLocations.Add(nextPublication.Location);
+          lock (_routingEntries)
+          {
+            _routingEntries.Add(new CpgBuildRoutingShardEntry(
+              nextPublication.Shard,
+              nextPublication.Location));
+          }
           if (nextPublication.ConsumesReorderSlot)
           {
             _reorderSlots.Release();

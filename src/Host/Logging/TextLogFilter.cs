@@ -25,9 +25,17 @@ internal sealed class TextLogFilter
 
     public bool Allows(TextLogEvent textLogEvent)
     {
-        return textLogEvent.Level <= MinimumLevel &&
-          _categories.Contains(textLogEvent.Category) &&
-          _eventTypes.Contains(textLogEvent.EventType);
+        return Allows(textLogEvent.Level, textLogEvent.Category, textLogEvent.EventType);
+    }
+
+    public bool Allows(
+      TextLogLevel level,
+      TextLogCategory category,
+      TextLogEventType eventType)
+    {
+        return level <= MinimumLevel &&
+          _categories.Contains(category) &&
+          _eventTypes.Contains(eventType);
     }
 
     public static TextLogFilter CreateRuntimeFilter(

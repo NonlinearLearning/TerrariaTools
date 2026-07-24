@@ -12,6 +12,7 @@ internal sealed class DeleteClassPostRewriteCleanupService
 
     internal PrototypeAnalysisResult ApplyUsingCleanup(
       string filePath,
+      string originalSource,
       PrototypeAnalysisResult result,
       CleanupProjectState cleanupProjectState)
     {
@@ -65,11 +66,12 @@ internal sealed class DeleteClassPostRewriteCleanupService
             }
         }
 
-        return MergeCleanupEdits(filePath, result, currentSource, cleanupEdits);
+        return MergeCleanupEdits(filePath, originalSource, result, currentSource, cleanupEdits);
     }
 
     internal PrototypeAnalysisResult ApplyEmptyNamespaceCleanup(
       string filePath,
+      string originalSource,
       PrototypeAnalysisResult result,
       CleanupProjectState cleanupProjectState)
     {
@@ -124,11 +126,12 @@ internal sealed class DeleteClassPostRewriteCleanupService
             changed = true;
         }
 
-        return MergeCleanupEdits(filePath, result, currentSource, cleanupEdits);
+        return MergeCleanupEdits(filePath, originalSource, result, currentSource, cleanupEdits);
     }
 
     private PrototypeAnalysisResult MergeCleanupEdits(
       string filePath,
+      string originalSource,
       PrototypeAnalysisResult result,
       string currentSource,
       IReadOnlyList<RewriteEdit> cleanupEdits)
@@ -140,20 +143,15 @@ internal sealed class DeleteClassPostRewriteCleanupService
 
         var edits = result.Edits.Concat(cleanupEdits).ToList();
         var diff = _diffBuilder.Build(edits);
-        var originalSource = File.ReadAllText(filePath);
         var operations = new[]
         {
           new RewritePlanEdit(0, originalSource.Length, originalSource, currentSource)
         };
-        var rewrittenSource = new PrototypeRewriter().ExecutePlan(
-          originalSource,
-          filePath,
-          new PrototypeRewritePlan(operations, edits)).RewrittenSource;
         var rewritePlans = new[] { new PrototypeFileRewritePlan(filePath, operations) };
         return result with
         {
           Edits = edits,
-          RewrittenSource = rewrittenSource,
+          RewrittenSource = currentSource,
           Diff = diff,
           RewritePlans = rewritePlans
         };

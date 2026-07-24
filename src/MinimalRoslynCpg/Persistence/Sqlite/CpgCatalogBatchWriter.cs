@@ -12,6 +12,7 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
   private readonly int _maxRows;
   private readonly int _maxBytes;
   private readonly int _maxQueueDepth;
+  private readonly bool _writeLegacyRoutingRows;
   private readonly Channel<CpgCatalogPublication> _queue;
   private readonly Task<Microsoft.Data.Sqlite.SqliteConnection> _connection;
   private readonly Task _writer;
@@ -21,6 +22,8 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
   private readonly List<int> _batchEstimatedMetadataBytes = new();
   private Exception? _fault;
   private int _pending;
+  private long _saturationStartedTimestamp;
+  private long _queueSaturationMilliseconds;
 
   internal CpgCatalogBatchWriter(SqliteCpgShardCatalog catalog, string buildId, Builder.CpgPersistenceOptions options)
   {
@@ -29,6 +32,7 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
     _maxRows = options.MaxCatalogBatchRows;
     _maxBytes = options.MaxCatalogBatchBytes;
     _maxQueueDepth = options.MaxPendingShardPublications;
+    _writeLegacyRoutingRows = !options.UseMinimalRoutingCatalog;
     _queue = Channel.CreateBounded<CpgCatalogPublication>(new BoundedChannelOptions(options.MaxPendingShardPublications)
     {
       FullMode = BoundedChannelFullMode.Wait,
@@ -44,6 +48,27 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
   internal long CommitMilliseconds { get; private set; }
   internal int PeakQueueDepth { get; private set; }
   internal long QueueWaitMilliseconds { get; private set; }
+  internal long QueueSaturationMilliseconds => Interlocked.Read(ref _queueSaturationMilliseconds);
+  internal long ActualRowCount { get; private set; }
+  internal long StatementCount { get; private set; }
+  internal long TransactionBeginMilliseconds { get; private set; }
+  internal long EnsureBuildingMilliseconds { get; private set; }
+  internal long FixedMetadataMilliseconds { get; private set; }
+  internal long NodeWriteMilliseconds { get; private set; }
+  internal long SpanWriteMilliseconds { get; private set; }
+  internal long SymbolWriteMilliseconds { get; private set; }
+  internal long BoundaryWriteMilliseconds { get; private set; }
+  internal long TransactionCommitMilliseconds { get; private set; }
+  internal long AffectedRowCount { get; private set; }
+  internal long UnclassifiedMilliseconds { get; private set; }
+  internal long RowMaterializationMilliseconds { get; private set; }
+  internal long RowMaterializationAllocatedBytes { get; private set; }
+  internal long SqlTextBuildMilliseconds { get; private set; }
+  internal long SqlTextBuildAllocatedBytes { get; private set; }
+  internal long CommandPrepareMilliseconds { get; private set; }
+  internal long CommandPrepareAllocatedBytes { get; private set; }
+  internal long ExecuteNonQueryMilliseconds { get; private set; }
+  internal long ExecuteNonQueryAllocatedBytes { get; private set; }
   internal IReadOnlyList<int> BatchRowCounts => _batchRowCounts;
   internal IReadOnlyList<int> BatchPublicationCounts => _batchPublicationCounts;
   internal IReadOnlyList<int> BatchEstimatedMetadataBytes => _batchEstimatedMetadataBytes;
@@ -56,15 +81,24 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
   {
     var before = _lifetime.ElapsedMilliseconds;
     var pending = Interlocked.Increment(ref _pending);
+    if (pending >= _maxQueueDepth)
+    {
+      Interlocked.CompareExchange(
+        ref _saturationStartedTimestamp,
+        Stopwatch.GetTimestamp(),
+        comparand: 0);
+    }
     PeakQueueDepth = Math.Max(PeakQueueDepth, Math.Min(_maxQueueDepth, pending));
     try
     {
-      await _queue.Writer.WriteAsync(new CpgCatalogPublication(lease, shard, reusableKey), cancellationToken);
+      await _queue.Writer.WriteAsync(
+        new CpgCatalogPublication(lease, shard, reusableKey, _writeLegacyRoutingRows),
+        cancellationToken);
       QueueWaitMilliseconds += Math.Max(0, _lifetime.ElapsedMilliseconds - before);
     }
     catch
     {
-      Interlocked.Decrement(ref _pending);
+      RecordDequeuedPublication();
       throw;
     }
   }
@@ -106,7 +140,7 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
         batch.Add(publication);
         estimatedRows += cost.Rows;
         estimatedMetadataBytes += cost.MetadataBytes;
-        Interlocked.Decrement(ref _pending);
+        RecordDequeuedPublication();
         if (estimatedRows >= _maxRows || estimatedMetadataBytes >= _maxBytes)
         {
           await FlushAsync(
@@ -143,7 +177,7 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
     }
 
     var stopwatch = Stopwatch.StartNew();
-    await _catalog.StageBatchAsync(connection, _buildId, batch, commandCache, CancellationToken.None);
+    var stage = await _catalog.StageBatchAsync(connection, _buildId, batch, commandCache, CancellationToken.None);
     stopwatch.Stop();
     CommitMilliseconds += stopwatch.ElapsedMilliseconds;
     BatchCount += 1;
@@ -151,7 +185,44 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
     _batchRowCounts.Add(estimatedRows);
     _batchPublicationCounts.Add(batch.Count);
     _batchEstimatedMetadataBytes.Add(estimatedMetadataBytes);
+    ActualRowCount += stage.SqlRowCount;
+    StatementCount += stage.SqlStatementCount;
+    TransactionBeginMilliseconds += stage.TransactionBeginMilliseconds;
+    EnsureBuildingMilliseconds += stage.EnsureBuildingMilliseconds;
+    FixedMetadataMilliseconds += stage.FixedMetadataMilliseconds;
+    NodeWriteMilliseconds += stage.NodeWriteMilliseconds;
+    SpanWriteMilliseconds += stage.SpanWriteMilliseconds;
+    SymbolWriteMilliseconds += stage.SymbolWriteMilliseconds;
+    BoundaryWriteMilliseconds += stage.BoundaryWriteMilliseconds;
+    TransactionCommitMilliseconds += stage.TransactionCommitMilliseconds;
+    AffectedRowCount += stage.SqlAffectedRowCount;
+    RowMaterializationMilliseconds += stage.RowMaterializationMilliseconds;
+    RowMaterializationAllocatedBytes += stage.RowMaterializationAllocatedBytes;
+    SqlTextBuildMilliseconds += stage.SqlTextBuildMilliseconds;
+    SqlTextBuildAllocatedBytes += stage.SqlTextBuildAllocatedBytes;
+    CommandPrepareMilliseconds += stage.CommandPrepareMilliseconds;
+    CommandPrepareAllocatedBytes += stage.CommandPrepareAllocatedBytes;
+    ExecuteNonQueryMilliseconds += stage.ExecuteNonQueryMilliseconds;
+    ExecuteNonQueryAllocatedBytes += stage.ExecuteNonQueryAllocatedBytes;
+    UnclassifiedMilliseconds += Math.Max(
+      0,
+      stopwatch.ElapsedMilliseconds - stage.ClassifiedMilliseconds);
     batch.Clear();
+  }
+
+  private void RecordDequeuedPublication()
+  {
+    var pending = Interlocked.Decrement(ref _pending);
+    if (pending >= _maxQueueDepth)
+    {
+      return;
+    }
+
+    var started = Interlocked.Exchange(ref _saturationStartedTimestamp, 0);
+    if (started != 0)
+    {
+      Interlocked.Add(ref _queueSaturationMilliseconds, (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+    }
   }
 
   private static CpgCatalogPublicationCost EstimateCost(CpgCatalogPublication publication)
@@ -218,4 +289,5 @@ internal readonly record struct CpgCatalogPublicationCost(int Rows, int Metadata
 internal sealed record CpgCatalogPublication(
   CpgShardLease Lease,
   CpgFrozenShard Shard,
-  CpgReusableFragmentKey? ReusableKey = null);
+  CpgReusableFragmentKey? ReusableKey = null,
+  bool WriteLegacyRoutingRows = true);

@@ -74,7 +74,8 @@ public sealed record CpgPersistenceOptions(
   int MaxPendingShardPublications = 16,
   int MaxConcurrentShardExports = 2,
   int MaxConcurrentShardFileWrites = 2,
-  int StoreLockWaitMilliseconds = 30000)
+  int StoreLockWaitMilliseconds = 30000,
+  bool UseMinimalRoutingCatalog = true)
 {
   public void Validate()
   {
@@ -293,7 +294,28 @@ public sealed record CpgPersistenceTelemetry(
   long StructuralValidationMilliseconds = 0,
   IReadOnlyList<int>? CatalogBatchPublicationCounts = null,
   IReadOnlyList<int>? CatalogBatchEstimatedMetadataBytes = null,
-  int PeakReorderBuffer = 0)
+  int PeakReorderBuffer = 0,
+  long CatalogActualRowCount = 0,
+  long CatalogStatementCount = 0,
+  long CatalogTransactionBeginMilliseconds = 0,
+  long CatalogEnsureBuildingMilliseconds = 0,
+  long CatalogFixedMetadataMilliseconds = 0,
+  long CatalogNodeWriteMilliseconds = 0,
+  long CatalogSpanWriteMilliseconds = 0,
+  long CatalogSymbolWriteMilliseconds = 0,
+  long CatalogBoundaryWriteMilliseconds = 0,
+  long CatalogCommitTransactionMilliseconds = 0,
+  long CatalogQueueSaturationMilliseconds = 0,
+  long CatalogAffectedRowCount = 0,
+  long CatalogUnclassifiedMilliseconds = 0,
+  long CatalogRowMaterializationMilliseconds = 0,
+  long CatalogRowMaterializationAllocatedBytes = 0,
+  long CatalogSqlTextBuildMilliseconds = 0,
+  long CatalogSqlTextBuildAllocatedBytes = 0,
+  long CatalogCommandPrepareMilliseconds = 0,
+  long CatalogCommandPrepareAllocatedBytes = 0,
+  long CatalogExecuteNonQueryMilliseconds = 0,
+  long CatalogExecuteNonQueryAllocatedBytes = 0)
 {
   public static CpgPersistenceTelemetry CreateDefault() => new(
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

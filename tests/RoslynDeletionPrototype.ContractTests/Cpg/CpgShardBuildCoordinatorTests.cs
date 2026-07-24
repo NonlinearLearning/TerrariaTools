@@ -835,6 +835,50 @@ public sealed class CpgShardBuildCoordinatorTests
     }
   }
 
+  [Fact]
+  public async Task BuildFromSource_StreamingPersistence_RepeatedChangedMethodReuseSamples_CompleteAndLeaveStoreReusable()
+  {
+    for (var iteration = 0; iteration < 4; iteration += 1)
+    {
+      var root = Path.Combine(
+        Path.GetTempPath(),
+        "cpg-streaming-reuse-sample-tests",
+        Guid.NewGuid().ToString("N"));
+      try
+      {
+        var options = RoslynCpgBuilderOptions.CreateDefault() with
+        {
+          MaxDegreeOfParallelism = 12,
+          Persistence = new CpgPersistenceOptions(root, "repeated-reuse-profile", StreamingMode: true),
+        };
+        var buildTask = Task.Run(() =>
+        {
+          var builder = new RoslynCpgBuilder(options);
+          _ = builder.BuildFromSource(CreateReuseFixtureSource(changedLiteral: 95), "input.cs");
+          var reusedBuild = builder.BuildFromSource(CreateReuseFixtureSource(changedLiteral: 94), "input.cs");
+          var persistence = Assert.IsType<CpgPersistenceTelemetry>(builder.LastBuildTelemetry.Persistence);
+          Assert.True(persistence.ReusedShardCount >= 1);
+          Assert.True(persistence.ReuseMissCount >= 1);
+          Assert.True(persistence.ReusedShardBytes > 0);
+          Assert.True(reusedBuild.HasQueryIndex);
+        });
+
+        await buildTask.WaitAsync(TimeSpan.FromSeconds(30));
+        using var reopened = await CpgPersistenceTestKit.AcquireStoreLockAsync(
+          root,
+          TimeSpan.FromSeconds(5),
+          CancellationToken.None);
+      }
+      finally
+      {
+        if (Directory.Exists(root))
+        {
+          Directory.Delete(root, recursive: true);
+        }
+      }
+    }
+  }
+
   [Theory]
   [InlineData(1)]
   [InlineData(8)]
@@ -983,6 +1027,26 @@ public sealed class CpgShardBuildCoordinatorTests
     builder.AppendLine("    return total;");
     builder.AppendLine("  }");
     builder.AppendLine("  int Second() => 2;");
+    builder.AppendLine("}");
+    return builder.ToString();
+  }
+
+  private static string CreateReuseFixtureSource(int changedLiteral)
+  {
+    var builder = new StringBuilder();
+    builder.AppendLine("class Reuse");
+    builder.AppendLine("{");
+    builder.AppendLine("  int Method0(int value) => value;");
+    for (var index = 0; index < 96; index += 1)
+    {
+      var previous = Math.Max(0, index - 1);
+      var addend = index == 95 ? changedLiteral : index;
+      builder.Append("  int Method").Append(index).Append("(int value) { var current = value + ")
+        .Append(addend).Append("; if (current > ").Append(index / 2)
+        .Append(") current += Method").Append(previous)
+        .AppendLine("(current - 1); return current; }");
+    }
+
     builder.AppendLine("}");
     return builder.ToString();
   }

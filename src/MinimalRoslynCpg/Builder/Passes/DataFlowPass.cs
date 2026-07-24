@@ -250,16 +250,17 @@ public sealed partial class RoslynCpgBuilder
         var enumerateMethodBlocksStopwatch = Stopwatch.StartNew();
         var methodBlocks = new List<IBlockOperation>();
         var owningMethods = new Dictionary<IOperation, IMethodSymbol>(ReferenceEqualityComparer.Instance);
-        foreach (var rootPlan in GetOperationRootPlans(context.Root, context.SemanticModel))
+        foreach (var rootEntry in context.OperationInventory)
         {
-            if (context.SemanticModel.GetOperation(rootPlan.BodySyntax) is not IBlockOperation methodBlock ||
+            if (!rootEntry.IsRoot ||
+                rootEntry.Operation is not IBlockOperation methodBlock ||
                 !IsMethodRootBlock(methodBlock))
             {
                 continue;
             }
 
             methodBlocks.Add(methodBlock);
-            if (rootPlan.OwningMethod is IMethodSymbol methodSymbol)
+            if (rootEntry.OwningMethod is IMethodSymbol methodSymbol)
             {
                 owningMethods[methodBlock] = methodSymbol;
             }
@@ -918,7 +919,7 @@ public sealed partial class RoslynCpgBuilder
     private void AddCallArgumentAndReturnDataFlow(RoslynCpgBuildContext context)
     {
         var graph = context.Graph;
-        foreach (var invocation in EnumerateOperationRoots(context).OfType<IInvocationOperation>())
+        foreach (var invocation in EnumerateOperations(context).OfType<IInvocationOperation>())
         {
             var targetMethod = invocation.TargetMethod;
             if (targetMethod is null)
@@ -949,7 +950,7 @@ public sealed partial class RoslynCpgBuilder
             }
         }
 
-        foreach (var propertyReference in EnumerateOperationRoots(context).OfType<IPropertyReferenceOperation>())
+        foreach (var propertyReference in EnumerateOperations(context).OfType<IPropertyReferenceOperation>())
         {
             AddPropertyAccessorSummaryDataFlow(propertyReference, graph);
         }

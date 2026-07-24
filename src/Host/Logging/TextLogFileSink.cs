@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using System.Text;
+using System.Diagnostics;
 
 namespace RoslynPrototype.Application.Logging;
 
@@ -16,6 +17,7 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
     private bool _disposed;
     private int _batchCount;
     private int _recordCount;
+    private long _writeMilliseconds;
 
     public TextLogFileSink(string path, TextLogFormatter formatter, TextLogFilter filter)
     {
@@ -39,6 +41,8 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
     public int RecordsWritten => Volatile.Read(ref _recordCount);
 
     public int BatchesWritten => Volatile.Read(ref _batchCount);
+
+    public long WriteMilliseconds => Interlocked.Read(ref _writeMilliseconds);
 
     public static TextLogFileSink Create(string path, TextLogFormatter formatter, TextLogFilter filter)
     {
@@ -141,7 +145,10 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
             text.AppendLine(line);
         }
 
+        var stopwatch = Stopwatch.StartNew();
         await _writer.WriteAsync(text.ToString()).ConfigureAwait(false);
+        stopwatch.Stop();
+        Interlocked.Add(ref _writeMilliseconds, stopwatch.ElapsedMilliseconds);
         Interlocked.Add(ref _recordCount, batch.Count);
         Interlocked.Increment(ref _batchCount);
         batch.Clear();

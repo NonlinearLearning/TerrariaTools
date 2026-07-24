@@ -9,17 +9,20 @@ internal sealed class AnalysisTextLogWriter
     private readonly TextLogFilter _filter;
     private readonly RunLogContext _context;
     private readonly string _src;
+    private readonly Action _beforeMemorySnapshot;
 
     public AnalysisTextLogWriter(
       ITextLogSink sink,
       TextLogFilter filter,
       RunLogContext context,
-      string source)
+      string source,
+      Action? beforeMemorySnapshot = null)
     {
         _sink = sink;
         _filter = filter;
         _context = context;
         _src = source;
+        _beforeMemorySnapshot = beforeMemorySnapshot ?? (() => { });
     }
 
     public void WriteResult(string filePath, PrototypeAnalysisResult result)
@@ -161,6 +164,15 @@ internal sealed class AnalysisTextLogWriter
 
     public void WriteMemorySnapshot(string filePath)
     {
+        if (!_filter.Allows(
+              TextLogLevel.Debug,
+              TextLogCategory.Memory,
+              TextLogEventType.Snapshot))
+        {
+            return;
+        }
+
+        _beforeMemorySnapshot();
         ThreadPool.GetAvailableThreads(out var availableWorkers, out var maxIoWorkers);
         ThreadPool.GetMaxThreads(out var maxWorkers, out var maxIoWorkers2);
         _ = maxIoWorkers;

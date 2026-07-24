@@ -7,16 +7,29 @@ namespace MinimalRoslynCpg.Builder.Streaming;
 /// </summary>
 internal sealed class FragmentOwnershipIndex
 {
-  private readonly IReadOnlyList<CpgFragmentOwnership> _owners;
+  private readonly IReadOnlyList<OwnershipStartGroup> _groups;
 
   internal FragmentOwnershipIndex(IEnumerable<CpgFragmentOwnership> owners)
   {
     ArgumentNullException.ThrowIfNull(owners);
-    _owners = owners
-      .OrderBy(owner => owner.SpanLength)
-      .ThenBy(owner => owner.SpanStart)
-      .ThenBy(owner => owner.SourceOrder)
+    var groups = owners
+      .GroupBy(owner => owner.SpanStart)
+      .OrderBy(group => group.Key)
+      .Select(group => new OwnershipStartGroup(
+        group.Key,
+        group
+          .OrderBy(owner => owner.SpanLength)
+          .ThenBy(owner => owner.SourceOrder)
+          .ToArray()))
       .ToArray();
+    var maximumSpanEnd = int.MinValue;
+    foreach (var group in groups)
+    {
+      maximumSpanEnd = Math.Max(maximumSpanEnd, group.MaximumSpanEnd);
+      group.PrefixMaximumSpanEnd = maximumSpanEnd;
+    }
+
+    _groups = groups;
   }
 
   internal CpgFragmentOwnership? FindOwner(CpgNodeDescriptor descriptor)
@@ -32,8 +45,84 @@ internal sealed class FragmentOwnershipIndex
       return null;
     }
 
-    return _owners.FirstOrDefault(owner =>
-      spanStart.Value >= owner.SpanStart && spanEnd.Value <= owner.SpanEnd);
+    var groupIndex = FindLastStartGroup(spanStart.Value);
+    CpgFragmentOwnership? bestOwner = null;
+    while (groupIndex >= 0)
+    {
+      var group = _groups[groupIndex];
+      if (group.MaximumSpanEnd >= spanEnd.Value)
+      {
+        foreach (var owner in group.Owners)
+        {
+          if (owner.SpanEnd < spanEnd.Value)
+          {
+            continue;
+          }
+
+          if (bestOwner is null || IsPreferred(owner, bestOwner))
+          {
+            bestOwner = owner;
+          }
+        }
+      }
+
+      if (groupIndex == 0 || _groups[groupIndex - 1].PrefixMaximumSpanEnd < spanEnd.Value)
+      {
+        break;
+      }
+
+      groupIndex -= 1;
+    }
+
+    return bestOwner;
+  }
+
+  private int FindLastStartGroup(int spanStart)
+  {
+    var low = 0;
+    var high = _groups.Count - 1;
+    var result = -1;
+    while (low <= high)
+    {
+      var middle = low + ((high - low) / 2);
+      if (_groups[middle].SpanStart <= spanStart)
+      {
+        result = middle;
+        low = middle + 1;
+      }
+      else
+      {
+        high = middle - 1;
+      }
+    }
+
+    return result;
+  }
+
+  private static bool IsPreferred(CpgFragmentOwnership candidate, CpgFragmentOwnership current)
+  {
+    return candidate.SpanLength < current.SpanLength ||
+      (candidate.SpanLength == current.SpanLength && candidate.SpanStart < current.SpanStart) ||
+      (candidate.SpanLength == current.SpanLength && candidate.SpanStart == current.SpanStart &&
+       candidate.SourceOrder < current.SourceOrder);
+  }
+
+  private sealed class OwnershipStartGroup
+  {
+    internal OwnershipStartGroup(int spanStart, IReadOnlyList<CpgFragmentOwnership> owners)
+    {
+      SpanStart = spanStart;
+      Owners = owners;
+      MaximumSpanEnd = owners.Max(owner => owner.SpanEnd);
+    }
+
+    internal int SpanStart { get; }
+
+    internal IReadOnlyList<CpgFragmentOwnership> Owners { get; }
+
+    internal int MaximumSpanEnd { get; }
+
+    internal int PrefixMaximumSpanEnd { get; set; }
   }
 }
 

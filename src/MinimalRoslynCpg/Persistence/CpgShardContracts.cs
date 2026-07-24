@@ -38,6 +38,12 @@ public sealed record CpgShardLocation(
 
 public sealed record CpgShardLease(CpgShardLookup Lookup, CpgShardLocation Location);
 
+public sealed record CpgBuildRoutingIndexManifest(
+  string RelativePath,
+  int FormatVersion,
+  long ByteLength,
+  string PayloadHash);
+
 public sealed record CpgReusableFragmentKey(
   string ProjectId,
   string RelativePath,

@@ -17,13 +17,14 @@ public sealed class MarkAnalysisSnapshot
 {
     private readonly CpgAnalysisContext _analysisContext;
     private readonly IReadOnlyDictionary<GraphBindingKey, RoslynCpgNode> _graphBindings;
-    private readonly ConcurrentDictionary<SyntaxNode, Lazy<IReadOnlyList<ExpressionSyntax>>> _atomicCandidates = new();
+    private readonly ConcurrentDictionary<SyntaxNode, Lazy<AtomicCandidateFacts>> _atomicCandidates = new();
     private readonly ConcurrentDictionary<SyntaxNode, Lazy<IOperation?>> _operations = new();
     private readonly ConcurrentDictionary<SyntaxNode, Lazy<MarkRegionFacts>> _regions = new();
     private readonly ConcurrentDictionary<TargetMatchKey, Lazy<bool>> _targetMatches = new();
     private readonly ConcurrentDictionary<SliceQueryKey, Lazy<RoslynCpgSliceResult>> _sliceQueries = new();
-    private readonly ConcurrentDictionary<string, IReadOnlyList<string>> _normalizedTargetNames = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, Lazy<TargetNameDescriptor>> _targetNameDescriptors = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<int, MarkRuleTelemetryAccumulator> _ruleTelemetry = new();
+    private readonly ConcurrentDictionary<Microsoft.CodeAnalysis.CSharp.SyntaxKind, long> _atomicCandidatesReturnedByKind = new();
     private readonly AsyncLocal<MarkRuleTelemetryScope?> _activeRuleTelemetry = new();
     private long _atomicCandidateIndexHitCount;
     private long _atomicCandidateIndexMissCount;
@@ -37,6 +38,12 @@ public sealed class MarkAnalysisSnapshot
     private long _targetMatchCacheMissCount;
     private long _sliceQueryCacheHitCount;
     private long _sliceQueryCacheMissCount;
+    private long _atomicCandidateCount;
+    private long _atomicCandidatesReturnedCount;
+    private long _regionFactsCreatedCount;
+    private long _regionFactsReusedCount;
+    private long _targetMatchQueryCount;
+    private long _targetMatchKeyCreatedCount;
 
     public MarkAnalysisSnapshot(CpgAnalysisContext analysisContext)
     {
@@ -57,10 +64,19 @@ public sealed class MarkAnalysisSnapshot
       Volatile.Read(ref _targetMatchCacheMissCount),
       Volatile.Read(ref _sliceQueryCacheHitCount),
       Volatile.Read(ref _sliceQueryCacheMissCount),
+      Volatile.Read(ref _atomicCandidateCount),
+      Volatile.Read(ref _atomicCandidatesReturnedCount),
+      Volatile.Read(ref _regionFactsCreatedCount),
+      Volatile.Read(ref _regionFactsReusedCount),
+      Volatile.Read(ref _targetMatchQueryCount),
+      Volatile.Read(ref _targetMatchKeyCreatedCount),
       _ruleTelemetry
         .OrderBy(entry => entry.Key)
         .Select(entry => entry.Value.CreateTelemetry())
-        .ToList());
+        .ToList(),
+      _atomicCandidatesReturnedByKind
+        .OrderBy(entry => entry.Key)
+        .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value, StringComparer.Ordinal));
 
     public MarkRuleTelemetryScope BeginRuleTelemetry(
       int ruleOrder,
@@ -77,24 +93,30 @@ public sealed class MarkAnalysisSnapshot
 
     public IReadOnlyList<string> GetNormalizedTargetNames(string? targetName)
     {
+        return GetTargetNameDescriptor(targetName).DisplayNames;
+    }
+
+    public TargetNameDescriptor GetTargetNameDescriptor(string? targetName)
+    {
         var key = targetName ?? string.Empty;
-        return _normalizedTargetNames.GetOrAdd(
+        return _targetNameDescriptors.GetOrAdd(
           key,
-          static value => value
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Distinct(StringComparer.Ordinal)
-            .ToList());
+          value =>
+          new Lazy<TargetNameDescriptor>(() =>
+            {
+              Interlocked.Increment(ref _targetMatchKeyCreatedCount);
+              return TargetNameDescriptor.Create(value);
+            },
+            LazyThreadSafetyMode.ExecutionAndPublication)).Value;
     }
 
     public bool GetTargetMatch(
       SyntaxNode syntaxNode,
-      IReadOnlyList<string> targetNames,
+      TargetNameDescriptor targetNames,
       Func<bool> evaluate)
     {
-        var key = new TargetMatchKey(
-          syntaxNode,
-          string.Join("\u001f", targetNames.OrderBy(name => name, StringComparer.Ordinal)));
+        Interlocked.Increment(ref _targetMatchQueryCount);
+        var key = new TargetMatchKey(syntaxNode, targetNames.CacheKey);
         if (_targetMatches.TryGetValue(key, out var existing))
         {
             RecordTargetMatchCacheHit();
@@ -117,25 +139,31 @@ public sealed class MarkAnalysisSnapshot
 
     public IReadOnlyList<ExpressionSyntax> GetAtomicCandidates(SyntaxNode root)
     {
-        if (_atomicCandidates.TryGetValue(root, out var existing))
-        {
-            RecordAtomicCandidateIndexHit();
-            return existing.Value;
-        }
+        var candidates = GetAtomicCandidateFacts(root).Candidates;
+        RecordAtomicCandidatesReturned(candidates);
+        return candidates;
+    }
 
-        var created = new Lazy<IReadOnlyList<ExpressionSyntax>>(
-          () => new AtomicExpressionAnalyzer().Analyze(root),
-          LazyThreadSafetyMode.ExecutionAndPublication);
-        var value = _atomicCandidates.GetOrAdd(root, created);
-        if (ReferenceEquals(value, created))
+    public IReadOnlyList<ExpressionSyntax> GetAtomicCandidates(
+      SyntaxNode root,
+      IReadOnlyCollection<Microsoft.CodeAnalysis.CSharp.SyntaxKind> allowedKinds)
+    {
+        var facts = GetAtomicCandidateFacts(root);
+        IReadOnlyList<ExpressionSyntax> candidates;
+        if (allowedKinds.Count == 1)
         {
-            RecordAtomicCandidateIndexMiss();
+            var kind = allowedKinds.First();
+            candidates = facts.CandidatesByKind.TryGetValue(kind, out var bucket)
+              ? bucket
+              : Array.Empty<ExpressionSyntax>();
         }
         else
         {
-            RecordAtomicCandidateIndexHit();
+            candidates = facts.Candidates.Where(expression => allowedKinds.Contains(expression.Kind())).ToArray();
         }
-        return value.Value;
+
+        RecordAtomicCandidatesReturned(candidates);
+        return candidates;
     }
 
     public IOperation? GetOperation(SyntaxNode syntaxNode)
@@ -163,25 +191,72 @@ public sealed class MarkAnalysisSnapshot
 
     public MarkCodeRegion GetMarkRegion(SyntaxNode anchorNode)
     {
-        if (_regions.TryGetValue(anchorNode, out var existing))
+        var regionNode = MarkRegionAnalyzer.ResolveRegionNode(anchorNode);
+        if (_regions.TryGetValue(regionNode, out var existing))
         {
             RecordRegionCacheHit();
+            Interlocked.Increment(ref _regionFactsReusedCount);
             return existing.Value.Create(anchorNode);
         }
 
         var created = new Lazy<MarkRegionFacts>(
-          () => MarkRegionFacts.From(new MarkRegionAnalyzer().Analyze(anchorNode, _analysisContext)),
+          () => MarkRegionFacts.FromRegionNode(regionNode),
           LazyThreadSafetyMode.ExecutionAndPublication);
-        var value = _regions.GetOrAdd(anchorNode, created);
+        var value = _regions.GetOrAdd(regionNode, created);
         if (ReferenceEquals(value, created))
         {
             RecordRegionCacheMiss();
+            Interlocked.Increment(ref _regionFactsCreatedCount);
         }
         else
         {
             RecordRegionCacheHit();
+            Interlocked.Increment(ref _regionFactsReusedCount);
         }
         return value.Value.Create(anchorNode);
+    }
+
+    private AtomicCandidateFacts GetAtomicCandidateFacts(SyntaxNode root)
+    {
+        if (_atomicCandidates.TryGetValue(root, out var existing))
+        {
+            RecordAtomicCandidateIndexHit();
+            return existing.Value;
+        }
+
+        var created = new Lazy<AtomicCandidateFacts>(
+          () => CreateAtomicCandidateFacts(root),
+          LazyThreadSafetyMode.ExecutionAndPublication);
+        var value = _atomicCandidates.GetOrAdd(root, created);
+        if (ReferenceEquals(value, created))
+        {
+            RecordAtomicCandidateIndexMiss();
+        }
+        else
+        {
+            RecordAtomicCandidateIndexHit();
+        }
+
+        return value.Value;
+    }
+
+    private void RecordAtomicCandidatesReturned(IReadOnlyList<ExpressionSyntax> candidates)
+    {
+        Interlocked.Add(ref _atomicCandidatesReturnedCount, candidates.Count);
+        foreach (var expression in candidates)
+        {
+            _atomicCandidatesReturnedByKind.AddOrUpdate(expression.Kind(), 1, (_, count) => count + 1);
+        }
+    }
+
+    private AtomicCandidateFacts CreateAtomicCandidateFacts(SyntaxNode root)
+    {
+        var candidates = new AtomicExpressionAnalyzer().Analyze(root);
+        var buckets = candidates
+          .GroupBy(expression => expression.Kind())
+          .ToDictionary(group => group.Key, group => (IReadOnlyList<ExpressionSyntax>)group.ToArray());
+        Interlocked.Add(ref _atomicCandidateCount, candidates.Count);
+        return new AtomicCandidateFacts(candidates, buckets);
     }
 
     public bool TryResolvePrimaryGraphNode(SyntaxNode syntaxNode, out RoslynCpgNode? graphNode)
@@ -375,14 +450,15 @@ public sealed class MarkAnalysisSnapshot
       int ExpressionCount,
       int StatementCount)
     {
-        public static MarkRegionFacts From(MarkCodeRegion region)
+        public static MarkRegionFacts FromRegionNode(SyntaxNode regionNode)
         {
+            var nodes = regionNode.DescendantNodesAndSelf().ToList();
             return new MarkRegionFacts(
-              region.RegionNode,
-              region.Span,
-              region.NodeCount,
-              region.ExpressionCount,
-              region.StatementCount);
+              regionNode,
+              regionNode.Span,
+              nodes.Count,
+              nodes.OfType<ExpressionSyntax>().Count(),
+              nodes.OfType<Microsoft.CodeAnalysis.CSharp.Syntax.StatementSyntax>().Count());
         }
 
         public MarkCodeRegion Create(SyntaxNode anchorNode)
@@ -390,6 +466,10 @@ public sealed class MarkAnalysisSnapshot
             return new MarkCodeRegion(anchorNode, RegionNode, Span, NodeCount, ExpressionCount, StatementCount);
         }
     }
+
+    private sealed record AtomicCandidateFacts(
+      IReadOnlyList<ExpressionSyntax> Candidates,
+      IReadOnlyDictionary<Microsoft.CodeAnalysis.CSharp.SyntaxKind, IReadOnlyList<ExpressionSyntax>> CandidatesByKind);
 
     internal sealed class MarkRuleTelemetryAccumulator
     {
@@ -542,7 +622,41 @@ public sealed record MarkAnalysisTelemetry(
   long TargetMatchCacheMissCount,
   long SliceQueryCacheHitCount,
   long SliceQueryCacheMissCount,
-  IReadOnlyList<MarkRuleTelemetry> RuleTelemetry);
+  long AtomicCandidateCount,
+  long AtomicCandidatesReturnedCount,
+  long RegionFactsCreatedCount,
+  long RegionFactsReusedCount,
+  long TargetMatchQueryCount,
+  long TargetMatchKeyCreatedCount,
+  IReadOnlyList<MarkRuleTelemetry> RuleTelemetry,
+  IReadOnlyDictionary<string, long> AtomicCandidatesReturnedByKind);
+
+public sealed class TargetNameDescriptor
+{
+    private TargetNameDescriptor(IReadOnlyList<string> displayNames, string cacheKey)
+    {
+        DisplayNames = displayNames;
+        Lookup = new HashSet<string>(displayNames, StringComparer.Ordinal);
+        CacheKey = cacheKey;
+    }
+
+    public IReadOnlyList<string> DisplayNames { get; }
+
+    public IReadOnlySet<string> Lookup { get; }
+
+    public string CacheKey { get; }
+
+    public static TargetNameDescriptor Create(string value)
+    {
+        var displayNames = value
+          .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+          .Where(name => !string.IsNullOrWhiteSpace(name))
+          .Distinct(StringComparer.Ordinal)
+          .ToArray();
+        var cacheKey = string.Join("\u001f", displayNames.OrderBy(name => name, StringComparer.Ordinal));
+        return new TargetNameDescriptor(displayNames, cacheKey);
+    }
+}
 
 public sealed record MarkRuleTelemetry(
   int RuleOrder,

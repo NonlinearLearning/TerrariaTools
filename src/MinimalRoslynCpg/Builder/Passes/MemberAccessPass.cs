@@ -28,7 +28,7 @@ public sealed partial class RoslynCpgBuilder
 {
     internal void RunMemberAccessPass(RoslynCpgBuildContext context)
     {
-        foreach (var fieldReferenceOperation in EnumerateOperationRoots(context).OfType<IFieldReferenceOperation>())
+        foreach (var fieldReferenceOperation in EnumerateOperations(context).OfType<IFieldReferenceOperation>())
         {
             var operationNode = GetOrCreateOperationNode(fieldReferenceOperation, context.Graph);
             AddMemberAccess(
@@ -39,7 +39,7 @@ public sealed partial class RoslynCpgBuilder
               context.Graph);
         }
 
-        foreach (var propertyReferenceOperation in EnumerateOperationRoots(context).OfType<IPropertyReferenceOperation>())
+        foreach (var propertyReferenceOperation in EnumerateOperations(context).OfType<IPropertyReferenceOperation>())
         {
             var operationNode = GetOrCreateOperationNode(propertyReferenceOperation, context.Graph);
             AddMemberAccess(
