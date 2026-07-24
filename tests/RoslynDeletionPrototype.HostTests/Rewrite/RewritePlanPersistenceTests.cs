@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using RoslynPrototype.Application;
 using RoslynPrototype.Rewrite;
 using Rules;
@@ -156,6 +158,59 @@ public sealed class RewritePlanPersistenceTests : IDisposable
 
         Assert.NotEmpty(captured.Edits);
         Assert.Equal(captured.Diff.ToString(), replayed.Diff.ToString());
+    }
+
+    [Fact]
+    public async Task AnalyzeDirectory_WithCapturedPlan_ReplayedSourcesCompileWithoutErrors()
+    {
+        WriteSource("PlayerInput.cs", "namespace Demo; public sealed class PlayerInput { }");
+        WriteSource("Independent.cs", "namespace Demo; public static class Independent { public static int Run() => 42; }");
+        var artifactRoot = Path.Combine(_tempDirectory, "artifact");
+        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+
+        var captured = await host.AnalyzeFromArgsAsync(new[]
+        {
+            _inputRoot,
+            "--delete-class",
+            "PlayerInput",
+            "--rewrite-plan-out",
+            artifactRoot,
+            "--no-diff",
+        });
+        var replayed = await host.AnalyzeFromArgsAsync(new[]
+        {
+            _inputRoot,
+            "--rewrite-plan-in",
+            artifactRoot,
+            "--no-diff",
+        });
+        var (_, plans) = _artifactService.ReadAndValidate(artifactRoot, _inputRoot);
+        var rewrittenSources = Directory.EnumerateFiles(_inputRoot, "*.cs", SearchOption.AllDirectories)
+            .ToDictionary(path => path, File.ReadAllText, StringComparer.Ordinal);
+        var rewriter = new PrototypeRewriter();
+
+        foreach (var plan in plans)
+        {
+            var path = Path.Combine(_inputRoot, plan.RelativePath);
+            rewrittenSources[path] = Assert.IsType<string>(rewriter.ExecutePlan(
+                rewrittenSources[path],
+                path,
+                plan).RewrittenSource);
+        }
+
+        var compilation = CSharpCompilation.Create(
+            "ReplayCompilation",
+            rewrittenSources.Select(pair => CSharpSyntaxTree.ParseText(pair.Value, path: pair.Key)),
+            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = compilation.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+
+        Assert.NotEmpty(captured.Edits);
+        Assert.Equal(captured.Diff.ToString(), replayed.Diff.ToString());
+        Assert.Single(plans);
+        Assert.Empty(errors);
     }
 
     public void Dispose()
