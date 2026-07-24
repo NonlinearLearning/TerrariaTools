@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Builder;
+using MinimalRoslynCpg.Model;
 using RoslynPrototype.Application.Logging;
 using RoslynPrototype.Analysis;
 using RoslynPrototype.Decision;
@@ -85,7 +86,8 @@ internal sealed class DeletionDirectoryAnalysisService
               }
 
               aggregation.AddFileResult(filePath, result);
-          });
+          },
+          analysisWriter);
 
         if (DeletionApplicationOptions.ShouldUseDeleteClassUsingCleanup(options))
         {
@@ -153,7 +155,8 @@ internal sealed class DeletionDirectoryAnalysisService
             : Array.Empty<MethodDeclarationSyntax>();
               return AnalyzeSingleFileForUnreferencedMethods(semanticModel, root, methodDeclarations);
           },
-          (_, filePath, result) => aggregation.AddFileResult(filePath, result));
+          (_, filePath, result) => aggregation.AddFileResult(filePath, result),
+          analysisWriter);
 
         stopwatch.Stop();
         return aggregation.BuildResult(new AnalysisStats(
@@ -452,7 +455,8 @@ internal sealed class DeletionDirectoryAnalysisService
       IReadOnlyDictionary<string, string> options,
       DeletionAnalysisRuntime runtime,
       Func<string, SyntaxTree, SemanticModel, SyntaxNode, PrototypeAnalysisResult> analyzeFile,
-      Action<int, string, PrototypeAnalysisResult> onCompleted)
+      Action<int, string, PrototypeAnalysisResult> onCompleted,
+      AnalysisTextLogWriter? analysisWriter = null)
     {
         PrototypeAnalysisResult AnalyzeAndRecord(
           string filePath,
@@ -477,6 +481,11 @@ internal sealed class DeletionDirectoryAnalysisService
                 onCompleted(index, filePath, AnalyzeAndRecord(filePath, tree));
             }
 
+            analysisWriter?.WriteDirectoryPublicationSummary(
+              filePaths.Count,
+              unpublishedCountPeak: 0,
+              waitToPublishMilliseconds: 0,
+              oldestUnpublishedIndex: -1);
             return;
         }
 
@@ -484,42 +493,87 @@ internal sealed class DeletionDirectoryAnalysisService
         var nextPublishIndex = 0;
         var completedFlags = new bool[filePaths.Count];
         var completedResults = new PrototypeAnalysisResult?[filePaths.Count];
+        var analysisCompletedTimestamps = new long[filePaths.Count];
+        var unpublishedCountPeak = 0;
+        var waitToPublishMilliseconds = 0L;
+        var oldestUnpublishedIndex = -1;
 
         runtime.Scheduler.RunOrderedAsync(
           filePaths.Count,
           runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-          (index, cancellationToken) =>
+          async (index, cancellationToken) =>
           {
               cancellationToken.ThrowIfCancellationRequested();
               var filePath = filePaths[index];
               var tree = trees[filePath];
-              return Task.Run(
-                () =>
-                {
-                    var result = AnalyzeAndRecord(filePath, tree);
-                    lock (publishLock)
+                  using var lease = await runtime.CpgBuildAdmissionBudget
+                    .AcquireAsync(
+                      runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism,
+                      cancellationToken)
+                    .ConfigureAwait(false);
+                  using var scope = runtime.PushCpgBuildAdmissionLease(lease);
+                  return await Task.Run(
+                    () =>
                     {
-                        completedFlags[index] = true;
-                        completedResults[index] = result;
-                        while (nextPublishIndex < filePaths.Count &&
-                               completedFlags[nextPublishIndex])
+                        var result = AnalyzeAndRecord(filePath, tree);
+                        var completedTimestamp = Stopwatch.GetTimestamp();
+                        lock (publishLock)
                         {
-                            var readyIndex = nextPublishIndex;
-                            var readyFilePath = filePaths[readyIndex];
-                            var readyResult = completedResults[readyIndex]!;
-                            completedResults[nextPublishIndex] = null;
-                            nextPublishIndex += 1;
-                            onCompleted(readyIndex, readyFilePath, readyResult);
-                        }
-                    }
+                            completedFlags[index] = true;
+                            completedResults[index] = result;
+                            analysisCompletedTimestamps[index] = completedTimestamp;
+                            var unpublishedCount = 0;
+                            var oldestUnpublished = -1;
+                            for (var candidateIndex = nextPublishIndex;
+                                 candidateIndex < filePaths.Count;
+                                 candidateIndex++)
+                            {
+                                if (!completedFlags[candidateIndex])
+                                {
+                                    continue;
+                                }
 
-                    return 0;
-                },
-                cancellationToken);
+                                unpublishedCount += 1;
+                                oldestUnpublished = oldestUnpublished < 0
+                                  ? candidateIndex
+                                  : oldestUnpublished;
+                            }
+
+                            if (unpublishedCount > unpublishedCountPeak)
+                            {
+                                unpublishedCountPeak = unpublishedCount;
+                                oldestUnpublishedIndex = oldestUnpublished;
+                            }
+
+                            while (nextPublishIndex < filePaths.Count &&
+                                   completedFlags[nextPublishIndex])
+                            {
+                                var readyIndex = nextPublishIndex;
+                                var readyFilePath = filePaths[readyIndex];
+                                var readyResult = completedResults[readyIndex]!;
+                                var publicationTimestamp = Stopwatch.GetTimestamp();
+                                waitToPublishMilliseconds += (long)Stopwatch
+                                  .GetElapsedTime(analysisCompletedTimestamps[readyIndex], publicationTimestamp)
+                                  .TotalMilliseconds;
+                                completedResults[nextPublishIndex] = null;
+                                nextPublishIndex += 1;
+                                onCompleted(readyIndex, readyFilePath, readyResult);
+                            }
+                        }
+
+                        return 0;
+                    },
+                    cancellationToken)
+                    .ConfigureAwait(false);
           },
           runtime.ExecutionOptions.CancellationToken)
         .GetAwaiter()
         .GetResult();
+        analysisWriter?.WriteDirectoryPublicationSummary(
+          filePaths.Count,
+          unpublishedCountPeak,
+          waitToPublishMilliseconds,
+          oldestUnpublishedIndex);
     }
 
     private static IReadOnlyList<string> ResolveAnalysisFilePaths(
@@ -967,9 +1021,85 @@ internal sealed class DeletionDirectoryAnalysisService
                 FreezeQueryIndexElapsedMilliseconds =
                   _cpgBuildTelemetry.FreezeQueryIndexElapsedMilliseconds +
                   telemetry.FreezeQueryIndexElapsedMilliseconds,
+                FreezeTelemetry = MergeFreezeTelemetry(
+                  _cpgBuildTelemetry.FreezeTelemetry,
+                  telemetry.FreezeTelemetry),
+                OperationOrderedWindow = MergeOrderedWindowTelemetry(
+                  _cpgBuildTelemetry.OperationOrderedWindow,
+                  telemetry.OperationOrderedWindow),
+                CfgSensitiveOrderedWindow = MergeOrderedWindowTelemetry(
+                  _cpgBuildTelemetry.CfgSensitiveOrderedWindow,
+                  telemetry.CfgSensitiveOrderedWindow),
+                AdmissionTelemetry = MergeAdmissionTelemetry(
+                  _cpgBuildTelemetry.AdmissionTelemetry,
+                  telemetry.AdmissionTelemetry),
                 GraphNodeCount = _cpgBuildTelemetry.GraphNodeCount + telemetry.GraphNodeCount,
                 GraphEdgeCount = _cpgBuildTelemetry.GraphEdgeCount + telemetry.GraphEdgeCount
             };
+        }
+
+        private static RoslynCpgFreezeTelemetry MergeFreezeTelemetry(
+          RoslynCpgFreezeTelemetry left,
+          RoslynCpgFreezeTelemetry right)
+        {
+            return new RoslynCpgFreezeTelemetry(
+              left.TotalElapsedMilliseconds + right.TotalElapsedMilliseconds,
+              left.AssignDeterministicNodeIdsElapsedMilliseconds + right.AssignDeterministicNodeIdsElapsedMilliseconds,
+              left.CreateAnchorsElapsedMilliseconds + right.CreateAnchorsElapsedMilliseconds,
+              left.CreateNodeIdTableElapsedMilliseconds + right.CreateNodeIdTableElapsedMilliseconds,
+              left.RemapNodesElapsedMilliseconds + right.RemapNodesElapsedMilliseconds,
+              left.RemapEdgesElapsedMilliseconds + right.RemapEdgesElapsedMilliseconds,
+              left.BuildQueryIndexElapsedMilliseconds + right.BuildQueryIndexElapsedMilliseconds,
+              left.PopulateEdgeIndexBucketsElapsedMilliseconds + right.PopulateEdgeIndexBucketsElapsedMilliseconds,
+              left.OrderEdgesElapsedMilliseconds + right.OrderEdgesElapsedMilliseconds,
+              left.OrderNodesElapsedMilliseconds + right.OrderNodesElapsedMilliseconds,
+              left.SnapshotHashElapsedMilliseconds + right.SnapshotHashElapsedMilliseconds,
+              left.BuildAdjacencyElapsedMilliseconds + right.BuildAdjacencyElapsedMilliseconds,
+              left.BuildKindAdjacencyElapsedMilliseconds + right.BuildKindAdjacencyElapsedMilliseconds,
+              left.BuildEdgeKindIndexElapsedMilliseconds + right.BuildEdgeKindIndexElapsedMilliseconds,
+              left.BuildNodeKindIndexElapsedMilliseconds + right.BuildNodeKindIndexElapsedMilliseconds,
+              left.BuildFilePathIndexElapsedMilliseconds + right.BuildFilePathIndexElapsedMilliseconds,
+              left.NodeCount + right.NodeCount,
+              left.EdgeCount + right.EdgeCount,
+              left.DistinctAnchorCount + right.DistinctAnchorCount);
+        }
+
+        private static RoslynCpgOrderedWorkWindowTelemetry MergeOrderedWindowTelemetry(
+          RoslynCpgOrderedWorkWindowTelemetry? left,
+          RoslynCpgOrderedWorkWindowTelemetry? right)
+        {
+            var first = left ?? RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
+            var second = right ?? RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
+            return new RoslynCpgOrderedWorkWindowTelemetry(
+              Math.Max(first.ActiveWorkerPeak, second.ActiveWorkerPeak),
+              Math.Max(first.CompletedButUncommittedPeak, second.CompletedButUncommittedPeak),
+              Math.Max(first.CompletedRecordCountPeak, second.CompletedRecordCountPeak),
+              first.CommitWaitMilliseconds + second.CommitWaitMilliseconds,
+                first.WindowBlockedMilliseconds + second.WindowBlockedMilliseconds);
+        }
+
+        private static CpgBuildAdmissionTelemetry? MergeAdmissionTelemetry(
+          CpgBuildAdmissionTelemetry? left,
+          CpgBuildAdmissionTelemetry? right)
+        {
+            if (left is null)
+            {
+                return right;
+            }
+
+            if (right is null)
+            {
+                return left;
+            }
+
+            return new CpgBuildAdmissionTelemetry(
+              Math.Max(left.RequestedDegree, right.RequestedDegree),
+              Math.Max(left.GrantedDegree, right.GrantedDegree),
+              left.WaitMilliseconds + right.WaitMilliseconds,
+              Math.Max(left.ActiveLeaseCountAtGrant, right.ActiveLeaseCountAtGrant),
+              Math.Max(left.GrantedDegreeHighWaterMark, right.GrantedDegreeHighWaterMark),
+              left.Policy,
+              Math.Max(left.MaxDegreePerLease, right.MaxDegreePerLease));
         }
 
         private void AddMarkAnalysisTelemetry(MarkAnalysisTelemetry? telemetry)

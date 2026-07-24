@@ -51,6 +51,8 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path
 
 `<input-path>` 是一个 `.cs` 文件或目录。先保留 `--no-diff` 或默认的非写回行为；只有确认 diff 后才加入 `--write-back`。
 
+需要诊断目录并发与文件内 CPG 分片并发时，使用 `--cpg-max-degree-of-parallelism` 单独覆盖 CPG 值；三组测量命令与继承规则见 [CLI 参考](cli-reference.md#并发诊断)。
+
 ## 4. 运行回归测试
 
 ```powershell

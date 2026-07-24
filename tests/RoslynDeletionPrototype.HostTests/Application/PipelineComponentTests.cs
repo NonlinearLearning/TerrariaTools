@@ -131,6 +131,85 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void Analyze_RuntimeConfiguredCpgDop_ReportsCpgOverride()
+    {
+        var source = PipelineSources.RuntimeConfiguredDopSource;
+        var runtime = new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(
+            MaxDegreeOfParallelism: 12,
+            CpgMaxDegreeOfParallelism: 1),
+          new DeletionAnalysisEpoch(0, 0, 0));
+        var application = new DeletionApplicationService(
+          Array.Empty<RuleDefinitionMark>(),
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>());
+
+        var result = application.Analyze(
+          source,
+          "runtime-cpg-override.cs",
+          new Dictionary<string, string>(),
+          runtime);
+
+        Assert.Equal(12, runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
+        Assert.Equal(1, result.CpgBuildTelemetry!.MaxDegreeOfParallelism);
+    }
+
+    [Fact]
+    public void CreateFromOptions_WithCpgDopOverride_UsesExplicitCpgValue()
+    {
+        var runtime = DeletionAnalysisRuntime.CreateFromOptions(
+          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+          {
+            ["max-degree-of-parallelism"] = "12",
+            ["cpg-max-degree-of-parallelism"] = "1"
+          });
+
+        Assert.Equal(12, runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
+        Assert.Equal(1, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
+    }
+
+    [Fact]
+    public void CreateFromOptions_WithoutCpgDopOverride_InheritsGlobalValue()
+    {
+        var runtime = DeletionAnalysisRuntime.CreateFromOptions(
+          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+          {
+            ["max-degree-of-parallelism"] = "12"
+          });
+
+        Assert.Equal(12, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
+    }
+
+    [Fact]
+    public void RuntimeLifecycle_PreservesCpgBuildAdmissionBudget()
+    {
+        var runtime = new DeletionAnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 4, CpgMaxDegreeOfParallelism: 3),
+          new DeletionAnalysisEpoch(0, 0, 0));
+
+        Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.InvalidateCaches().CpgBuildAdmissionBudget);
+        Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.NextEpoch().CpgBuildAdmissionBudget);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("invalid")]
+    [InlineData("true")]
+    public void CreateFromOptions_WithInvalidCpgDopOverride_ThrowsArgumentException(string value)
+    {
+        var exception = Assert.Throws<ArgumentException>(() =>
+          DeletionAnalysisRuntime.CreateFromOptions(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["cpg-max-degree-of-parallelism"] = value
+            }));
+
+        Assert.Contains("--cpg-max-degree-of-parallelism", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void MarkingEngine_Run_WithGroupParallelism_RunsIndependentRulesConcurrently()
     {
         var source = PipelineSources.ConcurrentMarkingSource;
@@ -1185,7 +1264,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_MaxDegreeOfParallelism_KeepsStableResults()
+    public void AnalyzeFromArgs_ForDirectoryDeleteClass_SeparateDirectoryAndCpgDop_KeepsStableResults()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-parallelism-project");
         Directory.CreateDirectory(projectDirectory);
@@ -1238,21 +1317,98 @@ public sealed class PipelineComponentTests : IDisposable
           "--no-diff"
         });
         Assert.NotEmpty(serialResult.Edits);
-        foreach (var maxDegreeOfParallelism in new[] { 16, 64 })
+        foreach (var configuration in new[]
         {
-            var parallelResult = application.AnalyzeFromArgs(new[]
+          (DirectoryDop: 12, CpgDop: 1, DisableDirectoryParallelism: false),
+          (DirectoryDop: 12, CpgDop: 12, DisableDirectoryParallelism: false),
+          (DirectoryDop: 12, CpgDop: 12, DisableDirectoryParallelism: true)
+        })
+        {
+            var arguments = new List<string>
             {
-              projectDirectory,
-              "--delete-class",
-              "PlayerInput",
-              "--max-degree-of-parallelism",
-              maxDegreeOfParallelism.ToString(),
-              "--no-diff"
-            });
+                projectDirectory,
+                "--delete-class",
+                "PlayerInput",
+                "--max-degree-of-parallelism",
+                configuration.DirectoryDop.ToString(),
+                "--cpg-max-degree-of-parallelism",
+                configuration.CpgDop.ToString(),
+                "--no-diff"
+            };
+            if (configuration.DisableDirectoryParallelism)
+            {
+                arguments.Add("--disable-directory-parallelism");
+            }
+
+            var parallelResult = application.AnalyzeFromArgs(arguments.ToArray());
 
             Assert.NotEmpty(parallelResult.Edits);
+            var expectedGrantedCpgDop = configuration.DisableDirectoryParallelism
+              ? configuration.CpgDop
+              : Math.Min(configuration.CpgDop, Math.Max(1, configuration.CpgDop / 2));
+            Assert.Equal(expectedGrantedCpgDop, parallelResult.CpgBuildTelemetry!.MaxDegreeOfParallelism);
             AssertEquivalentAnalysisResults(serialResult, parallelResult);
         }
+    }
+
+    [Fact]
+    public async Task AnalyzeDirectoryAsync_SourceOrderPublicationBacklog_RecordsAnalysisLogTelemetry()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "directory-publication-backlog-project");
+        Directory.CreateDirectory(projectDirectory);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "A.Slow.cs"),
+          "namespace Demo; public sealed class SlowFile { public int Run() => 1; }",
+          Encoding.UTF8);
+        File.WriteAllText(
+          Path.Combine(projectDirectory, "B.Fast.cs"),
+          "namespace Demo; public sealed class FastFileOne { public int Run() => 2; }",
+          Encoding.UTF8);
+        var analysisLogPath = Path.Combine(_tempDirectory, "directory-publication-backlog.log");
+        var delayRule = new FileDelayMarkRule();
+        var host = new DeletionCommandHost(new DeletionRulePipeline(
+          new RuleDefinitionMark[] { delayRule },
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>()));
+
+        await host.AnalyzeFromArgsAsync(new[]
+        {
+            projectDirectory,
+            "--max-degree-of-parallelism",
+            "2",
+            "--cpg-max-degree-of-parallelism",
+            "2",
+            "--analysis-log",
+            analysisLogPath,
+            "--log-profile",
+            "benchmark",
+            "--no-diff"
+        });
+
+        var summaryLine = File.ReadAllLines(analysisLogPath)
+          .Single(line =>
+            line.Contains("cat=file evt=summary", StringComparison.Ordinal) &&
+            line.Contains("msg=\"directory source-order publication summary\"", StringComparison.Ordinal));
+
+        Assert.True(ExtractNamedLongField(summaryLine, "unpublishedCountPeak") >= 1);
+        Assert.True(ExtractNamedLongField(summaryLine, "oldestUnpublishedIndex") >= 0);
+        Assert.True(ExtractNamedLongField(summaryLine, "waitToPublishMs") > 0);
+        Assert.True(delayRule.FastFileEntered.IsCompletedSuccessfully);
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_WithInvalidCpgDopOverride_ThrowsArgumentException()
+    {
+        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var exception = Assert.Throws<ArgumentException>(() => application.AnalyzeFromArgs(new[]
+        {
+          "--cpg-max-degree-of-parallelism",
+          "0"
+        }));
+
+        Assert.Contains("--cpg-max-degree-of-parallelism", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -5081,6 +5237,52 @@ public sealed class PipelineComponentTests : IDisposable
           diagnostic.Start,
           diagnostic.End,
           diagnostic.Message);
+    }
+
+    private static long ExtractNamedLongField(string line, string fieldName)
+    {
+        var prefix = $"{fieldName}=";
+        var startIndex = line.IndexOf(prefix, StringComparison.Ordinal);
+        Assert.True(startIndex >= 0, $"Missing field '{fieldName}' in log line: {line}");
+        startIndex += prefix.Length;
+        var endIndex = line.IndexOf(' ', startIndex);
+        var rawValue = endIndex >= 0
+          ? line[startIndex..endIndex]
+          : line[startIndex..];
+        return long.Parse(rawValue);
+    }
+
+    private sealed class FileDelayMarkRule : RuleDefinitionMark
+    {
+        private readonly TaskCompletionSource _fastFileEntered = new(
+          TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override string RuleId { get; } = "TEST-DIRECTORY-PUBLICATION-BACKLOG-001";
+
+        public override string GroupKey { get; } = "TEST-DIRECTORY-PUBLICATION-BACKLOG";
+
+        public override string Name { get; } = "Delay one file to force directory publication backlog telemetry.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+          new[] { SyntaxKind.CompilationUnit };
+
+        public Task FastFileEntered => _fastFileEntered.Task;
+
+        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        {
+            var fileName = Path.GetFileName(root.SyntaxTree.FilePath);
+            if (string.Equals(fileName, "A.Slow.cs", StringComparison.Ordinal))
+            {
+                _fastFileEntered.Task.Wait(TimeSpan.FromSeconds(5));
+                Thread.Sleep(100);
+            }
+            else
+            {
+                _fastFileEntered.TrySetResult();
+            }
+
+            yield break;
+        }
     }
 }
 

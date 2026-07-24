@@ -27,9 +27,17 @@ public sealed record RoslynCpgBuilderOptions(
   RoslynCpgDataFlowOptions? DataFlowOptions = null,
   RoslynCpgInterproceduralDataFlowOptions? InterproceduralDataFlowOptions = null,
   CpgPersistenceOptions? Persistence = null,
-  bool UsePreallocatedNodeIds = false)
+  bool UsePreallocatedNodeIds = false,
+  int? OrderedResultReorderAllowance = null,
+  int MaxOrderedResultRecordCount = 250_000,
+  CpgBuildAdmissionTelemetry? AdmissionTelemetry = null)
 {
   public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
+
+  public int EffectiveOrderedResultReorderAllowance =>
+    Math.Max(0, OrderedResultReorderAllowance ?? EffectiveMaxDegreeOfParallelism);
+
+  public int EffectiveMaxOrderedResultRecordCount => Math.Max(1, MaxOrderedResultRecordCount);
 
   public RoslynCpgDataFlowOptions EffectiveDataFlowOptions =>
     DataFlowOptions ?? RoslynCpgDataFlowOptions.Unbounded;
@@ -164,7 +172,10 @@ public sealed record RoslynCpgBuildTelemetry(
   RoslynCpgStreamingFragmentTelemetry? StreamingFragments = null,
   RoslynCpgOperationFragmentTelemetry? OperationFragments = null,
   RoslynCpgPreallocationTelemetry? Preallocation = null,
-  CpgPersistenceTelemetry? Persistence = null)
+  CpgPersistenceTelemetry? Persistence = null,
+  RoslynCpgOrderedWorkWindowTelemetry? OperationOrderedWindow = null,
+  RoslynCpgOrderedWorkWindowTelemetry? CfgSensitiveOrderedWindow = null,
+  CpgBuildAdmissionTelemetry? AdmissionTelemetry = null)
 {
   public static RoslynCpgBuildTelemetry CreateDefault()
   {
@@ -211,6 +222,28 @@ public sealed record RoslynCpgOperationFragmentTelemetry(
       ReleasedFragmentCount: 0,
       PeakBufferedFragmentCount: 0,
       ReleasedBuilderOperationState: false);
+  }
+}
+
+public sealed record CpgBuildAdmissionTelemetry(
+  int RequestedDegree,
+  int GrantedDegree,
+  long WaitMilliseconds,
+  int ActiveLeaseCountAtGrant,
+  int GrantedDegreeHighWaterMark,
+  CpgBuildAdmissionPolicy Policy,
+  int MaxDegreePerLease);
+
+public sealed record RoslynCpgOrderedWorkWindowTelemetry(
+  int ActiveWorkerPeak,
+  int CompletedButUncommittedPeak,
+  int CompletedRecordCountPeak,
+  long CommitWaitMilliseconds,
+  long WindowBlockedMilliseconds)
+{
+  public static RoslynCpgOrderedWorkWindowTelemetry CreateDefault()
+  {
+    return new RoslynCpgOrderedWorkWindowTelemetry(0, 0, 0, 0, 0);
   }
 }
 

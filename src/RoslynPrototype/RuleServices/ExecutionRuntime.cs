@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
+using MinimalRoslynCpg.Builder;
 
 namespace Rules;
 
@@ -9,9 +10,13 @@ public sealed record RoslynPrototypeExecutionOptions(
   bool EnableDirectoryParallelism = true,
   bool EnableGroupParallelism = false,
   bool EnableHelperParallelism = true,
-  CancellationToken CancellationToken = default)
+  CancellationToken CancellationToken = default,
+  int? CpgMaxDegreeOfParallelism = null)
 {
   public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
+
+  public int EffectiveCpgMaxDegreeOfParallelism =>
+    CpgMaxDegreeOfParallelism ?? EffectiveMaxDegreeOfParallelism;
 
   public static RoslynPrototypeExecutionOptions CreateDefault()
   {
@@ -94,12 +99,20 @@ public sealed class BoundedRuleStageScheduler : IRuleStageScheduler
 public sealed class DeletionAnalysisRuntime
 {
   private readonly RuntimeCacheRegistry _cacheRegistry;
+  private readonly AsyncLocal<CpgBuildAdmissionBudget.CpgBuildAdmissionLease?> _currentCpgBuildAdmissionLease = new();
 
   public DeletionAnalysisRuntime(
     RoslynPrototypeExecutionOptions executionOptions,
     DeletionAnalysisEpoch epoch,
     IRuleStageScheduler? scheduler = null)
-    : this(executionOptions, epoch, scheduler, new RuntimeCacheRegistry())
+    : this(
+      executionOptions,
+      epoch,
+      scheduler,
+      new RuntimeCacheRegistry(),
+      new CpgBuildAdmissionBudget(
+        executionOptions.EffectiveCpgMaxDegreeOfParallelism,
+        CpgBuildAdmissionPolicy.FairCapped))
   {
   }
 
@@ -107,12 +120,14 @@ public sealed class DeletionAnalysisRuntime
     RoslynPrototypeExecutionOptions executionOptions,
     DeletionAnalysisEpoch epoch,
     IRuleStageScheduler? scheduler,
-    RuntimeCacheRegistry cacheRegistry)
+    RuntimeCacheRegistry cacheRegistry,
+    CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
   {
     ExecutionOptions = executionOptions;
     Epoch = epoch;
     Scheduler = scheduler ?? new BoundedRuleStageScheduler();
     _cacheRegistry = cacheRegistry;
+    CpgBuildAdmissionBudget = cpgBuildAdmissionBudget;
   }
 
   public RoslynPrototypeExecutionOptions ExecutionOptions { get; }
@@ -120,6 +135,11 @@ public sealed class DeletionAnalysisRuntime
   public DeletionAnalysisEpoch Epoch { get; }
 
   public IRuleStageScheduler Scheduler { get; }
+
+  public CpgBuildAdmissionBudget CpgBuildAdmissionBudget { get; }
+
+  public CpgBuildAdmissionBudget.CpgBuildAdmissionLease? CurrentCpgBuildAdmissionLease =>
+    _currentCpgBuildAdmissionLease.Value;
 
   public string CacheScopeKey => $"epoch:{Epoch.EpochId}|cache:{Epoch.CacheVersion}";
 
@@ -139,7 +159,8 @@ public sealed class DeletionAnalysisRuntime
       ResolveMaxDegreeOfParallelism(options),
       EnableDirectoryParallelism: !IsTrueOption(options, "disable-directory-parallelism"),
       EnableGroupParallelism: IsTrueOption(options, "enable-group-parallelism"),
-      EnableHelperParallelism: !IsTrueOption(options, "disable-helper-parallelism"));
+      EnableHelperParallelism: !IsTrueOption(options, "disable-helper-parallelism"),
+      CpgMaxDegreeOfParallelism: ResolveCpgMaxDegreeOfParallelism(options));
   }
 
   public static DeletionAnalysisRuntime CreateFromOptions(
@@ -155,7 +176,9 @@ public sealed class DeletionAnalysisRuntime
     return new DeletionAnalysisRuntime(
       ExecutionOptions,
       Epoch with { CacheVersion = Epoch.CacheVersion + 1 },
-      Scheduler);
+      Scheduler,
+      _cacheRegistry,
+      CpgBuildAdmissionBudget);
   }
 
   public DeletionAnalysisRuntime NextEpoch()
@@ -166,7 +189,18 @@ public sealed class DeletionAnalysisRuntime
         Epoch.EpochId + 1,
         Epoch.SourceVersion + 1,
         Epoch.CacheVersion + 1),
-      Scheduler);
+      Scheduler,
+      _cacheRegistry,
+      CpgBuildAdmissionBudget);
+  }
+
+  public IDisposable PushCpgBuildAdmissionLease(
+    CpgBuildAdmissionBudget.CpgBuildAdmissionLease lease)
+  {
+    ArgumentNullException.ThrowIfNull(lease);
+    var previous = _currentCpgBuildAdmissionLease.Value;
+    _currentCpgBuildAdmissionLease.Value = lease;
+    return new CpgBuildAdmissionLeaseScope(_currentCpgBuildAdmissionLease, previous);
   }
 
   internal TCache GetOrCreateCompilationCache<TCache>(
@@ -193,6 +227,29 @@ public sealed class DeletionAnalysisRuntime
     }
   }
 
+  private sealed class CpgBuildAdmissionLeaseScope : IDisposable
+  {
+    private readonly AsyncLocal<CpgBuildAdmissionBudget.CpgBuildAdmissionLease?> _lease;
+    private readonly CpgBuildAdmissionBudget.CpgBuildAdmissionLease? _previous;
+    private int _disposed;
+
+    public CpgBuildAdmissionLeaseScope(
+      AsyncLocal<CpgBuildAdmissionBudget.CpgBuildAdmissionLease?> lease,
+      CpgBuildAdmissionBudget.CpgBuildAdmissionLease? previous)
+    {
+      _lease = lease;
+      _previous = previous;
+    }
+
+    public void Dispose()
+    {
+      if (Interlocked.Exchange(ref _disposed, 1) == 0)
+      {
+        _lease.Value = _previous;
+      }
+    }
+  }
+
   private static bool IsTrueOption(IReadOnlyDictionary<string, string> options, string key)
   {
     return options.TryGetValue(key, out var rawValue) &&
@@ -213,5 +270,22 @@ public sealed class DeletionAnalysisRuntime
     }
 
     return Math.Max(1, parsedValue);
+  }
+
+  private static int? ResolveCpgMaxDegreeOfParallelism(
+    IReadOnlyDictionary<string, string> options)
+  {
+    if (!options.TryGetValue("cpg-max-degree-of-parallelism", out var rawValue))
+    {
+      return null;
+    }
+
+    if (!int.TryParse(rawValue, out var parsedValue) || parsedValue <= 0)
+    {
+      throw new ArgumentException(
+        "--cpg-max-degree-of-parallelism requires a positive integer.");
+    }
+
+    return parsedValue;
   }
 }

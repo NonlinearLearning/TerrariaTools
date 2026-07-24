@@ -44,7 +44,7 @@ public sealed partial class RoslynCpgBuilder
       return;
     }
 
-    _peakBufferedOperationFragmentCount = BoundedPartitionWorkWindow.RunOrdered(
+    _operationOrderedWindow = BoundedPartitionWorkWindow.RunOrdered(
       operationRoots,
       _options.EffectiveMaxDegreeOfParallelism,
       (rootPlan, _) => AnalyzeOperationPartition(rootPlan, context.SemanticModel),
@@ -71,7 +71,11 @@ public sealed partial class RoslynCpgBuilder
           facts?.Release();
           _releasedOperationFragmentCount += 1;
         }
-      });
+      },
+      retainedRecordCount: partition => partition.Records.Count,
+      reorderAllowance: _options.EffectiveOrderedResultReorderAllowance,
+      maxCompletedRecordCount: _options.EffectiveMaxOrderedResultRecordCount);
+    _peakBufferedOperationFragmentCount = _operationOrderedWindow.CompletedButUncommittedPeak;
   }
 
   private OperationPartitionResult AnalyzeOperationPartition(OperationRootPlan rootPlan, SemanticModel semanticModel)

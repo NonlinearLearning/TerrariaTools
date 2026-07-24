@@ -86,6 +86,7 @@ public sealed class TextLogSystemTests : IDisposable
 
         stopwatch.Stop();
         var runtimeLines = ReadNonEmptyLines(runtimeLogPath);
+        var analysisLines = ReadNonEmptyLines(analysisLogPath);
         var completed = ParseLine(runtimeLines.Single(line =>
           line.Contains("cat=run evt=completed", StringComparison.Ordinal)));
         var finalSample = ParseLine(runtimeLines.Last(line =>
@@ -94,10 +95,29 @@ public sealed class TextLogSystemTests : IDisposable
           line.Contains("cat=cpg evt=summary", StringComparison.Ordinal)));
         var markSummary = ParseLine(runtimeLines.Single(line =>
           line.Contains("cat=mark evt=summary", StringComparison.Ordinal)));
+        var publicationSummary = ParseLine(analysisLines.Single(line =>
+          line.Contains("cat=file evt=summary", StringComparison.Ordinal) &&
+          line.Contains("msg=\"directory source-order publication summary\"", StringComparison.Ordinal)));
 
         Assert.True(long.Parse(cpgSummary["nodes"]) > 0);
         Assert.True(long.Parse(cpgSummary["edges"]) > 0);
+        Assert.True(long.Parse(cpgSummary["freezeMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["freezeAssignNodeIdsMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["freezeOrderEdgesMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["operationCommitWaitMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["operationWindowBlockedMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["requestedCpgDop"]) >= 1);
+        Assert.True(long.Parse(cpgSummary["grantedCpgDop"]) >= 1);
+        Assert.True(long.Parse(cpgSummary["cpgAdmissionWaitMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["cpgAdmissionActiveLeases"]) >= 1);
+        Assert.True(long.Parse(cpgSummary["cpgAdmissionDegreeHighWater"]) >= 1);
+        Assert.Equal("WholeBuild", cpgSummary["cpgAdmissionPolicy"]);
+        Assert.True(long.Parse(cpgSummary["cpgAdmissionDegreeCap"]) >= 1);
         Assert.True(long.Parse(markSummary["rules"]) > 0);
+        Assert.Equal("1", publicationSummary["files"]);
+        Assert.True(long.Parse(publicationSummary["unpublishedCountPeak"]) >= 0);
+        Assert.True(long.Parse(publicationSummary["waitToPublishMs"]) >= 0);
+        Assert.True(int.Parse(publicationSummary["oldestUnpublishedIndex"]) >= -1);
         Assert.True(long.Parse(completed["elapsedMs"]) > 0);
         Assert.InRange(
           long.Parse(completed["elapsedMs"]),

@@ -59,6 +59,8 @@ pwsh -File .\scripts\Run-TestTiers.ps1 -Host
 真实源码性能测量独立于 `dotnet test`。它要求显式输入目录，默认对 DOP
 8、12、14、16 各执行一次预热和三次测量，写入每次的 runtime log 以及中位数报告：
 
+当需要区分目录 DOP 与每文件 CPG DOP 时，使用 `--cpg-max-degree-of-parallelism` 覆盖 builder 值，并比较 `(12,1)`、`(1,12)`、`(12,12)`。每组保持输入、规则、日志配置和 SDK 相同；阶段累计是逐文件 elapsed 总和，端到端裁决使用墙钟中位数。该诊断不会改变默认 DOP。
+
 ```powershell
 pwsh -File .\scripts\Run-PerformanceSuite.ps1 `
   -SourceRoot "D:\path\to\source" `
