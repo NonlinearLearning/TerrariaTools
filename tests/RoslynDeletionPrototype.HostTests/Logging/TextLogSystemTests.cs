@@ -97,6 +97,11 @@ public sealed class TextLogSystemTests : IDisposable
 
         Assert.True(long.Parse(cpgSummary["nodes"]) > 0);
         Assert.True(long.Parse(cpgSummary["edges"]) > 0);
+        Assert.True(long.Parse(cpgSummary["freezeMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["freezeAssignNodeIdsMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["freezeOrderEdgesMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["operationCommitWaitMs"]) >= 0);
+        Assert.True(long.Parse(cpgSummary["operationWindowBlockedMs"]) >= 0);
         Assert.True(long.Parse(markSummary["rules"]) > 0);
         Assert.True(long.Parse(completed["elapsedMs"]) > 0);
         Assert.InRange(

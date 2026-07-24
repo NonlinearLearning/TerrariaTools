@@ -164,7 +164,9 @@ public sealed record RoslynCpgBuildTelemetry(
   RoslynCpgStreamingFragmentTelemetry? StreamingFragments = null,
   RoslynCpgOperationFragmentTelemetry? OperationFragments = null,
   RoslynCpgPreallocationTelemetry? Preallocation = null,
-  CpgPersistenceTelemetry? Persistence = null)
+  CpgPersistenceTelemetry? Persistence = null,
+  RoslynCpgOrderedWorkWindowTelemetry? OperationOrderedWindow = null,
+  RoslynCpgOrderedWorkWindowTelemetry? CfgSensitiveOrderedWindow = null)
 {
   public static RoslynCpgBuildTelemetry CreateDefault()
   {
@@ -211,6 +213,19 @@ public sealed record RoslynCpgOperationFragmentTelemetry(
       ReleasedFragmentCount: 0,
       PeakBufferedFragmentCount: 0,
       ReleasedBuilderOperationState: false);
+  }
+}
+
+public sealed record RoslynCpgOrderedWorkWindowTelemetry(
+  int ActiveWorkerPeak,
+  int CompletedButUncommittedPeak,
+  int CompletedRecordCountPeak,
+  long CommitWaitMilliseconds,
+  long WindowBlockedMilliseconds)
+{
+  public static RoslynCpgOrderedWorkWindowTelemetry CreateDefault()
+  {
+    return new RoslynCpgOrderedWorkWindowTelemetry(0, 0, 0, 0, 0);
   }
 }
 

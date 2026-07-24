@@ -285,10 +285,11 @@ public sealed partial class RoslynCpgBuilder
         metrics.PrepareFlowNodesElapsedMilliseconds = prepareFlowNodesStopwatch.ElapsedMilliseconds;
         metrics.PrepareFlowNodesElapsedTicks = prepareFlowNodesStopwatch.ElapsedTicks;
         metrics.FrozenOperationNodeCount = operationIndex.NodesByOperation.Count;
-        metrics.PeakBufferedCandidateBatchCount = RunCfgSensitivePartitionsInOrder(
+        _cfgSensitiveOrderedWindow = RunCfgSensitivePartitionsInOrder(
           cfgSensitivePlans,
           graph,
           metrics);
+        metrics.PeakBufferedCandidateBatchCount = _cfgSensitiveOrderedWindow.CompletedButUncommittedPeak;
         metrics.CfgSensitivePartitionCount = cfgSensitivePlans.Count;
         metrics.CfgSensitivePartitionMaxDegreeOfParallelism = _options.EffectiveMaxDegreeOfParallelism;
 
@@ -434,7 +435,7 @@ public sealed partial class RoslynCpgBuilder
         return plans;
     }
 
-    private int RunCfgSensitivePartitionsInOrder(
+    private RoslynCpgOrderedWorkWindowTelemetry RunCfgSensitivePartitionsInOrder(
       IReadOnlyList<MethodDataFlowPlan> plans,
       RoslynCpgGraph graph,
       DataFlowPassMetrics metrics)
@@ -454,7 +455,8 @@ public sealed partial class RoslynCpgBuilder
               plans[order].Release();
               metrics.ReleasedCfgSensitivePlanCount += 1;
             }
-          });
+          },
+          retainedRecordCount: partition => partition.Candidates.EdgeCandidates.Count);
     }
 
     private static void CommitCfgSensitivePartition(

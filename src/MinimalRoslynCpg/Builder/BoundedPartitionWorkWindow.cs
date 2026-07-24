@@ -1,8 +1,14 @@
+using System.Diagnostics;
+
 namespace MinimalRoslynCpg.Builder;
 
 internal static class BoundedPartitionWorkWindow
 {
-  private sealed record CompletedWorkItem<TResult>(int Order, TResult Result);
+  private sealed record CompletedWorkItem<TResult>(
+    int Order,
+    TResult Result,
+    int RetainedRecordCount,
+    long CompletedTimestamp);
 
   public static async Task<TResult[]> RunAsync<TInput, TResult>(
     IReadOnlyList<TInput> inputs,
@@ -42,12 +48,13 @@ internal static class BoundedPartitionWorkWindow
     return results;
   }
 
-  public static int RunOrdered<TInput, TResult>(
+  public static RoslynCpgOrderedWorkWindowTelemetry RunOrdered<TInput, TResult>(
     IReadOnlyList<TInput> inputs,
     int maxDegreeOfParallelism,
     Func<TInput, int, TResult> workItem,
     Action<TResult, int> commit,
-    CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default,
+    Func<TResult, int>? retainedRecordCount = null)
   {
     ArgumentNullException.ThrowIfNull(inputs);
     ArgumentNullException.ThrowIfNull(workItem);
@@ -55,15 +62,20 @@ internal static class BoundedPartitionWorkWindow
 
     if (inputs.Count == 0)
     {
-      return 0;
+      return RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
     }
 
     var workerCount = Math.Min(inputs.Count, Math.Max(1, maxDegreeOfParallelism));
     var activeWorkers = new List<Task<CompletedWorkItem<TResult>>>(workerCount);
-    var completedResults = new Dictionary<int, TResult>();
+    var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
     var nextOrderToSchedule = 0;
     var nextOrderToCommit = 0;
-    var peakBufferedResultCount = 0;
+    var activeWorkerPeak = 0;
+    var completedButUncommittedPeak = 0;
+    var completedRecordCountPeak = 0;
+    var completedRecordCount = 0;
+    var commitWaitMilliseconds = 0L;
+    var windowBlockedMilliseconds = 0L;
 
     while (nextOrderToCommit < inputs.Count)
     {
@@ -76,8 +88,14 @@ internal static class BoundedPartitionWorkWindow
         activeWorkers.Add(Task.Run(() =>
         {
           cancellationToken.ThrowIfCancellationRequested();
-          return new CompletedWorkItem<TResult>(order, workItem(inputs[order], order));
+          var result = workItem(inputs[order], order);
+          return new CompletedWorkItem<TResult>(
+            order,
+            result,
+            Math.Max(0, retainedRecordCount?.Invoke(result) ?? 1),
+            Stopwatch.GetTimestamp());
         }, cancellationToken));
+        activeWorkerPeak = Math.Max(activeWorkerPeak, activeWorkers.Count);
       }
 
       if (activeWorkers.Count == 0)
@@ -85,13 +103,25 @@ internal static class BoundedPartitionWorkWindow
         throw new InvalidOperationException("The ordered work window stopped before all results were committed.");
       }
 
+      var windowBlockedStart = nextOrderToSchedule < inputs.Count &&
+        completedResults.Count > 0 &&
+        activeWorkers.Count + completedResults.Count >= workerCount
+          ? Stopwatch.GetTimestamp()
+          : 0;
       var completedTask = Task.WhenAny(activeWorkers).GetAwaiter().GetResult();
+      if (windowBlockedStart != 0)
+      {
+        windowBlockedMilliseconds += (long)Stopwatch.GetElapsedTime(windowBlockedStart).TotalMilliseconds;
+      }
+
       activeWorkers.Remove(completedTask);
       try
       {
         var completedWorkItem = completedTask.GetAwaiter().GetResult();
-        completedResults.Add(completedWorkItem.Order, completedWorkItem.Result);
-        peakBufferedResultCount = Math.Max(peakBufferedResultCount, completedResults.Count);
+        completedResults.Add(completedWorkItem.Order, completedWorkItem);
+        completedButUncommittedPeak = Math.Max(completedButUncommittedPeak, completedResults.Count);
+        completedRecordCount += completedWorkItem.RetainedRecordCount;
+        completedRecordCountPeak = Math.Max(completedRecordCountPeak, completedRecordCount);
       }
       catch
       {
@@ -110,11 +140,18 @@ internal static class BoundedPartitionWorkWindow
       while (completedResults.Remove(nextOrderToCommit, out var nextResult))
       {
         cancellationToken.ThrowIfCancellationRequested();
-        commit(nextResult, nextOrderToCommit);
+        commitWaitMilliseconds += (long)Stopwatch.GetElapsedTime(nextResult.CompletedTimestamp).TotalMilliseconds;
+        commit(nextResult.Result, nextOrderToCommit);
+        completedRecordCount -= nextResult.RetainedRecordCount;
         nextOrderToCommit += 1;
       }
     }
 
-    return peakBufferedResultCount;
+    return new RoslynCpgOrderedWorkWindowTelemetry(
+      ActiveWorkerPeak: activeWorkerPeak,
+      CompletedButUncommittedPeak: completedButUncommittedPeak,
+      CompletedRecordCountPeak: completedRecordCountPeak,
+      CommitWaitMilliseconds: commitWaitMilliseconds,
+      WindowBlockedMilliseconds: windowBlockedMilliseconds);
   }
 }

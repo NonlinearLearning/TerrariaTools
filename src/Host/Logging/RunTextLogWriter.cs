@@ -135,6 +135,9 @@ internal sealed class RunTextLogWriter
 
     public void WriteCpgSummary(RoslynCpgBuildTelemetry telemetry)
     {
+        var freeze = telemetry.FreezeTelemetry;
+        var operationWindow = telemetry.OperationOrderedWindow ?? RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
+        var cfgSensitiveWindow = telemetry.CfgSensitiveOrderedWindow ?? RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
         Emit(
           TextLogLevel.Debug,
           TextLogCategory.Cpg,
@@ -148,7 +151,30 @@ internal sealed class RunTextLogWriter
             new TextLogField("opMs", telemetry.OperationBuildElapsedMilliseconds),
             new TextLogField("syntaxMs", telemetry.SyntaxBuildElapsedMilliseconds),
             new TextLogField("dataFlowMs", telemetry.DataFlowBuildElapsedMilliseconds),
-            new TextLogField("freezeMs", telemetry.FreezeQueryIndexElapsedMilliseconds)
+            new TextLogField("freezeMs", telemetry.FreezeQueryIndexElapsedMilliseconds),
+            new TextLogField("freezeAssignNodeIdsMs", freeze.AssignDeterministicNodeIdsElapsedMilliseconds),
+            new TextLogField("freezeCreateAnchorsMs", freeze.CreateAnchorsElapsedMilliseconds),
+            new TextLogField("freezeCreateNodeIdTableMs", freeze.CreateNodeIdTableElapsedMilliseconds),
+            new TextLogField("freezeRemapNodesMs", freeze.RemapNodesElapsedMilliseconds),
+            new TextLogField("freezeRemapEdgesMs", freeze.RemapEdgesElapsedMilliseconds),
+            new TextLogField("freezeEdgeBucketsMs", freeze.PopulateEdgeIndexBucketsElapsedMilliseconds),
+            new TextLogField("freezeOrderEdgesMs", freeze.OrderEdgesElapsedMilliseconds),
+            new TextLogField("freezeOrderNodesMs", freeze.OrderNodesElapsedMilliseconds),
+            new TextLogField("freezeSnapshotHashMs", freeze.SnapshotHashElapsedMilliseconds),
+            new TextLogField("freezeAdjacencyMs", freeze.BuildAdjacencyElapsedMilliseconds),
+            new TextLogField("freezeKindAdjacencyMs", freeze.BuildKindAdjacencyElapsedMilliseconds),
+            new TextLogField("freezeEdgeKindIndexMs", freeze.BuildEdgeKindIndexElapsedMilliseconds),
+            new TextLogField("freezeNodeKindIndexMs", freeze.BuildNodeKindIndexElapsedMilliseconds),
+            new TextLogField("freezeFilePathIndexMs", freeze.BuildFilePathIndexElapsedMilliseconds),
+            new TextLogField("operationActiveWorkerPeak", operationWindow.ActiveWorkerPeak),
+            new TextLogField("operationCompletedBufferPeak", operationWindow.CompletedButUncommittedPeak),
+            new TextLogField("operationCompletedRecordPeak", operationWindow.CompletedRecordCountPeak),
+            new TextLogField("operationCommitWaitMs", operationWindow.CommitWaitMilliseconds),
+            new TextLogField("operationWindowBlockedMs", operationWindow.WindowBlockedMilliseconds),
+            new TextLogField("cfgActiveWorkerPeak", cfgSensitiveWindow.ActiveWorkerPeak),
+            new TextLogField("cfgCompletedBufferPeak", cfgSensitiveWindow.CompletedButUncommittedPeak),
+            new TextLogField("cfgCommitWaitMs", cfgSensitiveWindow.CommitWaitMilliseconds),
+            new TextLogField("cfgWindowBlockedMs", cfgSensitiveWindow.WindowBlockedMilliseconds)
           });
     }
 

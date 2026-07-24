@@ -6,12 +6,72 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynPrototype.Tests.TestCodeSet.Cpg;
+using System.Reflection;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
 
 public sealed class MinimalRoslynCpgPartitionedBuilderTests
 {
+  [Fact]
+  public async Task OrderedPartitionWindow_ReportsHeadBlockingWithoutChangingCommitOrder()
+  {
+    var windowType = typeof(RoslynCpgBuilder).Assembly.GetType(
+      "MinimalRoslynCpg.Builder.BoundedPartitionWorkWindow");
+    Assert.NotNull(windowType);
+    var runOrdered = windowType.GetMethod(
+      "RunOrdered",
+      BindingFlags.Public | BindingFlags.Static);
+    Assert.NotNull(runOrdered);
+
+    using var firstWorkStarted = new ManualResetEventSlim();
+    using var releaseFirstWork = new ManualResetEventSlim();
+    var committedOrders = new List<int>();
+    var commitLock = new object();
+    Func<int, int, int> work = (input, order) =>
+    {
+      if (order == 0)
+      {
+        firstWorkStarted.Set();
+        releaseFirstWork.Wait(TimeSpan.FromSeconds(5));
+      }
+
+      return input;
+    };
+    Action<int, int> commit = (_, order) =>
+    {
+      lock (commitLock)
+      {
+        committedOrders.Add(order);
+      }
+    };
+
+    var telemetryTask = Task.Run(() => runOrdered
+      .MakeGenericMethod(typeof(int), typeof(int))
+      .Invoke(null, new object?[]
+      {
+        new[] { 10, 20, 30 },
+        2,
+        work,
+        commit,
+        CancellationToken.None,
+        null,
+      }));
+
+    Assert.True(firstWorkStarted.Wait(TimeSpan.FromSeconds(5)));
+    await Task.Delay(75);
+    releaseFirstWork.Set();
+    var telemetry = await telemetryTask;
+    Assert.NotNull(telemetry);
+
+    Assert.Equal(new[] { 0, 1, 2 }, committedOrders);
+    Assert.True(ReadTelemetryValue<int>(telemetry, "ActiveWorkerPeak") >= 2);
+    Assert.True(ReadTelemetryValue<int>(telemetry, "CompletedButUncommittedPeak") > 0);
+    Assert.True(ReadTelemetryValue<int>(telemetry, "CompletedRecordCountPeak") > 0);
+    Assert.True(ReadTelemetryValue<long>(telemetry, "CommitWaitMilliseconds") > 0);
+    Assert.True(ReadTelemetryValue<long>(telemetry, "WindowBlockedMilliseconds") > 0);
+  }
+
   [Fact]
   public void FlowSummary_UsesRoslynParameterOrdinalsAndStableReturnEndpoint()
   {
@@ -617,6 +677,16 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
     Assert.True(builder.LastBuildTelemetry.SyntaxBuildElapsedMilliseconds >= 0);
     Assert.True(builder.LastBuildTelemetry.DataFlowBuildElapsedMilliseconds >= 0);
     Assert.True(builder.LastBuildTelemetry.FreezeQueryIndexElapsedMilliseconds >= 0);
+    var operationWindow = Assert.IsType<RoslynCpgOrderedWorkWindowTelemetry>(
+      builder.LastBuildTelemetry.OperationOrderedWindow);
+    var cfgSensitiveWindow = Assert.IsType<RoslynCpgOrderedWorkWindowTelemetry>(
+      builder.LastBuildTelemetry.CfgSensitiveOrderedWindow);
+    Assert.InRange(operationWindow.ActiveWorkerPeak, 1, 4);
+    Assert.True(operationWindow.CompletedButUncommittedPeak >= 0);
+    Assert.True(operationWindow.CompletedRecordCountPeak >= 0);
+    Assert.True(operationWindow.CommitWaitMilliseconds >= 0);
+    Assert.True(operationWindow.WindowBlockedMilliseconds >= 0);
+    Assert.True(cfgSensitiveWindow.ActiveWorkerPeak >= 0);
     Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.AssignDeterministicNodeIdsElapsedMilliseconds >= 0);
     Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.CreateAnchorsElapsedMilliseconds >= 0);
     Assert.True(builder.LastBuildTelemetry.FreezeTelemetry.CreateNodeIdTableElapsedMilliseconds >= 0);
@@ -1116,6 +1186,13 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
   private static NodeId RequireNodeId(RoslynCpgNode node)
   {
     return Assert.NotNull(node.NodeId);
+  }
+
+  private static T ReadTelemetryValue<T>(object telemetry, string propertyName)
+  {
+    var property = telemetry.GetType().GetProperty(propertyName);
+    Assert.NotNull(property);
+    return Assert.IsType<T>(property.GetValue(telemetry));
   }
 
   private static string CreateLargeSource(int methodCount, int statementsPerMethod)

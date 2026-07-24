@@ -70,6 +70,8 @@ public sealed partial class RoslynCpgBuilder
     private int _operationBackedTypeInfoNullOperationTypeCount;
     private int _operationChildBufferRentCount;
     private int _peakBufferedOperationFragmentCount;
+    private RoslynCpgOrderedWorkWindowTelemetry _operationOrderedWindow = RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
+    private RoslynCpgOrderedWorkWindowTelemetry _cfgSensitiveOrderedWindow = RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
     private int _releasedOperationFragmentCount;
     private bool _releasedBuilderOperationState;
     private long _operationBackedTypeInfoFallbackElapsedTicks;
@@ -207,6 +209,8 @@ public sealed partial class RoslynCpgBuilder
         _operationBackedTypeInfoNullOperationTypeCount = 0;
         _operationChildBufferRentCount = 0;
         _peakBufferedOperationFragmentCount = 0;
+        _operationOrderedWindow = RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
+        _cfgSensitiveOrderedWindow = RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
         _releasedOperationFragmentCount = 0;
         _releasedBuilderOperationState = false;
         _operationBackedTypeInfoFallbackElapsedTicks = 0;
@@ -353,7 +357,9 @@ public sealed partial class RoslynCpgBuilder
             _peakBufferedOperationFragmentCount,
             _releasedBuilderOperationState),
           Preallocation: preallocation,
-          Persistence: persistenceTelemetry);
+          Persistence: persistenceTelemetry,
+          OperationOrderedWindow: _operationOrderedWindow,
+          CfgSensitiveOrderedWindow: _cfgSensitiveOrderedWindow);
         return context.Graph;
         }
         finally
