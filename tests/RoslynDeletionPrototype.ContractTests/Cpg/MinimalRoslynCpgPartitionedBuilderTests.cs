@@ -26,6 +26,7 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
 
     using var firstWorkStarted = new ManualResetEventSlim();
     using var releaseFirstWork = new ManualResetEventSlim();
+    using var lookAheadWorkStarted = new ManualResetEventSlim();
     var committedOrders = new List<int>();
     var commitLock = new object();
     Func<int, int, int> work = (input, order) =>
@@ -34,6 +35,11 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
       {
         firstWorkStarted.Set();
         releaseFirstWork.Wait(TimeSpan.FromSeconds(5));
+      }
+
+      if (order == 2)
+      {
+        lookAheadWorkStarted.Set();
       }
 
       return input;
@@ -50,21 +56,24 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
       .MakeGenericMethod(typeof(int), typeof(int))
       .Invoke(null, new object?[]
       {
-        new[] { 10, 20, 30 },
+        new[] { 10, 20, 30, 40 },
         2,
         work,
         commit,
         CancellationToken.None,
         null,
+        2,
+        100,
       }));
 
     Assert.True(firstWorkStarted.Wait(TimeSpan.FromSeconds(5)));
+    Assert.True(lookAheadWorkStarted.Wait(TimeSpan.FromSeconds(5)));
     await Task.Delay(75);
     releaseFirstWork.Set();
     var telemetry = await telemetryTask;
     Assert.NotNull(telemetry);
 
-    Assert.Equal(new[] { 0, 1, 2 }, committedOrders);
+    Assert.Equal(new[] { 0, 1, 2, 3 }, committedOrders);
     Assert.True(ReadTelemetryValue<int>(telemetry, "ActiveWorkerPeak") >= 2);
     Assert.True(ReadTelemetryValue<int>(telemetry, "CompletedButUncommittedPeak") > 0);
     Assert.True(ReadTelemetryValue<int>(telemetry, "CompletedRecordCountPeak") > 0);

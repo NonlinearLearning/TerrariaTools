@@ -27,9 +27,16 @@ public sealed record RoslynCpgBuilderOptions(
   RoslynCpgDataFlowOptions? DataFlowOptions = null,
   RoslynCpgInterproceduralDataFlowOptions? InterproceduralDataFlowOptions = null,
   CpgPersistenceOptions? Persistence = null,
-  bool UsePreallocatedNodeIds = false)
+  bool UsePreallocatedNodeIds = false,
+  int? OrderedResultReorderAllowance = null,
+  int MaxOrderedResultRecordCount = 250_000)
 {
   public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
+
+  public int EffectiveOrderedResultReorderAllowance =>
+    Math.Max(0, OrderedResultReorderAllowance ?? EffectiveMaxDegreeOfParallelism);
+
+  public int EffectiveMaxOrderedResultRecordCount => Math.Max(1, MaxOrderedResultRecordCount);
 
   public RoslynCpgDataFlowOptions EffectiveDataFlowOptions =>
     DataFlowOptions ?? RoslynCpgDataFlowOptions.Unbounded;

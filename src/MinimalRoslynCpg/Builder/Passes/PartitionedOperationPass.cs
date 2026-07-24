@@ -72,7 +72,9 @@ public sealed partial class RoslynCpgBuilder
           _releasedOperationFragmentCount += 1;
         }
       },
-      retainedRecordCount: partition => partition.Records.Count);
+      retainedRecordCount: partition => partition.Records.Count,
+      reorderAllowance: _options.EffectiveOrderedResultReorderAllowance,
+      maxCompletedRecordCount: _options.EffectiveMaxOrderedResultRecordCount);
     _peakBufferedOperationFragmentCount = _operationOrderedWindow.CompletedButUncommittedPeak;
   }
 

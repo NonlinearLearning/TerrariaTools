@@ -54,7 +54,9 @@ internal static class BoundedPartitionWorkWindow
     Func<TInput, int, TResult> workItem,
     Action<TResult, int> commit,
     CancellationToken cancellationToken = default,
-    Func<TResult, int>? retainedRecordCount = null)
+    Func<TResult, int>? retainedRecordCount = null,
+    int? reorderAllowance = null,
+    int maxCompletedRecordCount = int.MaxValue)
   {
     ArgumentNullException.ThrowIfNull(inputs);
     ArgumentNullException.ThrowIfNull(workItem);
@@ -66,6 +68,8 @@ internal static class BoundedPartitionWorkWindow
     }
 
     var workerCount = Math.Min(inputs.Count, Math.Max(1, maxDegreeOfParallelism));
+    var effectiveReorderAllowance = Math.Max(0, reorderAllowance ?? workerCount);
+    var effectiveMaxCompletedRecordCount = Math.Max(1, maxCompletedRecordCount);
     var activeWorkers = new List<Task<CompletedWorkItem<TResult>>>(workerCount);
     var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
     var nextOrderToSchedule = 0;
@@ -80,7 +84,9 @@ internal static class BoundedPartitionWorkWindow
     while (nextOrderToCommit < inputs.Count)
     {
       while (nextOrderToSchedule < inputs.Count &&
-             activeWorkers.Count + completedResults.Count < workerCount)
+             activeWorkers.Count < workerCount &&
+             completedResults.Count < effectiveReorderAllowance &&
+             completedRecordCount < effectiveMaxCompletedRecordCount)
       {
         cancellationToken.ThrowIfCancellationRequested();
         var order = nextOrderToSchedule;
@@ -104,8 +110,8 @@ internal static class BoundedPartitionWorkWindow
       }
 
       var windowBlockedStart = nextOrderToSchedule < inputs.Count &&
-        completedResults.Count > 0 &&
-        activeWorkers.Count + completedResults.Count >= workerCount
+        (completedResults.Count >= effectiveReorderAllowance ||
+          completedRecordCount >= effectiveMaxCompletedRecordCount)
           ? Stopwatch.GetTimestamp()
           : 0;
       var completedTask = Task.WhenAny(activeWorkers).GetAwaiter().GetResult();

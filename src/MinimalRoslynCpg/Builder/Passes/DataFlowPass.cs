@@ -456,7 +456,9 @@ public sealed partial class RoslynCpgBuilder
               metrics.ReleasedCfgSensitivePlanCount += 1;
             }
           },
-          retainedRecordCount: partition => partition.Candidates.EdgeCandidates.Count);
+          retainedRecordCount: partition => partition.Candidates.EdgeCandidates.Count,
+          reorderAllowance: _options.EffectiveOrderedResultReorderAllowance,
+          maxCompletedRecordCount: _options.EffectiveMaxOrderedResultRecordCount);
     }
 
     private static void CommitCfgSensitivePartition(
