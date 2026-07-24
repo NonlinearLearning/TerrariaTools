@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Builder;
+using MinimalRoslynCpg.Model;
 using RoslynPrototype.Application.Logging;
 using RoslynPrototype.Analysis;
 using RoslynPrototype.Decision;
@@ -967,9 +968,58 @@ internal sealed class DeletionDirectoryAnalysisService
                 FreezeQueryIndexElapsedMilliseconds =
                   _cpgBuildTelemetry.FreezeQueryIndexElapsedMilliseconds +
                   telemetry.FreezeQueryIndexElapsedMilliseconds,
+                FreezeTelemetry = MergeFreezeTelemetry(
+                  _cpgBuildTelemetry.FreezeTelemetry,
+                  telemetry.FreezeTelemetry),
+                OperationOrderedWindow = MergeOrderedWindowTelemetry(
+                  _cpgBuildTelemetry.OperationOrderedWindow,
+                  telemetry.OperationOrderedWindow),
+                CfgSensitiveOrderedWindow = MergeOrderedWindowTelemetry(
+                  _cpgBuildTelemetry.CfgSensitiveOrderedWindow,
+                  telemetry.CfgSensitiveOrderedWindow),
                 GraphNodeCount = _cpgBuildTelemetry.GraphNodeCount + telemetry.GraphNodeCount,
                 GraphEdgeCount = _cpgBuildTelemetry.GraphEdgeCount + telemetry.GraphEdgeCount
             };
+        }
+
+        private static RoslynCpgFreezeTelemetry MergeFreezeTelemetry(
+          RoslynCpgFreezeTelemetry left,
+          RoslynCpgFreezeTelemetry right)
+        {
+            return new RoslynCpgFreezeTelemetry(
+              left.TotalElapsedMilliseconds + right.TotalElapsedMilliseconds,
+              left.AssignDeterministicNodeIdsElapsedMilliseconds + right.AssignDeterministicNodeIdsElapsedMilliseconds,
+              left.CreateAnchorsElapsedMilliseconds + right.CreateAnchorsElapsedMilliseconds,
+              left.CreateNodeIdTableElapsedMilliseconds + right.CreateNodeIdTableElapsedMilliseconds,
+              left.RemapNodesElapsedMilliseconds + right.RemapNodesElapsedMilliseconds,
+              left.RemapEdgesElapsedMilliseconds + right.RemapEdgesElapsedMilliseconds,
+              left.BuildQueryIndexElapsedMilliseconds + right.BuildQueryIndexElapsedMilliseconds,
+              left.PopulateEdgeIndexBucketsElapsedMilliseconds + right.PopulateEdgeIndexBucketsElapsedMilliseconds,
+              left.OrderEdgesElapsedMilliseconds + right.OrderEdgesElapsedMilliseconds,
+              left.OrderNodesElapsedMilliseconds + right.OrderNodesElapsedMilliseconds,
+              left.SnapshotHashElapsedMilliseconds + right.SnapshotHashElapsedMilliseconds,
+              left.BuildAdjacencyElapsedMilliseconds + right.BuildAdjacencyElapsedMilliseconds,
+              left.BuildKindAdjacencyElapsedMilliseconds + right.BuildKindAdjacencyElapsedMilliseconds,
+              left.BuildEdgeKindIndexElapsedMilliseconds + right.BuildEdgeKindIndexElapsedMilliseconds,
+              left.BuildNodeKindIndexElapsedMilliseconds + right.BuildNodeKindIndexElapsedMilliseconds,
+              left.BuildFilePathIndexElapsedMilliseconds + right.BuildFilePathIndexElapsedMilliseconds,
+              left.NodeCount + right.NodeCount,
+              left.EdgeCount + right.EdgeCount,
+              left.DistinctAnchorCount + right.DistinctAnchorCount);
+        }
+
+        private static RoslynCpgOrderedWorkWindowTelemetry MergeOrderedWindowTelemetry(
+          RoslynCpgOrderedWorkWindowTelemetry? left,
+          RoslynCpgOrderedWorkWindowTelemetry? right)
+        {
+            var first = left ?? RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
+            var second = right ?? RoslynCpgOrderedWorkWindowTelemetry.CreateDefault();
+            return new RoslynCpgOrderedWorkWindowTelemetry(
+              Math.Max(first.ActiveWorkerPeak, second.ActiveWorkerPeak),
+              Math.Max(first.CompletedButUncommittedPeak, second.CompletedButUncommittedPeak),
+              Math.Max(first.CompletedRecordCountPeak, second.CompletedRecordCountPeak),
+              first.CommitWaitMilliseconds + second.CommitWaitMilliseconds,
+              first.WindowBlockedMilliseconds + second.WindowBlockedMilliseconds);
         }
 
         private void AddMarkAnalysisTelemetry(MarkAnalysisTelemetry? telemetry)
