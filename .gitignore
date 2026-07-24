@@ -27,6 +27,7 @@ FormatTool
 progressinfo.md
 待办事项.md
 BenchmarkDotNet.Artifacts
+tests/*/TestResults/
 tools
 !tools/
 tools/*
