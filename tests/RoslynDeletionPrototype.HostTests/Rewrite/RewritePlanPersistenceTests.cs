@@ -213,6 +213,70 @@ public sealed class RewritePlanPersistenceTests : IDisposable
         Assert.Empty(errors);
     }
 
+    [Fact]
+    public async Task AnalyzeDirectory_WithMultipleMarkRules_ReplaysEveryManifestFileAndCompiles()
+    {
+        var targetPath = WriteSource("Target.cs", "namespace Demo; public sealed class Target { }");
+        var samplePath = WriteSource("Sample.cs", "namespace Demo; public sealed class Sample { public int Run(int target) { return target; } }");
+        var artifactRoot = Path.Combine(_tempDirectory, "artifact");
+        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+
+        var captured = await host.AnalyzeFromArgsAsync(new[]
+        {
+            _inputRoot,
+            "--delete-class",
+            "Target",
+            "--target-name",
+            "target",
+            "--rewrite-plan-out",
+            artifactRoot,
+            "--no-diff",
+        });
+        var (manifest, plans) = _artifactService.ReadAndValidate(artifactRoot, _inputRoot);
+        var replayed = await host.AnalyzeFromArgsAsync(new[]
+        {
+            _inputRoot,
+            "--rewrite-plan-in",
+            artifactRoot,
+            "--no-diff",
+        });
+        var sourcePaths = new[] { targetPath, samplePath };
+        var expectedRelativePaths = sourcePaths
+            .Select(path => Path.GetRelativePath(_inputRoot, path))
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .ToArray();
+        var planPaths = plans.Select(plan => plan.RelativePath).OrderBy(path => path, StringComparer.Ordinal).ToArray();
+        var rewrittenSources = sourcePaths.ToDictionary(path => path, File.ReadAllText, StringComparer.Ordinal);
+        var rewriter = new PrototypeRewriter();
+
+        foreach (var plan in plans)
+        {
+            var sourcePath = Path.Combine(_inputRoot, plan.RelativePath);
+            rewrittenSources[sourcePath] = Assert.IsType<string>(rewriter.ExecutePlan(
+                rewrittenSources[sourcePath],
+                sourcePath,
+                plan).RewrittenSource);
+        }
+
+        var compilation = CSharpCompilation.Create(
+            "MultiRuleReplayCompilation",
+            rewrittenSources.Select(pair => CSharpSyntaxTree.ParseText(pair.Value, path: pair.Key)),
+            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) },
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var errors = compilation.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .ToArray();
+
+        Assert.Equal(2, manifest.SourceFileCount);
+        Assert.Equal(expectedRelativePaths, planPaths);
+        Assert.All(plans, plan => Assert.Equal(
+            RewritePlanArtifactService.ComputeSha256(File.ReadAllBytes(Path.Combine(_inputRoot, plan.RelativePath))),
+            plan.SourceSha256));
+        Assert.Equal(captured.Diff.ToString(), replayed.Diff.ToString());
+        Assert.NotEmpty(captured.Edits);
+        Assert.Empty(errors);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))

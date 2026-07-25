@@ -144,6 +144,8 @@ public static class RuleSyntaxAnalysisHelpers
                   .AffectedSyntaxTree;
                 return true;
             case IdentifierNameSyntax:
+            case ThisExpressionSyntax:
+            case BaseExpressionSyntax:
             case LiteralExpressionSyntax:
                 affectedNodes = new[] { expression };
                 return true;
