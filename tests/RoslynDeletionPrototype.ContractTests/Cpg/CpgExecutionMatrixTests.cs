@@ -18,7 +18,7 @@ public sealed class CpgExecutionMatrixTests
   [Theory]
   [CombinatorialData]
   public void BuildFromSource_ExecutionMatrix_MatchesSerialBaseline(
-    [CombinatorialValues(1, 4, 8, 16)] int maxDegreeOfParallelism,
+    [CombinatorialValues(1, 8, 12, 14, 16)] int maxDegreeOfParallelism,
     bool persistenceEnabled,
     CpgPersistenceDurabilityMode durabilityMode,
     [CombinatorialValues(1, 2)] int maxConcurrentShardFileWrites)

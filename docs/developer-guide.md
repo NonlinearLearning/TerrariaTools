@@ -52,8 +52,8 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 
 ```powershell
 dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore --filter "FullyQualifiedName~<TestName>" -p:UseSharedCompilation=false
-pwsh -File .\scripts\Run-TestTiers.ps1 -Fast
-pwsh -File .\scripts\Run-TestTiers.ps1 -Host
+dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
 ```
 
 真实源码性能测量独立于 `dotnet test`。它要求显式输入目录，默认对 DOP
@@ -110,11 +110,7 @@ Microsoft Coyote PoC 未保留：在当前 `net10.0` 与 xUnit 组合中，它�
 rewrite 流程，且没有找到现有持久化、写入锁和取消覆盖之外的可复现调度。后续只有在
 出现无法用这些受控测试表达的交错缺陷时，才重新评估该隔离 PoC。
 
-运行前按根目录约束设置 `DOTNET_CLI_HOME`；`init.ps1` 会完成该设置。改动 CLI、文档或 harness 时，额外运行：
-
-```powershell
-pwsh -File .\scripts\check-harness-consistency.ps1
-```
+运行前按根目录约束设置 `DOTNET_CLI_HOME`；`init.ps1` 会完成该设置。当前 checkout 未包含 `check-harness-consistency.ps1` 或 `Run-TestTiers.ps1`，因此不能把它们作为本分支的验证前提；CLI、文档或 harness 改动应运行对应的 `dotnet build`、`dotnet test` 和 CLI smoke。
 
 ## 文档与状态同步
 

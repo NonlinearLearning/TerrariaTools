@@ -37,6 +37,8 @@ CPG 的 shard 持久化是构建器 API 配置，不是当前 CLI 参数；存�
 
 ## 3. 运行删除规则宿主
 
+`src/RoslynPrototype/RoslynPrototype.csproj` 是兼容 launcher；它只保留原有命令路径，实际 CLI 实现在 `src/Deletion.Cli/`。日常调用继续使用这个稳定入口。
+
 不传输入路径时，宿主使用内置 demo：
 
 ```powershell
@@ -56,10 +58,11 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path
 ## 4. 运行回归测试
 
 ```powershell
-pwsh -File .\scripts\Run-TestTiers.ps1 -Fast
+dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore
+dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore
 ```
 
-测试输出以通过/失败计数结束。更窄的验证选择见 [Harness 验证矩阵](harness-verification-matrix.md)。
+测试输出以通过/失败计数结束。当前 checkout 未包含 `Run-TestTiers.ps1`；更窄的验证选择见 [Harness 验证矩阵](harness-verification-matrix.md)。
 
 ## 下一步
 

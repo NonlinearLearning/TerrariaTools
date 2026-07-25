@@ -50,6 +50,50 @@ public sealed class ArchitectureBoundaryTests
     Assert.DoesNotContain("Directory.", useCaseText, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void ProductionNamespaces_AreOnlyDeletionNamespaces()
+  {
+    var productionSources = new[]
+      {
+        "Deletion.Core",
+        "Deletion.Rules",
+        "Deletion.Application",
+        "Deletion.Cli",
+        "Deletion.Logging"
+      }
+      .SelectMany(project => Directory.EnumerateFiles(
+        ProjectPath("src", project),
+        "*.cs",
+        SearchOption.AllDirectories));
+
+    foreach (var sourcePath in productionSources)
+    {
+      var source = File.ReadAllText(sourcePath);
+      Assert.DoesNotContain("namespace RoslynPrototype", source, StringComparison.Ordinal);
+      Assert.DoesNotContain("namespace Application", source, StringComparison.Ordinal);
+      Assert.DoesNotContain("namespace Rules", source, StringComparison.Ordinal);
+      Assert.DoesNotContain("namespace Host", source, StringComparison.Ordinal);
+      Assert.DoesNotContain("namespace Logging", source, StringComparison.Ordinal);
+    }
+  }
+
+  [Fact]
+  public void MarkStage_HasNoPropagationDependency()
+  {
+    var markSources = Directory.EnumerateFiles(
+      ProjectPath("src", "Deletion.Rules", "Mark"),
+      "*.cs",
+      SearchOption.AllDirectories);
+
+    foreach (var sourcePath in markSources)
+    {
+      Assert.DoesNotContain(
+        "Propagation",
+        File.ReadAllText(sourcePath),
+        StringComparison.Ordinal);
+    }
+  }
+
   private static string ProjectPath(params string[] parts)
   {
     var sourceFile = new StackTrace(true).GetFrames()?

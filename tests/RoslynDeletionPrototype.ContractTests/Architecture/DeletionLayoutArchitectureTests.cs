@@ -31,6 +31,51 @@ public sealed class DeletionLayoutArchitectureTests
     Assert.DoesNotContain(@"..\Deletion.Rules\Deletion.Rules.csproj", projectText, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void ProductionProjectReferences_MatchTheTargetDependencyGraph()
+  {
+    AssertProjectReferences(
+      new[] { "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj" },
+      "src", "Deletion.Core", "Deletion.Core.csproj");
+    AssertProjectReferences(
+      new[]
+      {
+        "..\\Deletion.Core\\Deletion.Core.csproj",
+        "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
+      },
+      "src", "Deletion.Rules", "Deletion.Rules.csproj");
+    AssertProjectReferences(
+      new[]
+      {
+        "..\\Deletion.Core\\Deletion.Core.csproj",
+        "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
+      },
+      "src", "Deletion.Application", "Deletion.Application.csproj");
+    AssertProjectReferences(
+      new[]
+      {
+        "..\\Deletion.Application\\Deletion.Application.csproj",
+        "..\\Deletion.Rules\\Deletion.Rules.csproj",
+        "..\\Deletion.Core\\Deletion.Core.csproj",
+        "..\\Deletion.Logging\\Deletion.Logging.csproj",
+        "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
+      },
+      "src", "Deletion.Cli", "Deletion.Cli.csproj");
+    AssertProjectReferences(Array.Empty<string>(), "src", "Deletion.Logging", "Deletion.Logging.csproj");
+  }
+
+  private static void AssertProjectReferences(
+    IReadOnlyList<string> expected,
+    params string[] projectParts)
+  {
+    var references = File.ReadLines(ProjectPath(projectParts[0], projectParts[1], projectParts[2]))
+      .Where(line => line.Contains("<ProjectReference", StringComparison.Ordinal))
+      .Select(line => line.Split('"')[1])
+      .ToArray();
+
+    Assert.Equal(expected, references);
+  }
+
   private static string ProjectPath(
     string first,
     string second,
