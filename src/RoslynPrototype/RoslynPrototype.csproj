@@ -13,6 +13,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Host\Host.csproj" />
+    <ProjectReference Include="..\Deletion.Cli\Deletion.Cli.csproj" />
   </ItemGroup>
 </Project>

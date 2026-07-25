@@ -4,7 +4,7 @@ using FsCheck.Xunit;
 using Microsoft.CodeAnalysis.CSharp;
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Model;
-using RoslynPrototype.Application;
+using Deletion.Application;
 using RoslynPrototype.Testing.TestCodeSet.Cpg;
 using RoslynPrototype.Testing.TestInfrastructure;
 

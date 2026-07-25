@@ -39,10 +39,12 @@ pwsh -File .\init.ps1
 至少执行与改动匹配的命令：
 
 ```powershell
-pwsh -File .\scripts\check-harness-consistency.ps1
 dotnet build .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj
-pwsh -File .\scripts\Run-TestTiers.ps1 -Fast
+dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore
+dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore
 ```
+
+当前 checkout 未包含 `scripts/check-harness-consistency.ps1` 或 `scripts/Run-TestTiers.ps1`；恢复这些 harness 脚本前，不要将其列为已执行的验证。
 
 完整分层要求见 [Harness 验证矩阵](harness-verification-matrix.md)。提交说明应记录实际执行的命令和未验证边界。
 

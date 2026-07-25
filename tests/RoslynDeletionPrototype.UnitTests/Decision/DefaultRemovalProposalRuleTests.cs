@@ -1,10 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using RoslynPrototype.Decision;
-using RoslynPrototype.Lifting;
-using RoslynPrototype.Marking;
-using RoslynPrototype.Propagation;
-using Rules;
+using Deletion.Core.Decision;
+using Deletion.Core.Lifting;
+using Deletion.Core.Marking;
+using Deletion.Core.Propagation;
+using Deletion.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

@@ -2,7 +2,7 @@
 
 ## 适用范围
 
-本页说明 `src/RoslynPrototype/RoslynPrototype.csproj` 的当前宿主行为。该 CLI 是研究原型；规则覆盖范围以测试和设计文档为准。
+本页说明 `src/RoslynPrototype/RoslynPrototype.csproj` 的当前宿主行为。该项目是兼容 launcher，转发至 `src/Deletion.Cli/`；原命令路径和参数保持不变。该 CLI 是研究原型；规则覆盖范围以测试和设计文档为准。
 
 ## 调用形式
 

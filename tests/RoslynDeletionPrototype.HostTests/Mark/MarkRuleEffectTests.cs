@@ -1,9 +1,9 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis;
-using RoslynPrototype.Application;
-using RoslynPrototype.Rewrite;
+using Deletion.Application;
+using Deletion.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
-using Rules;
+using Deletion.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -35,7 +35,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "target-name-source.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -75,7 +75,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "definition-assignment.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -106,7 +106,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "assignment-statement.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -137,7 +137,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "complex-definition-assignment.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -168,7 +168,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "chained-assignment-statement.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -199,7 +199,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "deconstruction-assignment-statement.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -230,7 +230,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "object-initializer-definition-assignment.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -261,7 +261,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "complex-compound-assignment-statement.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -292,7 +292,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "assignment-left-operand.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -323,7 +323,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "definition-left-operand.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -354,7 +354,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "call-argument-statement.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -385,7 +385,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "property-access-definition.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -416,7 +416,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "index-access-definition.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -447,7 +447,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "if-else-only.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -488,7 +488,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "for-initializer-host-sample.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -519,7 +519,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "for-incrementor-host-sample.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -550,7 +550,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "while-body-host-sample.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -576,7 +576,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "do-body-host-sample.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -602,7 +602,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "switch-condition-host-sample.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -633,7 +633,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "switch-case-single-statement.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -659,7 +659,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "switch-case-without-break-fully-marked.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -685,7 +685,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "logical-mixed-precedence.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -728,7 +728,7 @@ public sealed class MarkRuleEffectTests : IDisposable
             "logical-mixed-precedence-parenthesized.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -768,7 +768,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, "logical-multi-target-group.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -808,7 +808,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var rawDiffPath = Path.Combine(_tempDirectory, $"{caseName}.raw.diff");
         var application = CreateApplication();
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -872,6 +872,11 @@ public sealed class MarkRuleEffectTests : IDisposable
     private static DeletionApplicationService CreateApplication()
     {
         return new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+    }
+
+    private static DeletionCommandHost CreateCommandHost()
+    {
+        return new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
     }
 
     private string WriteSourceFile(string fileName, string source)

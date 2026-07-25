@@ -5,8 +5,8 @@ using MinimalRoslynCpg.Persistence;
 using MinimalRoslynCpg.Persistence.Sqlite;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using RoslynPrototype.Analysis;
-using Rules;
+using Deletion.Core.Analysis;
+using Deletion.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

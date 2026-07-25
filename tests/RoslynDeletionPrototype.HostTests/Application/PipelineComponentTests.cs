@@ -4,14 +4,14 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Analysis.FlowSummaries;
 using System.Text;
-using RoslynPrototype.Analysis;
-using RoslynPrototype.Application;
-using RoslynPrototype.Decision;
-using RoslynPrototype.Lifting;
-using RoslynPrototype.Marking;
-using RoslynPrototype.Propagation;
-using RoslynPrototype.Rewrite;
-using Rules;
+using Deletion.Core.Analysis;
+using Deletion.Application;
+using Deletion.Core.Decision;
+using Deletion.Core.Lifting;
+using Deletion.Core.Marking;
+using Deletion.Core.Propagation;
+using Deletion.Core.Rewrite;
+using Deletion.Rules;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Common;
 using RoslynPrototype.Tests.TestCodeSet.DeleteClass;
@@ -93,7 +93,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           "--target-name",
           "s",
@@ -1135,7 +1135,7 @@ public sealed class PipelineComponentTests : IDisposable
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -1167,7 +1167,7 @@ public sealed class PipelineComponentTests : IDisposable
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -1196,7 +1196,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[] { "--target-name", "s" });
+        var result = CreateCommandHost().AnalyzeFromArgs(new[] { "--target-name", "s" });
 
         Assert.Equal(2, result.SeedMarks.Count);
         Assert.NotEmpty(result.PropagatedMarks);
@@ -1213,7 +1213,7 @@ public sealed class PipelineComponentTests : IDisposable
         var explicitDiffPath = Path.Combine(_tempDirectory, "no-edits.diff");
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -1237,7 +1237,7 @@ public sealed class PipelineComponentTests : IDisposable
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
             filePath,
             "--target-name",
@@ -1297,7 +1297,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1374,7 +1374,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var serialResult = application.AnalyzeFromArgs(new[]
+        var serialResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1407,7 +1407,7 @@ public sealed class PipelineComponentTests : IDisposable
                 arguments.Add("--disable-directory-parallelism");
             }
 
-            var parallelResult = application.AnalyzeFromArgs(arguments.ToArray());
+            var parallelResult = CreateCommandHost().AnalyzeFromArgs(arguments.ToArray());
 
             Assert.NotEmpty(parallelResult.Edits);
             var expectedGrantedCpgDop = configuration.DisableDirectoryParallelism
@@ -1469,7 +1469,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var exception = Assert.Throws<ArgumentException>(() => application.AnalyzeFromArgs(new[]
+        var exception = Assert.Throws<ArgumentException>(() => CreateCommandHost().AnalyzeFromArgs(new[]
         {
           "--cpg-max-degree-of-parallelism",
           "0"
@@ -1512,7 +1512,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var defaultResult = application.AnalyzeFromArgs(new[]
+        var defaultResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1521,7 +1521,7 @@ public sealed class PipelineComponentTests : IDisposable
           "8",
           "--no-diff"
         });
-        var helperSerialResult = application.AnalyzeFromArgs(new[]
+        var helperSerialResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1582,7 +1582,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-unreferenced-methods",
@@ -1635,7 +1635,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1679,7 +1679,7 @@ public sealed class PipelineComponentTests : IDisposable
 
         foreach (var maxDegreeOfParallelism in new[] { 1, 2, 16 })
         {
-            var result = application.AnalyzeFromArgs(new[]
+            var result = CreateCommandHost().AnalyzeFromArgs(new[]
             {
               projectDirectory,
               "--delete-class",
@@ -1722,7 +1722,7 @@ public sealed class PipelineComponentTests : IDisposable
         DeleteClassLargeSources.WriteLargeProject(projectDirectory);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1784,7 +1784,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1838,7 +1838,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1886,7 +1886,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1933,7 +1933,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -1981,7 +1981,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2037,7 +2037,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2099,7 +2099,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2166,7 +2166,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2227,7 +2227,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2282,7 +2282,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2346,7 +2346,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2407,7 +2407,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2473,7 +2473,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2533,7 +2533,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2596,7 +2596,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2660,7 +2660,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2719,7 +2719,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2782,7 +2782,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2837,7 +2837,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2890,7 +2890,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2943,7 +2943,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -2984,7 +2984,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3037,7 +3037,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3097,7 +3097,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3150,7 +3150,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3206,7 +3206,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3251,7 +3251,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3309,7 +3309,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3369,7 +3369,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3417,7 +3417,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3458,7 +3458,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3523,7 +3523,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3604,7 +3604,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3650,7 +3650,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3688,7 +3688,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3746,7 +3746,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3805,7 +3805,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3858,7 +3858,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -3947,7 +3947,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-unreferenced-methods",
@@ -4009,7 +4009,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-unreferenced-methods",
@@ -4066,7 +4066,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-unreferenced-methods",
@@ -4145,7 +4145,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-unreferenced-methods",
@@ -4209,7 +4209,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--clear-unused-interface-implementations",
@@ -4276,7 +4276,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--clear-unused-interface-implementations",
@@ -4313,7 +4313,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--privatize-internal-only-public-methods",
@@ -4378,7 +4378,7 @@ public sealed class PipelineComponentTests : IDisposable
           """);
         var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--privatize-internal-only-public-methods",
@@ -4414,10 +4414,10 @@ public sealed class PipelineComponentTests : IDisposable
         var rules = RuleRegistry.CreateDefaultRules();
         var contractAssembly = typeof(RuleDefinitionMark).Assembly;
         var implementationAssembly = typeof(SObjectIdentifierNameMarkRule).Assembly;
-        var markRuleType = contractAssembly.GetType("Rules.RuleDefinitionMark");
-        var propagateRuleType = contractAssembly.GetType("Rules.RuleDefinitionPropagate");
-        var liftRuleType = contractAssembly.GetType("Rules.RuleDefinitionLift");
-        var proposeRuleType = contractAssembly.GetType("Rules.RuleDefinitionPropose");
+        var markRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionMark");
+        var propagateRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionPropagate");
+        var liftRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionLift");
+        var proposeRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionPropose");
 
         Assert.NotNull(markRuleType);
         Assert.NotNull(propagateRuleType);
@@ -4555,9 +4555,9 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var assembly = typeof(RuleRegistry).Assembly;
 
-        Assert.Null(assembly.GetType("Rules.DeleteSObjectPropagationState"));
-        Assert.Null(assembly.GetType("Rules.LogicalConditionPropagationStep"));
-        Assert.Null(assembly.GetType("Rules.SymbolReferencePropagationStep"));
+        Assert.Null(assembly.GetType("Deletion.Rules.DeleteSObjectPropagationState"));
+        Assert.Null(assembly.GetType("Deletion.Rules.LogicalConditionPropagationStep"));
+        Assert.Null(assembly.GetType("Deletion.Rules.SymbolReferencePropagationStep"));
     }
 
     [Fact]
@@ -4627,6 +4627,11 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
+    private static DeletionCommandHost CreateCommandHost()
+    {
+        return new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+    }
+
     private static (RuleContext Context, SyntaxNode Root) CreateContext(
       string source,
       string? targetName = null,
@@ -4663,7 +4668,7 @@ public sealed class PipelineComponentTests : IDisposable
       where TCache : class
     {
         var method = typeof(DeletionAnalysisRuntime)
-          .GetMethod("GetOrCreateCompilationCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+          .GetMethod("GetOrCreateCompilationCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
         Assert.NotNull(method);
 
         var genericMethod = method!.MakeGenericMethod(typeof(TCache));
@@ -5243,7 +5248,7 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private sealed class TestRuleSet : Rules.RuleSetDefinition
+    private sealed class TestRuleSet : Deletion.Rules.RuleSetDefinition
     {
         public override string Id => "test";
 

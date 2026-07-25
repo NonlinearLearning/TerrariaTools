@@ -1,5 +1,5 @@
 using System.Text;
-using RoslynPrototype.Rewrite;
+using Deletion.Core.Rewrite;
 
 namespace RoslynPrototype.Testing.TestInfrastructure;
 

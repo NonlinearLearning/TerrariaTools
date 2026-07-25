@@ -3,11 +3,11 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 using MinimalRoslynCpg.Builder;
-using RoslynPrototype.Application;
-using RoslynPrototype.Analysis;
-using RoslynPrototype.Marking;
-using RoslynPrototype.Rewrite;
-using Rules;
+using Deletion.Application;
+using Deletion.Core.Analysis;
+using Deletion.Core.Marking;
+using Deletion.Core.Rewrite;
+using Deletion.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
