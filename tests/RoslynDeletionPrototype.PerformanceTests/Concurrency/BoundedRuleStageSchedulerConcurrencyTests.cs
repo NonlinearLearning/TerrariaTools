@@ -1,4 +1,4 @@
-using Rules;
+using Deletion.Rules;
 using Xunit;
 using Xunit.Abstractions;
 

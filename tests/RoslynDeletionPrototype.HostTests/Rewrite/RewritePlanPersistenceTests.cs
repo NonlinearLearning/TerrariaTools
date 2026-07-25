@@ -2,9 +2,9 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using RoslynPrototype.Application;
-using RoslynPrototype.Rewrite;
-using Rules;
+using Deletion.Application;
+using Deletion.Core.Rewrite;
+using Deletion.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

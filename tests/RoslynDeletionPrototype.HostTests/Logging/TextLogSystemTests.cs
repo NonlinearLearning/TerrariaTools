@@ -1,8 +1,8 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
-using RoslynPrototype.Application;
-using RoslynPrototype.Logging;
+using Deletion.Application;
+using Deletion.Logging;
 using RoslynPrototype.Tests.TestCodeSet.DeleteClassDirectory;
 using RoslynPrototype.Tests.TestCodeSet.Logging;
 using Xunit;
@@ -47,12 +47,12 @@ public sealed class TextLogSystemTests : IDisposable
     public void WriteMemorySnapshot_WhenDebugSnapshotIsFiltered_DoesNotInvokeSampler()
     {
         var loggingAssembly = typeof(TextLogFilter).Assembly;
-        var filterType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogFilter")!;
-        var writerType = typeof(DeletionCommandHost).Assembly.GetType("RoslynPrototype.Application.Logging.AnalysisTextLogWriter")!;
-        var levelType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogLevel")!;
-        var viewType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogView")!;
-        var categoryType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogCategory")!;
-        var eventType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogEventType")!;
+        var filterType = loggingAssembly.GetType("Deletion.Logging.TextLogFilter")!;
+        var writerType = typeof(DeletionCommandHost).Assembly.GetType("Deletion.Cli.Telemetry.AnalysisTextLogWriter")!;
+        var levelType = loggingAssembly.GetType("Deletion.Logging.TextLogLevel")!;
+        var viewType = loggingAssembly.GetType("Deletion.Logging.TextLogView")!;
+        var categoryType = loggingAssembly.GetType("Deletion.Logging.TextLogCategory")!;
+        var eventType = loggingAssembly.GetType("Deletion.Logging.TextLogEventType")!;
         var filter = Activator.CreateInstance(
           filterType,
           BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,

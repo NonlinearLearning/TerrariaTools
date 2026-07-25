@@ -1,10 +1,10 @@
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Model;
-using RoslynPrototype.Application;
-using RoslynPrototype.Rewrite;
+using Deletion.Application;
+using Deletion.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
 using RoslynPrototype.Testing.TestInfrastructure;
-using Rules;
+using Deletion.Rules;
 using Xunit;
 using Xunit.Sdk;
 

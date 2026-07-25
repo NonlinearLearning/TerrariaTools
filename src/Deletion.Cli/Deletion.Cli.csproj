@@ -6,11 +6,13 @@
     <LangVersion>preview</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.14.0" />
     <ProjectReference Include="..\Deletion.Application\Deletion.Application.csproj" />
     <ProjectReference Include="..\Deletion.Rules\Deletion.Rules.csproj" />
     <ProjectReference Include="..\Deletion.Core\Deletion.Core.csproj" />
     <ProjectReference Include="..\Deletion.Logging\Deletion.Logging.csproj" />
     <ProjectReference Include="..\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
-    <ProjectReference Include="..\Host\Host.csproj" />
   </ItemGroup>
 </Project>

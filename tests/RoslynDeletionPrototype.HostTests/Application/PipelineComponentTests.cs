@@ -4,14 +4,14 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Analysis.FlowSummaries;
 using System.Text;
-using RoslynPrototype.Analysis;
-using RoslynPrototype.Application;
-using RoslynPrototype.Decision;
-using RoslynPrototype.Lifting;
-using RoslynPrototype.Marking;
-using RoslynPrototype.Propagation;
-using RoslynPrototype.Rewrite;
-using Rules;
+using Deletion.Core.Analysis;
+using Deletion.Application;
+using Deletion.Core.Decision;
+using Deletion.Core.Lifting;
+using Deletion.Core.Marking;
+using Deletion.Core.Propagation;
+using Deletion.Core.Rewrite;
+using Deletion.Rules;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Common;
 using RoslynPrototype.Tests.TestCodeSet.DeleteClass;
@@ -4414,10 +4414,10 @@ public sealed class PipelineComponentTests : IDisposable
         var rules = RuleRegistry.CreateDefaultRules();
         var contractAssembly = typeof(RuleDefinitionMark).Assembly;
         var implementationAssembly = typeof(SObjectIdentifierNameMarkRule).Assembly;
-        var markRuleType = contractAssembly.GetType("Rules.RuleDefinitionMark");
-        var propagateRuleType = contractAssembly.GetType("Rules.RuleDefinitionPropagate");
-        var liftRuleType = contractAssembly.GetType("Rules.RuleDefinitionLift");
-        var proposeRuleType = contractAssembly.GetType("Rules.RuleDefinitionPropose");
+        var markRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionMark");
+        var propagateRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionPropagate");
+        var liftRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionLift");
+        var proposeRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionPropose");
 
         Assert.NotNull(markRuleType);
         Assert.NotNull(propagateRuleType);
@@ -4555,9 +4555,9 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var assembly = typeof(RuleRegistry).Assembly;
 
-        Assert.Null(assembly.GetType("Rules.DeleteSObjectPropagationState"));
-        Assert.Null(assembly.GetType("Rules.LogicalConditionPropagationStep"));
-        Assert.Null(assembly.GetType("Rules.SymbolReferencePropagationStep"));
+        Assert.Null(assembly.GetType("Deletion.Rules.DeleteSObjectPropagationState"));
+        Assert.Null(assembly.GetType("Deletion.Rules.LogicalConditionPropagationStep"));
+        Assert.Null(assembly.GetType("Deletion.Rules.SymbolReferencePropagationStep"));
     }
 
     [Fact]
@@ -4601,12 +4601,12 @@ public sealed class PipelineComponentTests : IDisposable
         var rules = RuleRegistry.CreateDefaultRules();
         var deleteSObjectMarkRules = GetDeleteSObjectMarkRules(rules);
 
-        Assert.True(deleteSObjectMarkRules.Count >= 10);
+        Assert.True(deleteSObjectMarkDeletion.Rules.Count >= 10);
         Assert.All(
           deleteSObjectMarkRules,
           rule => Assert.Equal(DeleteSObjectGroupKey, rule.GroupKey));
         Assert.Equal(
-          deleteSObjectMarkRules.Count,
+          deleteSObjectMarkDeletion.Rules.Count,
           deleteSObjectMarkRules
             .Select(rule => rule.RuleId)
             .Distinct(StringComparer.Ordinal)
@@ -5243,7 +5243,7 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private sealed class TestRuleSet : Rules.RuleSetDefinition
+    private sealed class TestRuleSet : Deletion.Rules.RuleSetDefinition
     {
         public override string Id => "test";
 

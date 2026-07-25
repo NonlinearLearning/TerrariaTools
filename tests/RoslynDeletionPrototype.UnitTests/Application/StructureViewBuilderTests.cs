@@ -1,12 +1,12 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using RoslynPrototype.Analysis;
+using Deletion.Core.Analysis;
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
-using Rules;
+using Deletion.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

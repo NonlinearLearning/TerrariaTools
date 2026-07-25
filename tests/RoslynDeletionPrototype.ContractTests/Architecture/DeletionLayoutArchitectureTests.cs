@@ -28,7 +28,7 @@ public sealed class DeletionLayoutArchitectureTests
       StringComparison.Ordinal);
     Assert.DoesNotContain(@"..\Host\Host.csproj", projectText, StringComparison.Ordinal);
     Assert.DoesNotContain(@"..\Application\Application.csproj", projectText, StringComparison.Ordinal);
-    Assert.DoesNotContain(@"..\Rules\Rules.csproj", projectText, StringComparison.Ordinal);
+    Assert.DoesNotContain(@"..\Deletion.Rules\Deletion.Rules.csproj", projectText, StringComparison.Ordinal);
   }
 
   private static string ProjectPath(

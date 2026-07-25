@@ -1,4 +1,4 @@
-using RoslynPrototype.Application;
+using Deletion.Application;
 
 namespace Deletion.Cli;
 
