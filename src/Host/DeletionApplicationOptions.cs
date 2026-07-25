@@ -1,4 +1,4 @@
-using RoslynPrototype.Application.Logging;
+using RoslynPrototype.Logging;
 using Rules;
 
 namespace RoslynPrototype.Application;

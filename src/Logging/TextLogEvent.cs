@@ -1,6 +1,6 @@
-namespace RoslynPrototype.Application.Logging;
+namespace RoslynPrototype.Logging;
 
-internal sealed record TextLogEvent(
+public sealed record TextLogEvent(
   DateTimeOffset TimestampUtc,
   TextLogLevel Level,
   TextLogCategory Category,

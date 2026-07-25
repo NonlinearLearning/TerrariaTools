@@ -2,6 +2,7 @@ using System.Text;
 using MinimalRoslynCpg.Builder;
 using RoslynPrototype.Application.Logging;
 using RoslynPrototype.Analysis;
+using RoslynPrototype.Logging;
 using RoslynPrototype.Rewrite;
 using Rules;
 

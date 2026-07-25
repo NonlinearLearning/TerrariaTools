@@ -1,6 +1,6 @@
-namespace RoslynPrototype.Application.Logging;
+namespace RoslynPrototype.Logging;
 
-internal enum TextLogEventType
+public enum TextLogEventType
 {
     Started = 0,
     Sampled = 1,

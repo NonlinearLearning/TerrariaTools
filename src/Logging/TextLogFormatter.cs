@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text;
 
-namespace RoslynPrototype.Application.Logging;
+namespace RoslynPrototype.Logging;
 
-internal sealed class TextLogFormatter
+public sealed class TextLogFormatter
 {
     public string Format(TextLogEvent textLogEvent, TextLogView view)
     {
@@ -29,38 +29,29 @@ internal sealed class TextLogFormatter
 
         foreach (var field in textLogEvent.Fields)
         {
-            if (!ShouldRenderField(view, textLogEvent, field.Name))
+            if (ShouldRenderField(view, textLogEvent, field.Name))
             {
-                continue;
+                AppendOptionalField(builder, field.Name, FormatValue(field.Value));
             }
-
-            AppendOptionalField(builder, field.Name, FormatValue(field.Value));
         }
 
         return builder.ToString();
     }
 
-    private static bool ShouldRenderField(
-      TextLogView view,
-      TextLogEvent textLogEvent,
-      string fieldName)
+    private static bool ShouldRenderField(TextLogView view, TextLogEvent textLogEvent, string fieldName)
     {
         return view switch
         {
             TextLogView.Compact => IsCompactField(textLogEvent, fieldName),
             TextLogView.Normal => IsNormalField(textLogEvent, fieldName),
-            TextLogView.Diagnostic => true,
-            TextLogView.Benchmark => true,
             _ => true
         };
     }
 
     private static bool IsCompactField(TextLogEvent textLogEvent, string fieldName)
     {
-        return (textLogEvent.Category == TextLogCategory.Run &&
-          fieldName is "files" or "elapsedMs" or "edits" or "diags" or "status") ||
-          (textLogEvent.Category == TextLogCategory.Diag &&
-            fieldName is "diags" or "warnings" or "errors");
+        return (textLogEvent.Category == TextLogCategory.Run && fieldName is "files" or "elapsedMs" or "edits" or "diags" or "status") ||
+          (textLogEvent.Category == TextLogCategory.Diag && fieldName is "diags" or "warnings" or "errors");
     }
 
     private static bool IsNormalField(TextLogEvent textLogEvent, string fieldName)
@@ -83,40 +74,37 @@ internal sealed class TextLogFormatter
 
     private static void AppendOptionalField(StringBuilder builder, string name, string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (!string.IsNullOrWhiteSpace(value))
         {
-            return;
+            AppendField(builder, name, value);
         }
-
-        AppendField(builder, name, value);
     }
 
     private static void AppendValue(StringBuilder builder, string value)
     {
-        if (NeedsQuoting(value))
+        if (!NeedsQuoting(value))
         {
-            builder.Append('"');
-            foreach (var ch in value)
-            {
-                if (ch == '\\' || ch == '"')
-                {
-                    builder.Append('\\');
-                }
-
-                builder.Append(ch);
-            }
-
-            builder.Append('"');
+            builder.Append(value);
             return;
         }
 
-        builder.Append(value);
+        builder.Append('"');
+        foreach (var character in value)
+        {
+            if (character == '\\' || character == '"')
+            {
+                builder.Append('\\');
+            }
+
+            builder.Append(character);
+        }
+
+        builder.Append('"');
     }
 
     private static bool NeedsQuoting(string value)
     {
-        return value.Any(character => char.IsWhiteSpace(character) ||
-          character is '"' or '\\' or '=');
+        return value.Any(character => char.IsWhiteSpace(character) || character is '"' or '\\' or '=');
     }
 
     private static string? FormatValue(object? value)

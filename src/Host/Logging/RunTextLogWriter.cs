@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using MinimalRoslynCpg.Builder;
 using RoslynPrototype.Analysis;
+using RoslynPrototype.Logging;
 using RoslynPrototype.Rewrite;
 
 namespace RoslynPrototype.Application.Logging;

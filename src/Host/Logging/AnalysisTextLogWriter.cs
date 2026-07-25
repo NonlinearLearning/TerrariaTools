@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using RoslynPrototype.Logging;
 using RoslynPrototype.Rewrite;
 
 namespace RoslynPrototype.Application.Logging;

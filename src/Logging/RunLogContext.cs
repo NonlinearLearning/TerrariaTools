@@ -1,6 +1,6 @@
-namespace RoslynPrototype.Application.Logging;
+namespace RoslynPrototype.Logging;
 
-internal sealed record RunLogContext(
+public sealed record RunLogContext(
   string RunId,
   string Operation,
   string InputKind,

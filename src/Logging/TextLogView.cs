@@ -1,6 +1,6 @@
-namespace RoslynPrototype.Application.Logging;
+namespace RoslynPrototype.Logging;
 
-internal enum TextLogView
+public enum TextLogView
 {
     Compact = 0,
     Normal = 1,

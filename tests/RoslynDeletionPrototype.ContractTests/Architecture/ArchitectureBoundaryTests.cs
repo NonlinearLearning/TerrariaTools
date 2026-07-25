@@ -27,8 +27,18 @@ public sealed class ArchitectureBoundaryTests
   {
     Assert.True(File.Exists(ProjectPath("src", "Application", "Application.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "Host", "Host.csproj")));
+    Assert.True(File.Exists(ProjectPath("src", "Logging", "Logging.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "Rules", "Rules.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "RoslynPrototype", "RoslynPrototype.Core.csproj")));
+  }
+
+  [Fact]
+  public void LoggingProject_HasNoProjectOrPackageDependencies()
+  {
+    var projectText = File.ReadAllText(ProjectPath("src", "Logging", "Logging.csproj"));
+
+    Assert.DoesNotContain("<ProjectReference", projectText, StringComparison.Ordinal);
+    Assert.DoesNotContain("<PackageReference", projectText, StringComparison.Ordinal);
   }
 
   [Fact]

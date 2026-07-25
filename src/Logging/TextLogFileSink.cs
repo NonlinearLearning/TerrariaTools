@@ -1,10 +1,10 @@
-using System.Threading.Channels;
-using System.Text;
 using System.Diagnostics;
+using System.Text;
+using System.Threading.Channels;
 
-namespace RoslynPrototype.Application.Logging;
+namespace RoslynPrototype.Logging;
 
-internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
+public sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
 {
     private const int BatchRecordCapacity = 64;
     private readonly Channel<TextLogWorkItem> _channel;
@@ -53,10 +53,7 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
     {
         ThrowIfFailed();
         ThrowIfDisposed();
-        _channel.Writer.WriteAsync(new TextLogWorkItem(textLogEvent, null, false))
-          .AsTask()
-          .GetAwaiter()
-          .GetResult();
+        _channel.Writer.WriteAsync(new TextLogWorkItem(textLogEvent, null, false)).AsTask().GetAwaiter().GetResult();
     }
 
     public void Flush()
@@ -64,10 +61,7 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
         ThrowIfFailed();
         ThrowIfDisposed();
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _channel.Writer.WriteAsync(new TextLogWorkItem(null, completion, false))
-          .AsTask()
-          .GetAwaiter()
-          .GetResult();
+        _channel.Writer.WriteAsync(new TextLogWorkItem(null, completion, false)).AsTask().GetAwaiter().GetResult();
         completion.Task.GetAwaiter().GetResult();
         ThrowIfFailed();
     }
@@ -162,10 +156,7 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
         }
 
         _disposed = true;
-        _channel.Writer.WriteAsync(TextLogWorkItem.Complete())
-          .AsTask()
-          .GetAwaiter()
-          .GetResult();
+        _channel.Writer.WriteAsync(TextLogWorkItem.Complete()).AsTask().GetAwaiter().GetResult();
         _channel.Writer.TryComplete();
     }
 
@@ -188,10 +179,7 @@ internal sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
         }
     }
 
-    private sealed record TextLogWorkItem(
-      TextLogEvent? TextLogEvent,
-      TaskCompletionSource? FlushCompletion,
-      bool IsComplete)
+    private sealed record TextLogWorkItem(TextLogEvent? TextLogEvent, TaskCompletionSource? FlushCompletion, bool IsComplete)
     {
         public bool IsFlush => !IsComplete && FlushCompletion is not null;
 

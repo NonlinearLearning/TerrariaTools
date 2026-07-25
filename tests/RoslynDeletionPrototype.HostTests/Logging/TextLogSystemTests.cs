@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using RoslynPrototype.Application;
+using RoslynPrototype.Logging;
 using RoslynPrototype.Tests.TestCodeSet.DeleteClassDirectory;
 using RoslynPrototype.Tests.TestCodeSet.Logging;
 using Xunit;
@@ -19,15 +20,39 @@ public sealed class TextLogSystemTests : IDisposable
     }
 
     [Fact]
+    public void LoggingModule_ExportsPublicTextLogContract()
+    {
+        // Arrange
+        var filter = new TextLogFilter(
+          TextLogLevel.Info,
+          TextLogView.Normal,
+          new[] { TextLogCategory.Run },
+          new[] { TextLogEventType.Started });
+        var textLogEvent = new TextLogEvent(
+          DateTimeOffset.UtcNow,
+          TextLogLevel.Info,
+          TextLogCategory.Run,
+          TextLogEventType.Started,
+          "analysis started",
+          "test-run");
+
+        // Act
+        var allowed = filter.Allows(textLogEvent);
+
+        // Assert
+        Assert.True(allowed);
+    }
+
+    [Fact]
     public void WriteMemorySnapshot_WhenDebugSnapshotIsFiltered_DoesNotInvokeSampler()
     {
-        var loggingAssembly = typeof(DeletionCommandHost).Assembly;
-        var filterType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogFilter")!;
-        var writerType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.AnalysisTextLogWriter")!;
-        var levelType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogLevel")!;
-        var viewType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogView")!;
-        var categoryType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogCategory")!;
-        var eventType = loggingAssembly.GetType("RoslynPrototype.Application.Logging.TextLogEventType")!;
+        var loggingAssembly = typeof(TextLogFilter).Assembly;
+        var filterType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogFilter")!;
+        var writerType = typeof(DeletionCommandHost).Assembly.GetType("RoslynPrototype.Application.Logging.AnalysisTextLogWriter")!;
+        var levelType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogLevel")!;
+        var viewType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogView")!;
+        var categoryType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogCategory")!;
+        var eventType = loggingAssembly.GetType("RoslynPrototype.Logging.TextLogEventType")!;
         var filter = Activator.CreateInstance(
           filterType,
           BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,

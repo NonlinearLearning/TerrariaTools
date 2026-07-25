@@ -13,7 +13,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Logging\Logging.csproj" />
     <ProjectReference Include="..\Application\Application.csproj" />
+    <ProjectReference Include="..\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
     <ProjectReference Include="..\Rules\Rules.csproj" />
     <ProjectReference Include="..\RoslynPrototype\RoslynPrototype.Core.csproj" />
   </ItemGroup>

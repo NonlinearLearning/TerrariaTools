@@ -1,6 +1,6 @@
-namespace RoslynPrototype.Application.Logging;
+namespace RoslynPrototype.Logging;
 
-internal enum TextLogCategory
+public enum TextLogCategory
 {
     Run = 0,
     File = 1,

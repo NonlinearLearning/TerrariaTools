@@ -8,6 +8,7 @@ using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Model;
 using RoslynPrototype.Application.Logging;
 using RoslynPrototype.Analysis;
+using RoslynPrototype.Logging;
 using RoslynPrototype.Decision;
 using RoslynPrototype.Lifting;
 using RoslynPrototype.Marking;

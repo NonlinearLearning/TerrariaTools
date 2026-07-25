@@ -1,6 +1,6 @@
-namespace RoslynPrototype.Application.Logging;
+namespace RoslynPrototype.Logging;
 
-internal enum TextLogLevel
+public enum TextLogLevel
 {
     Error = 0,
     Warn = 1,

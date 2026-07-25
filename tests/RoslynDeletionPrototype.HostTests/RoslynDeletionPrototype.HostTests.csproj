@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Host\Host.csproj" />
+    <ProjectReference Include="..\..\src\Logging\Logging.csproj" />
     <ProjectReference Include="..\..\src\Application\Application.csproj" />
     <ProjectReference Include="..\..\src\Rules\Rules.csproj" />
     <ProjectReference Include="..\..\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
