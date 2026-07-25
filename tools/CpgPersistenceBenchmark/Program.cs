@@ -32,6 +32,18 @@ foreach (var fixture in fixtures)
         {
           for (var warmup = 0; warmup < configuration.WarmupCount; warmup += 1)
           {
+            if (configuration.ReusePersistedFragments && warmup == 0)
+            {
+              BenchmarkCase.SeedPersistentStore(
+                fixture,
+                durabilityMode,
+                degreeOfParallelism,
+                shardExportConcurrency,
+                fileWriteConcurrency,
+                catalogBatchRows,
+                configuration.PersistentStoreRoot!);
+            }
+
             _ = BenchmarkCase.Run(
               fixture,
               durabilityMode,
@@ -39,7 +51,20 @@ foreach (var fixture in fixtures)
               shardExportConcurrency,
               fileWriteConcurrency,
               catalogBatchRows,
-              configuration.TemporaryStoreRoot);
+              configuration.TemporaryStoreRoot,
+              configuration.PersistentStoreRoot);
+          }
+
+          if (configuration.ReusePersistedFragments && configuration.WarmupCount == 0)
+          {
+            BenchmarkCase.SeedPersistentStore(
+              fixture,
+              durabilityMode,
+              degreeOfParallelism,
+              shardExportConcurrency,
+              fileWriteConcurrency,
+              catalogBatchRows,
+              configuration.PersistentStoreRoot!);
           }
 
           var samples = Enumerable.Range(0, configuration.SampleCount)
@@ -50,7 +75,8 @@ foreach (var fixture in fixtures)
               shardExportConcurrency,
               fileWriteConcurrency,
               catalogBatchRows,
-              configuration.TemporaryStoreRoot))
+              configuration.TemporaryStoreRoot,
+              configuration.PersistentStoreRoot))
             .OrderBy(sample => sample.ElapsedMilliseconds)
             .ToArray();
           results.Add(BenchmarkCaseResult.FromSamples(
@@ -212,13 +238,17 @@ internal static class BenchmarkCase
     int shardExportConcurrency,
     int fileWriteConcurrency,
     int catalogBatchRows,
-    string? temporaryStoreRoot)
+    string? temporaryStoreRoot,
+    string? persistentStoreRoot)
   {
     var temporaryRoot = temporaryStoreRoot is null
       ? Path.GetTempPath()
       : Path.GetFullPath(temporaryStoreRoot);
     Directory.CreateDirectory(temporaryRoot);
-    var storeRoot = Path.Combine(temporaryRoot, "cpg-persistence-benchmark", Guid.NewGuid().ToString("N"));
+    var storeRoot = persistentStoreRoot is null
+      ? Path.Combine(temporaryRoot, "cpg-persistence-benchmark", Guid.NewGuid().ToString("N"))
+      : Path.GetFullPath(persistentStoreRoot);
+    var deleteStoreOnCompletion = persistentStoreRoot is null;
     try
     {
       GC.Collect();
@@ -227,6 +257,7 @@ internal static class BenchmarkCase
       var stopwatch = Stopwatch.StartNew();
       var nodeCount = 0;
       var edgeCount = 0;
+      var restoredGraphCount = 0;
       var persistence = new List<CpgPersistenceTelemetry>();
       var coldBuildMilliseconds = 0L;
       var incrementalBuildMilliseconds = 0L;
@@ -238,7 +269,8 @@ internal static class BenchmarkCase
           var graph = builder.BuildFromSource(source, filePath);
           nodeCount += graph.Nodes.Count;
           edgeCount += graph.Edges.Count;
-          persistence.Add(builder.LastBuildTelemetry.Persistence!);
+          restoredGraphCount += builder.LastBuildTelemetry.ExecutedPassNames?.Count == 0 ? 1 : 0;
+          persistence.Add(builder.LastBuildTelemetry.Persistence ?? CpgPersistenceTelemetry.CreateDefault());
         }
       }
       else
@@ -258,7 +290,7 @@ internal static class BenchmarkCase
           var graph = builder.BuildFromSource(source, filePath);
           nodeCount += graph.Nodes.Count;
           edgeCount += graph.Edges.Count;
-          persistence.Add(builder.LastBuildTelemetry.Persistence!);
+          persistence.Add(builder.LastBuildTelemetry.Persistence ?? CpgPersistenceTelemetry.CreateDefault());
         }
 
         incrementalStopwatch.Stop();
@@ -271,6 +303,7 @@ internal static class BenchmarkCase
         stopwatch.ElapsedMilliseconds,
         GC.GetTotalMemory(forceFullCollection: false),
         process.WorkingSet64,
+        restoredGraphCount,
         nodeCount,
         edgeCount,
         Directory.EnumerateFiles(storeRoot, "*.cpgbin", SearchOption.AllDirectories).Sum(path => new FileInfo(path).Length),
@@ -323,7 +356,7 @@ internal static class BenchmarkCase
     }
     finally
     {
-      if (Directory.Exists(storeRoot))
+      if (deleteStoreOnCompletion && Directory.Exists(storeRoot))
       {
         Directory.Delete(storeRoot, recursive: true);
       }
@@ -345,12 +378,52 @@ internal static class BenchmarkCase
       });
     }
   }
+
+  internal static void SeedPersistentStore(
+    BenchmarkFixture fixture,
+    CpgPersistenceDurabilityMode durabilityMode,
+    int degreeOfParallelism,
+    int shardExportConcurrency,
+    int fileWriteConcurrency,
+    int catalogBatchRows,
+    string persistentStoreRoot)
+  {
+    var storeRoot = Path.GetFullPath(persistentStoreRoot);
+    if (Directory.Exists(storeRoot) && Directory.EnumerateFileSystemEntries(storeRoot).Any())
+    {
+      throw new InvalidOperationException($"Persistent store root must be empty before seeding: {storeRoot}");
+    }
+
+    Directory.CreateDirectory(storeRoot);
+    foreach (var (source, filePath) in fixture.Files)
+    {
+      _ = CreateBuilder().BuildFromSource(source, filePath);
+    }
+
+    RoslynCpgBuilder CreateBuilder()
+    {
+      return new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      {
+        MaxDegreeOfParallelism = degreeOfParallelism,
+        Persistence = new CpgPersistenceOptions(
+          storeRoot,
+          $"benchmark-{fixture.Name}-{durabilityMode}",
+          StreamingMode: fixture.StreamingMode,
+          MaxConcurrentShardExports: shardExportConcurrency,
+          MaxConcurrentShardFileWrites: fileWriteConcurrency,
+          MaxCatalogBatchRows: catalogBatchRows,
+          DurabilityMode: durabilityMode),
+      });
+    }
+
+  }
 }
 
 internal sealed record BenchmarkSample(
   long ElapsedMilliseconds,
   long ManagedHeapBytes,
   long WorkingSetBytes,
+  int RestoredGraphCount,
   int NodeCount,
   int EdgeCount,
   long ShardBytes,

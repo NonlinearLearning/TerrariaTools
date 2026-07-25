@@ -13,7 +13,7 @@ namespace RoslynPrototype.Tests;
 
 public sealed class LogicalConditionMarkAnalyzerTests
 {
-    private const string DeleteSObjectGroupKey = DeleteSObjectRuleIds.GroupKey;
+    private const string DeleteSObjectGroupKey = "DEL-SOBJ";
 
     public static IEnumerable<object[]> LargeParenthesizedLogicalCases()
     {
@@ -453,9 +453,9 @@ public sealed class LogicalConditionMarkAnalyzerTests
     {
         var liftedMarks = new RuleDefinitionLift[]
             {
-                new DeleteSObjectExpressionHostLiftingRule(),
-                new DeleteSObjectIfStructureLiftingRule(),
-                new DeleteSObjectSwitchStructureLiftingRule()
+                new SObjectExpressionHostLiftingRule(),
+                new SObjectIfStructureLiftingRule(),
+                new SObjectSwitchStructureLiftingRule()
             }
             .SelectMany(rule => rule.Lift(context, marks, propagatedMarks))
             .Select(mark => mark.Mark);

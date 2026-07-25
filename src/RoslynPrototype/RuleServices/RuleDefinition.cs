@@ -8,10 +8,19 @@ using RoslynPrototype.Propagation;
 
 namespace Rules;
 
-public abstract class RuleDefinitionMark
+public interface IRuleDefinition
+{
+    string CapabilityId { get; }
+
+    string RuleId { get; }
+}
+
+public abstract class RuleDefinitionMark : IRuleDefinition
 {
     public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
         new[] { RoslynCpgCapability.Default };
+
+    public virtual string CapabilityId => RuleId;
 
     public abstract string RuleId { get; }
 
@@ -24,10 +33,12 @@ public abstract class RuleDefinitionMark
     public abstract IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root);
 }
 
-public abstract class RuleDefinitionPropagate
+public abstract class RuleDefinitionPropagate : IRuleDefinition
 {
     public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
         new[] { RoslynCpgCapability.Default };
+
+    public virtual string CapabilityId => RuleId;
 
     public abstract string RuleId { get; }
 
@@ -42,10 +53,12 @@ public abstract class RuleDefinitionPropagate
       IReadOnlyList<MarkRecord> seedMarks);
 }
 
-public abstract class RuleDefinitionPropose
+public abstract class RuleDefinitionPropose : IRuleDefinition
 {
     public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
         new[] { RoslynCpgCapability.Default };
+
+    public virtual string CapabilityId => RuleId;
 
     public abstract string RuleId { get; }
 
@@ -64,10 +77,12 @@ public abstract class RuleDefinitionPropose
       IReadOnlyList<LiftedMarkRecord> liftedMarks);
 }
 
-public abstract class RuleDefinitionLift
+public abstract class RuleDefinitionLift : IRuleDefinition
 {
     public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
         new[] { RoslynCpgCapability.Default };
+
+    public virtual string CapabilityId => RuleId;
 
     public abstract string RuleId { get; }
 

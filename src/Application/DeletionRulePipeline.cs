@@ -19,7 +19,7 @@ public sealed record DeletionRulePipeline(
       .ToList();
     if (EnableHelperReturnSlicePilot && Propagators.Any(rule => string.Equals(
           rule.GetType().Name,
-          "DeleteClassSymbolReferencePropagationRule",
+          "ClassSymbolReferencePropagationRule",
           StringComparison.Ordinal)))
     {
       requiredCapabilities.Add(RoslynCpgCapability.InterproceduralDataFlow);

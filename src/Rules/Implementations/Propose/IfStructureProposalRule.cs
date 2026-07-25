@@ -9,9 +9,11 @@ namespace Rules;
 
 public sealed class IfStructureProposalRule : RuleDefinitionPropose
 {
-    public override string RuleId { get; } = DeleteSObjectRuleIds.IfStructureProposalRuleId;
+    public override string CapabilityId { get; } = "propose.if-structure";
 
-    public override string GroupKey { get; } = DeleteSObjectRuleIds.GroupKey;
+    public override string RuleId { get; } = "DEL-SOBJ-PROPOSE-IF-001";
+
+    public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Match s-rooted if/elseif/else structure decisions";
 

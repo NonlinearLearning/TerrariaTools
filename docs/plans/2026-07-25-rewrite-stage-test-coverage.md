@@ -8,6 +8,8 @@
 
 **Tech Stack:** .NET 10, xUnit, Roslyn CSharp APIs, `Stopwatch`.
 
+**Theoretical coverage model:** The fixed fixture contains eight distinct expression-position shapes with 16 operations each: addition-left, addition-right, multiplication-left, relational condition, invocation argument, element-access index, cast expression, and parenthesized expression. This gives `8 × 16 = 128` operations. Each operation is checked through direct rewrite, in-memory plan replay, and JSON round-tripped persisted-plan replay: `128 × 3 = 384` path-operation combinations. The three execution paths are compared pairwise: `128 × C(3, 2) = 384` equivalence pairs. Plan integrity separately covers valid, stale-original-text, and overlapping-span plans (`3/3`), and the Host test covers one directory-plan replay plus Roslyn compilation (`1/1`). These are scenario counts, not source-line coverage.
+
 ---
 
 ### Task 1: Contract and logic coverage

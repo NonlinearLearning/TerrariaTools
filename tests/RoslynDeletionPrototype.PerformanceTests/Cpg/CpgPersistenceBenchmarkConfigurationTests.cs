@@ -83,6 +83,19 @@ public sealed class CpgPersistenceBenchmarkConfigurationTests
   }
 
   [Fact]
+  public void Parse_WhenPersistedFragmentReuseIsEnabled_UsesTheFixedStoreRoot()
+  {
+    var configuration = BenchmarkConfiguration.Parse(new[]
+    {
+      "--reuse-persisted-fragments",
+      "--persistent-store-root", @"D:\\cpg-benchmark-store\\reuse",
+    });
+
+    Assert.True(configuration.ReusePersistedFragments);
+    Assert.Equal(@"D:\\cpg-benchmark-store\\reuse", configuration.PersistentStoreRoot);
+  }
+
+  [Fact]
   public void Parse_WhenCatalogBatchRowsAreSpecified_UsesDistinctSortedLimits()
   {
     var configuration = BenchmarkConfiguration.Parse(new[]

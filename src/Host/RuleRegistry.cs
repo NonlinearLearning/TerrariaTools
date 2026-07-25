@@ -12,30 +12,33 @@ public static class RuleRegistry
 
   public static DeletionRulePipeline CreateDefaultRules(IEnumerable<string>? disabledRuleTypes = null)
   {
+    return CreateRules(DefaultRuleSets.Create(), disabledRuleTypes);
+  }
+
+  public static DeletionRulePipeline CreateRules(
+    IEnumerable<IRuleSet> ruleSets,
+    IEnumerable<string>? disabledRuleTypes = null)
+  {
     var disabledTypeNames = (disabledRuleTypes ?? Array.Empty<string>())
       .Where(name => !string.IsNullOrWhiteSpace(name))
       .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    var assembly = typeof(RuleImplementationAssemblyMarker).Assembly;
-    var ruleTypes = assembly
-      .GetTypes()
-      .Where(type => type.IsClass && !type.IsAbstract)
-      .Where(type => type.Namespace == "Rules")
-      .Where(type => !disabledTypeNames.Contains(type.Name))
-      .ToList();
+    var configuredRuleSets = RuleCatalog.Create(ruleSets);
 
     return new DeletionRulePipeline(
-      Markers: CreateRules<RuleDefinitionMark>(ruleTypes),
-      Propagators: CreateRules<RuleDefinitionPropagate>(ruleTypes),
-      Lifters: CreateRules<RuleDefinitionLift>(ruleTypes),
-      Proposers: CreateRules<RuleDefinitionPropose>(ruleTypes));
+      Markers: CreateRules(configuredRuleSets.SelectMany(ruleSet => ruleSet.Markers), disabledTypeNames),
+      Propagators: CreateRules(configuredRuleSets.SelectMany(ruleSet => ruleSet.Propagators), disabledTypeNames),
+      Lifters: CreateRules(configuredRuleSets.SelectMany(ruleSet => ruleSet.Lifters), disabledTypeNames),
+      Proposers: CreateRules(configuredRuleSets.SelectMany(ruleSet => ruleSet.Proposers), disabledTypeNames));
   }
 
-  private static IReadOnlyList<TRule> CreateRules<TRule>(IReadOnlyList<Type> ruleTypes)
+  private static IReadOnlyList<TRule> CreateRules<TRule>(
+    IEnumerable<TRule> rules,
+    IReadOnlySet<string> disabledTypeNames)
+    where TRule : class
   {
-    return ruleTypes
-      .Where(type => typeof(TRule).IsAssignableFrom(type))
-      .OrderBy(type => type.Name, StringComparer.Ordinal)
-      .Select(type => (TRule)Activator.CreateInstance(type)!)
+    return rules
+      .Where(rule => !disabledTypeNames.Contains(rule.GetType().Name))
+      .OrderBy(rule => rule.GetType().Name, StringComparer.Ordinal)
       .ToList();
   }
 }

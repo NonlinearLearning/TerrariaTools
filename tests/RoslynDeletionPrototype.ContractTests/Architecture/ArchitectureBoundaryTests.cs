@@ -202,93 +202,16 @@ public sealed class ArchitectureBoundaryTests
   }
 
   [Fact]
-  public void PublicRuleIds_LiveInRulesProject_NotCoreContracts()
+  public void RuleIdentity_DoesNotUseLegacyMetadataFiles()
   {
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "DeleteSObjectRuleIds.cs")));
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "DeleteUnreferencedMethodRuleIds.cs")));
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "PrivatizeInternalOnlyPublicMethodRuleIds.cs")));
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "ClearUnusedInterfaceImplementationRuleIds.cs")));
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "RuleIds",
-      "DeleteClass",
-      "DeleteClassRuleIds.Common.cs")));
-
-    Assert.True(File.Exists(ProjectPath("src", "Rules", "RuleIds", "DeleteSObjectRuleIds.cs")));
-    Assert.True(File.Exists(ProjectPath("src", "Rules", "RuleIds", "DeleteUnreferencedMethodRuleIds.cs")));
-    Assert.True(File.Exists(ProjectPath("src", "Rules", "RuleIds", "PrivatizeInternalOnlyPublicMethodRuleIds.cs")));
-    Assert.True(File.Exists(ProjectPath("src", "Rules", "RuleIds", "ClearUnusedInterfaceImplementationRuleIds.cs")));
-    Assert.True(File.Exists(ProjectPath(
-      "src",
-      "Rules",
-      "RuleIds",
-      "DeleteClass",
-      "DeleteClassRuleIds.Common.cs")));
-  }
-
-  [Fact]
-  public void RuleMetadata_LivesInRulesProject_NotCoreContracts()
-  {
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "RuleMetadata",
-      "DeleteSObjectRuleMetadata.cs")));
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "RuleMetadata",
-      "DeleteUnreferencedMethodRuleMetadata.cs")));
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "RuleMetadata",
-      "PrivatizeInternalOnlyPublicMethodRuleMetadata.cs")));
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "RuleMetadata",
-      "ClearUnusedInterfaceImplementationRuleMetadata.cs")));
-    Assert.False(File.Exists(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RuleServices",
-      "RuleMetadata",
-      "DeleteClass",
-      "DeleteClassRuleMetadata.Common.cs")));
-
-    Assert.True(File.Exists(ProjectPath("src", "Rules", "RuleMetadata", "DeleteSObjectRuleMetadata.cs")));
-    Assert.True(File.Exists(ProjectPath("src", "Rules", "RuleMetadata", "DeleteUnreferencedMethodRuleMetadata.cs")));
-    Assert.True(File.Exists(ProjectPath("src", "Rules", "RuleMetadata", "PrivatizeInternalOnlyPublicMethodRuleMetadata.cs")));
-    Assert.True(File.Exists(ProjectPath("src", "Rules", "RuleMetadata", "ClearUnusedInterfaceImplementationRuleMetadata.cs")));
-    Assert.True(File.Exists(ProjectPath(
-      "src",
-      "Rules",
-      "RuleMetadata",
-      "DeleteClass",
-      "DeleteClassRuleMetadata.Common.cs")));
+    Assert.Empty(Directory.GetFiles(
+      ProjectPath("src", "Rules", "RuleIds"),
+      "*.cs",
+      SearchOption.AllDirectories));
+    Assert.Empty(Directory.GetFiles(
+      ProjectPath("src", "Rules", "RuleMetadata"),
+      "*.cs",
+      SearchOption.AllDirectories));
   }
 
   private static string ProjectPath(params string[] parts)

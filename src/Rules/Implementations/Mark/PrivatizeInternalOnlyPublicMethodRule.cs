@@ -11,9 +11,11 @@ namespace Rules;
 /// </summary>
 public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
 {
-    public override string RuleId { get; } = PrivatizeInternalOnlyPublicMethodRuleIds.MarkRuleId;
+    public override string CapabilityId { get; } = "mark.privatize-internal-only-public-method";
 
-    public override string GroupKey { get; } = PrivatizeInternalOnlyPublicMethodRuleIds.GroupKey;
+    public override string RuleId { get; } = "PRIV-INTERNAL-PUBLIC-MARK-001";
+
+    public override string GroupKey { get; } = "PRIV-INTERNAL-PUBLIC";
 
     public override string Name { get; } = "Match public methods only referenced inside their declaring type";
 

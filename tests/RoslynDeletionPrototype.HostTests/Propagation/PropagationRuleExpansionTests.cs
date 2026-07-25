@@ -145,13 +145,13 @@ public sealed class PropagationRuleExpansionTests
         var application = new DeletionApplicationService(
           new RuleDefinitionMark[] { new ExactSyntaxSeedRule(seeds) },
           RuleRegistry.CreateDefaultRules().Propagators
-            .Where(rule => string.Equals(rule.GroupKey, DeleteSObjectRuleIds.GroupKey, StringComparison.Ordinal))
+            .Where(rule => string.Equals(rule.GroupKey, "DEL-SOBJ", StringComparison.Ordinal))
             .ToList(),
           new RuleDefinitionLift[]
           {
-            new DeleteSObjectExpressionHostLiftingRule(),
-            new DeleteSObjectIfStructureLiftingRule(),
-            new DeleteSObjectSwitchStructureLiftingRule()
+            new SObjectExpressionHostLiftingRule(),
+            new SObjectIfStructureLiftingRule(),
+            new SObjectSwitchStructureLiftingRule()
           },
           Array.Empty<RuleDefinitionPropose>());
         return application.Analyze(
@@ -207,7 +207,7 @@ public sealed class PropagationRuleExpansionTests
 
         public override string RuleId { get; } = "DEL-SOBJ-TEST-MARK-001";
 
-        public override string GroupKey { get; } = DeleteSObjectRuleIds.GroupKey;
+        public override string GroupKey { get; } = "DEL-SOBJ";
 
         public override string Name { get; } = "Exact syntax seed for propagation tests";
 

@@ -670,7 +670,7 @@ public sealed class CpgShardBuildCoordinatorTests
   }
 
   [Fact]
-  public void BuildFromSource_StreamingPersistence_RestoresGraphFromPublishedShards()
+  public async Task BuildFromSource_StreamingPersistence_RestoresGraphFromPublishedShards()
   {
     var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-shard-restore-tests", Guid.NewGuid().ToString("N"));
     try
@@ -679,12 +679,37 @@ public sealed class CpgShardBuildCoordinatorTests
       {
         Persistence = new CpgPersistenceOptions(root, "streaming-restore-profile", StreamingMode: true),
       };
-      const string source = "class Example { int First() => Second(); int Second() => 2; }";
+      const string source = """
+        class Example
+        {
+          int First(int value)
+          {
+            var next = value + 1;
+            var result = next + 2;
+            return result;
+          }
+        }
+        """;
 
       var original = new RoslynCpgBuilder(options).BuildFromSource(source, "input.cs");
+      var store = new CpgShardStore(root);
+      var publishedShards = new List<CpgFrozenShard>();
+      foreach (var path in Directory.EnumerateFiles(root, "*.cpgbin", SearchOption.AllDirectories))
+      {
+        var (shard, _) = await store.ReadFromPathAsync(path, CancellationToken.None);
+        publishedShards.Add(shard);
+      }
+
+      var directlyRestored = CpgFrozenShardGraphReader.ReadGraph(publishedShards);
       var restoredBuilder = new RoslynCpgBuilder(options);
       var restored = restoredBuilder.BuildFromSource(source, "input.cs");
 
+      Assert.Equal(
+        original.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId),
+        directlyRestored.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId));
+      Assert.Equal(
+        original.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId),
+        restored.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId));
       Assert.Equal(original.GraphSnapshotVersion, restored.GraphSnapshotVersion);
       Assert.Empty(restoredBuilder.LastBuildTelemetry.ExecutedPassNames!);
     }

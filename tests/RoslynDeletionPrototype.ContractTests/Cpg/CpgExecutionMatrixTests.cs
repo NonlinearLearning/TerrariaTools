@@ -88,24 +88,12 @@ public sealed class CpgExecutionMatrixTests
 
   private static DeletionApplicationService CreateApplication()
   {
-    var ruleTypes = typeof(RuleImplementationAssemblyMarker).Assembly
-      .GetTypes()
-      .Where(type => type.IsClass && !type.IsAbstract && type.Namespace == "Rules")
-      .OrderBy(type => type.Name, StringComparer.Ordinal)
-      .ToArray();
+    var ruleSets = DefaultRuleSets.Create();
     return new DeletionApplicationService(
-      CreateRules<RuleDefinitionMark>(ruleTypes),
-      CreateRules<RuleDefinitionPropagate>(ruleTypes),
-      CreateRules<RuleDefinitionLift>(ruleTypes),
-      CreateRules<RuleDefinitionPropose>(ruleTypes));
-  }
-
-  private static IReadOnlyList<TRule> CreateRules<TRule>(IReadOnlyList<Type> ruleTypes)
-  {
-    return ruleTypes
-      .Where(type => typeof(TRule).IsAssignableFrom(type))
-      .Select(type => (TRule)Activator.CreateInstance(type)!)
-      .ToArray();
+      ruleSets.SelectMany(ruleSet => ruleSet.Markers).ToList(),
+      ruleSets.SelectMany(ruleSet => ruleSet.Propagators).ToList(),
+      ruleSets.SelectMany(ruleSet => ruleSet.Lifters).ToList(),
+      ruleSets.SelectMany(ruleSet => ruleSet.Proposers).ToList());
   }
 
   private static CpgExecutionSnapshot CreateSnapshot(

@@ -18,7 +18,7 @@ namespace RoslynPrototype.Tests;
 
 public sealed class DecisionStructureValidationTests
 {
-    private const string DeleteSObjectGroupKey = DeleteSObjectRuleIds.GroupKey;
+    private const string DeleteSObjectGroupKey = "DEL-SOBJ";
 
     [Fact]
     public void RuleDecisionEngine_UsesProposalModelDirectly()
@@ -26,8 +26,8 @@ public sealed class DecisionStructureValidationTests
         var source = MinimalSources.EmptyMainWithDeadMethodSource;
 
         var (context, root, rules) = CreateContextAndRules(source);
-        var markRule = rules.Markers.OfType<DeleteUnreachableMethodRule>().Single();
-        var proposalRule = rules.Proposers.OfType<DeleteUnreachableMethodProposalRule>().Single();
+        var markRule = rules.Markers.OfType<UnreachableMethodMarkRule>().Single();
+        var proposalRule = rules.Proposers.OfType<UnreachableMethodProposalRule>().Single();
         var seedMarks = markRule.Mark(context, root).ToList();
         var proposals = proposalRule.Propose(
           context,

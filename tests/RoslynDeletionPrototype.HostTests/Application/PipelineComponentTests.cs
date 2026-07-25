@@ -25,7 +25,7 @@ namespace RoslynPrototype.Tests;
 
 public sealed class PipelineComponentTests : IDisposable
 {
-    private const string DeleteSObjectGroupKey = DeleteSObjectRuleIds.GroupKey;
+    private const string DeleteSObjectGroupKey = "DEL-SOBJ";
     private readonly string _tempDirectory;
 
     public PipelineComponentTests()
@@ -59,7 +59,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var pipeline = new DeletionRulePipeline(
           Array.Empty<RuleDefinitionMark>(),
-          new RuleDefinitionPropagate[] { new DeleteClassSymbolReferencePropagationRule() },
+          new RuleDefinitionPropagate[] { new ClassSymbolReferencePropagationRule() },
           Array.Empty<RuleDefinitionLift>(),
           Array.Empty<RuleDefinitionPropose>());
 
@@ -614,9 +614,9 @@ public sealed class PipelineComponentTests : IDisposable
           Array.Empty<LiftedMarkRecord>(),
           new RuleDefinitionPropose[]
           {
-            new DeleteClassDecisionRule("TEST-DECIDE-A1", "TEST-GROUP-A"),
-            new DeleteClassDecisionRule("TEST-DECIDE-A2", "TEST-GROUP-A"),
-            new DeleteClassDecisionRule("TEST-DECIDE-B", "TEST-GROUP-B")
+            new ClassDecisionRule("TEST-DECIDE-A1", "TEST-GROUP-A"),
+            new ClassDecisionRule("TEST-DECIDE-A2", "TEST-GROUP-A"),
+            new ClassDecisionRule("TEST-DECIDE-B", "TEST-GROUP-B")
           });
 
         Assert.Equal(1, scheduler.InvocationCount);
@@ -650,7 +650,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteClassMethodParameterUsagePropagationRule() });
+          new RuleDefinitionPropagate[] { new ClassMethodParameterUsagePropagationRule() });
 
         var methodPropagation = Assert.Single(
           propagatedMarks,
@@ -690,7 +690,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteClassLocalFunctionParameterUsagePropagationRule() });
+          new RuleDefinitionPropagate[] { new ClassLocalFunctionParameterUsagePropagationRule() });
 
         var functionPropagation = Assert.Single(
           propagatedMarks,
@@ -730,7 +730,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteClassIndexerParameterUsagePropagationRule() });
+          new RuleDefinitionPropagate[] { new ClassIndexerParameterUsagePropagationRule() });
 
         var indexerPropagation = Assert.Single(
           propagatedMarks,
@@ -769,7 +769,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteClassDelegateUsageClassificationPropagationRule() });
+          new RuleDefinitionPropagate[] { new ClassDelegateUsageClassificationPropagationRule() });
 
         var delegatePropagation = Assert.Single(
           propagatedMarks,
@@ -812,7 +812,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteClassExtensionMethodMappedCallsitePropagationRule() });
+          new RuleDefinitionPropagate[] { new ClassExtensionMethodMappedCallsitePropagationRule() });
 
         var methodPropagation = Assert.Single(
           propagatedMarks,
@@ -851,7 +851,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteClassDeclarationHostPropagationRule() });
+          new RuleDefinitionPropagate[] { new ClassDeclarationHostPropagationRule() });
 
         Assert.Contains(
           propagatedMarks,
@@ -928,7 +928,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteSObjectLogicalOperandGroupPropagationRule() });
+          new RuleDefinitionPropagate[] { new SObjectLogicalOperandGroupPropagationRule() });
 
         var logicalPropagation = Assert.Single(
           propagatedMarks,
@@ -954,7 +954,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteSObjectIfStructureCompletionPropagationRule() });
+          new RuleDefinitionPropagate[] { new SObjectIfStructureCompletionPropagationRule() });
 
         Assert.Contains(
           propagatedMarks,
@@ -995,7 +995,7 @@ public sealed class PipelineComponentTests : IDisposable
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new DeleteClassIfStructureCompletionPropagationRule() });
+          new RuleDefinitionPropagate[] { new ClassIfStructureCompletionPropagationRule() });
 
         var ifPropagation = Assert.Single(
           propagatedMarks,
@@ -1798,7 +1798,7 @@ public sealed class PipelineComponentTests : IDisposable
         var typeSyntaxMarks = result.SeedMarks
           .Where(mark => string.Equals(
             mark.RuleId,
-            DeleteClassRuleIds.TypeSyntaxMarkRuleId,
+            "DEL-CLASS-MARK-TYPE-001",
             StringComparison.Ordinal))
           .Select(mark => mark.SyntaxNode.ToString())
           .ToList();
@@ -4413,7 +4413,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var rules = RuleRegistry.CreateDefaultRules();
         var contractAssembly = typeof(RuleDefinitionMark).Assembly;
-        var implementationAssembly = typeof(DeleteSObjectIdentifierNameMarkRule).Assembly;
+        var implementationAssembly = typeof(SObjectIdentifierNameMarkRule).Assembly;
         var markRuleType = contractAssembly.GetType("Rules.RuleDefinitionMark");
         var propagateRuleType = contractAssembly.GetType("Rules.RuleDefinitionPropagate");
         var liftRuleType = contractAssembly.GetType("Rules.RuleDefinitionLift");
@@ -4431,69 +4431,123 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotSame(contractAssembly, implementationAssembly);
 
         Assert.True(rules.Markers.Count >= 10);
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "DeleteSObjectIdentifierNameMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "DeleteSObjectMemberAccessMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "DeleteSObjectInvocationMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "DeleteUnreachableMethodRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "DeleteUnreferencedMethodRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "SObjectIdentifierNameMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "SObjectMemberAccessMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "SObjectInvocationMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "UnreachableMethodMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "UnreferencedMethodMarkRule", StringComparison.Ordinal));
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "ClearUnusedInterfaceImplementationRule", StringComparison.Ordinal));
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "PrivatizeInternalOnlyPublicMethodRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "DeleteClassTypeSyntaxMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteClassObjectCreationDeclarationPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteClassSymbolReferencePropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteSObjectAssignmentLeftValuePropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteSObjectDefinitionInitializerPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteSObjectLogicalConditionPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteSObjectLogicalOperandGroupPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteSObjectSymbolReferencePropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteSObjectIfStructureCompletionPropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "ClassTypeSyntaxMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "ClassObjectCreationDeclarationPropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "ClassSymbolReferencePropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectAssignmentLeftValuePropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectDefinitionInitializerPropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectLogicalConditionPropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectLogicalOperandGroupPropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectSymbolReferencePropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectIfStructureCompletionPropagationRule", StringComparison.Ordinal));
         Assert.True(rules.Lifters.Count >= 3);
-        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "DeleteSObjectExpressionHostLiftingRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "DeleteSObjectIfStructureLiftingRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "DeleteSObjectSwitchStructureLiftingRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "SObjectExpressionHostLiftingRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "SObjectIfStructureLiftingRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "SObjectSwitchStructureLiftingRule", StringComparison.Ordinal));
         Assert.True(rules.Proposers.Count >= 5);
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "LogicalExpressionProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "IfStructureProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ControlStructureDeleteProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DefaultDeleteProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteUnreachableMethodProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteUnreferencedMethodProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ControlStructureRemovalProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DefaultRemovalProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "UnreachableMethodProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "UnreferencedMethodProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClearUnusedInterfaceImplementationProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "PrivatizeInternalOnlyPublicMethodProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassTypeSyntaxDeclarationProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeleteClassIfStructureCompletionPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassMethodReturnTypeProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassPublicMethodReturnTypeProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassParameterProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassPrivateMethodParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassNamedArgumentMethodParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassOptionalParameterDefaultedMethodShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassParamsMethodParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassPublicMethodParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassLocalFunctionParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassNamedArgumentLocalFunctionParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassOptionalParameterDefaultedLocalFunctionShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassIndexerParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassNamedArgumentIndexerParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassMethodGroupDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassLambdaDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassDelegateInvocationChainParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassExtensionReceiverNonFirstParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassPublicParameterProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassInterfaceMethodProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassInterfacePropertyProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassInterfaceEventProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassInterfaceIndexerProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassDelegateProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassExtensionReceiverProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassBaseTypeProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DeleteClassGenericTypeArgumentProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassTypeSyntaxDeclarationProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "ClassIfStructureCompletionPropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassMethodReturnTypeProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassPublicMethodReturnTypeProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassParameterProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassPrivateMethodParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassNamedArgumentMethodParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassOptionalParameterDefaultedMethodShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassParamsMethodParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassPublicMethodParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassLocalFunctionParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassNamedArgumentLocalFunctionParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassIndexerParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassNamedArgumentIndexerParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassMethodGroupDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassLambdaDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassDelegateInvocationChainParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassExtensionReceiverNonFirstParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassPublicParameterProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassInterfaceMethodProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassInterfacePropertyProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassInterfaceEventProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassInterfaceIndexerProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassDelegateProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassExtensionReceiverProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassBaseTypeProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassGenericTypeArgumentProposalRule", StringComparison.Ordinal));
 
         Assert.Contains(rules.Markers, rule => markRuleType.IsAssignableFrom(rule.GetType()));
         Assert.Contains(rules.Propagators, rule => propagateRuleType.IsAssignableFrom(rule.GetType()));
         Assert.Contains(rules.Lifters, rule => liftRuleType.IsAssignableFrom(rule.GetType()));
         Assert.Contains(rules.Proposers, rule => proposeRuleType.IsAssignableFrom(rule.GetType()));
+    }
+
+    [Fact]
+    public void RuleRegistry_CreateDefaultRules_ComposesClassAndSObjectRuleSetsWithoutDeletePrefixedTypeNames()
+    {
+        var rules = RuleRegistry.CreateDefaultRules();
+
+        Assert.IsAssignableFrom<IRuleSet>(new ClassRuleSet());
+        Assert.IsAssignableFrom<IRuleSet>(new SObjectRuleSet());
+        Assert.Contains(rules.Markers, rule => rule is SObjectIdentifierNameMarkRule);
+        Assert.Contains(rules.Markers, rule => rule is ClassTypeSyntaxMarkRule);
+        Assert.DoesNotContain(
+          rules.Markers.Cast<object>()
+            .Concat(rules.Propagators)
+            .Concat(rules.Lifters)
+            .Concat(rules.Proposers),
+          rule => rule.GetType().Name.StartsWith("DeleteClass", StringComparison.Ordinal) ||
+            rule.GetType().Name.StartsWith("DeleteSObject", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RuleRegistry_CreateRules_UsesOnlyExplicitlyProvidedRuleSets()
+    {
+        var rules = RuleRegistry.CreateRules(new IRuleSet[] { new TestRuleSet() });
+
+        var marker = Assert.Single(rules.Markers);
+        Assert.IsType<TestRuleSetMarkRule>(marker);
+        Assert.Empty(rules.Propagators);
+        Assert.Empty(rules.Lifters);
+        Assert.Empty(rules.Proposers);
+    }
+
+    [Fact]
+    public void DefaultRuleSets_ExposeUniqueIdsAndCapabilityIds()
+    {
+        var ruleSets = DefaultRuleSets.Create();
+        var capabilityIds = ruleSets
+          .SelectMany(ruleSet => ruleSet.Markers.Select(rule => rule.CapabilityId))
+          .Concat(ruleSets.SelectMany(ruleSet => ruleSet.Propagators.Select(rule => rule.CapabilityId)))
+          .Concat(ruleSets.SelectMany(ruleSet => ruleSet.Lifters.Select(rule => rule.CapabilityId)))
+          .Concat(ruleSets.SelectMany(ruleSet => ruleSet.Proposers.Select(rule => rule.CapabilityId)))
+          .ToList();
+
+        Assert.Equal(
+          ruleSets.Count,
+          ruleSets.Select(ruleSet => ruleSet.Id).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(capabilityIds.Count, capabilityIds.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(capabilityIds, capabilityId =>
+        {
+            Assert.False(string.IsNullOrWhiteSpace(capabilityId));
+            Assert.DoesNotContain("-001", capabilityId, StringComparison.Ordinal);
+            Assert.DoesNotContain(".sobject.", capabilityId, StringComparison.Ordinal);
+            Assert.DoesNotContain(".class.", capabilityId, StringComparison.Ordinal);
+        });
     }
 
     [Fact]
@@ -4509,24 +4563,24 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void RuleRegistry_CreateDefaultRules_WhenDisabledRuleTypeProvided_FiltersMatchingClassOnly()
     {
-        var rules = RuleRegistry.CreateDefaultRules(new[] { "DeleteSObjectMemberAccessMarkRule" });
+        var rules = RuleRegistry.CreateDefaultRules(new[] { "SObjectMemberAccessMarkRule" });
 
         Assert.DoesNotContain(
           rules.Markers,
-          rule => string.Equals(rule.GetType().Name, "DeleteSObjectMemberAccessMarkRule", StringComparison.Ordinal));
+          rule => string.Equals(rule.GetType().Name, "SObjectMemberAccessMarkRule", StringComparison.Ordinal));
         Assert.Contains(
           rules.Markers,
-          rule => string.Equals(rule.GetType().Name, "DeleteUnreachableMethodRule", StringComparison.Ordinal));
+          rule => string.Equals(rule.GetType().Name, "UnreachableMethodMarkRule", StringComparison.Ordinal));
         Assert.Contains(
           rules.Propagators,
-          rule => string.Equals(rule.GetType().Name, "DeleteSObjectAssignmentLeftValuePropagationRule", StringComparison.Ordinal));
+          rule => string.Equals(rule.GetType().Name, "SObjectAssignmentLeftValuePropagationRule", StringComparison.Ordinal));
     }
 
     [Fact]
     public void AnalyzeFromArgs_WhenDisabledRuleTypeProvided_DisablesOnlyMatchingClass()
     {
         var host = new DeletionCommandHost(
-          RuleRegistry.CreateDefaultRules(new[] { "DeleteSObjectMemberAccessMarkRule" }));
+          RuleRegistry.CreateDefaultRules(new[] { "SObjectMemberAccessMarkRule" }));
 
         var result = host.AnalyzeFromArgs(new[]
         {
@@ -4679,7 +4733,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
-          .Where(rule => string.Equals(rule.GroupKey, DeleteClassRuleIds.GroupKey, StringComparison.Ordinal))
+          .Where(rule => string.Equals(rule.GroupKey, "DEL-CLASS", StringComparison.Ordinal))
           .ToList();
     }
 
@@ -5189,11 +5243,36 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private sealed class DeleteClassDecisionRule : RuleDefinitionPropose
+    private sealed class TestRuleSet : Rules.RuleSetDefinition
+    {
+        public override string Id => "test";
+
+        public override IReadOnlyList<RuleDefinitionMark> Markers { get; } =
+          new RuleDefinitionMark[] { new TestRuleSetMarkRule() };
+    }
+
+    private sealed class TestRuleSetMarkRule : RuleDefinitionMark
+    {
+        public override string RuleId => "TEST-SET-MARK-001";
+
+        public override string Name => "Test RuleSet marker";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+          Array.Empty<SyntaxKind>();
+
+        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        {
+            _ = context;
+            _ = root;
+            return Array.Empty<MarkRecord>();
+        }
+    }
+
+    private sealed class ClassDecisionRule : RuleDefinitionPropose
     {
         private readonly string _groupKey;
 
-        public DeleteClassDecisionRule(string ruleId, string groupKey)
+        public ClassDecisionRule(string ruleId, string groupKey)
         {
             RuleId = ruleId;
             _groupKey = groupKey;

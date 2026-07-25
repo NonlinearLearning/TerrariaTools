@@ -12,9 +12,11 @@ namespace Rules;
 
 public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefinitionPropose
 {
-  public override string RuleId { get; } = PrivatizeInternalOnlyPublicMethodRuleIds.ProposalRuleId;
+  public override string CapabilityId { get; } = "propose.privatize-internal-only-public-method";
 
-  public override string GroupKey { get; } = PrivatizeInternalOnlyPublicMethodRuleIds.GroupKey;
+    public override string RuleId { get; } = "PRIV-INTERNAL-PUBLIC-PROP-001";
+
+  public override string GroupKey { get; } = "PRIV-INTERNAL-PUBLIC";
 
   public override string Name { get; } = "Replace public method modifiers with private";
 

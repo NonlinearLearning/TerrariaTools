@@ -11,9 +11,11 @@ namespace Rules;
 /// </summary>
 public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
 {
-  public override string RuleId { get; } = ClearUnusedInterfaceImplementationRuleIds.MarkRuleId;
+  public override string CapabilityId { get; } = "mark.clear-unused-interface-implementation";
 
-  public override string GroupKey { get; } = ClearUnusedInterfaceImplementationRuleIds.GroupKey;
+    public override string RuleId { get; } = "CLR-UNUSED-IFACE-IMPL-MARK-001";
+
+  public override string GroupKey { get; } = "CLR-UNUSED-IFACE-IMPL";
 
   public override string Name { get; } = "Match unused interface implementation methods";
 

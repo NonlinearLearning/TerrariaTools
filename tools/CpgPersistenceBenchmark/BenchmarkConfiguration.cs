@@ -14,12 +14,23 @@ public sealed record BenchmarkConfiguration(
   string? SourceRoot,
   int? SourceRootMaxFiles,
   long? SourceRootMaxBytes,
+  bool ReusePersistedFragments,
+  string? PersistentStoreRoot,
   string? TemporaryStoreRoot,
   string? OutputPath)
 {
   public static BenchmarkConfiguration Parse(string[] args)
   {
     var outputIndex = Array.IndexOf(args, "--output");
+    var reusePersistedFragments = args.Contains("--reuse-persisted-fragments", StringComparer.Ordinal);
+    var persistentStoreRoot = ParseOptionalValue(args, "--persistent-store-root");
+    if (reusePersistedFragments && persistentStoreRoot is null)
+    {
+      throw new ArgumentException(
+        "--reuse-persisted-fragments requires --persistent-store-root.",
+        "--persistent-store-root");
+    }
+
     return new BenchmarkConfiguration(
       WarmupCount: ParseNonNegativeInteger(args, "--warmup-count", 1),
       SampleCount: ParsePositiveInteger(args, "--sample-count", 3),
@@ -32,6 +43,8 @@ public sealed record BenchmarkConfiguration(
       SourceRoot: ParseOptionalValue(args, "--source-root"),
       SourceRootMaxFiles: ParseOptionalPositiveInteger(args, "--source-root-max-files"),
       SourceRootMaxBytes: ParseOptionalPositiveLong(args, "--source-root-max-bytes"),
+      ReusePersistedFragments: reusePersistedFragments,
+      PersistentStoreRoot: persistentStoreRoot,
       TemporaryStoreRoot: ParseOptionalValue(args, "--temporary-store-root"),
       OutputPath: outputIndex >= 0 && outputIndex + 1 < args.Length ? args[outputIndex + 1] : null);
   }

@@ -10,9 +10,11 @@ namespace Rules;
 
 public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
 {
-    public override string RuleId { get; } = DeleteSObjectRuleIds.LogicalProposalRuleId;
+    public override string CapabilityId { get; } = "propose.logical-expression";
 
-    public override string GroupKey { get; } = DeleteSObjectRuleIds.GroupKey;
+    public override string RuleId { get; } = "DEL-SOBJ-PROPOSE-LOGIC-001";
+
+    public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Match s-rooted logical expression reductions";
 

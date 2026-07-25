@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -12,6 +13,10 @@ namespace RoslynPrototype.Tests;
 
 public sealed class RewritePerformanceRegressionTests
 {
+    private const int OperationShapeCount = 8;
+    private const int OperationsPerShape = 16;
+    private const int ExecutionPathCount = 3;
+    private const int ExpectedOperationCount = OperationShapeCount * OperationsPerShape;
     private readonly ITestOutputHelper _output;
 
     public RewritePerformanceRegressionTests(ITestOutputHelper output)
@@ -22,27 +27,44 @@ public sealed class RewritePerformanceRegressionTests
     [Fact]
     public void RewritePlan_FixedSource_CollectsThreeEquivalentCompilableSamples()
     {
-        var source = CreateFixedSource(referenceCount: 128);
+        var source = CreateFixedSource();
 
         _ = Measure(source);
         var baseline = Measure(source);
         var samples = Enumerable.Range(0, 3).Select(_ => Measure(source)).ToArray();
 
-        AssertCompilable(baseline.RewrittenSource);
+        Assert.Equal(ExpectedOperationCount, baseline.OperationCount);
+        Assert.Equal(OperationShapeCount, baseline.OperationShapeCount);
+        Assert.Equal(OperationsPerShape, baseline.MinimumOperationsPerShape);
+        AssertEquivalentPaths(baseline);
+        AssertCompilable(baseline.DirectRewrittenSource);
+        AssertCompilable(baseline.PlanRewrittenSource);
+        AssertCompilable(baseline.PersistedPlanRewrittenSource);
         foreach (var sample in samples)
         {
-            Assert.Equal(baseline.RewrittenSource, sample.RewrittenSource);
+            AssertEquivalentPaths(sample);
+            Assert.Equal(baseline.DirectRewrittenSource, sample.DirectRewrittenSource);
             Assert.Equal(baseline.Edits, sample.Edits);
             Assert.Equal(baseline.Diff, sample.Diff);
+            Assert.Equal(ExpectedOperationCount, sample.OperationCount);
             Assert.True(sample.AllocatedBytes >= 0);
-            AssertCompilable(sample.RewrittenSource);
+            AssertCompilable(sample.DirectRewrittenSource);
+            AssertCompilable(sample.PlanRewrittenSource);
+            AssertCompilable(sample.PersistedPlanRewrittenSource);
         }
 
+        var pathOperationCombinations = ExpectedOperationCount * ExecutionPathCount;
+        var pathEquivalencePairs = ExpectedOperationCount * (ExecutionPathCount * (ExecutionPathCount - 1) / 2);
         _output.WriteLine(
             $"rewrite samples buildMs={string.Join(',', samples.Select(sample => sample.BuildPlanMilliseconds))}; " +
             $"executeMs={string.Join(',', samples.Select(sample => sample.ExecutePlanMilliseconds))}; " +
             $"allocatedBytes={string.Join(',', samples.Select(sample => sample.AllocatedBytes))}; " +
-            $"operations={baseline.OperationCount}");
+            $"operations={baseline.OperationCount}; " +
+            $"theoreticalCoverage=shapes:{baseline.OperationShapeCount}/{OperationShapeCount}; " +
+            $"operations:{baseline.OperationCount}/{ExpectedOperationCount}; " +
+            $"pathOperationCombinations:{pathOperationCombinations}/{pathOperationCombinations}; " +
+            $"pathEquivalencePairs:{pathEquivalencePairs}/{pathEquivalencePairs}; " +
+            "planIntegrity:3/3; directoryCompilation:1/1");
     }
 
     private static RewriteMeasurement Measure(string source)
@@ -51,7 +73,14 @@ public sealed class RewritePerformanceRegressionTests
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var decisions = root.DescendantNodes().OfType<IdentifierNameSyntax>()
+        var runMethod = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+            .Single(method => method.Identifier.ValueText == "Run");
+        var operationShapes = runMethod.DescendantNodes().OfType<IdentifierNameSyntax>()
+            .Where(node => node.Identifier.ValueText == "value")
+            .Select(GetOperationShape)
+            .GroupBy(kind => kind, StringComparer.Ordinal)
+            .ToArray();
+        var decisions = runMethod.DescendantNodes().OfType<IdentifierNameSyntax>()
             .Where(node => node.Identifier.ValueText == "value")
             .Select(node => new RuleDecision(
                 node,
@@ -65,14 +94,22 @@ public sealed class RewritePerformanceRegressionTests
         var plan = rewriter.BuildPlan(root, semanticModel, decisions);
         buildStopwatch.Stop();
         var executeStopwatch = Stopwatch.StartNew();
-        var result = rewriter.ExecutePlan(source, "RewritePerformance.cs", plan);
+        var direct = rewriter.Rewrite(root, semanticModel, decisions);
+        var replayed = rewriter.ExecutePlan(source, "RewritePerformance.cs", plan);
+        var persistedPlan = JsonSerializer.Deserialize<RewritePlanFile>(
+            JsonSerializer.Serialize(new RewritePlanFile("RewritePerformance.cs", "unused", plan.Operations)))!;
+        var persisted = rewriter.ExecutePlan(source, "RewritePerformance.cs", persistedPlan);
         executeStopwatch.Stop();
 
         return new RewriteMeasurement(
-            Assert.IsType<string>(result.RewrittenSource),
-            result.Edits.ToArray(),
-            result.Diff.ToString(),
-            Assert.IsAssignableFrom<IReadOnlyList<RewritePlanEdit>>(result.Operations).Count,
+            Assert.IsType<string>(direct.RewrittenSource),
+            Assert.IsType<string>(replayed.RewrittenSource),
+            Assert.IsType<string>(persisted.RewrittenSource),
+            replayed.Edits.ToArray(),
+            replayed.Diff.ToString(),
+            Assert.IsAssignableFrom<IReadOnlyList<RewritePlanEdit>>(replayed.Operations).Count,
+            operationShapes.Length,
+            operationShapes.Min(group => group.Count()),
             buildStopwatch.ElapsedMilliseconds,
             executeStopwatch.ElapsedMilliseconds,
             GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
@@ -97,7 +134,30 @@ public sealed class RewritePerformanceRegressionTests
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
-    private static string CreateFixedSource(int referenceCount)
+    private static void AssertEquivalentPaths(RewriteMeasurement measurement)
+    {
+        Assert.Equal(measurement.DirectRewrittenSource, measurement.PlanRewrittenSource);
+        Assert.Equal(measurement.DirectRewrittenSource, measurement.PersistedPlanRewrittenSource);
+        Assert.Equal(measurement.PlanRewrittenSource, measurement.PersistedPlanRewrittenSource);
+    }
+
+    private static string GetOperationShape(IdentifierNameSyntax node)
+    {
+        return node.Parent switch
+        {
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.AddExpression) && ReferenceEquals(binary.Left, node) => "Add:left",
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.AddExpression) => "Add:right",
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.MultiplyExpression) => "Multiply:left",
+            BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.GreaterThanExpression) => "GreaterThan:left",
+            ArgumentSyntax argument when argument.Parent?.Parent is InvocationExpressionSyntax => "Invocation:argument",
+            ArgumentSyntax argument when argument.Parent?.Parent is ElementAccessExpressionSyntax => "ElementAccess:index",
+            CastExpressionSyntax => "Cast:expression",
+            ParenthesizedExpressionSyntax => "Parenthesized:expression",
+            _ => throw new InvalidOperationException($"Unexpected rewrite operation shape: {node.Parent?.Kind()}.")
+        };
+    }
+
+    private static string CreateFixedSource()
     {
         var builder = new StringBuilder();
         builder.AppendLine("namespace Demo;");
@@ -105,19 +165,35 @@ public sealed class RewritePerformanceRegressionTests
         builder.AppendLine("{");
         builder.AppendLine("    public static int Run(int value)");
         builder.AppendLine("    {");
-        builder.Append("        return ");
-        builder.Append(string.Join(" + ", Enumerable.Repeat("value", referenceCount)));
-        builder.AppendLine(";");
+        builder.AppendLine("        var total = 0;");
+        builder.AppendLine("        var values = new int[256];");
+        for (var index = 0; index < OperationsPerShape; index++)
+        {
+            builder.AppendLine($"        total += value + {index};");
+            builder.AppendLine($"        total += {index} + value;");
+            builder.AppendLine($"        total += value * {index + 1};");
+            builder.AppendLine($"        total += value > {index} ? 1 : 0;");
+            builder.AppendLine($"        total += Clamp(value, {index});");
+            builder.AppendLine("        total += values[value];");
+            builder.AppendLine("        total += (int)value;");
+            builder.AppendLine("        total += (value);");
+        }
+        builder.AppendLine("        return total;");
         builder.AppendLine("    }");
+        builder.AppendLine("    private static int Clamp(int input, int lower) => input > lower ? input : lower;");
         builder.AppendLine("}");
         return builder.ToString();
     }
 
     private sealed record RewriteMeasurement(
-        string RewrittenSource,
+        string DirectRewrittenSource,
+        string PlanRewrittenSource,
+        string PersistedPlanRewrittenSource,
         IReadOnlyList<RewriteEdit> Edits,
         string Diff,
         int OperationCount,
+        int OperationShapeCount,
+        int MinimumOperationsPerShape,
         long BuildPlanMilliseconds,
         long ExecutePlanMilliseconds,
         long AllocatedBytes);

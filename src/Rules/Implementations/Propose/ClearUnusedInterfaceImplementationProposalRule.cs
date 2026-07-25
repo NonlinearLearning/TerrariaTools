@@ -12,9 +12,11 @@ namespace Rules;
 
 public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinitionPropose
 {
-  public override string RuleId { get; } = ClearUnusedInterfaceImplementationRuleIds.ProposalRuleId;
+  public override string CapabilityId { get; } = "propose.clear-unused-interface-implementation";
 
-  public override string GroupKey { get; } = ClearUnusedInterfaceImplementationRuleIds.GroupKey;
+    public override string RuleId { get; } = "CLR-UNUSED-IFACE-IMPL-PROP-001";
+
+  public override string GroupKey { get; } = "CLR-UNUSED-IFACE-IMPL";
 
   public override string Name { get; } = "Clear unused interface implementation method bodies";
 
