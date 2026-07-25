@@ -187,9 +187,7 @@ public static class DeleteSObjectMarkRuleHelpers
         }
 
         if (operation is ILiteralOperation literalOperation &&
-            literalOperation.ConstantValue.HasValue &&
-            literalOperation.ConstantValue.Value is not null &&
-            targetNames.Lookup.Contains(literalOperation.ConstantValue.Value.ToString()!))
+            LiteralMatchesTarget(literalOperation, targetNames))
         {
             return true;
         }
@@ -203,6 +201,23 @@ public static class DeleteSObjectMarkRuleHelpers
         }
 
         return false;
+    }
+
+    private static bool LiteralMatchesTarget(
+      ILiteralOperation literalOperation,
+      TargetNameDescriptor targetNames)
+    {
+        if (!literalOperation.ConstantValue.HasValue)
+        {
+            return false;
+        }
+
+        return literalOperation.ConstantValue.Value switch
+        {
+            null => targetNames.Lookup.Contains("null"),
+            bool value => targetNames.Lookup.Contains(value ? "true" : "false"),
+            _ => targetNames.Lookup.Contains(literalOperation.ConstantValue.Value.ToString()!),
+        };
     }
 
     private static bool ReferencesTargetMemberBinding(RuleContext context, MemberBindingExpressionSyntax memberBinding, TargetNameDescriptor targetNames)

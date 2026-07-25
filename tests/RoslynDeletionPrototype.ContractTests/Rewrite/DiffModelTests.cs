@@ -150,7 +150,7 @@ public sealed class DiffModelTests
     Assert.Equal(TextSpan.FromBounds(returnStatement.Span.Start, returnStatement.Span.End), section.Span);
     Assert.Contains("--- original #1 sample.cs", result.Diff);
     Assert.Contains("+++ rewritten #1", result.Diff);
-    Assert.Contains("<deleted>", result.Diff);
+    Assert.Contains("return default(int);", result.Diff);
   }
 
   [Fact]

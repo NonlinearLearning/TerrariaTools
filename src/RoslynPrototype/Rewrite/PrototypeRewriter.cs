@@ -117,6 +117,12 @@ public sealed class PrototypeRewriter
         continue;
       }
 
+      if (decision.FinalNode is ReturnStatementSyntax returnStatement &&
+          TryCreateReturnReplacement(returnStatement, semanticModel, out var rewrittenReturnStatement)) {
+        rewritePlan.Add(CreateRewritePlanEntry(returnStatement, rewrittenReturnStatement));
+        continue;
+      }
+
       if (decision.FinalNode is SimpleBaseTypeSyntax simpleBaseType &&
           simpleBaseType.Parent is BaseListSyntax baseList) {
         var remainingBaseTypes = baseList.Types.Remove(simpleBaseType);
@@ -194,6 +200,68 @@ public sealed class PrototypeRewriter
     }
 
     return SyntaxFactory.DefaultExpression(SyntaxFactory.ParseTypeName(targetType.ToDisplayString()));
+  }
+
+  private static bool TryCreateReturnReplacement(
+    ReturnStatementSyntax returnStatement,
+    SemanticModel semanticModel,
+    out ReturnStatementSyntax replacement)
+  {
+    replacement = null!;
+    if (returnStatement.Expression is null ||
+        GetContainingMethodSymbol(returnStatement, semanticModel) is not IMethodSymbol methodSymbol ||
+        methodSymbol.ReturnsVoid) {
+      return false;
+    }
+
+    var accessibilityContext = (ISymbol?)methodSymbol.ContainingType ?? semanticModel.Compilation.Assembly;
+    var returnExpression = CreateReturnValueExpression(
+      methodSymbol.ReturnType,
+      accessibilityContext,
+      semanticModel.Compilation);
+    replacement = SyntaxFactory.ParseStatement($"return {returnExpression};") as ReturnStatementSyntax
+      ?? throw new InvalidOperationException("Unable to create a return replacement statement.");
+    return true;
+  }
+
+  private static IMethodSymbol? GetContainingMethodSymbol(
+    ReturnStatementSyntax returnStatement,
+    SemanticModel semanticModel)
+  {
+    var declaration = returnStatement.Ancestors().FirstOrDefault(node => node is
+      MethodDeclarationSyntax or
+      LocalFunctionStatementSyntax or
+      AccessorDeclarationSyntax);
+    return declaration is null
+      ? null
+      : semanticModel.GetDeclaredSymbol(declaration) as IMethodSymbol;
+  }
+
+  private static ExpressionSyntax CreateReturnValueExpression(
+    ITypeSymbol returnType,
+    ISymbol enclosingSymbol,
+    Compilation compilation)
+  {
+    if (returnType is INamedTypeSymbol namedType &&
+        namedType.TypeKind == TypeKind.Class &&
+        !namedType.IsAbstract) {
+      var parameterlessConstructor = namedType.InstanceConstructors.FirstOrDefault(constructor =>
+        constructor.Parameters.Length == 0 &&
+        compilation.IsSymbolAccessibleWithin(constructor, enclosingSymbol));
+      if (parameterlessConstructor is not null) {
+        return SyntaxFactory.ParseExpression(
+          $"new {GetConstructibleTypeName(returnType)}()");
+      }
+    }
+
+    return SyntaxFactory.DefaultExpression(
+      SyntaxFactory.ParseTypeName(returnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)));
+  }
+
+  private static string GetConstructibleTypeName(ITypeSymbol type)
+  {
+    return type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)
+      .TrimEnd('?');
   }
 
   /// <summary>
