@@ -214,14 +214,18 @@ public sealed class ArchitectureBoundaryTests
   [Fact]
   public void RuleIdentity_DoesNotUseLegacyMetadataFiles()
   {
-    Assert.Empty(Directory.GetFiles(
-      ProjectPath("src", "Rules", "RuleIds"),
-      "*.cs",
-      SearchOption.AllDirectories));
-    Assert.Empty(Directory.GetFiles(
-      ProjectPath("src", "Rules", "RuleMetadata"),
-      "*.cs",
-      SearchOption.AllDirectories));
+    AssertNoLegacyMetadataFiles(ProjectPath("src", "Rules", "RuleIds"));
+    AssertNoLegacyMetadataFiles(ProjectPath("src", "Rules", "RuleMetadata"));
+  }
+
+  private static void AssertNoLegacyMetadataFiles(string directoryPath)
+  {
+    if (!Directory.Exists(directoryPath))
+    {
+      return;
+    }
+
+    Assert.Empty(Directory.GetFiles(directoryPath, "*.cs", SearchOption.AllDirectories));
   }
 
   private static string ProjectPath(params string[] parts)
