@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Deletion.Application;
+using Deletion.Cli;
 using Deletion.Core.Rewrite;
 using Deletion.Rules;
 using Xunit;

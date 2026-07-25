@@ -38,11 +38,11 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 入口和主要区域：
 
 - CLI：`src/RoslynPrototype/Program.cs`
-- 宿主：`src/Host/DeletionCommandHost.cs`
-- 目录分析：`src/Host/DeletionDirectoryAnalysisService.cs`
-- 应用编排：`src/Application/DeletionApplicationService.cs`
-- 运行时：`src/RoslynPrototype/RuleServices/ExecutionRuntime.cs`
-- 规则：`src/Rules/`
+- CLI 运行器：`src/Deletion.Cli/DeletionCommandHost.cs`
+- 目录分析适配：`src/Deletion.Cli/DeletionDirectoryAnalysisService.cs`
+- 应用编排：`src/Deletion.Application/Analysis/DeletionApplicationService.cs`
+- 运行时：`src/Deletion.Core/Pipeline/ExecutionRuntime.cs`
+- 规则：`src/Deletion.Rules/`
 
 删除规则遵循“标记 → 传播 → 提升 → 决策 → 改写”。改动此链路前读取对应局部约束和 [删除规则流水线](../设计docs/目前设计/deletion-pipeline.md)。
 

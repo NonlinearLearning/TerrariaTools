@@ -665,7 +665,7 @@ public sealed class GraphAnalyzerTests
         try
         {
             var application = CreateApplication();
-            var result = application.AnalyzeFromArgs(new[]
+            var result = CreateCommandHost().AnalyzeFromArgs(new[]
             {
                 filePath,
                 "--target-name",
@@ -738,6 +738,11 @@ public sealed class GraphAnalyzerTests
     private static DeletionApplicationService CreateApplication()
     {
         return new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+    }
+
+    private static DeletionCommandHost CreateCommandHost()
+    {
+        return new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
     }
 
     private static Dictionary<string, string> CreateOptions(string? targetName = null, string? unreachableMethods = null)
