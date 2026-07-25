@@ -52,7 +52,7 @@ public sealed class CpgShardBuildCoordinatorTests
   [InlineData(12)]
   [InlineData(14)]
   [InlineData(16)]
-  public async Task BuildFromSource_Persistence_ShardBackedSliceMatchesSerialAtConfiguredDop(
+  public void BuildFromSource_PersistenceHit_SliceMatchesSerialAtConfiguredDop(
     int maxDegreeOfParallelism)
   {
     var root = Path.Combine(Path.GetTempPath(), "cpg-persistence-slice-dop-tests", Guid.NewGuid().ToString("N"));
@@ -63,14 +63,16 @@ public sealed class CpgShardBuildCoordinatorTests
       {
         MaxDegreeOfParallelism = 1,
       }).BuildFromSource(source, "input.cs");
-      var persisted = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var persistedOptions = RoslynCpgBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = maxDegreeOfParallelism,
         Persistence = new CpgPersistenceOptions(
           root,
           $"slice-dop-{maxDegreeOfParallelism}",
           StreamingMode: true),
-      }).BuildFromSource(source, "input.cs");
+      };
+      _ = new RoslynCpgBuilder(persistedOptions).BuildFromSource(source, "input.cs");
+      var hit = new RoslynCpgBuilder(persistedOptions).BuildFromSource(source, "input.cs");
       var sink = serial.Edges.First(edge => edge.Kind == RoslynCpgEdgeKind.DataFlow).TargetNodeId;
       var options = new RoslynCpgSliceQueryOptions(
         new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
@@ -78,13 +80,9 @@ public sealed class CpgShardBuildCoordinatorTests
         MaxPaths: 8,
         MaxDefinitions: 8);
       var expected = new RoslynCpgSliceQuery(serial).QueryBackward(sink, options);
-      var catalog = new SqliteCpgShardCatalog(Path.Combine(root, "catalog.db"));
-      var actual = await new RoslynCpgSliceQuery(new CpgShardQueryResolver(
-        catalog,
-        new CpgShardStore(root),
-        maxCachedBytes: 1024 * 1024)).QueryBackwardAsync(sink, options, CancellationToken.None);
+      var actual = new RoslynCpgSliceQuery(hit).QueryBackward(sink, options);
 
-      Assert.Equal(serial.GraphSnapshotVersion, persisted.GraphSnapshotVersion);
+      Assert.Equal(serial.GraphSnapshotVersion, hit.GraphSnapshotVersion);
       Assert.Equal(expected.Paths.Select(path => path.NodeIds), actual.Paths.Select(path => path.NodeIds));
     }
     finally
@@ -229,7 +227,7 @@ public sealed class CpgShardBuildCoordinatorTests
       var restored = await restoreTask.WaitAsync(TimeSpan.FromSeconds(2));
 
       Assert.Equal(expected.GraphSnapshotVersion, restored.GraphSnapshotVersion);
-      Assert.Empty(restoringBuilder.LastBuildTelemetry.ExecutedPassNames!);
+      Assert.Contains("DataFlowPass", restoringBuilder.LastBuildTelemetry.ExecutedPassNames!);
       Assert.False(writerTask.IsCompleted);
     }
     finally
@@ -711,7 +709,132 @@ public sealed class CpgShardBuildCoordinatorTests
         original.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId),
         restored.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId));
       Assert.Equal(original.GraphSnapshotVersion, restored.GraphSnapshotVersion);
-      Assert.Empty(restoredBuilder.LastBuildTelemetry.ExecutedPassNames!);
+      Assert.Contains("DataFlowPass", restoredBuilder.LastBuildTelemetry.ExecutedPassNames!);
+    }
+    finally
+    {
+      if (Directory.Exists(root))
+      {
+        Directory.Delete(root, recursive: true);
+      }
+    }
+  }
+
+  [Theory]
+  [InlineData(1)]
+  [InlineData(12)]
+  public void BuildFromSource_PersistenceHit_RebuildsCompleteGraph(int maxDegreeOfParallelism)
+  {
+    var root = Path.Combine(Path.GetTempPath(), "cpg-persisted-complete-graph-tests", Guid.NewGuid().ToString("N"));
+    try
+    {
+      const string source = """
+        class Example
+        {
+          int First(int value)
+          {
+            var current = value;
+            while (current < 3)
+            {
+              current = Second(current);
+            }
+
+            return current;
+          }
+
+          int Second(int value) => value + 1;
+        }
+        """;
+      var options = RoslynCpgBuilderOptions.CreateDefault() with
+      {
+        MaxDegreeOfParallelism = maxDegreeOfParallelism,
+        RequestedCapabilities = new[] { RoslynCpgCapability.All },
+        UsePreallocatedNodeIds = true,
+      };
+      var baseline = new RoslynCpgBuilder(options).BuildFromSource(source, "input.cs");
+      var persistedOptions = options with
+      {
+        Persistence = new CpgPersistenceOptions(
+          root,
+          $"complete-graph-{maxDegreeOfParallelism}",
+          StreamingMode: true),
+      };
+
+      var seed = new RoslynCpgBuilder(persistedOptions).BuildFromSource(source, "input.cs");
+      var hitBuilder = new RoslynCpgBuilder(persistedOptions);
+      var hit = hitBuilder.BuildFromSource(source, "input.cs");
+
+      Assert.Equal(ExactNodes(baseline), ExactNodes(seed));
+      Assert.Equal(ExactEdges(baseline), ExactEdges(seed));
+      Assert.Equal(ExactNodes(baseline), ExactNodes(hit));
+      Assert.Equal(ExactEdges(baseline), ExactEdges(hit));
+      Assert.Equal(baseline.GraphSnapshotVersion, hit.GraphSnapshotVersion);
+      Assert.True(hitBuilder.LastBuildTelemetry.PersistenceHit);
+      Assert.True(hitBuilder.LastBuildTelemetry.BaseRestoreElapsedMilliseconds >= 0);
+      Assert.True(hitBuilder.LastBuildTelemetry.RuntimeBindingElapsedMilliseconds >= 0);
+      Assert.Contains("DataFlowPass", hitBuilder.LastBuildTelemetry.ExecutedPassNames!);
+      Assert.NotEmpty(hitBuilder.LastBuildTelemetry.ExecutedPassNames!);
+    }
+    finally
+    {
+      if (Directory.Exists(root))
+      {
+        Directory.Delete(root, recursive: true);
+      }
+    }
+  }
+
+  [Fact]
+  public async Task BuildFromSource_StreamingPersistence_StoresNoDynamicOverlayEdges()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "cpg-persisted-base-edge-tests", Guid.NewGuid().ToString("N"));
+    try
+    {
+      const string source = """
+        class Example
+        {
+          int First(int value)
+          {
+            var current = value;
+            while (current < 3)
+            {
+              current = Second(current);
+            }
+
+            return current;
+          }
+
+          int Second(int value) => value + 1;
+        }
+        """;
+      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      {
+        RequestedCapabilities = new[] { RoslynCpgCapability.All },
+        Persistence = new CpgPersistenceOptions(root, "base-edges", StreamingMode: true),
+      });
+
+      _ = builder.BuildFromSource(source, "input.cs");
+      var store = new CpgShardStore(root);
+      var shards = new List<CpgFrozenShard>();
+      foreach (var path in Directory.EnumerateFiles(root, "*.cpgbin", SearchOption.AllDirectories))
+      {
+        var (shard, _) = await store.ReadFromPathAsync(path, CancellationToken.None);
+        shards.Add(shard);
+      }
+
+      var restored = CpgFrozenShardGraphReader.ReadGraph(shards);
+
+      Assert.DoesNotContain(restored.Edges, edge => edge.Kind is
+        RoslynCpgEdgeKind.CallTargets or
+        RoslynCpgEdgeKind.AccessesMember or
+        RoslynCpgEdgeKind.CfgNext or
+        RoslynCpgEdgeKind.CfgTrue or
+        RoslynCpgEdgeKind.CfgFalse or
+        RoslynCpgEdgeKind.DataFlow or
+        RoslynCpgEdgeKind.InterproceduralDataFlow or
+        RoslynCpgEdgeKind.Dominates or
+        RoslynCpgEdgeKind.PostDominates or
+        RoslynCpgEdgeKind.ControlDependence);
     }
     finally
     {
@@ -984,7 +1107,7 @@ public sealed class CpgShardBuildCoordinatorTests
       CpgExecutionSnapshotComparer.AssertEquivalent(
         CreateGraphSnapshot(graph),
         CreateGraphSnapshot(restored));
-      Assert.Empty(restoredBuilder.LastBuildTelemetry.ExecutedPassNames!);
+      Assert.Contains("DataFlowPass", restoredBuilder.LastBuildTelemetry.ExecutedPassNames!);
     }
     finally
     {
@@ -1034,6 +1157,51 @@ public sealed class CpgShardBuildCoordinatorTests
       [],
       string.Empty,
       string.Empty);
+  }
+
+  private static string[] ExactNodes(RoslynCpgGraph graph)
+  {
+    return graph.Nodes
+      .OrderBy(node => node.NodeId)
+      .Select(node => string.Join("|", new[]
+      {
+        node.NodeId?.ToString(),
+        node.Kind.ToString(),
+        node.DisplayKind,
+        node.Name,
+        node.FullName,
+        node.Signature,
+        node.DispatchKind?.ToString(),
+        node.TypeFullName,
+        node.FilePath,
+        node.SpanStart?.ToString(),
+        node.SpanEnd?.ToString(),
+        node.Text,
+        node.IsImplicit.ToString(),
+        node.StableAnchor?.ToString(),
+      }))
+      .ToArray();
+  }
+
+  private static string[] ExactEdges(RoslynCpgGraph graph)
+  {
+    return graph.Edges
+      .OrderBy(edge => edge.SourceNodeId)
+      .ThenBy(edge => edge.Kind)
+      .ThenBy(edge => edge.TargetNodeId)
+      .Select(edge => string.Join("|", new[]
+      {
+        edge.SourceNodeId.ToString(),
+        edge.TargetNodeId.ToString(),
+        edge.Kind.ToString(),
+        edge.StructuredLabel?.StableKey,
+        edge.ContextId?.ToString(),
+        edge.CallSiteContext?.FilePath,
+        edge.CallSiteContext?.SpanStart.ToString(),
+        edge.CallSiteContext?.SpanEnd.ToString(),
+        edge.CallSiteContext?.DisplayName,
+      }))
+      .ToArray();
   }
 
   private static string CreateOutOfOrderOperationFragmentSource()

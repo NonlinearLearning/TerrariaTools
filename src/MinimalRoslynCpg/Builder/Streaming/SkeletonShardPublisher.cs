@@ -71,11 +71,17 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
   }
 
-  internal async Task<CpgShardBuildResult> CompleteAsync(
+  internal async Task<CpgShardBuildResult> CompleteBaseAsync(
     RoslynCpgBuildContext context,
     CancellationToken cancellationToken)
   {
-    var nodeOwnership = FragmentNodeOwnershipIndex.Create(context.Graph.Nodes, _ownership);
+    var facts = context.Graph.SnapshotMutableFacts();
+    var allocation = context.Graph.RequirePreallocatedNodeIds();
+    var nodeOwnership = FragmentNodeOwnershipIndex.Create(facts.Nodes, _ownership);
+    var descriptorsByNodeId = facts.Nodes.ToDictionary(
+      node => node.NodeId!.Value,
+      CpgNodeDescriptor.FromNode);
+    var candidates = facts.PendingEdges.Select(CreateCandidate).ToArray();
     foreach (var fragment in _fragments)
     {
       var nodeIds = nodeOwnership.GetNodeIds(fragment)
@@ -86,7 +92,13 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
         continue;
       }
 
-      await PublishFrozenAsync(context, "fragment-support", new TextSpan(fragment.SpanStart, fragment.SpanLength), nodeIds, cancellationToken);
+      await PublishDescriptorsAsync(
+        context,
+        "fragment-support",
+        new TextSpan(fragment.SpanStart, fragment.SpanLength),
+        nodeIds.Select(nodeId => descriptorsByNodeId[nodeId]).ToArray(),
+        FilterCandidates(candidates, nodeIds, allocation),
+        cancellationToken);
     }
 
     var supportNodeIds = nodeOwnership.SkeletonNodeIds
@@ -94,10 +106,16 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       .ToHashSet();
     if (supportNodeIds.Count > 0)
     {
-      await PublishFrozenAsync(context, "file-support", context.Root.FullSpan, supportNodeIds, cancellationToken);
+      await PublishDescriptorsAsync(
+        context,
+        "file-support",
+        context.Root.FullSpan,
+        supportNodeIds.Select(nodeId => descriptorsByNodeId[nodeId]).ToArray(),
+        FilterCandidates(candidates, supportNodeIds, allocation),
+        cancellationToken);
     }
 
-    await PublishBoundaryAdjacenciesAsync(context, cancellationToken);
+    await PublishPendingBoundaryAdjacenciesAsync(candidates, allocation, context.Source, cancellationToken);
 
     await _session.CompleteAsync(cancellationToken);
     _completed = true;
@@ -220,20 +238,6 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     _publishedKinds.Add(kind);
   }
 
-  private async Task PublishFrozenAsync(
-    RoslynCpgBuildContext context,
-    string kind,
-    TextSpan span,
-    IReadOnlySet<NodeId> nodeIds,
-    CancellationToken cancellationToken)
-  {
-    var shard = CpgFrozenShardExporter.Export(context.Graph, CreateLookup(kind, span, context.Source), nodeIds);
-    await _session.PublishFragmentAsync(shard, cancellationToken);
-    RegisterPrimaryNodes(shard);
-
-    _publishedKinds.Add(kind);
-  }
-
   private CpgShardLookup CreateLookup(string kind, TextSpan span, string source)
   {
     return new CpgShardLookup(
@@ -256,16 +260,20 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
   }
 
-  private async Task PublishBoundaryAdjacenciesAsync(
-    RoslynCpgBuildContext context,
+  private async Task PublishPendingBoundaryAdjacenciesAsync(
+    IReadOnlyList<CpgEdgeCandidate> candidates,
+    DeterministicNodeIdTable allocation,
+    string source,
     CancellationToken cancellationToken)
   {
-    foreach (var edge in context.Graph.Edges)
+    foreach (var candidate in candidates)
     {
-      if (!_primaryLookupByNodeId.TryGetValue(edge.SourceNodeId, out var sourceOwner) ||
-          !_primaryLookupByNodeId.TryGetValue(edge.TargetNodeId, out var targetOwner))
+      var sourceNodeId = allocation.GetRequiredId(candidate.SourceAnchor);
+      var targetNodeId = allocation.GetRequiredId(candidate.TargetAnchor);
+      if (!_primaryLookupByNodeId.TryGetValue(sourceNodeId, out var sourceOwner) ||
+          !_primaryLookupByNodeId.TryGetValue(targetNodeId, out var targetOwner))
       {
-        throw new InvalidOperationException("Every frozen edge endpoint must have one primary shard owner.");
+        throw new InvalidOperationException("Every persisted base edge endpoint must have one primary shard owner.");
       }
 
       if (sourceOwner == targetOwner)
@@ -273,9 +281,18 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
         continue;
       }
 
-      var boundary = CrossShardEdgeCommitter.Create(edge);
-      await AppendBoundaryAsync(sourceOwner, CpgBoundaryAdjacencyDirection.Outgoing, boundary, context.Source, cancellationToken);
-      await AppendBoundaryAsync(targetOwner, CpgBoundaryAdjacencyDirection.Incoming, boundary, context.Source, cancellationToken);
+      var boundary = new CpgFrozenBoundaryEdge(
+        sourceNodeId.Value,
+        targetNodeId.Value,
+        candidate.Kind.ToString(),
+        candidate.StructuredLabel?.StableKey,
+        candidate.ContextId?.Value,
+        candidate.CallSiteContext?.FilePath,
+        candidate.CallSiteContext?.SpanStart,
+        candidate.CallSiteContext?.SpanEnd,
+        candidate.CallSiteContext?.DisplayName);
+      await AppendBoundaryAsync(sourceOwner, CpgBoundaryAdjacencyDirection.Outgoing, boundary, source, cancellationToken);
+      await AppendBoundaryAsync(targetOwner, CpgBoundaryAdjacencyDirection.Incoming, boundary, source, cancellationToken);
     }
 
     foreach (var bucket in _boundaryBatches.Keys.OrderBy(bucket => bucket.Owner.Fragment.Kind, StringComparer.Ordinal)
@@ -283,8 +300,18 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       .ThenBy(bucket => bucket.Direction)
       .ToArray())
     {
-      await FlushBoundaryAsync(bucket, context.Source, cancellationToken);
+      await FlushBoundaryAsync(bucket, source, cancellationToken);
     }
+  }
+
+  private IReadOnlyList<CpgEdgeCandidate> FilterCandidates(
+    IReadOnlyList<CpgEdgeCandidate> candidates,
+    IReadOnlySet<NodeId> nodeIds,
+    DeterministicNodeIdTable allocation)
+  {
+    return candidates.Where(candidate =>
+      nodeIds.Contains(allocation.GetRequiredId(candidate.SourceAnchor)) &&
+      nodeIds.Contains(allocation.GetRequiredId(candidate.TargetAnchor))).ToArray();
   }
 
   private async Task AppendBoundaryAsync(

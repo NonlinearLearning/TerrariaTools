@@ -219,26 +219,25 @@ public sealed partial class RoslynCpgBuilder
         _dataFlowPassTelemetry = RoslynCpgDataFlowPassTelemetry.CreateDefault();
         _interproceduralDataFlowTelemetry = RoslynCpgInterproceduralDataFlowTelemetry.CreateDefault();
         LastBuildTelemetry = RoslynCpgBuildTelemetry.CreateDefault();
+        var persistenceHit = false;
+        long baseRestoreElapsedMilliseconds = 0;
+        long runtimeBindingElapsedMilliseconds = 0;
         if (_options.Persistence is not null)
         {
-            var restoredGraph = new CpgShardBuildCoordinator(_options.Persistence)
-                .TryRestoreAsync(context, CancellationToken.None)
+            var restoreStopwatch = Stopwatch.StartNew();
+            var restoredBase = new CpgShardBuildCoordinator(_options.Persistence)
+                .TryRestoreBaseAsync(context, CancellationToken.None)
                 .GetAwaiter()
                 .GetResult();
-            if (restoredGraph is not null)
+            restoreStopwatch.Stop();
+            baseRestoreElapsedMilliseconds = restoreStopwatch.ElapsedMilliseconds;
+            if (restoredBase is not null)
             {
-                LastBuildTelemetry = RoslynCpgBuildTelemetry.CreateDefault() with
-                {
-                    GraphSnapshotVersion = restoredGraph.GraphSnapshotVersion,
-                    GraphNodeCount = restoredGraph.Nodes.Count,
-                    GraphEdgeCount = restoredGraph.Edges.Count,
-                    ExecutedPassNames = Array.Empty<string>(),
-                    SkippedPassNames = Array.Empty<string>(),
-                    Preallocation = preallocation,
-                };
-                return restoredGraph;
+                context.Graph.ImportMutableFacts(restoredBase.Facts.Nodes, restoredBase.Facts.Edges);
+                persistenceHit = true;
             }
         }
+        var runtimeBindingStopwatch = persistenceHit ? Stopwatch.StartNew() : null;
         var buildPlan = ResolveCapabilityBuildPlan();
         var executedPassNames = new List<string>();
         var skippedPassNames = new List<string>();
@@ -256,6 +255,7 @@ public sealed partial class RoslynCpgBuilder
                 OperationRoots: Array.Empty<OperationRootPlan>());
         var usePartitionedSyntaxPass = ShouldUsePartitionedSyntaxPass(context, operationBuildStrategy.OperationRoots);
         SkeletonShardPublisher? streamingPublisher = null;
+        var streamingPersistenceCompleted = false;
 
         try
         {
@@ -271,7 +271,7 @@ public sealed partial class RoslynCpgBuilder
             MethodDecorationPass.Instance.Run(this, context);
             executedPassNames.Add(nameof(MethodDecorationPass));
 
-            if (_options.Persistence?.StreamingMode == true)
+            if (_options.Persistence?.StreamingMode == true && !persistenceHit)
             {
                 streamingPublisher = SkeletonShardPublisher.BeginAsync(
                     _options.Persistence,
@@ -283,6 +283,19 @@ public sealed partial class RoslynCpgBuilder
 
             RunPartitionedOperationPass(context, operationBuildStrategy.OperationRoots, streamingPublisher);
             CompleteOperationBackedSyntaxTypes(context);
+
+            if (streamingPublisher is not null)
+            {
+                var persistenceResult = streamingPublisher
+                  .CompleteBaseAsync(context, CancellationToken.None)
+                  .GetAwaiter()
+                  .GetResult();
+                streamingPublisher = null;
+                streamingPersistenceCompleted = true;
+                streamingFragments = persistenceResult.StreamingFragments;
+                persistenceTelemetry = persistenceResult.Persistence;
+            }
+
             operationBuildStopwatch.Stop();
             operationBuildElapsedMilliseconds = operationBuildStopwatch.ElapsedMilliseconds;
             executedPassNames.Add(nameof(OperationPass));
@@ -291,6 +304,12 @@ public sealed partial class RoslynCpgBuilder
         {
             skippedPassNames.Add(nameof(MethodDecorationPass));
             skippedPassNames.Add(nameof(OperationPass));
+        }
+
+        if (runtimeBindingStopwatch is not null)
+        {
+            runtimeBindingStopwatch.Stop();
+            runtimeBindingElapsedMilliseconds = runtimeBindingStopwatch.ElapsedMilliseconds;
         }
 
         RunOptionalPass(buildPlan.RequiresCallTargets, CallGraphPass.Instance, context, executedPassNames, skippedPassNames);
@@ -310,17 +329,12 @@ public sealed partial class RoslynCpgBuilder
         freezeQueryIndexElapsedMilliseconds = freezeTelemetry.TotalElapsedMilliseconds;
         ReleaseTransientBuilderState();
 
-        if (_options.Persistence is not null)
+        if (_options.Persistence is not null && !streamingPersistenceCompleted && !persistenceHit)
         {
-            var persistenceResult = streamingPublisher is null
-              ? new CpgShardBuildCoordinator(_options.Persistence)
-                .PersistAsync(context, CancellationToken.None)
-                .GetAwaiter()
-                .GetResult()
-              : streamingPublisher
-                .CompleteAsync(context, CancellationToken.None)
-                .GetAwaiter()
-                .GetResult();
+            var persistenceResult = new CpgShardBuildCoordinator(_options.Persistence)
+              .PersistAsync(context, CancellationToken.None)
+              .GetAwaiter()
+              .GetResult();
             streamingPublisher = null;
             streamingFragments = persistenceResult.StreamingFragments;
             persistenceTelemetry = persistenceResult.Persistence;
@@ -360,7 +374,11 @@ public sealed partial class RoslynCpgBuilder
           Persistence: persistenceTelemetry,
           OperationOrderedWindow: _operationOrderedWindow,
           CfgSensitiveOrderedWindow: _cfgSensitiveOrderedWindow,
-          AdmissionTelemetry: _options.AdmissionTelemetry);
+          AdmissionTelemetry: _options.AdmissionTelemetry,
+          PersistenceHit: persistenceHit,
+          BaseRestoreElapsedMilliseconds: baseRestoreElapsedMilliseconds,
+          RuntimeBindingElapsedMilliseconds: runtimeBindingElapsedMilliseconds,
+          PersistenceFallbackReason: _options.Persistence is null || persistenceHit ? null : "base-not-found");
         return context.Graph;
         }
         finally

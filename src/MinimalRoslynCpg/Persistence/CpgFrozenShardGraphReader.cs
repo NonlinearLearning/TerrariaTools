@@ -117,6 +117,49 @@ public static class CpgFrozenShardGraphReader
     return RoslynCpgGraph.CreateFrozen(nodes.Values, edges);
   }
 
+  internal static CpgFrozenShardGraphFacts ReadMutableFacts(IEnumerable<CpgFrozenShard> shards)
+  {
+    ArgumentNullException.ThrowIfNull(shards);
+    var nodes = new Dictionary<NodeId, RoslynCpgNode>();
+    var edges = new HashSet<RoslynCpgEdge>();
+    var orderedShards = shards
+      .OrderBy(shard => shard.Lookup.Fragment.Kind, StringComparer.Ordinal)
+      .ThenBy(shard => shard.Lookup.Fragment.SpanStart)
+      .ThenBy(shard => shard.Lookup.Fragment.SpanLength)
+      .ToArray();
+    foreach (var shard in orderedShards)
+    {
+      var graph = ReadGraph(shard);
+      foreach (var node in graph.Nodes)
+      {
+        if (!nodes.TryAdd(node.NodeId!.Value, node) && nodes[node.NodeId.Value] != node)
+        {
+          throw new InvalidDataException("The CPG shards contain conflicting nodes with the same NodeId.");
+        }
+      }
+
+      edges.UnionWith(graph.Edges);
+    }
+
+    foreach (var boundaryEdge in orderedShards
+      .SelectMany(shard => shard.BoundaryEdges ?? Array.Empty<CpgFrozenBoundaryEdge>())
+      .OrderBy(edge => edge.SourceNodeId)
+      .ThenBy(edge => edge.Kind, StringComparer.Ordinal)
+      .ThenBy(edge => edge.TargetNodeId))
+    {
+      var sourceNodeId = new NodeId(boundaryEdge.SourceNodeId);
+      var targetNodeId = new NodeId(boundaryEdge.TargetNodeId);
+      if (!nodes.ContainsKey(sourceNodeId) || !nodes.ContainsKey(targetNodeId))
+      {
+        throw new InvalidDataException("A CPG boundary edge references a node that was not restored.");
+      }
+
+      edges.Add(CreateBoundaryEdge(boundaryEdge));
+    }
+
+    return new CpgFrozenShardGraphFacts(nodes.Values.ToArray(), edges.ToArray());
+  }
+
   public static RoslynCpgGraph ReadGraph(CpgFrozenShard shard)
   {
     ArgumentNullException.ThrowIfNull(shard);
@@ -227,3 +270,7 @@ public static class CpgFrozenShardGraphReader
 public sealed record CpgFrozenShardIncomingProjection(
   IReadOnlyDictionary<NodeId, RoslynCpgNode> Nodes,
   IReadOnlyList<RoslynCpgEdge> IncomingEdges);
+
+internal sealed record CpgFrozenShardGraphFacts(
+  IReadOnlyList<RoslynCpgNode> Nodes,
+  IReadOnlyList<RoslynCpgEdge> Edges);
