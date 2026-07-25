@@ -1,17 +1,16 @@
-using Deletion.Application;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Deletion.Core.Rewrite;
 
-namespace Deletion.Cli;
+namespace Deletion.Application;
 
-internal sealed class DeleteClassPostRewriteCleanupService
+public sealed class DeleteClassPostRewriteCleanupService
 {
     private readonly DiffBuilder _diffBuilder = new();
     private readonly TextDiffRenderer _textDiffRenderer = new();
 
-    internal PrototypeAnalysisResult ApplyUsingCleanup(
+    public PrototypeAnalysisResult ApplyUsingCleanup(
       string filePath,
       string originalSource,
       PrototypeAnalysisResult result,
@@ -70,7 +69,7 @@ internal sealed class DeleteClassPostRewriteCleanupService
         return MergeCleanupEdits(filePath, originalSource, result, currentSource, cleanupEdits);
     }
 
-    internal PrototypeAnalysisResult ApplyEmptyNamespaceCleanup(
+    public PrototypeAnalysisResult ApplyEmptyNamespaceCleanup(
       string filePath,
       string originalSource,
       PrototypeAnalysisResult result,
@@ -158,19 +157,19 @@ internal sealed class DeleteClassPostRewriteCleanupService
         };
     }
 
-    internal sealed class CleanupProjectState
+    public sealed class CleanupProjectState
     {
         private readonly Dictionary<string, string> _projectSourcesByPath;
         private readonly HashSet<string> _baselineDiagnostics;
 
-        internal CleanupProjectState(Dictionary<string, string> projectSourcesByPath)
+        public CleanupProjectState(Dictionary<string, string> projectSourcesByPath)
         {
             _projectSourcesByPath = projectSourcesByPath;
             _baselineDiagnostics =
               DeletionPostRewriteDiagnostics.GetStableErrorDiagnosticKeys(projectSourcesByPath);
         }
 
-        internal bool TryAcceptCandidate(string filePath, string candidateSource)
+        public bool TryAcceptCandidate(string filePath, string candidateSource)
         {
             var candidateDiagnostics =
               DeletionPostRewriteDiagnostics.GetStableErrorDiagnosticKeys(

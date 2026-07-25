@@ -92,7 +92,10 @@ public sealed class DeletionCommandHost
                 var filePath = inputPath ?? "demo.cs";
                 var application = new DeletionApplicationService(rules);
                 result = application.Analyze(source, filePath, options, runtime);
-                result = DeletionPostRewriteDiagnostics.AddSingleFileDiagnostics(result, filePath, options);
+                result = DeletionPostRewriteDiagnostics.AddSingleFileDiagnostics(
+                  result,
+                  filePath,
+                  DeletionApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options));
                 analysisWriter?.WriteResult(filePath, result);
 
                 if (inputPath is not null && File.Exists(inputPath) && result.Edits.Count > 0)

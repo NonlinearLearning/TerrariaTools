@@ -1,18 +1,17 @@
-using Deletion.Application;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Deletion.Core.Rewrite;
 
-namespace Deletion.Cli;
+namespace Deletion.Application;
 
-internal static class DeletionPostRewriteDiagnostics
+public static class DeletionPostRewriteDiagnostics
 {
-    internal static PrototypeAnalysisResult AddSingleFileDiagnostics(
+    public static PrototypeAnalysisResult AddSingleFileDiagnostics(
       PrototypeAnalysisResult result,
       string filePath,
-      IReadOnlyDictionary<string, string> options)
-    {
-        if (DeletionApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options))
+      bool skipDiagnostics)
+  {
+        if (skipDiagnostics)
         {
             return result with { Diagnostics = Array.Empty<AnalysisDiagnostic>() };
         }
@@ -32,7 +31,7 @@ internal static class DeletionPostRewriteDiagnostics
         };
     }
 
-    internal static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(
+    public static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(
       IReadOnlyDictionary<string, string> originalSourcesByPath,
       IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
     {
@@ -41,7 +40,7 @@ internal static class DeletionPostRewriteDiagnostics
           .ToList();
     }
 
-    internal static HashSet<string> GetStableErrorDiagnosticKeys(
+    public static HashSet<string> GetStableErrorDiagnosticKeys(
       IReadOnlyDictionary<string, string> sourcesByPath)
     {
         return GetStableErrorDiagnosticKeys(
@@ -50,7 +49,7 @@ internal static class DeletionPostRewriteDiagnostics
           overriddenSource: null);
     }
 
-    internal static HashSet<string> GetStableErrorDiagnosticKeys(
+    public static HashSet<string> GetStableErrorDiagnosticKeys(
       IReadOnlyDictionary<string, string> sourcesByPath,
       string? overriddenFilePath,
       string? overriddenSource)

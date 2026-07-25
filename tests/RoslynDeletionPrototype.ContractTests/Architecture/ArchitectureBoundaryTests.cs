@@ -38,6 +38,18 @@ public sealed class ArchitectureBoundaryTests
     Assert.DoesNotContain("Deletion.Rules", projectText, StringComparison.Ordinal);
   }
 
+  [Fact]
+  public void DirectoryAnalysisUseCase_StaysWithinTheApplicationBoundary()
+  {
+    var useCasePath = ProjectPath("src", "Deletion.Application", "Analysis", "DirectoryAnalysisUseCase.cs");
+    Assert.True(File.Exists(useCasePath), "Directory analysis must have an Application-owned use case.");
+
+    var useCaseText = File.ReadAllText(useCasePath);
+    Assert.DoesNotContain("Deletion.Cli", useCaseText, StringComparison.Ordinal);
+    Assert.DoesNotContain("File.", useCaseText, StringComparison.Ordinal);
+    Assert.DoesNotContain("Directory.", useCaseText, StringComparison.Ordinal);
+  }
+
   private static string ProjectPath(params string[] parts)
   {
     var sourceFile = new StackTrace(true).GetFrames()?
