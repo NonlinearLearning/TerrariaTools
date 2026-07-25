@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Deletion.Application\Deletion.Application.csproj" />
+    <ProjectReference Include="..\Deletion.Rules\Deletion.Rules.csproj" />
+    <ProjectReference Include="..\Deletion.Core\Deletion.Core.csproj" />
+    <ProjectReference Include="..\Deletion.Logging\Deletion.Logging.csproj" />
+    <ProjectReference Include="..\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
+    <ProjectReference Include="..\Host\Host.csproj" />
+  </ItemGroup>
+</Project>

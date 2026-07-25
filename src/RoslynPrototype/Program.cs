@@ -1,4 +1,3 @@
-using RoslynPrototype.Application;
+using Deletion.Cli;
 
-var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
-await host.AnalyzeFromArgsAsync(args);
+await DeletionCliRunner.RunAsync(args);
