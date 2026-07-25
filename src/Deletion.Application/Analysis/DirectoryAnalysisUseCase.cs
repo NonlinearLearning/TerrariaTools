@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Builder;
 using Deletion.Core.Analysis;
 using Deletion.Core.Decision;
@@ -32,8 +33,12 @@ public sealed record DirectoryAnalysisOutcome(
 
 public sealed class DirectoryAnalysisUseCase
 {
+  private const string DeleteUnreferencedMethodMarkRuleId = "DEL-UNREF-METHOD-MARK-001";
+  private const string DeleteUnreferencedMethodGroupKey = "DEL-UNREF-METHOD";
+
   private readonly DeletionApplicationService _application;
   private readonly DeleteClassPostRewriteCleanupService _cleanupService = new();
+  private readonly PrototypeRewriter _rewriter = new();
 
   public DirectoryAnalysisUseCase(DeletionRulePipeline pipeline)
   {
@@ -56,6 +61,11 @@ public sealed class DirectoryAnalysisUseCase
         CreateEmptyResult(),
         Array.Empty<DirectoryFileAnalysisResult>(),
         new DirectoryPublicationTelemetry(0, 0, 0, -1));
+    }
+
+    if (ShouldUseUnreferencedMethodFastPath(options))
+    {
+      return AnalyzeUnreferencedMethods(orderedSources, runtime);
     }
 
     var sourcesByPath = orderedSources.ToDictionary(
@@ -203,6 +213,318 @@ public sealed class DirectoryAnalysisUseCase
         oldestUnpublishedIndex));
   }
 
+  private DirectoryAnalysisOutcome AnalyzeUnreferencedMethods(
+    IReadOnlyList<DirectorySourceFile> sources,
+    DeletionAnalysisRuntime runtime)
+  {
+    var trees = sources.ToDictionary(
+      source => source.FilePath,
+      source => CSharpSyntaxTree.ParseText(source.Source, path: source.FilePath),
+      StringComparer.Ordinal);
+    var compilation = RoslynCompilationFactory.CreateCompilation(trees.Values);
+    var candidates = BuildUnreferencedMethodCandidateMap(compilation);
+    var methodsByPath = FindUnreferencedMethodDeclarationsByPath(compilation, candidates);
+    var deletedMethodCount = methodsByPath.Values.Sum(methods => methods.Count);
+    var results = AnalyzeUnreferencedFiles(sources, trees, compilation, methodsByPath, runtime);
+    var aggregate = BuildResult(sources.Count, sources.Count, results) with
+    {
+      Stats = new AnalysisStats(
+        sources.Count,
+        sources.Count,
+        candidates.Count,
+        deletedMethodCount,
+        0),
+    };
+    return new DirectoryAnalysisOutcome(
+      aggregate,
+      results,
+      new DirectoryPublicationTelemetry(sources.Count, 0, 0, -1));
+  }
+
+  private List<DirectoryFileAnalysisResult> AnalyzeUnreferencedFiles(
+    IReadOnlyList<DirectorySourceFile> sources,
+    IReadOnlyDictionary<string, SyntaxTree> trees,
+    Compilation compilation,
+    IReadOnlyDictionary<string, IReadOnlyList<MethodDeclarationSyntax>> methodsByPath,
+    DeletionAnalysisRuntime runtime)
+  {
+    DirectoryFileAnalysisResult AnalyzeFile(DirectorySourceFile source)
+    {
+      var tree = trees[source.FilePath];
+      var methods = methodsByPath.TryGetValue(source.FilePath, out var matchedMethods)
+        ? matchedMethods
+        : Array.Empty<MethodDeclarationSyntax>();
+      var result = AnalyzeUnreferencedFile(
+        compilation.GetSemanticModel(tree),
+        tree.GetRoot(),
+        methods);
+      return new DirectoryFileAnalysisResult(
+        source.Index,
+        source.FilePath,
+        result.Edits.Count == 0 ? result with { RewrittenSource = null } : result);
+    }
+
+    if (!runtime.ExecutionOptions.EnableDirectoryParallelism ||
+        runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism == 1 ||
+        sources.Count <= 1)
+    {
+      return sources.Select(AnalyzeFile).ToList();
+    }
+
+    return runtime.Scheduler.RunOrderedAsync(
+      sources.Count,
+      runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+      (index, cancellationToken) =>
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(AnalyzeFile(sources[index]));
+      },
+      runtime.ExecutionOptions.CancellationToken).GetAwaiter().GetResult().ToList();
+  }
+
+  private PrototypeAnalysisResult AnalyzeUnreferencedFile(
+    SemanticModel semanticModel,
+    SyntaxNode root,
+    IReadOnlyList<MethodDeclarationSyntax> methodsToDelete)
+  {
+    var seedMarks = methodsToDelete
+      .Select(method => new MarkRecord(
+        DeleteUnreferencedMethodMarkRuleId,
+        method,
+        null,
+        null,
+        "Method has no references from methods that remain in the project.",
+        DeleteUnreferencedMethodGroupKey))
+      .ToList();
+    var decisions = methodsToDelete
+      .Select(method => new RuleDecision(
+        method,
+        method,
+        DecisionActionKind.Delete,
+        "Method has no references from methods that remain in the project."))
+      .ToList();
+    var rewriteResult = _rewriter.Rewrite(root, semanticModel, decisions);
+    return new PrototypeAnalysisResult(
+      seedMarks,
+      Array.Empty<PropagatedMarkRecord>(),
+      Array.Empty<LiftedMarkRecord>(),
+      decisions,
+      rewriteResult.Edits,
+      rewriteResult.RewrittenSource,
+      rewriteResult.Diff,
+      null,
+      RewritePlans: rewriteResult.Operations is { Count: > 0 }
+        ? new[] { new PrototypeFileRewritePlan(root.SyntaxTree.FilePath, rewriteResult.Operations) }
+        : Array.Empty<PrototypeFileRewritePlan>());
+  }
+
+  private static IReadOnlyDictionary<string, IReadOnlyList<MethodDeclarationSyntax>>
+    FindUnreferencedMethodDeclarationsByPath(
+      Compilation compilation,
+      IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+  {
+    var references = BuildUnreferencedMethodReferenceIndex(compilation, candidates);
+    var methods = FindUnreferencedMethodsByDeletionIteration(candidates, references);
+    return methods
+      .GroupBy(pair => pair.Value.SyntaxTree.FilePath ?? string.Empty, StringComparer.Ordinal)
+      .ToDictionary(
+        group => group.Key,
+        group => (IReadOnlyList<MethodDeclarationSyntax>)group
+          .Select(pair => pair.Value)
+          .OrderBy(method => method.SpanStart)
+          .ToList(),
+        StringComparer.Ordinal);
+  }
+
+  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildUnreferencedMethodCandidateMap(
+    Compilation compilation)
+  {
+    var candidates = new Dictionary<IMethodSymbol, MethodDeclarationSyntax>(SymbolEqualityComparer.Default);
+    foreach (var tree in compilation.SyntaxTrees)
+    {
+      var model = compilation.GetSemanticModel(tree);
+      foreach (var method in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
+      {
+        if (model.GetDeclaredSymbol(method, CancellationToken.None) is not IMethodSymbol symbol ||
+            !IsUnreferencedMethodDeletionCandidate(symbol))
+        {
+          continue;
+        }
+
+        candidates[CanonicalizeMethodSymbol(symbol)] = method;
+      }
+    }
+
+    return candidates;
+  }
+
+  private static MethodReferenceIndex BuildUnreferencedMethodReferenceIndex(
+    Compilation compilation,
+    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+  {
+    var incomingCallers = CreateMethodReferenceSetMap(candidates.Keys);
+    var candidateCallees = CreateMethodReferenceSetMap(candidates.Keys);
+    var externallyReferencedMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+    foreach (var tree in compilation.SyntaxTrees)
+    {
+      var model = compilation.GetSemanticModel(tree);
+      foreach (var node in tree.GetRoot().DescendantNodes())
+      {
+        var referencedMethod = GetReferencedCandidateMethod(model, node);
+        if (referencedMethod is null || !candidates.ContainsKey(referencedMethod))
+        {
+          continue;
+        }
+
+        var caller = GetContainingCandidateMethod(model, node, candidates);
+        if (caller is null)
+        {
+          externallyReferencedMethods.Add(referencedMethod);
+          continue;
+        }
+
+        if (SymbolEqualityComparer.Default.Equals(caller, referencedMethod))
+        {
+          continue;
+        }
+
+        incomingCallers[referencedMethod].Add(caller);
+        candidateCallees[caller].Add(referencedMethod);
+      }
+    }
+
+    return new MethodReferenceIndex(incomingCallers, candidateCallees, externallyReferencedMethods);
+  }
+
+  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> FindUnreferencedMethodsByDeletionIteration(
+    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates,
+    MethodReferenceIndex references)
+  {
+    var deletedMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+    var pendingScan = new HashSet<IMethodSymbol>(candidates.Keys, SymbolEqualityComparer.Default);
+    while (pendingScan.Count > 0)
+    {
+      var deletedThisRound = new List<IMethodSymbol>();
+      foreach (var candidate in pendingScan)
+      {
+        if (deletedMethods.Contains(candidate) || HasRemainingReferences(candidate, deletedMethods, references))
+        {
+          continue;
+        }
+
+        deletedMethods.Add(candidate);
+        deletedThisRound.Add(candidate);
+      }
+
+      pendingScan.Clear();
+      foreach (var deletedMethod in deletedThisRound)
+      {
+        foreach (var callee in references.CandidateCallees[deletedMethod])
+        {
+          if (!deletedMethods.Contains(callee))
+          {
+            pendingScan.Add(callee);
+          }
+        }
+      }
+    }
+
+    var retainedMethods = FindExternallyReferencedClosure(candidates, references);
+    var unreferencedMethods = new Dictionary<IMethodSymbol, MethodDeclarationSyntax>(SymbolEqualityComparer.Default);
+    foreach (var pair in candidates)
+    {
+      if (!retainedMethods.Contains(pair.Key))
+      {
+        unreferencedMethods[pair.Key] = pair.Value;
+      }
+    }
+
+    return unreferencedMethods;
+  }
+
+  private static bool HasRemainingReferences(
+    IMethodSymbol method,
+    IReadOnlySet<IMethodSymbol> deletedMethods,
+    MethodReferenceIndex references)
+  {
+    return references.ExternallyReferencedMethods.Contains(method) ||
+      references.IncomingCandidateCallers[method].Any(caller => !deletedMethods.Contains(caller));
+  }
+
+  private static HashSet<IMethodSymbol> FindExternallyReferencedClosure(
+    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates,
+    MethodReferenceIndex references)
+  {
+    var retained = new HashSet<IMethodSymbol>(references.ExternallyReferencedMethods, SymbolEqualityComparer.Default);
+    var worklist = new Queue<IMethodSymbol>(retained);
+    while (worklist.Count > 0)
+    {
+      var current = worklist.Dequeue();
+      if (!candidates.ContainsKey(current))
+      {
+        continue;
+      }
+
+      foreach (var callee in references.CandidateCallees[current])
+      {
+        if (retained.Add(callee))
+        {
+          worklist.Enqueue(callee);
+        }
+      }
+    }
+
+    return retained;
+  }
+
+  private static Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> CreateMethodReferenceSetMap(
+    IEnumerable<IMethodSymbol> candidates)
+  {
+    var map = new Dictionary<IMethodSymbol, HashSet<IMethodSymbol>>(SymbolEqualityComparer.Default);
+    foreach (var candidate in candidates)
+    {
+      map[candidate] = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+    }
+
+    return map;
+  }
+
+  private static IMethodSymbol? GetContainingCandidateMethod(
+    SemanticModel model,
+    SyntaxNode node,
+    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+  {
+    var syntax = node.FirstAncestorOrSelf<MethodDeclarationSyntax>();
+    if (syntax is null || model.GetDeclaredSymbol(syntax, CancellationToken.None) is not IMethodSymbol method)
+    {
+      return null;
+    }
+
+    var canonical = CanonicalizeMethodSymbol(method);
+    return candidates.ContainsKey(canonical) ? canonical : null;
+  }
+
+  private static IMethodSymbol? GetReferencedCandidateMethod(SemanticModel model, SyntaxNode node)
+  {
+    return model.GetSymbolInfo(node, CancellationToken.None).Symbol is IMethodSymbol method
+      ? CanonicalizeMethodSymbol(method)
+      : null;
+  }
+
+  private static bool IsUnreferencedMethodDeletionCandidate(IMethodSymbol method)
+  {
+    return method.MethodKind == MethodKind.Ordinary &&
+      method.DeclaredAccessibility == Accessibility.Private &&
+      !method.IsOverride &&
+      method.ExplicitInterfaceImplementations.Length == 0 &&
+      !(string.Equals(method.Name, "Main", StringComparison.Ordinal) && method.IsStatic);
+  }
+
+  private static IMethodSymbol CanonicalizeMethodSymbol(IMethodSymbol method)
+  {
+    return method.ReducedFrom?.OriginalDefinition ?? method.OriginalDefinition;
+  }
+
   private void ApplyDeleteClassCleanup(
     IReadOnlyList<DirectorySourceFile> sources,
     List<DirectoryFileAnalysisResult> fileResults)
@@ -316,6 +638,16 @@ public sealed class DirectoryAnalysisUseCase
     return options.TryGetValue(key, out var value) && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
   }
 
+  private static bool ShouldUseUnreferencedMethodFastPath(IReadOnlyDictionary<string, string> options)
+  {
+    return IsTrue(options, "delete-unreferenced-methods") &&
+      !options.ContainsKey("target-name") &&
+      !options.ContainsKey("delete-class") &&
+      !options.ContainsKey("unreachable-methods") &&
+      !IsTrue(options, "clear-unused-interface-implementations") &&
+      !IsTrue(options, "privatize-internal-only-public-methods");
+  }
+
   private static bool ShouldUseDeleteClassCleanup(IReadOnlyDictionary<string, string> options)
   {
     return options.ContainsKey("delete-class") && !IsTrue(options, "fast-delete-class-directory");
@@ -332,4 +664,9 @@ public sealed class DirectoryAnalysisUseCase
       IsTrue(options, "fast-delete-class-directory") &&
       IsTrue(options, "filter-delete-class-files-by-target-name");
   }
+
+  private sealed record MethodReferenceIndex(
+    IReadOnlyDictionary<IMethodSymbol, HashSet<IMethodSymbol>> IncomingCandidateCallers,
+    IReadOnlyDictionary<IMethodSymbol, HashSet<IMethodSymbol>> CandidateCallees,
+    IReadOnlySet<IMethodSymbol> ExternallyReferencedMethods);
 }
