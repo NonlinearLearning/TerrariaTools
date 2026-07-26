@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Deletion.Core.Rewrite;
+namespace NLISSN.Core.Rewrite;
 
 public sealed class TextDiffRenderer
 {

@@ -7,13 +7,7 @@ namespace MinimalRoslynCpg.Model;
 /// </summary>
 public sealed record RoslynCpgEdge
 {
-  public RoslynCpgEdge(
-    NodeId sourceNodeId,
-    NodeId targetNodeId,
-    RoslynCpgEdgeKind kind,
-    RoslynCpgEdgeLabel? structuredLabel = null,
-    RoslynCpgContextId? contextId = null,
-    RoslynCpgCallSiteContext? callSiteContext = null)
+  public RoslynCpgEdge(NodeId sourceNodeId, NodeId targetNodeId, RoslynCpgEdgeKind kind, RoslynCpgEdgeLabel? structuredLabel = null, RoslynCpgContextId? contextId = null, RoslynCpgCallSiteContext? callSiteContext = null)
   {
     var resolvedContextId = callSiteContext?.ToContextId() ?? contextId;
     if (callSiteContext.HasValue &&

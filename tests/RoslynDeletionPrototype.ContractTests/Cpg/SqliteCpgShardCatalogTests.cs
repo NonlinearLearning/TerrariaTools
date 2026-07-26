@@ -2,12 +2,72 @@ using Microsoft.Data.Sqlite;
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Persistence;
 using MinimalRoslynCpg.Persistence.Sqlite;
+using System.Reflection;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
 
 public sealed class SqliteCpgShardCatalogTests
 {
+  [Fact]
+  public async Task FindByNodeAsync_VerifiedRoutingIndexCache_ReusesValidatedIndexAndRejectsChangedManifest()
+  {
+    var root = CreateTemporaryDirectory();
+    try
+    {
+      var lookup = CreateLookup();
+      var catalogPath = Path.Combine(root, "catalog.db");
+      var catalog = new SqliteCpgShardCatalog(catalogPath);
+      var store = new CpgShardStore(root);
+      var shard = CreateShard(lookup);
+      var buildId = await catalog.BeginBuildAsync(CancellationToken.None);
+      var write = await store.WriteAsync(shard, CancellationToken.None);
+      await catalog.StageAsync(
+        buildId,
+        new CpgShardLease(lookup, write.Location),
+        shard,
+        CancellationToken.None);
+      var routingPath = Path.Combine(root, "builds", buildId, "routing.cpgidx");
+      var routingIndex = await new CpgBuildRoutingIndexWriter().WriteAsync(
+        routingPath,
+        buildId,
+        new[] { new CpgBuildRoutingShardEntry(shard, write.Location) },
+        CancellationToken.None);
+      await FinalizeRoutingBuildAsync(
+        catalog,
+        buildId,
+        new CpgBuildRoutingIndexManifest(
+          Path.Combine("builds", buildId, "routing.cpgidx"),
+          routingIndex.FormatVersion,
+          routingIndex.ByteLength,
+          routingIndex.PayloadHash));
+
+      Assert.Equal(new[] { write.Location }, await catalog.FindByNodeAsync(7, CancellationToken.None));
+      Assert.Equal(new[] { write.Location }, await catalog.FindByNodeAsync(7, CancellationToken.None));
+
+      var warmed = catalog.GetRoutingIndexCacheTelemetry();
+      Assert.Equal(1, warmed.ReadCount);
+      Assert.Equal(1, warmed.CacheMissCount);
+      Assert.Equal(1, warmed.CacheHitCount);
+
+      await using (var connection = new SqliteConnection($"Data Source={catalogPath};Pooling=False"))
+      {
+        await connection.OpenAsync();
+        await using var update = connection.CreateCommand();
+        update.CommandText = "UPDATE session_routing_indexes SET payload_hash = 'different';";
+        await update.ExecuteNonQueryAsync();
+      }
+
+      await Assert.ThrowsAsync<InvalidDataException>(() =>
+        catalog.FindByNodeAsync(7, CancellationToken.None));
+      Assert.Equal(2, catalog.GetRoutingIndexCacheTelemetry().ReadCount);
+    }
+    finally
+    {
+      Directory.Delete(root, recursive: true);
+    }
+  }
+
   [Fact]
   public void CpgShardStoreLock_CompetingWriter_ThrowsClearException()
   {
@@ -609,6 +669,20 @@ public sealed class SqliteCpgShardCatalogTests
     {
       Directory.Delete(root, recursive: true);
     }
+  }
+
+  private static async Task FinalizeRoutingBuildAsync(SqliteCpgShardCatalog catalog, string buildId, CpgBuildRoutingIndexManifest manifest)
+  {
+    var method = typeof(SqliteCpgShardCatalog).GetMethod(
+      "FinalizeBuildAsync",
+      BindingFlags.Instance | BindingFlags.NonPublic);
+    Assert.NotNull(method);
+    var requestsType = method!.GetParameters()[1].ParameterType.GetGenericArguments()[0];
+    var emptyRequests = Array.CreateInstance(requestsType, 0);
+    var finalizeTask = Assert.IsAssignableFrom<Task>(method.Invoke(
+      catalog,
+      new object[] { buildId, emptyRequests, manifest, CancellationToken.None }));
+    await finalizeTask;
   }
 
   private static CpgShardLookup CreateLookup()

@@ -52,8 +52,7 @@ public sealed class CpgShardBuildCoordinatorTests
   [InlineData(12)]
   [InlineData(14)]
   [InlineData(16)]
-  public void BuildFromSource_PersistenceHit_SliceMatchesSerialAtConfiguredDop(
-    int maxDegreeOfParallelism)
+  public void BuildFromSource_PersistenceHit_SliceMatchesSerialAtConfiguredDop(int maxDegreeOfParallelism)
   {
     var root = Path.Combine(Path.GetTempPath(), "cpg-persistence-slice-dop-tests", Guid.NewGuid().ToString("N"));
     try

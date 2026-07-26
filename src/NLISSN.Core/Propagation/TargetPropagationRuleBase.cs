@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Rules;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Propagation;
+namespace NLISSN.Core.Propagation;
 
 public abstract class SObjectPropagationRuleBase : RuleDefinitionPropagate
 {

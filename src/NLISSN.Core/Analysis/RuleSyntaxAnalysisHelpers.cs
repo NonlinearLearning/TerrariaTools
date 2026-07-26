@@ -2,15 +2,11 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 public static class RuleSyntaxAnalysisHelpers
 {
-    public static IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(
-      SyntaxNode root,
-      IReadOnlyCollection<SyntaxKind> allowedKinds,
-      CpgAnalysisContext context,
-      IReadOnlyList<ExpressionSyntax>? atomicCandidates = null)
+    public static IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(SyntaxNode root, IReadOnlyCollection<SyntaxKind> allowedKinds, CpgAnalysisContext context, IReadOnlyList<ExpressionSyntax>? atomicCandidates = null)
     {
         foreach (var expression in atomicCandidates ?? new AtomicExpressionAnalyzer().Analyze(root))
         {

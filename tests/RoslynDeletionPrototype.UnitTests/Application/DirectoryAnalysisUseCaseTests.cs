@@ -1,5 +1,5 @@
-using Deletion.Application;
-using Deletion.Rules;
+using NLISSN.Application;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 /// <summary>
 /// 一元表达式结构分析结果。

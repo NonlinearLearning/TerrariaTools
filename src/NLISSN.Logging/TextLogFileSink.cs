@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Threading.Channels;
 
-namespace Deletion.Logging;
+namespace NLISSN.Logging;
 
 public sealed class TextLogFileSink : ITextLogSink, IAsyncDisposable
 {

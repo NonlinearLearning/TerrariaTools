@@ -1,8 +1,8 @@
-using Deletion.Application;
-using Deletion.Logging;
-using Deletion.Rules;
+using NLISSN.Application;
+using NLISSN.Logging;
+using NLISSN.Rules;
 
-namespace Deletion.Cli;
+namespace NLISSN;
 
 internal static class DeletionApplicationOptions
 {
@@ -31,9 +31,7 @@ internal static class DeletionApplicationOptions
         return options;
     }
 
-    internal static bool TryParseDisabledRuleTypes(
-      IReadOnlyDictionary<string, string> options,
-      out IReadOnlyList<string> disabledRuleTypes)
+    internal static bool TryParseDisabledRuleTypes(IReadOnlyDictionary<string, string> options, out IReadOnlyList<string> disabledRuleTypes)
     {
         disabledRuleTypes = Array.Empty<string>();
         if (!options.TryGetValue("disabled-rule-types", out var rawValue) ||
@@ -122,8 +120,7 @@ internal static class DeletionApplicationOptions
           string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    internal static bool ShouldUseUnreferencedMethodFastPath(
-      IReadOnlyDictionary<string, string> options)
+    internal static bool ShouldUseUnreferencedMethodFastPath(IReadOnlyDictionary<string, string> options)
     {
         return IsTrueOption(options, "delete-unreferenced-methods") &&
           !options.ContainsKey("target-name") &&
@@ -133,22 +130,19 @@ internal static class DeletionApplicationOptions
           !IsTrueOption(options, "privatize-internal-only-public-methods");
     }
 
-    internal static bool ShouldUseDeleteClassUsingCleanup(
-      IReadOnlyDictionary<string, string> options)
+    internal static bool ShouldUseDeleteClassUsingCleanup(IReadOnlyDictionary<string, string> options)
     {
         return options.ContainsKey("delete-class") &&
           !IsTrueOption(options, "fast-delete-class-directory");
     }
 
-    internal static bool ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(
-      IReadOnlyDictionary<string, string> options)
+    internal static bool ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(IReadOnlyDictionary<string, string> options)
     {
         return options.ContainsKey("delete-class") &&
           IsTrueOption(options, "fast-delete-class-directory");
     }
 
-    internal static bool ShouldFilterDeleteClassFilesByTargetName(
-      IReadOnlyDictionary<string, string> options)
+    internal static bool ShouldFilterDeleteClassFilesByTargetName(IReadOnlyDictionary<string, string> options)
     {
         return options.ContainsKey("delete-class") &&
           IsTrueOption(options, "fast-delete-class-directory") &&
@@ -234,14 +228,12 @@ internal static class DeletionApplicationOptions
         return Math.Max(1, parsedValue);
     }
 
-    internal static RoslynPrototypeExecutionOptions CreateExecutionOptions(
-      IReadOnlyDictionary<string, string> options)
+    internal static RoslynPrototypeExecutionOptions CreateExecutionOptions(IReadOnlyDictionary<string, string> options)
     {
         return DeletionAnalysisRuntime.CreateExecutionOptions(options);
     }
 
-    internal static DeletionAnalysisRuntime CreateRuntime(
-      IReadOnlyDictionary<string, string> options)
+    internal static DeletionAnalysisRuntime CreateRuntime(IReadOnlyDictionary<string, string> options)
     {
         return DeletionAnalysisRuntime.CreateFromOptions(options);
     }

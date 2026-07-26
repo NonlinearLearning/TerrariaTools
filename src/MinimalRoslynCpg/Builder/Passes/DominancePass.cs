@@ -3,6 +3,8 @@ using Microsoft.CodeAnalysis.FlowAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
+using System.Collections;
+using System.Numerics;
 
 namespace MinimalRoslynCpg.Builder.Passes
 {
@@ -30,12 +32,216 @@ namespace MinimalRoslynCpg.Builder
 
 public sealed partial class RoslynCpgBuilder
 {
+    private sealed class BlockBitSet : IReadOnlySet<int>
+    {
+        private readonly int _capacity;
+        private readonly ulong[] _words;
+
+        internal BlockBitSet(int capacity)
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
+            _capacity = capacity;
+            _words = new ulong[(capacity + 63) / 64];
+        }
+
+        private BlockBitSet(int capacity, ulong[] words)
+        {
+            _capacity = capacity;
+            _words = words;
+        }
+
+        public int Count
+        {
+            get
+            {
+                var count = 0;
+                foreach (var word in _words)
+                {
+                    count += BitOperations.PopCount(word);
+                }
+
+                return count;
+            }
+        }
+
+        internal BlockBitSet Clone()
+        {
+            return new BlockBitSet(_capacity, (ulong[])_words.Clone());
+        }
+
+        internal void Set(int ordinal)
+        {
+            ValidateOrdinal(ordinal);
+            _words[ordinal / 64] |= 1UL << (ordinal % 64);
+        }
+
+        internal void AndWith(BlockBitSet other)
+        {
+            ValidateCompatible(other);
+            for (var index = 0; index < _words.Length; index += 1)
+            {
+                _words[index] &= other._words[index];
+            }
+        }
+
+        internal bool BitwiseEquals(BlockBitSet other)
+        {
+            ValidateCompatible(other);
+            for (var index = 0; index < _words.Length; index += 1)
+            {
+                if (_words[index] != other._words[index])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public bool Contains(int item)
+        {
+            if (item < 0 || item >= _capacity)
+            {
+                return false;
+            }
+
+            return (_words[item / 64] & (1UL << (item % 64))) != 0;
+        }
+
+        public IEnumerator<int> GetEnumerator()
+        {
+            for (var wordIndex = 0; wordIndex < _words.Length; wordIndex += 1)
+            {
+                var remaining = _words[wordIndex];
+                while (remaining != 0)
+                {
+                    var bitIndex = BitOperations.TrailingZeroCount(remaining);
+                    var ordinal = (wordIndex * 64) + bitIndex;
+                    if (ordinal < _capacity)
+                    {
+                        yield return ordinal;
+                    }
+
+                    remaining &= remaining - 1;
+                }
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
+
+        public bool IsProperSubsetOf(IEnumerable<int> other)
+        {
+            return IsSubsetOf(other) && !SetEquals(other);
+        }
+
+        public bool IsProperSupersetOf(IEnumerable<int> other)
+        {
+            return IsSupersetOf(other) && !SetEquals(other);
+        }
+
+        public bool IsSubsetOf(IEnumerable<int> other)
+        {
+            if (other is BlockBitSet otherBitSet)
+            {
+                ValidateCompatible(otherBitSet);
+                for (var index = 0; index < _words.Length; index += 1)
+                {
+                    if ((_words[index] & ~otherBitSet._words[index]) != 0)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            var otherSet = other.ToHashSet();
+            return this.All(otherSet.Contains);
+        }
+
+        public bool IsSupersetOf(IEnumerable<int> other)
+        {
+            if (other is BlockBitSet otherBitSet)
+            {
+                ValidateCompatible(otherBitSet);
+                for (var index = 0; index < _words.Length; index += 1)
+                {
+                    if ((otherBitSet._words[index] & ~_words[index]) != 0)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            foreach (var ordinal in other)
+            {
+                if (!Contains(ordinal))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public bool Overlaps(IEnumerable<int> other)
+        {
+            if (other is BlockBitSet otherBitSet)
+            {
+                ValidateCompatible(otherBitSet);
+                for (var index = 0; index < _words.Length; index += 1)
+                {
+                    if ((_words[index] & otherBitSet._words[index]) != 0)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            return other.Any(Contains);
+        }
+
+        public bool SetEquals(IEnumerable<int> other)
+        {
+            if (other is BlockBitSet otherBitSet)
+            {
+                return BitwiseEquals(otherBitSet);
+            }
+
+            var otherSet = other.ToHashSet();
+            return Count == otherSet.Count && this.All(otherSet.Contains);
+        }
+
+        private void ValidateCompatible(BlockBitSet other)
+        {
+            if (_capacity != other._capacity)
+            {
+                throw new InvalidOperationException("BlockBitSet capacity mismatch.");
+            }
+        }
+
+        private void ValidateOrdinal(int ordinal)
+        {
+            if (ordinal < 0 || ordinal >= _capacity)
+            {
+                throw new ArgumentOutOfRangeException(nameof(ordinal));
+            }
+        }
+    }
+
     private readonly List<DominanceMethodOverlay> _dominanceOverlays = new();
 
     private sealed record DominanceMethodOverlay(
         ControlFlowGraph ControlFlowGraph,
-        IReadOnlyDictionary<int, IReadOnlySet<int>> DominatorsByBlockOrdinal,
-        IReadOnlyDictionary<int, IReadOnlySet<int>> PostDominatorsByBlockOrdinal,
+        IReadOnlyDictionary<int, BlockBitSet> DominatorsByBlockOrdinal,
+        IReadOnlyDictionary<int, BlockBitSet> PostDominatorsByBlockOrdinal,
         IReadOnlyDictionary<int, int?> ImmediatePostDominatorByBlockOrdinal,
         IReadOnlyDictionary<int, IReadOnlyList<RoslynCpgNode>> NodesByBlockOrdinal,
         IReadOnlyDictionary<int, RoslynCpgNode?> ControlNodesByBlockOrdinal);
@@ -60,7 +266,8 @@ public sealed partial class RoslynCpgBuilder
             }
             var nodesByBlockOrdinal = MapNodesByBlockOrdinal(controlFlowGraph, methodSymbol, context.Graph);
             var controlNodesByBlockOrdinal = MapControlNodesByBlockOrdinal(controlFlowGraph, nodesByBlockOrdinal);
-            var successorsByBlockOrdinal = BuildSuccessorsByBlockOrdinal(controlFlowGraph);
+            var blockBitSetCapacity = controlFlowGraph.Blocks.Max(block => block.Ordinal) + 1;
+            var successorsByBlockOrdinal = BuildSuccessorsByBlockOrdinal(controlFlowGraph, blockBitSetCapacity);
             var predecessorsByBlockOrdinal = ReverseNeighbors(successorsByBlockOrdinal);
             var entryOrdinal = controlFlowGraph.Blocks.Single(block => block.Kind == BasicBlockKind.Entry).Ordinal;
             var exitOrdinal = controlFlowGraph.Blocks.Single(block => block.Kind == BasicBlockKind.Exit).Ordinal;
@@ -86,10 +293,7 @@ public sealed partial class RoslynCpgBuilder
         }
     }
 
-    private Dictionary<int, IReadOnlyList<RoslynCpgNode>> MapNodesByBlockOrdinal(
-        ControlFlowGraph controlFlowGraph,
-        IMethodSymbol methodSymbol,
-        RoslynCpgGraph graph)
+    private Dictionary<int, IReadOnlyList<RoslynCpgNode>> MapNodesByBlockOrdinal(ControlFlowGraph controlFlowGraph, IMethodSymbol methodSymbol, RoslynCpgGraph graph)
     {
         var nodesByBlockOrdinal = new Dictionary<int, IReadOnlyList<RoslynCpgNode>>();
         foreach (var block in controlFlowGraph.Blocks)
@@ -139,17 +343,12 @@ public sealed partial class RoslynCpgBuilder
         };
     }
 
-    private void AddMappedOperationNode(
-        IOperation operation,
-        ISet<RoslynCpgNode> nodes,
-        RoslynCpgGraph graph)
+    private void AddMappedOperationNode(IOperation operation, ISet<RoslynCpgNode> nodes, RoslynCpgGraph graph)
     {
         nodes.Add(GetOrCreateOperationNode(operation, graph));
     }
 
-    private static Dictionary<int, RoslynCpgNode?> MapControlNodesByBlockOrdinal(
-        ControlFlowGraph controlFlowGraph,
-        IReadOnlyDictionary<int, IReadOnlyList<RoslynCpgNode>> nodesByBlockOrdinal)
+    private static Dictionary<int, RoslynCpgNode?> MapControlNodesByBlockOrdinal(ControlFlowGraph controlFlowGraph, IReadOnlyDictionary<int, IReadOnlyList<RoslynCpgNode>> nodesByBlockOrdinal)
     {
         var controlNodesByBlockOrdinal = new Dictionary<int, RoslynCpgNode?>();
         foreach (var block in controlFlowGraph.Blocks)
@@ -175,14 +374,14 @@ public sealed partial class RoslynCpgBuilder
         };
     }
 
-    private static Dictionary<int, IReadOnlySet<int>> BuildSuccessorsByBlockOrdinal(ControlFlowGraph controlFlowGraph)
+    private static Dictionary<int, BlockBitSet> BuildSuccessorsByBlockOrdinal(ControlFlowGraph controlFlowGraph, int blockBitSetCapacity)
     {
         var successorsByBlockOrdinal = controlFlowGraph.Blocks.ToDictionary(
             block => block.Ordinal,
-            _ => (IReadOnlySet<int>)new SortedSet<int>());
+            _ => new BlockBitSet(blockBitSetCapacity));
         foreach (var block in controlFlowGraph.Blocks)
         {
-            var successors = (SortedSet<int>)successorsByBlockOrdinal[block.Ordinal];
+            var successors = successorsByBlockOrdinal[block.Ordinal];
             AddDestination(block.FallThroughSuccessor, successors);
             AddDestination(block.ConditionalSuccessor, successors);
         }
@@ -190,46 +389,48 @@ public sealed partial class RoslynCpgBuilder
         return successorsByBlockOrdinal;
     }
 
-    private static void AddDestination(ControlFlowBranch? branch, ISet<int> successors)
+    private static void AddDestination(ControlFlowBranch? branch, BlockBitSet successors)
     {
         if (branch?.Destination is not null)
         {
-            successors.Add(branch.Destination.Ordinal);
+            successors.Set(branch.Destination.Ordinal);
         }
     }
 
-    private static Dictionary<int, IReadOnlySet<int>> ReverseNeighbors(
-        IReadOnlyDictionary<int, IReadOnlySet<int>> successorsByBlockOrdinal)
+    private static Dictionary<int, BlockBitSet> ReverseNeighbors(IReadOnlyDictionary<int, BlockBitSet> successorsByBlockOrdinal)
     {
+        var blockBitSetCapacity = successorsByBlockOrdinal.Keys.Max() + 1;
         var predecessors = successorsByBlockOrdinal.Keys.ToDictionary(
             ordinal => ordinal,
-            _ => (IReadOnlySet<int>)new SortedSet<int>());
+            _ => new BlockBitSet(blockBitSetCapacity));
         foreach (var (sourceOrdinal, successors) in successorsByBlockOrdinal)
         {
             foreach (var targetOrdinal in successors)
             {
-                ((SortedSet<int>)predecessors[targetOrdinal]).Add(sourceOrdinal);
+                predecessors[targetOrdinal].Set(sourceOrdinal);
             }
         }
 
         return predecessors;
     }
 
-    private static IReadOnlyDictionary<int, IReadOnlySet<int>> CalculateDominators(
-        IReadOnlyDictionary<int, IReadOnlySet<int>> successorsByBlockOrdinal,
-        IReadOnlyDictionary<int, IReadOnlySet<int>> predecessorsByBlockOrdinal,
-        int rootOrdinal)
+    private static IReadOnlyDictionary<int, BlockBitSet> CalculateDominators(IReadOnlyDictionary<int, BlockBitSet> successorsByBlockOrdinal, IReadOnlyDictionary<int, BlockBitSet> predecessorsByBlockOrdinal, int rootOrdinal)
     {
+        var blockBitSetCapacity = successorsByBlockOrdinal.Keys.Max() + 1;
         var reachable = CalculateReversePostOrder(successorsByBlockOrdinal, rootOrdinal);
-        var reachableSet = reachable.ToHashSet();
-        var allReachable = new SortedSet<int>(reachable);
+        var reachableSet = new BlockBitSet(blockBitSetCapacity);
+        foreach (var ordinal in reachable)
+        {
+            reachableSet.Set(ordinal);
+        }
+
         var dominators = successorsByBlockOrdinal.Keys.ToDictionary(
             ordinal => ordinal,
             ordinal => ordinal == rootOrdinal
-                ? (IReadOnlySet<int>)new SortedSet<int> { ordinal }
+                ? CreateSingletonBitSet(blockBitSetCapacity, ordinal)
                 : reachableSet.Contains(ordinal)
-                    ? new SortedSet<int>(allReachable)
-                    : new SortedSet<int> { ordinal });
+                    ? reachableSet.Clone()
+                    : CreateSingletonBitSet(blockBitSetCapacity, ordinal));
 
         var changed = true;
         while (changed)
@@ -246,14 +447,14 @@ public sealed partial class RoslynCpgBuilder
                     continue;
                 }
 
-                var intersection = new SortedSet<int>(dominators[reachablePredecessors[0]]);
+                var intersection = dominators[reachablePredecessors[0]].Clone();
                 foreach (var predecessor in reachablePredecessors.Skip(1))
                 {
-                    intersection.IntersectWith(dominators[predecessor]);
+                    intersection.AndWith(dominators[predecessor]);
                 }
 
-                intersection.Add(ordinal);
-                if (!intersection.SetEquals(dominators[ordinal]))
+                intersection.Set(ordinal);
+                if (!intersection.BitwiseEquals(dominators[ordinal]))
                 {
                     dominators[ordinal] = intersection;
                     changed = true;
@@ -264,9 +465,7 @@ public sealed partial class RoslynCpgBuilder
         return dominators;
     }
 
-    private static IReadOnlyList<int> CalculateReversePostOrder(
-        IReadOnlyDictionary<int, IReadOnlySet<int>> successorsByBlockOrdinal,
-        int rootOrdinal)
+    private static IReadOnlyList<int> CalculateReversePostOrder(IReadOnlyDictionary<int, BlockBitSet> successorsByBlockOrdinal, int rootOrdinal)
     {
         var visited = new HashSet<int>();
         var postOrder = new List<int>();
@@ -281,7 +480,7 @@ public sealed partial class RoslynCpgBuilder
                 return;
             }
 
-            foreach (var successor in successorsByBlockOrdinal[ordinal].OrderBy(value => value))
+            foreach (var successor in successorsByBlockOrdinal[ordinal])
             {
                 Visit(successor);
             }
@@ -290,8 +489,7 @@ public sealed partial class RoslynCpgBuilder
         }
     }
 
-    private static IReadOnlyDictionary<int, int?> CalculateImmediatePostDominators(
-        IReadOnlyDictionary<int, IReadOnlySet<int>> postDominatorsByBlockOrdinal)
+    private static IReadOnlyDictionary<int, int?> CalculateImmediatePostDominators(IReadOnlyDictionary<int, BlockBitSet> postDominatorsByBlockOrdinal)
     {
         var immediatePostDominators = new Dictionary<int, int?>();
         foreach (var (ordinal, postDominators) in postDominatorsByBlockOrdinal)
@@ -307,11 +505,7 @@ public sealed partial class RoslynCpgBuilder
         return immediatePostDominators;
     }
 
-    private static void AddOverlayEdges(
-        IReadOnlyDictionary<int, IReadOnlyList<RoslynCpgNode>> nodesByBlockOrdinal,
-        IReadOnlyDictionary<int, IReadOnlySet<int>> relationsByTargetBlockOrdinal,
-        RoslynCpgEdgeKind edgeKind,
-        RoslynCpgGraph graph)
+    private static void AddOverlayEdges(IReadOnlyDictionary<int, IReadOnlyList<RoslynCpgNode>> nodesByBlockOrdinal, IReadOnlyDictionary<int, BlockBitSet> relationsByTargetBlockOrdinal, RoslynCpgEdgeKind edgeKind, RoslynCpgGraph graph)
     {
         foreach (var (targetOrdinal, sourceOrdinals) in relationsByTargetBlockOrdinal)
         {
@@ -328,10 +522,7 @@ public sealed partial class RoslynCpgBuilder
         }
     }
 
-    private static void AddPostDominanceEdges(
-        IReadOnlyDictionary<int, IReadOnlyList<RoslynCpgNode>> nodesByBlockOrdinal,
-        IReadOnlyDictionary<int, IReadOnlySet<int>> postDominatorsByBlockOrdinal,
-        RoslynCpgGraph graph)
+    private static void AddPostDominanceEdges(IReadOnlyDictionary<int, IReadOnlyList<RoslynCpgNode>> nodesByBlockOrdinal, IReadOnlyDictionary<int, BlockBitSet> postDominatorsByBlockOrdinal, RoslynCpgGraph graph)
     {
         foreach (var (sourceOrdinal, postDominatorOrdinals) in postDominatorsByBlockOrdinal)
         {
@@ -346,6 +537,13 @@ public sealed partial class RoslynCpgBuilder
                 }
             }
         }
+    }
+
+    private static BlockBitSet CreateSingletonBitSet(int blockBitSetCapacity, int ordinal)
+    {
+        var singleton = new BlockBitSet(blockBitSetCapacity);
+        singleton.Set(ordinal);
+        return singleton;
     }
 }
 

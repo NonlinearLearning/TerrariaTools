@@ -5,8 +5,10 @@ using MinimalRoslynCpg.Persistence;
 using MinimalRoslynCpg.Persistence.Sqlite;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Core.Analysis;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Rules;
+using System.Security.Cryptography;
+using System.Text;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -62,6 +64,71 @@ public sealed class RoslynCpgSliceQueryTests
         finally
         {
             Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task QueryBackwardAsync_ShardResolver_LegacyV5AndV6Shards_ReturnSamePaths()
+    {
+        var legacyRoot = Path.Combine(Path.GetTempPath(), "cpg-shard-slice-legacy-v5-tests", Guid.NewGuid().ToString("N"));
+        var currentRoot = Path.Combine(Path.GetTempPath(), "cpg-shard-slice-v6-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(legacyRoot);
+        Directory.CreateDirectory(currentRoot);
+        try
+        {
+            var file = new CpgFileKey("project", "input.cs", "source");
+            var sourceLookup = new CpgShardLookup(file, new CpgFragmentKey("source", 0, 10, "source"), 1, "profile");
+            var sinkLookup = new CpgShardLookup(file, new CpgFragmentKey("sink", 10, 10, "sink"), 1, "profile");
+            var boundaryLookup = new CpgShardLookup(file, new CpgFragmentKey("boundary", 20, 10, "boundary"), 1, "profile");
+            var sourceShard = new CpgFrozenShard(
+                sourceLookup,
+                new[] { FrozenNode(0, 1, "source") },
+                Array.Empty<CpgFrozenEdge>(),
+                Array.Empty<CpgSymbolLocation>());
+            var sinkShard = new CpgFrozenShard(
+                sinkLookup,
+                new[]
+                {
+                    FrozenNode(0, 2, "middle"),
+                    FrozenNode(1, 3, "sink"),
+                },
+                new[] { new CpgFrozenEdge(0, 1, "DataFlow", null, null) },
+                Array.Empty<CpgSymbolLocation>());
+            var boundaryShard = new CpgFrozenShard(
+                boundaryLookup,
+                Array.Empty<CpgFrozenNode>(),
+                Array.Empty<CpgFrozenEdge>(),
+                Array.Empty<CpgSymbolLocation>(),
+                new[] { new CpgFrozenBoundaryEdge(1, 3, "DataFlow", null, null) },
+                CpgShardRole.BoundaryAdjacency,
+                new CpgBoundaryAdjacency(CreateOwnerFragmentId(sinkLookup), CpgBoundaryAdjacencyDirection.Incoming));
+            var legacyStore = new CpgShardStore(legacyRoot);
+            var legacyCatalog = new SqliteCpgShardCatalog(Path.Combine(legacyRoot, "catalog.db"));
+            var currentStore = new CpgShardStore(currentRoot);
+            var currentCatalog = new SqliteCpgShardCatalog(Path.Combine(currentRoot, "catalog.db"));
+            await PublishLegacyV5BuildAsync(legacyRoot, legacyCatalog, sourceShard, sinkShard, boundaryShard);
+            await PublishBuildAsync(currentStore, currentCatalog, sourceShard, sinkShard, boundaryShard);
+            var options = new RoslynCpgSliceQueryOptions(
+                new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+                MaxHops: 1,
+                MaxPaths: 2,
+                MaxDefinitions: 2);
+
+            var legacy = await new RoslynCpgSliceQuery(
+                new CpgShardQueryResolver(legacyCatalog, legacyStore, maxCachedBytes: 1024 * 1024))
+                .QueryBackwardAsync(new NodeId(3), options, CancellationToken.None);
+            var current = await new RoslynCpgSliceQuery(
+                new CpgShardQueryResolver(currentCatalog, currentStore, maxCachedBytes: 1024 * 1024))
+                .QueryBackwardAsync(new NodeId(3), options, CancellationToken.None);
+
+            Assert.Equal(
+                legacy.Paths.Select(path => string.Join("->", path.NodeIds)),
+                current.Paths.Select(path => string.Join("->", path.NodeIds)));
+        }
+        finally
+        {
+            Directory.Delete(legacyRoot, recursive: true);
+            Directory.Delete(currentRoot, recursive: true);
         }
     }
 
@@ -330,10 +397,7 @@ public sealed class RoslynCpgSliceQueryTests
     [Theory]
     [InlineData(1, 10, "maxPaths")]
     [InlineData(10, 1, "maxDefinitions")]
-    public void QueryBackward_WhenResultBudgetIsReached_ReportsTheExhaustedBudget(
-        int maxPaths,
-        int maxDefinitions,
-        string expectedReason)
+    public void QueryBackward_WhenResultBudgetIsReached_ReportsTheExhaustedBudget(int maxPaths, int maxDefinitions, string expectedReason)
     {
         var graph = new RoslynCpgGraph();
         var firstSource = CreateNode("first-source");
@@ -571,6 +635,67 @@ public sealed class RoslynCpgSliceQueryTests
         Assert.Equal(FormatPaths(firstResult.Paths), FormatPaths(secondResult.Paths));
     }
 
+    [Fact]
+    public async Task ShardResolver_CachePromotesHitsAndEvictsLeastRecentlyUsedShard()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cpg-shard-resolver-lru-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var file = new CpgFileKey("project", "input.cs", "source");
+            var store = new CpgShardStore(root);
+            var catalog = new SqliteCpgShardCatalog(Path.Combine(root, "catalog.db"));
+            var first = await WriteAndPublishAsync(
+                store,
+                catalog,
+                new CpgFrozenShard(
+                    new CpgShardLookup(file, new CpgFragmentKey("one", 0, 10, "one"), 1, "profile"),
+                    new[] { FrozenNode(0, 1, "one") },
+                    Array.Empty<CpgFrozenEdge>(),
+                    Array.Empty<CpgSymbolLocation>()));
+            var second = await WriteAndPublishAsync(
+                store,
+                catalog,
+                new CpgFrozenShard(
+                    new CpgShardLookup(file, new CpgFragmentKey("two", 10, 10, "two"), 1, "profile"),
+                    new[] { FrozenNode(0, 2, "two") },
+                    Array.Empty<CpgFrozenEdge>(),
+                    Array.Empty<CpgSymbolLocation>()));
+            var third = await WriteAndPublishAsync(
+                store,
+                catalog,
+                new CpgFrozenShard(
+                    new CpgShardLookup(file, new CpgFragmentKey("tri", 20, 10, "tri"), 1, "profile"),
+                    new[] { FrozenNode(0, 3, "tri") },
+                    Array.Empty<CpgFrozenEdge>(),
+                    Array.Empty<CpgSymbolLocation>()));
+            var resolver = new CpgShardQueryResolver(
+                catalog,
+                store,
+                maxCachedBytes: first.ByteLength + second.ByteLength);
+
+            _ = Assert.Single(await resolver.FindByNodeAsync(new NodeId(1), CancellationToken.None));
+            _ = Assert.Single(await resolver.FindByNodeAsync(new NodeId(2), CancellationToken.None));
+            _ = Assert.Single(await resolver.FindByNodeAsync(new NodeId(1), CancellationToken.None));
+            _ = Assert.Single(await resolver.FindByNodeAsync(new NodeId(3), CancellationToken.None));
+            _ = Assert.Single(await resolver.FindByNodeAsync(new NodeId(2), CancellationToken.None));
+
+            var telemetry = resolver.GetTelemetry();
+            Assert.Equal(5, telemetry.LookupCount);
+            Assert.Equal(4, telemetry.OpenCount);
+            Assert.Equal(1, telemetry.CacheHitCount);
+            Assert.Equal(4, telemetry.CacheMissCount);
+            Assert.Equal(2, telemetry.EvictionCount);
+            Assert.Equal(
+                first.ByteLength + second.ByteLength + third.ByteLength + second.ByteLength,
+                telemetry.BytesRead);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static RoslynCpgNode CreateNode(string id)
     {
         return new RoslynCpgNode(RoslynCpgNodeKind.Operation, "Operation", Name: id);
@@ -581,9 +706,7 @@ public sealed class RoslynCpgSliceQueryTests
         return Assert.Single(graph.Nodes, node => node.Name == displayId);
     }
 
-    private static RoslynCpgSliceResult QueryMethodReturnBackward(
-        RoslynCpgGraph graph,
-        RoslynCpgSliceQueryOptions options)
+    private static RoslynCpgSliceResult QueryMethodReturnBackward(RoslynCpgGraph graph, RoslynCpgSliceQueryOptions options)
     {
         graph.FreezeQueryIndex();
         var methodReturn = Assert.Single(graph.Nodes, node => node.Kind == RoslynCpgNodeKind.MethodReturn);
@@ -603,10 +726,7 @@ public sealed class RoslynCpgSliceQueryTests
         return new CpgFrozenNode(localIndex, nodeId, "Operation", "input.cs", null, null, "Operation", name, null, null, false);
     }
 
-    private static async Task PublishBuildAsync(
-        CpgShardStore store,
-        SqliteCpgShardCatalog catalog,
-        params CpgFrozenShard[] shards)
+    private static async Task PublishBuildAsync(CpgShardStore store, SqliteCpgShardCatalog catalog, params CpgFrozenShard[] shards)
     {
         var buildId = await catalog.BeginBuildAsync(CancellationToken.None);
         foreach (var shard in shards)
@@ -622,10 +742,7 @@ public sealed class RoslynCpgSliceQueryTests
         await catalog.CompleteBuildAsync(buildId, CancellationToken.None);
     }
 
-    private static async Task PublishShardAsync(
-        CpgShardStore store,
-        SqliteCpgShardCatalog catalog,
-        CpgFrozenShard shard)
+    private static async Task PublishShardAsync(CpgShardStore store, SqliteCpgShardCatalog catalog, CpgFrozenShard shard)
     {
         var result = await store.WriteAsync(shard, CancellationToken.None);
         await catalog.PublishAsync(
@@ -634,11 +751,166 @@ public sealed class RoslynCpgSliceQueryTests
             CancellationToken.None);
     }
 
+    private static async Task<CpgShardLocation> WriteAndPublishAsync(CpgShardStore store, SqliteCpgShardCatalog catalog, CpgFrozenShard shard)
+    {
+        var result = await store.WriteAsync(shard, CancellationToken.None);
+        await catalog.PublishAsync(
+            new CpgShardLease(shard.Lookup, result.Location),
+            shard,
+            CancellationToken.None);
+        return result.Location;
+    }
+
+    private static async Task PublishLegacyV5BuildAsync(string root, SqliteCpgShardCatalog catalog, params CpgFrozenShard[] shards)
+    {
+        var buildId = await catalog.BeginBuildAsync(CancellationToken.None);
+        foreach (var shard in shards)
+        {
+            var location = await WriteLegacyV5ShardAsync(root, shard);
+            await catalog.StageAsync(
+                buildId,
+                new CpgShardLease(shard.Lookup, location),
+                shard,
+                CancellationToken.None);
+        }
+
+        await catalog.CompleteBuildAsync(buildId, CancellationToken.None);
+    }
+
     private static string CreateOwnerFragmentId(CpgShardLookup lookup)
     {
         return string.Join("|", lookup.File.ProjectId, lookup.File.RelativePath,
             lookup.File.SourceHash, lookup.Fragment.Kind, lookup.Fragment.SpanStart,
             lookup.Fragment.SpanLength, lookup.Fragment.FragmentHash,
             lookup.SchemaVersion, lookup.ProfileHash);
+    }
+
+    private static async Task<CpgShardLocation> WriteLegacyV5ShardAsync(string root, CpgFrozenShard shard)
+    {
+        var shardId = CreateShardId(shard.Lookup);
+        var directory = Path.Combine(root, "shards", shardId[..2]);
+        Directory.CreateDirectory(directory);
+        var shardPath = Path.Combine(directory, $"{shardId}.cpgbin");
+        var payload = SerializeLegacyV5(shard);
+        await File.WriteAllBytesAsync(shardPath, payload);
+        return new CpgShardLocation(
+            shardId,
+            shardPath,
+            Convert.ToHexString(SHA256.HashData(payload)),
+            payload.LongLength,
+            CpgShardStatus.Complete);
+    }
+
+    private static string CreateShardId(CpgShardLookup lookup)
+    {
+        var identity = string.Join("|", lookup.File.ProjectId, lookup.File.RelativePath,
+            lookup.File.SourceHash, lookup.Fragment.Kind, lookup.Fragment.SpanStart,
+            lookup.Fragment.SpanLength, lookup.Fragment.FragmentHash, lookup.SchemaVersion,
+            lookup.ProfileHash);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
+    }
+
+    private static byte[] SerializeLegacyV5(CpgFrozenShard shard)
+    {
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        writer.Write("CPGB"u8.ToArray());
+        writer.Write(5);
+        WriteRequired(writer, shard.Lookup.File.ProjectId);
+        WriteRequired(writer, shard.Lookup.File.RelativePath);
+        WriteRequired(writer, shard.Lookup.File.SourceHash);
+        WriteRequired(writer, shard.Lookup.Fragment.Kind);
+        writer.Write(shard.Lookup.Fragment.SpanStart);
+        writer.Write(shard.Lookup.Fragment.SpanLength);
+        WriteRequired(writer, shard.Lookup.Fragment.FragmentHash);
+        writer.Write(shard.Lookup.SchemaVersion);
+        WriteRequired(writer, shard.Lookup.ProfileHash);
+        writer.Write((int)shard.Role);
+        WriteOptional(writer, shard.BoundaryAdjacency?.OwnerFragmentId);
+        writer.Write((int?)shard.BoundaryAdjacency?.Direction ?? -1);
+        writer.Write(shard.Nodes.Count);
+        foreach (var node in shard.Nodes.OrderBy(node => node.LocalIndex))
+        {
+            writer.Write(node.LocalIndex);
+            writer.Write(node.NodeId);
+            WriteRequired(writer, node.Kind);
+            WriteOptional(writer, node.FilePath);
+            WriteOptionalInt(writer, node.SpanStart);
+            WriteOptionalInt(writer, node.SpanEnd);
+            WriteRequired(writer, node.DisplayKind);
+            WriteOptional(writer, node.Name);
+            WriteOptional(writer, node.FullName);
+            WriteOptional(writer, node.Signature);
+            writer.Write(node.IsImplicit);
+            writer.Write(node.StableFilePathId);
+            writer.Write(node.StableSpanStart);
+            writer.Write(node.StableSpanEnd);
+            writer.Write(node.StableRole);
+            writer.Write(node.StableOrdinal);
+            writer.Write(node.StableExtraKeyId);
+        }
+
+        writer.Write(shard.Edges.Count);
+        foreach (var edge in shard.Edges)
+        {
+            writer.Write(edge.SourceLocalIndex);
+            writer.Write(edge.TargetLocalIndex);
+            WriteRequired(writer, edge.Kind);
+            WriteOptional(writer, edge.Label);
+            WriteOptional(writer, edge.ContextId);
+            WriteOptional(writer, edge.CallSiteFilePath);
+            WriteOptionalInt(writer, edge.CallSiteSpanStart);
+            WriteOptionalInt(writer, edge.CallSiteSpanEnd);
+            WriteOptional(writer, edge.CallSiteDisplayName);
+        }
+
+        var boundaryEdges = shard.BoundaryEdges ?? Array.Empty<CpgFrozenBoundaryEdge>();
+        writer.Write(boundaryEdges.Count);
+        foreach (var edge in boundaryEdges)
+        {
+            writer.Write(edge.SourceNodeId);
+            writer.Write(edge.TargetNodeId);
+            WriteRequired(writer, edge.Kind);
+            WriteOptional(writer, edge.Label);
+            WriteOptional(writer, edge.ContextId);
+            WriteOptional(writer, edge.CallSiteFilePath);
+            WriteOptionalInt(writer, edge.CallSiteSpanStart);
+            WriteOptionalInt(writer, edge.CallSiteSpanEnd);
+            WriteOptional(writer, edge.CallSiteDisplayName);
+        }
+
+        writer.Write(shard.SymbolLocations.Count);
+        foreach (var location in shard.SymbolLocations.OrderBy(location => location.SymbolKey, StringComparer.Ordinal))
+        {
+            WriteRequired(writer, location.SymbolKey);
+            writer.Write(location.LocalIndex);
+        }
+
+        writer.Flush();
+        return stream.ToArray();
+    }
+
+    private static void WriteRequired(BinaryWriter writer, string value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        writer.Write(value);
+    }
+
+    private static void WriteOptional(BinaryWriter writer, string? value)
+    {
+        writer.Write(value is not null);
+        if (value is not null)
+        {
+            writer.Write(value);
+        }
+    }
+
+    private static void WriteOptionalInt(BinaryWriter writer, int? value)
+    {
+        writer.Write(value.HasValue);
+        if (value.HasValue)
+        {
+            writer.Write(value.Value);
+        }
     }
 }

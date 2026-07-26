@@ -1,12 +1,12 @@
-using Deletion.Application;
+using NLISSN.Application;
 using System.Diagnostics;
 using System.Text;
-using Deletion.Cli.Telemetry;
-using Deletion.Core.Analysis;
-using Deletion.Core.Rewrite;
-using Deletion.Rules;
+using NLISSN.Telemetry;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Rewrite;
+using NLISSN.Rules;
 
-namespace Deletion.Cli;
+namespace NLISSN;
 
 internal sealed class DeletionDirectoryAnalysisService
 {
@@ -17,19 +17,12 @@ internal sealed class DeletionDirectoryAnalysisService
         _pipeline = pipeline;
     }
 
-    internal PrototypeAnalysisResult AnalyzeDirectory(
-      string directoryPath,
-      IReadOnlyDictionary<string, string> options,
-      DeletionAnalysisRuntime runtime)
+    internal PrototypeAnalysisResult AnalyzeDirectory(string directoryPath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime)
     {
         return AnalyzeDirectoryAsync(directoryPath, options, runtime).GetAwaiter().GetResult();
     }
 
-    internal async Task<PrototypeAnalysisResult> AnalyzeDirectoryAsync(
-      string directoryPath,
-      IReadOnlyDictionary<string, string> options,
-      DeletionAnalysisRuntime runtime,
-      AnalysisTextLogWriter? analysisWriter = null)
+    internal async Task<PrototypeAnalysisResult> AnalyzeDirectoryAsync(string directoryPath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime, AnalysisTextLogWriter? analysisWriter = null)
     {
         var filePaths = EnumerateSourceFiles(directoryPath).ToList();
         var sourcesByPath = await ReadSourcesAsync(filePaths, runtime.ExecutionOptions.CancellationToken);
@@ -48,13 +41,7 @@ internal sealed class DeletionDirectoryAnalysisService
           directoryStopwatch.ElapsedMilliseconds);
     }
 
-    private static PrototypeAnalysisResult MaterializeOutcome(
-      string directoryPath,
-      IReadOnlyDictionary<string, string> options,
-      DeletionAnalysisRuntime runtime,
-      AnalysisTextLogWriter? analysisWriter,
-      DirectoryAnalysisOutcome outcome,
-      long directoryAnalysisMilliseconds)
+    private static PrototypeAnalysisResult MaterializeOutcome(string directoryPath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime, AnalysisTextLogWriter? analysisWriter, DirectoryAnalysisOutcome outcome, long directoryAnalysisMilliseconds)
     {
         var shouldWriteDiff = DeletionApplicationOptions.ShouldWriteDiff(options);
         var shouldWriteBack = DeletionApplicationOptions.ShouldWriteBack(options);
@@ -134,9 +121,7 @@ internal sealed class DeletionDirectoryAnalysisService
         };
     }
 
-    private static async Task<Dictionary<string, string>> ReadSourcesAsync(
-      IReadOnlyList<string> filePaths,
-      CancellationToken cancellationToken)
+    private static async Task<Dictionary<string, string>> ReadSourcesAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken)
     {
         var sources = new Dictionary<string, string>(filePaths.Count, StringComparer.Ordinal);
         foreach (var filePath in filePaths)

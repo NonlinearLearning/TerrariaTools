@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using MinimalRoslynCpg.Model;
 
-namespace Deletion.Core.Marking;
+namespace NLISSN.Core.Marking;
 
 /// <summary>
 /// 表示规则在标记阶段产出的一条直接命中记录。

@@ -37,11 +37,7 @@ namespace MinimalRoslynCpg.Builder
       CompleteOperationBackedSyntaxTypes(context);
     }
 
-    private void VisitOperationRoots(
-      IReadOnlyList<OperationRootPlan> operationRoots,
-      RoslynCpgBuildContext context,
-      RoslynCpgGraph graph,
-      SemanticModel semanticModel)
+    private void VisitOperationRoots(IReadOnlyList<OperationRootPlan> operationRoots, RoslynCpgBuildContext context, RoslynCpgGraph graph, SemanticModel semanticModel)
     {
       foreach (var operationRoot in operationRoots)
       {
@@ -109,12 +105,7 @@ namespace MinimalRoslynCpg.Builder
       return operationRoots;
     }
 
-    private void AddOperationTree(
-      IOperation? operation,
-      IOperation? parentOperation,
-      IMethodSymbol? owningMethod,
-      RoslynCpgGraph graph,
-      RoslynCpgBuildContext context)
+    private void AddOperationTree(IOperation? operation, IOperation? parentOperation, IMethodSymbol? owningMethod, RoslynCpgGraph graph, RoslynCpgBuildContext context)
     {
       if (operation is null)
       {

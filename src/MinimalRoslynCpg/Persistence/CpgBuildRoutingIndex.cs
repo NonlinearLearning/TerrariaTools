@@ -30,15 +30,7 @@ public sealed class CpgBuildRoutingIndex
   private readonly IReadOnlyList<CpgBuildRoutingSpanRoute> _spans;
   private readonly IReadOnlyList<CpgBuildRoutingSymbolRoute> _symbols;
 
-  internal CpgBuildRoutingIndex(
-    string buildId,
-    int schemaVersion,
-    string profileHash,
-    string payloadHash,
-    IReadOnlyList<CpgBuildRoutingPrimaryNodeRoute> primaryNodes,
-    IReadOnlyList<CpgBuildRoutingBoundaryNodeRoute> boundaryNodes,
-    IReadOnlyList<CpgBuildRoutingSpanRoute> spans,
-    IReadOnlyList<CpgBuildRoutingSymbolRoute> symbols)
+  internal CpgBuildRoutingIndex(string buildId, int schemaVersion, string profileHash, string payloadHash, IReadOnlyList<CpgBuildRoutingPrimaryNodeRoute> primaryNodes, IReadOnlyList<CpgBuildRoutingBoundaryNodeRoute> boundaryNodes, IReadOnlyList<CpgBuildRoutingSpanRoute> spans, IReadOnlyList<CpgBuildRoutingSymbolRoute> symbols)
   {
     BuildId = buildId;
     SchemaVersion = schemaVersion;
@@ -71,24 +63,20 @@ public sealed class CpgBuildRoutingIndex
   public IReadOnlyList<CpgBuildRoutingSpanRoute> FindBySpan(CpgSpanLookup lookup)
   {
     ArgumentNullException.ThrowIfNull(lookup);
-    return _spans.Where(route =>
-        route.File == lookup.File &&
-        route.SpanStart == lookup.SpanStart &&
-        route.SpanLength == lookup.SpanLength)
-      .ToArray();
+    return FindRange(
+      _spans,
+      route => CompareSpan(route, lookup));
   }
 
   public IReadOnlyList<CpgBuildRoutingSymbolRoute> FindBySymbol(CpgSymbolLookup lookup)
   {
     ArgumentNullException.ThrowIfNull(lookup);
-    return _symbols.Where(route => string.Equals(route.SymbolKey, lookup.SymbolKey, StringComparison.Ordinal))
-      .ToArray();
+    return FindRange(
+      _symbols,
+      route => string.CompareOrdinal(route.SymbolKey, lookup.SymbolKey));
   }
 
-  private static IReadOnlyList<T> FindRange<T>(
-    IReadOnlyList<T> routes,
-    uint nodeId,
-    Func<T, uint> getNodeId)
+  private static IReadOnlyList<T> FindRange<T>(IReadOnlyList<T> routes, uint nodeId, Func<T, uint> getNodeId)
   {
     var first = 0;
     var last = routes.Count - 1;
@@ -113,5 +101,56 @@ public sealed class CpgBuildRoutingIndex
     }
 
     return results;
+  }
+
+  private static IReadOnlyList<T> FindRange<T>(IReadOnlyList<T> routes, Func<T, int> compareToLookup)
+  {
+    var first = 0;
+    var last = routes.Count - 1;
+    while (first <= last)
+    {
+      var middle = first + ((last - first) / 2);
+      if (compareToLookup(routes[middle]) < 0)
+      {
+        first = middle + 1;
+      }
+      else
+      {
+        last = middle - 1;
+      }
+    }
+
+    var results = new List<T>();
+    while (first < routes.Count && compareToLookup(routes[first]) == 0)
+    {
+      results.Add(routes[first]);
+      first += 1;
+    }
+
+    return results;
+  }
+
+  private static int CompareSpan(CpgBuildRoutingSpanRoute route, CpgSpanLookup lookup)
+  {
+    var comparison = string.CompareOrdinal(route.File.ProjectId, lookup.File.ProjectId);
+    if (comparison != 0)
+    {
+      return comparison;
+    }
+
+    comparison = string.CompareOrdinal(route.File.RelativePath, lookup.File.RelativePath);
+    if (comparison != 0)
+    {
+      return comparison;
+    }
+
+    comparison = string.CompareOrdinal(route.File.SourceHash, lookup.File.SourceHash);
+    if (comparison != 0)
+    {
+      return comparison;
+    }
+
+    comparison = route.SpanStart.CompareTo(lookup.SpanStart);
+    return comparison != 0 ? comparison : route.SpanLength.CompareTo(lookup.SpanLength);
   }
 }

@@ -3,15 +3,15 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Builder;
-using Deletion.Core.Analysis;
-using Deletion.Core.Decision;
-using Deletion.Core.Lifting;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Core.Rewrite;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Lifting;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
+using NLISSN.Rules;
 
-namespace Deletion.Application;
+namespace NLISSN.Application;
 
 public sealed record DirectorySourceFile(int Index, string FilePath, string Source);
 
@@ -45,10 +45,7 @@ public sealed class DirectoryAnalysisUseCase
     _application = new DeletionApplicationService(pipeline);
   }
 
-  public DirectoryAnalysisOutcome Analyze(
-    IReadOnlyList<DirectorySourceFile> sourceFiles,
-    IReadOnlyDictionary<string, string> options,
-    DeletionAnalysisRuntime runtime)
+  public DirectoryAnalysisOutcome Analyze(IReadOnlyList<DirectorySourceFile> sourceFiles, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime)
   {
     ArgumentNullException.ThrowIfNull(sourceFiles);
     ArgumentNullException.ThrowIfNull(options);
@@ -107,12 +104,7 @@ public sealed class DirectoryAnalysisUseCase
       publicationTelemetry);
   }
 
-  private (List<DirectoryFileAnalysisResult> FileResults, DirectoryPublicationTelemetry Telemetry) AnalyzeFiles(
-    IReadOnlyList<DirectorySourceFile> sources,
-    IReadOnlyDictionary<string, SyntaxTree> trees,
-    CSharpCompilation compilation,
-    IReadOnlyDictionary<string, string> options,
-    DeletionAnalysisRuntime runtime)
+  private (List<DirectoryFileAnalysisResult> FileResults, DirectoryPublicationTelemetry Telemetry) AnalyzeFiles(IReadOnlyList<DirectorySourceFile> sources, IReadOnlyDictionary<string, SyntaxTree> trees, CSharpCompilation compilation, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime)
   {
     PrototypeAnalysisResult AnalyzeFile(DirectorySourceFile source)
     {
@@ -213,9 +205,7 @@ public sealed class DirectoryAnalysisUseCase
         oldestUnpublishedIndex));
   }
 
-  private DirectoryAnalysisOutcome AnalyzeUnreferencedMethods(
-    IReadOnlyList<DirectorySourceFile> sources,
-    DeletionAnalysisRuntime runtime)
+  private DirectoryAnalysisOutcome AnalyzeUnreferencedMethods(IReadOnlyList<DirectorySourceFile> sources, DeletionAnalysisRuntime runtime)
   {
     var trees = sources.ToDictionary(
       source => source.FilePath,
@@ -241,12 +231,7 @@ public sealed class DirectoryAnalysisUseCase
       new DirectoryPublicationTelemetry(sources.Count, 0, 0, -1));
   }
 
-  private List<DirectoryFileAnalysisResult> AnalyzeUnreferencedFiles(
-    IReadOnlyList<DirectorySourceFile> sources,
-    IReadOnlyDictionary<string, SyntaxTree> trees,
-    Compilation compilation,
-    IReadOnlyDictionary<string, IReadOnlyList<MethodDeclarationSyntax>> methodsByPath,
-    DeletionAnalysisRuntime runtime)
+  private List<DirectoryFileAnalysisResult> AnalyzeUnreferencedFiles(IReadOnlyList<DirectorySourceFile> sources, IReadOnlyDictionary<string, SyntaxTree> trees, Compilation compilation, IReadOnlyDictionary<string, IReadOnlyList<MethodDeclarationSyntax>> methodsByPath, DeletionAnalysisRuntime runtime)
   {
     DirectoryFileAnalysisResult AnalyzeFile(DirectorySourceFile source)
     {
@@ -282,10 +267,7 @@ public sealed class DirectoryAnalysisUseCase
       runtime.ExecutionOptions.CancellationToken).GetAwaiter().GetResult().ToList();
   }
 
-  private PrototypeAnalysisResult AnalyzeUnreferencedFile(
-    SemanticModel semanticModel,
-    SyntaxNode root,
-    IReadOnlyList<MethodDeclarationSyntax> methodsToDelete)
+  private PrototypeAnalysisResult AnalyzeUnreferencedFile(SemanticModel semanticModel, SyntaxNode root, IReadOnlyList<MethodDeclarationSyntax> methodsToDelete)
   {
     var seedMarks = methodsToDelete
       .Select(method => new MarkRecord(
@@ -319,9 +301,7 @@ public sealed class DirectoryAnalysisUseCase
   }
 
   private static IReadOnlyDictionary<string, IReadOnlyList<MethodDeclarationSyntax>>
-    FindUnreferencedMethodDeclarationsByPath(
-      Compilation compilation,
-      IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+    FindUnreferencedMethodDeclarationsByPath(Compilation compilation, IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
   {
     var references = BuildUnreferencedMethodReferenceIndex(compilation, candidates);
     var methods = FindUnreferencedMethodsByDeletionIteration(candidates, references);
@@ -336,8 +316,7 @@ public sealed class DirectoryAnalysisUseCase
         StringComparer.Ordinal);
   }
 
-  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildUnreferencedMethodCandidateMap(
-    Compilation compilation)
+  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildUnreferencedMethodCandidateMap(Compilation compilation)
   {
     var candidates = new Dictionary<IMethodSymbol, MethodDeclarationSyntax>(SymbolEqualityComparer.Default);
     foreach (var tree in compilation.SyntaxTrees)
@@ -358,9 +337,7 @@ public sealed class DirectoryAnalysisUseCase
     return candidates;
   }
 
-  private static MethodReferenceIndex BuildUnreferencedMethodReferenceIndex(
-    Compilation compilation,
-    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+  private static MethodReferenceIndex BuildUnreferencedMethodReferenceIndex(Compilation compilation, IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
   {
     var incomingCallers = CreateMethodReferenceSetMap(candidates.Keys);
     var candidateCallees = CreateMethodReferenceSetMap(candidates.Keys);
@@ -396,9 +373,7 @@ public sealed class DirectoryAnalysisUseCase
     return new MethodReferenceIndex(incomingCallers, candidateCallees, externallyReferencedMethods);
   }
 
-  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> FindUnreferencedMethodsByDeletionIteration(
-    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates,
-    MethodReferenceIndex references)
+  private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> FindUnreferencedMethodsByDeletionIteration(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
   {
     var deletedMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
     var pendingScan = new HashSet<IMethodSymbol>(candidates.Keys, SymbolEqualityComparer.Default);
@@ -442,18 +417,13 @@ public sealed class DirectoryAnalysisUseCase
     return unreferencedMethods;
   }
 
-  private static bool HasRemainingReferences(
-    IMethodSymbol method,
-    IReadOnlySet<IMethodSymbol> deletedMethods,
-    MethodReferenceIndex references)
+  private static bool HasRemainingReferences(IMethodSymbol method, IReadOnlySet<IMethodSymbol> deletedMethods, MethodReferenceIndex references)
   {
     return references.ExternallyReferencedMethods.Contains(method) ||
       references.IncomingCandidateCallers[method].Any(caller => !deletedMethods.Contains(caller));
   }
 
-  private static HashSet<IMethodSymbol> FindExternallyReferencedClosure(
-    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates,
-    MethodReferenceIndex references)
+  private static HashSet<IMethodSymbol> FindExternallyReferencedClosure(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
   {
     var retained = new HashSet<IMethodSymbol>(references.ExternallyReferencedMethods, SymbolEqualityComparer.Default);
     var worklist = new Queue<IMethodSymbol>(retained);
@@ -477,8 +447,7 @@ public sealed class DirectoryAnalysisUseCase
     return retained;
   }
 
-  private static Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> CreateMethodReferenceSetMap(
-    IEnumerable<IMethodSymbol> candidates)
+  private static Dictionary<IMethodSymbol, HashSet<IMethodSymbol>> CreateMethodReferenceSetMap(IEnumerable<IMethodSymbol> candidates)
   {
     var map = new Dictionary<IMethodSymbol, HashSet<IMethodSymbol>>(SymbolEqualityComparer.Default);
     foreach (var candidate in candidates)
@@ -489,10 +458,7 @@ public sealed class DirectoryAnalysisUseCase
     return map;
   }
 
-  private static IMethodSymbol? GetContainingCandidateMethod(
-    SemanticModel model,
-    SyntaxNode node,
-    IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
+  private static IMethodSymbol? GetContainingCandidateMethod(SemanticModel model, SyntaxNode node, IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates)
   {
     var syntax = node.FirstAncestorOrSelf<MethodDeclarationSyntax>();
     if (syntax is null || model.GetDeclaredSymbol(syntax, CancellationToken.None) is not IMethodSymbol method)
@@ -525,9 +491,7 @@ public sealed class DirectoryAnalysisUseCase
     return method.ReducedFrom?.OriginalDefinition ?? method.OriginalDefinition;
   }
 
-  private void ApplyDeleteClassCleanup(
-    IReadOnlyList<DirectorySourceFile> sources,
-    List<DirectoryFileAnalysisResult> fileResults)
+  private void ApplyDeleteClassCleanup(IReadOnlyList<DirectorySourceFile> sources, List<DirectoryFileAnalysisResult> fileResults)
   {
     var resultsByPath = fileResults.ToDictionary(file => file.FilePath, StringComparer.Ordinal);
     var projectSources = sources.ToDictionary(
@@ -548,9 +512,7 @@ public sealed class DirectoryAnalysisUseCase
     }
   }
 
-  private static DirectorySourceFile[] ResolveAnalysisSources(
-    IReadOnlyList<DirectorySourceFile> sources,
-    IReadOnlyDictionary<string, string> options)
+  private static DirectorySourceFile[] ResolveAnalysisSources(IReadOnlyList<DirectorySourceFile> sources, IReadOnlyDictionary<string, string> options)
   {
     if (!ShouldFilterDeleteClassFilesByTargetName(options) ||
         !options.TryGetValue("delete-class", out var targetName) ||
@@ -565,10 +527,7 @@ public sealed class DirectoryAnalysisUseCase
     return filtered.Length == 0 ? sources.ToArray() : filtered;
   }
 
-  private static PrototypeAnalysisResult BuildResult(
-    int fileCount,
-    int analyzedFileCount,
-    IReadOnlyList<DirectoryFileAnalysisResult> fileResults)
+  private static PrototypeAnalysisResult BuildResult(int fileCount, int analyzedFileCount, IReadOnlyList<DirectoryFileAnalysisResult> fileResults)
   {
     var results = fileResults.Select(file => file.Result).ToArray();
     var rewrittenCount = results.Count(result => result.Edits.Count > 0 && result.RewrittenSource is not null);

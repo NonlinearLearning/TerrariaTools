@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 /// <summary>
 /// 二元表达式结构分析结果。

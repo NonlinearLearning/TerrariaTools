@@ -1,7 +1,7 @@
 using MinimalRoslynCpg.Contracts;
-using Deletion.Rules;
+using NLISSN.Rules;
 
-namespace Deletion.Application;
+namespace NLISSN.Application;
 
 public sealed record DeletionRulePipeline(
   IReadOnlyList<RuleDefinitionMark> Markers,

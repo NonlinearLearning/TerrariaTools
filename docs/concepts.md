@@ -12,9 +12,9 @@
 
 构建器中的并行 worker 只读取 Roslyn semantic facts；图节点、边、去重和顺序由稳定调用线程物化。这是保持不同并行度图等价的核心约束。
 
-### RoslynPrototype
+### NLISSN
 
-`src/RoslynPrototype/` 是删除规则的可执行原型。它从一个 C# 文件或目录获取输入，完成：
+`src/NLISSN/` 是删除规则的可执行原型。它从一个 C# 文件或目录获取输入，完成：
 
 ```text
 分析 → 标记 → 传播 → 提升 → 决策 → 改写

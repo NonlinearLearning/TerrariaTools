@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 using MinimalRoslynCpg.Builder;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public sealed record RoslynPrototypeExecutionOptions(
   int MaxDegreeOfParallelism,
@@ -31,20 +31,12 @@ public sealed record DeletionAnalysisEpoch(
 
 public interface IRuleStageScheduler
 {
-  Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(
-    int itemCount,
-    int maxDegreeOfParallelism,
-    Func<int, CancellationToken, Task<TResult>> workItem,
-    CancellationToken cancellationToken);
+  Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(int itemCount, int maxDegreeOfParallelism, Func<int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken);
 }
 
 public sealed class BoundedRuleStageScheduler : IRuleStageScheduler
 {
-  public async Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(
-    int itemCount,
-    int maxDegreeOfParallelism,
-    Func<int, CancellationToken, Task<TResult>> workItem,
-    CancellationToken cancellationToken)
+  public async Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(int itemCount, int maxDegreeOfParallelism, Func<int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(workItem);
     if (itemCount < 0)
@@ -101,10 +93,7 @@ public sealed class DeletionAnalysisRuntime
   private readonly RuntimeCacheRegistry _cacheRegistry;
   private readonly AsyncLocal<CpgBuildAdmissionBudget.CpgBuildAdmissionLease?> _currentCpgBuildAdmissionLease = new();
 
-  public DeletionAnalysisRuntime(
-    RoslynPrototypeExecutionOptions executionOptions,
-    DeletionAnalysisEpoch epoch,
-    IRuleStageScheduler? scheduler = null)
+  public DeletionAnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, DeletionAnalysisEpoch epoch, IRuleStageScheduler? scheduler = null)
     : this(
       executionOptions,
       epoch,
@@ -116,12 +105,7 @@ public sealed class DeletionAnalysisRuntime
   {
   }
 
-  private DeletionAnalysisRuntime(
-    RoslynPrototypeExecutionOptions executionOptions,
-    DeletionAnalysisEpoch epoch,
-    IRuleStageScheduler? scheduler,
-    RuntimeCacheRegistry cacheRegistry,
-    CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
+  private DeletionAnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, DeletionAnalysisEpoch epoch, IRuleStageScheduler? scheduler, RuntimeCacheRegistry cacheRegistry, CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
   {
     ExecutionOptions = executionOptions;
     Epoch = epoch;
@@ -150,8 +134,7 @@ public sealed class DeletionAnalysisRuntime
       new DeletionAnalysisEpoch(0, 0, 0));
   }
 
-  public static RoslynPrototypeExecutionOptions CreateExecutionOptions(
-    IReadOnlyDictionary<string, string> options)
+  public static RoslynPrototypeExecutionOptions CreateExecutionOptions(IReadOnlyDictionary<string, string> options)
   {
     ArgumentNullException.ThrowIfNull(options);
 
@@ -163,8 +146,7 @@ public sealed class DeletionAnalysisRuntime
       CpgMaxDegreeOfParallelism: ResolveCpgMaxDegreeOfParallelism(options));
   }
 
-  public static DeletionAnalysisRuntime CreateFromOptions(
-    IReadOnlyDictionary<string, string> options)
+  public static DeletionAnalysisRuntime CreateFromOptions(IReadOnlyDictionary<string, string> options)
   {
     return new DeletionAnalysisRuntime(
       CreateExecutionOptions(options),
@@ -194,8 +176,7 @@ public sealed class DeletionAnalysisRuntime
       CpgBuildAdmissionBudget);
   }
 
-  public IDisposable PushCpgBuildAdmissionLease(
-    CpgBuildAdmissionBudget.CpgBuildAdmissionLease lease)
+  public IDisposable PushCpgBuildAdmissionLease(CpgBuildAdmissionBudget.CpgBuildAdmissionLease lease)
   {
     ArgumentNullException.ThrowIfNull(lease);
     var previous = _currentCpgBuildAdmissionLease.Value;
@@ -203,9 +184,7 @@ public sealed class DeletionAnalysisRuntime
     return new CpgBuildAdmissionLeaseScope(_currentCpgBuildAdmissionLease, previous);
   }
 
-  public TCache GetOrCreateCompilationCache<TCache>(
-    Compilation compilation,
-    Func<Compilation, TCache> factory)
+  public TCache GetOrCreateCompilationCache<TCache>(Compilation compilation, Func<Compilation, TCache> factory)
     where TCache : class
   {
     return _cacheRegistry.GetOrCreateCompilationCache(compilation, factory);
@@ -215,9 +194,7 @@ public sealed class DeletionAnalysisRuntime
   {
     private readonly ConditionalWeakTable<Compilation, ConcurrentDictionary<Type, object>> _compilationCaches = new();
 
-    public TCache GetOrCreateCompilationCache<TCache>(
-      Compilation compilation,
-      Func<Compilation, TCache> factory)
+    public TCache GetOrCreateCompilationCache<TCache>(Compilation compilation, Func<Compilation, TCache> factory)
       where TCache : class
     {
       var compilationCaches = _compilationCaches.GetValue(
@@ -233,9 +210,7 @@ public sealed class DeletionAnalysisRuntime
     private readonly CpgBuildAdmissionBudget.CpgBuildAdmissionLease? _previous;
     private int _disposed;
 
-    public CpgBuildAdmissionLeaseScope(
-      AsyncLocal<CpgBuildAdmissionBudget.CpgBuildAdmissionLease?> lease,
-      CpgBuildAdmissionBudget.CpgBuildAdmissionLease? previous)
+    public CpgBuildAdmissionLeaseScope(AsyncLocal<CpgBuildAdmissionBudget.CpgBuildAdmissionLease?> lease, CpgBuildAdmissionBudget.CpgBuildAdmissionLease? previous)
     {
       _lease = lease;
       _previous = previous;
@@ -272,8 +247,7 @@ public sealed class DeletionAnalysisRuntime
     return Math.Max(1, parsedValue);
   }
 
-  private static int? ResolveCpgMaxDegreeOfParallelism(
-    IReadOnlyDictionary<string, string> options)
+  private static int? ResolveCpgMaxDegreeOfParallelism(IReadOnlyDictionary<string, string> options)
   {
     if (!options.TryGetValue("cpg-max-degree-of-parallelism", out var rawValue))
     {

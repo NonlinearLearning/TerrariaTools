@@ -2,9 +2,7 @@ namespace RoslynPrototype.Testing.TestInfrastructure;
 
 public static class CpgExecutionSnapshotComparer
 {
-  public static void AssertEquivalent(
-    CpgExecutionSnapshot expected,
-    CpgExecutionSnapshot actual)
+  public static void AssertEquivalent(CpgExecutionSnapshot expected, CpgExecutionSnapshot actual)
   {
     ArgumentNullException.ThrowIfNull(expected);
     ArgumentNullException.ThrowIfNull(actual);
@@ -29,10 +27,7 @@ public static class CpgExecutionSnapshotComparer
     }
   }
 
-  private static void AssertEqual(
-    string contractName,
-    IReadOnlyList<string> expected,
-    IReadOnlyList<string> actual)
+  private static void AssertEqual(string contractName, IReadOnlyList<string> expected, IReadOnlyList<string> actual)
   {
     var expectedValues = expected.OrderBy(value => value, StringComparer.Ordinal).ToArray();
     var actualValues = actual.OrderBy(value => value, StringComparer.Ordinal).ToArray();

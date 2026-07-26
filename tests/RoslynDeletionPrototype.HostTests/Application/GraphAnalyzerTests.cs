@@ -1,15 +1,15 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Application;
-using Deletion.Core.Decision;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Core.Rewrite;
+using NLISSN.Application;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Reachability;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
-using Deletion.Rules;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

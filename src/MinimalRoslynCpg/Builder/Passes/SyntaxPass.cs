@@ -107,10 +107,7 @@ namespace MinimalRoslynCpg.Builder
       RunLegacySyntaxPass(context);
     }
 
-    private void RunPartitionedSyntaxPass(
-      RoslynCpgBuildContext context,
-      IReadOnlyCollection<SyntaxNode> partitionRoots,
-      IReadOnlyList<SyntaxNode[]> partitions)
+    private void RunPartitionedSyntaxPass(RoslynCpgBuildContext context, IReadOnlyCollection<SyntaxNode> partitionRoots, IReadOnlyList<SyntaxNode[]> partitions)
     {
       var metrics = new SyntaxPassMetrics();
       VisitSyntaxOutsidePartitions(
@@ -170,14 +167,7 @@ namespace MinimalRoslynCpg.Builder
         OperationBackedTypeInfoFallbackCountBySyntaxKind: new Dictionary<string, int>(StringComparer.Ordinal));
     }
 
-    private void VisitSyntaxOutsidePartitions(
-      SyntaxNode syntax,
-      RoslynCpgNode parent,
-      RoslynCpgGraph graph,
-      SemanticModel semanticModel,
-      string filePath,
-      IReadOnlyCollection<SyntaxNode> partitionRoots,
-      SyntaxPassMetrics metrics)
+    private void VisitSyntaxOutsidePartitions(SyntaxNode syntax, RoslynCpgNode parent, RoslynCpgGraph graph, SemanticModel semanticModel, string filePath, IReadOnlyCollection<SyntaxNode> partitionRoots, SyntaxPassMetrics metrics)
     {
       if (partitionRoots.Contains(syntax))
       {
@@ -193,13 +183,7 @@ namespace MinimalRoslynCpg.Builder
       EmitChildTokens(syntax, syntaxNode, graph, filePath, metrics);
     }
 
-    private void VisitSyntaxIterative(
-      SyntaxNode syntax,
-      RoslynCpgNode parent,
-      RoslynCpgGraph graph,
-      SemanticModel semanticModel,
-      string filePath,
-      SyntaxPassMetrics metrics)
+    private void VisitSyntaxIterative(SyntaxNode syntax, RoslynCpgNode parent, RoslynCpgGraph graph, SemanticModel semanticModel, string filePath, SyntaxPassMetrics metrics)
     {
       var traversalStopwatch = Stopwatch.StartNew();
       var pending = new Stack<SyntaxTraversalFrame>();
@@ -228,13 +212,7 @@ namespace MinimalRoslynCpg.Builder
       metrics.TraversalElapsedMilliseconds = traversalStopwatch.ElapsedMilliseconds;
     }
 
-    private RoslynCpgNode CreateSyntaxNode(
-      SyntaxNode syntax,
-      RoslynCpgNode parent,
-      RoslynCpgGraph graph,
-      SemanticModel semanticModel,
-      string filePath,
-      SyntaxPassMetrics metrics)
+    private RoslynCpgNode CreateSyntaxNode(SyntaxNode syntax, RoslynCpgNode parent, RoslynCpgGraph graph, SemanticModel semanticModel, string filePath, SyntaxPassMetrics metrics)
     {
       var createNodeStopwatch = Stopwatch.StartNew();
       var syntaxNode = graph.AddNode(new RoslynCpgNode(
@@ -312,10 +290,7 @@ namespace MinimalRoslynCpg.Builder
       return syntaxNode;
     }
 
-    private SyntaxTypeResolution ResolveSyntaxTypeSymbol(
-      SyntaxNode syntax,
-      SemanticModel semanticModel,
-      ISymbol? referencedSymbol)
+    private SyntaxTypeResolution ResolveSyntaxTypeSymbol(SyntaxNode syntax, SemanticModel semanticModel, ISymbol? referencedSymbol)
     {
       if (syntax is not ExpressionSyntax and not TypeSyntax and not BaseTypeSyntax)
       {
@@ -379,12 +354,7 @@ namespace MinimalRoslynCpg.Builder
         PostfixUnaryExpressionSyntax;
     }
 
-    private static void EmitChildTokens(
-      SyntaxNode syntax,
-      RoslynCpgNode syntaxNode,
-      RoslynCpgGraph graph,
-      string filePath,
-      SyntaxPassMetrics metrics)
+    private static void EmitChildTokens(SyntaxNode syntax, RoslynCpgNode syntaxNode, RoslynCpgGraph graph, string filePath, SyntaxPassMetrics metrics)
     {
       var tokenStopwatch = Stopwatch.StartNew();
       var tokenCount = 0;

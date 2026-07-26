@@ -16,7 +16,8 @@ public sealed class CpgShardQueryResolver
   private readonly ICpgShardCatalog _catalog;
   private readonly ICpgShardStore _store;
   private readonly long _maxCachedBytes;
-  private readonly Dictionary<string, CacheEntry> _entries = new(StringComparer.Ordinal);
+  private readonly Dictionary<string, LinkedListNode<CacheEntry>> _entries = new(StringComparer.Ordinal);
+  private readonly LinkedList<CacheEntry> _recency = new();
   private long _cachedBytes;
   private long _lookupCount;
   private long _openCount;
@@ -32,27 +33,21 @@ public sealed class CpgShardQueryResolver
     _maxCachedBytes = Math.Max(0, maxCachedBytes);
   }
 
-  public async Task<IReadOnlyList<CpgFrozenShard>> FindBySymbolAsync(
-    string symbolKey,
-    CancellationToken cancellationToken)
+  public async Task<IReadOnlyList<CpgFrozenShard>> FindBySymbolAsync(string symbolKey, CancellationToken cancellationToken)
   {
     _lookupCount += 1;
     var locations = await _catalog.FindBySymbolAsync(new CpgSymbolLookup(symbolKey), cancellationToken);
     return await OpenLocationsAsync(locations, cancellationToken);
   }
 
-  public async Task<IReadOnlyList<CpgFrozenShard>> FindByNodeAsync(
-    NodeId nodeId,
-    CancellationToken cancellationToken)
+  public async Task<IReadOnlyList<CpgFrozenShard>> FindByNodeAsync(NodeId nodeId, CancellationToken cancellationToken)
   {
     _lookupCount += 1;
     var locations = await _catalog.FindByNodeAsync(nodeId.Value, cancellationToken);
     return await OpenLocationsAsync(locations, cancellationToken);
   }
 
-  public async Task<IReadOnlyList<CpgFrozenShard>> FindBySpanAsync(
-    CpgSpanLookup lookup,
-    CancellationToken cancellationToken)
+  public async Task<IReadOnlyList<CpgFrozenShard>> FindBySpanAsync(CpgSpanLookup lookup, CancellationToken cancellationToken)
   {
     _lookupCount += 1;
     var locations = await _catalog.FindBySpanAsync(lookup, cancellationToken);
@@ -65,19 +60,17 @@ public sealed class CpgShardQueryResolver
       _lookupCount, _openCount, _cacheHitCount, _cacheMissCount, _bytesRead, _evictionCount);
   }
 
-  private async Task<IReadOnlyList<CpgFrozenShard>> OpenLocationsAsync(
-    IReadOnlyList<CpgShardLocation> locations,
-    CancellationToken cancellationToken)
+  private async Task<IReadOnlyList<CpgFrozenShard>> OpenLocationsAsync(IReadOnlyList<CpgShardLocation> locations, CancellationToken cancellationToken)
   {
     var shards = new List<CpgFrozenShard>(locations.Count);
     foreach (var location in locations.OrderBy(location => location.ShardId, StringComparer.Ordinal))
     {
-      if (_entries.Remove(location.ShardId, out var cached))
+      if (_entries.TryGetValue(location.ShardId, out var cachedNode))
       {
         _cacheHitCount += 1;
-        cached = cached with { LastUsed = Environment.TickCount64 };
-        _entries.Add(location.ShardId, cached);
-        shards.Add(cached.Shard);
+        _recency.Remove(cachedNode);
+        _recency.AddLast(cachedNode);
+        shards.Add(cachedNode.Value.Shard);
         continue;
       }
 
@@ -99,17 +92,19 @@ public sealed class CpgShardQueryResolver
       return;
     }
 
-    while (_cachedBytes + location.ByteLength > _maxCachedBytes && _entries.Count > 0)
+    while (_cachedBytes + location.ByteLength > _maxCachedBytes && _recency.First is not null)
     {
-      var oldest = _entries.Values.OrderBy(entry => entry.LastUsed).ThenBy(entry => entry.Location.ShardId, StringComparer.Ordinal).First();
-      _entries.Remove(oldest.Location.ShardId);
-      _cachedBytes -= oldest.Location.ByteLength;
+      var oldest = _recency.First;
+      _entries.Remove(oldest.Value.Location.ShardId);
+      _recency.RemoveFirst();
+      _cachedBytes -= oldest.Value.Location.ByteLength;
       _evictionCount += 1;
     }
 
-    _entries[location.ShardId] = new CacheEntry(location, shard, Environment.TickCount64);
+    var entry = new CacheEntry(location, shard);
+    _entries[location.ShardId] = _recency.AddLast(entry);
     _cachedBytes += location.ByteLength;
   }
 
-  private sealed record CacheEntry(CpgShardLocation Location, CpgFrozenShard Shard, long LastUsed);
+  private sealed record CacheEntry(CpgShardLocation Location, CpgFrozenShard Shard);
 }

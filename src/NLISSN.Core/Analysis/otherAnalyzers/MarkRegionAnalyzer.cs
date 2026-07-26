@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 /// <summary>
 /// 描述标记阶段允许直接检查的局部语法区域。

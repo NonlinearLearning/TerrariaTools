@@ -56,10 +56,7 @@ public sealed class CpgShardStoreLock : IDisposable
     }
   }
 
-  public static Task<CpgShardStoreLock> AcquireAsync(
-    string storeRoot,
-    TimeSpan timeout,
-    CancellationToken cancellationToken)
+  public static Task<CpgShardStoreLock> AcquireAsync(string storeRoot, TimeSpan timeout, CancellationToken cancellationToken)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(storeRoot);
     if (timeout <= TimeSpan.Zero)
@@ -92,10 +89,7 @@ public sealed class CpgShardStoreLock : IDisposable
     }
   }
 
-  private static CpgShardStoreLock AcquireWaiting(
-    string storeRoot,
-    TimeSpan timeout,
-    CancellationToken cancellationToken)
+  private static CpgShardStoreLock AcquireWaiting(string storeRoot, TimeSpan timeout, CancellationToken cancellationToken)
   {
     Directory.CreateDirectory(storeRoot);
     var storeKey = Path.GetFullPath(storeRoot);
@@ -148,12 +142,7 @@ public sealed class CpgShardStoreLock : IDisposable
     private int _cleanupScheduled;
     private int _resourcesDisposed;
 
-    internal AsyncAcquireWaiter(
-      Semaphore semaphore,
-      string storeRoot,
-      string storeKey,
-      TimeSpan timeout,
-      CancellationToken cancellationToken)
+    internal AsyncAcquireWaiter(Semaphore semaphore, string storeRoot, string storeKey, TimeSpan timeout, CancellationToken cancellationToken)
     {
       _semaphore = semaphore;
       _storeRoot = storeRoot;

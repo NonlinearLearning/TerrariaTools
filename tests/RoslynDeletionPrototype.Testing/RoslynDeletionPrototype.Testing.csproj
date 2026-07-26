@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
-    <ProjectReference Include="..\..\src\Deletion.Core\Deletion.Core.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Core\NLISSN.Core.csproj" />
   </ItemGroup>
 
 </Project>

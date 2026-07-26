@@ -1118,9 +1118,7 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
         .ToArray());
   }
 
-  private static RoslynCpgBuilderOptions CreateBuilderOptions(
-    bool enableReferencedSymbolTypeReuse,
-    bool enableOperationBackedSyntaxTypes = true)
+  private static RoslynCpgBuilderOptions CreateBuilderOptions(bool enableReferencedSymbolTypeReuse, bool enableOperationBackedSyntaxTypes = true)
   {
     return new RoslynCpgBuilderOptions(
       RoslynCpgBuilderMode.Partitioned,
@@ -1132,9 +1130,7 @@ public sealed class MinimalRoslynCpgPartitionedBuilderTests
       EnableOperationBackedSyntaxTypes: enableOperationBackedSyntaxTypes);
   }
 
-  private static RoslynCpgBuilderOptions CreateSyntaxPassOptions(
-    RoslynCpgSyntaxPassMode syntaxPassMode,
-    int maxDegreeOfParallelism)
+  private static RoslynCpgBuilderOptions CreateSyntaxPassOptions(RoslynCpgSyntaxPassMode syntaxPassMode, int maxDegreeOfParallelism)
   {
     return new RoslynCpgBuilderOptions(
       RoslynCpgBuilderMode.Partitioned,

@@ -12,9 +12,7 @@ public sealed record BenchmarkInputManifest(
   string ContentHash,
   IReadOnlyList<BenchmarkInputFile> Files)
 {
-  public static BenchmarkInputManifest Create(
-    IReadOnlyList<(string Source, string FilePath)> files,
-    string? sourceRoot = null)
+  public static BenchmarkInputManifest Create(IReadOnlyList<(string Source, string FilePath)> files, string? sourceRoot = null)
   {
     ArgumentNullException.ThrowIfNull(files);
     var manifestFiles = files

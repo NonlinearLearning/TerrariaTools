@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis.Text;
 
-namespace Deletion.Core.Rewrite;
+namespace NLISSN.Core.Rewrite;
 
 /// <summary>
 /// 表示一次改写在某个文件上的最小文本编辑。

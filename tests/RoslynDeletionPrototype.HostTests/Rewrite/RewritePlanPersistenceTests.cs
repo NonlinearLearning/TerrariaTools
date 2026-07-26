@@ -2,10 +2,10 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Application;
-using Deletion.Cli;
-using Deletion.Core.Rewrite;
-using Deletion.Rules;
+using NLISSN.Application;
+using NLISSN;
+using NLISSN.Core.Rewrite;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

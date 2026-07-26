@@ -2,13 +2,13 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
-using Deletion.Core.Analysis;
-using Deletion.Core.Lifting;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Lifting;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Decision;
+namespace NLISSN.Core.Decision;
 
 public static class DeleteSObjectProposalHelpers
 {

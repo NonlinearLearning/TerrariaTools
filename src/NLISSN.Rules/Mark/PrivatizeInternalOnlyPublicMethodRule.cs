@@ -1,10 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Analysis;
-using Deletion.Core.Marking;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Marking;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 /// <summary>
 /// 命中只被同一类型内部调用的 public 方法，供后续改成 private。

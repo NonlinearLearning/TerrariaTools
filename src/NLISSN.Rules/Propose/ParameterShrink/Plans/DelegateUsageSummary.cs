@@ -1,4 +1,4 @@
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public sealed record DelegateUsageSummary(
   IReadOnlyList<MethodRewrite> MethodRewrites,

@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 using Microsoft.CodeAnalysis.Text;
 
-namespace Deletion.Core.Rewrite;
+namespace NLISSN.Core.Rewrite;
 
 /// <summary>
 /// A portable, text-only rewrite operation. It intentionally contains no Roslyn objects.

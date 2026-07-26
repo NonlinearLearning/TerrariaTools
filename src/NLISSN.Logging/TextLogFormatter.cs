@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Deletion.Logging;
+namespace NLISSN.Logging;
 
 public sealed class TextLogFormatter
 {

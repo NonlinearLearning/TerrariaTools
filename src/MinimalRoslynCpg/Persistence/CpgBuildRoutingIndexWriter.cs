@@ -8,11 +8,7 @@ public sealed class CpgBuildRoutingIndexWriter
   private static readonly byte[] Magic = "CPGI"u8.ToArray();
   public const int FormatVersion = 1;
 
-  public async Task<CpgBuildRoutingIndexWriteResult> WriteAsync(
-    string indexPath,
-    string buildId,
-    IReadOnlyCollection<CpgBuildRoutingShardEntry> entries,
-    CancellationToken cancellationToken)
+  public async Task<CpgBuildRoutingIndexWriteResult> WriteAsync(string indexPath, string buildId, IReadOnlyCollection<CpgBuildRoutingShardEntry> entries, CancellationToken cancellationToken)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(indexPath);
     ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
@@ -126,11 +122,7 @@ public sealed class CpgBuildRoutingIndexWriter
     }
   }
 
-  private static byte[] SerializePayload(
-    IReadOnlyList<CpgBuildRoutingPrimaryNodeRoute> primaryNodes,
-    IReadOnlyList<CpgBuildRoutingBoundaryNodeRoute> boundaryNodes,
-    IReadOnlyList<CpgBuildRoutingSpanRoute> spans,
-    IReadOnlyList<CpgBuildRoutingSymbolRoute> symbols)
+  private static byte[] SerializePayload(IReadOnlyList<CpgBuildRoutingPrimaryNodeRoute> primaryNodes, IReadOnlyList<CpgBuildRoutingBoundaryNodeRoute> boundaryNodes, IReadOnlyList<CpgBuildRoutingSpanRoute> spans, IReadOnlyList<CpgBuildRoutingSymbolRoute> symbols)
   {
     using var stream = new MemoryStream();
     using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);

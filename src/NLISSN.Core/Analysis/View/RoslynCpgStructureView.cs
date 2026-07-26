@@ -1,6 +1,6 @@
 using MinimalRoslynCpg.Model;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 /// <summary>
 /// 基于现有 CPG schema 表达的局部结构视图。

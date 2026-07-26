@@ -245,12 +245,7 @@ public sealed class CpgBuildRoutingIndexTests
     }
   }
 
-  private static CpgFrozenShard CreatePrimaryShard(
-    CpgShardLookup lookup,
-    string symbolKey,
-    uint nodeId,
-    int spanStart,
-    int spanEnd)
+  private static CpgFrozenShard CreatePrimaryShard(CpgShardLookup lookup, string symbolKey, uint nodeId, int spanStart, int spanEnd)
   {
     return new CpgFrozenShard(
       lookup,

@@ -7,6 +7,35 @@ namespace RoslynPrototype.Tests;
 public sealed class CpgPersistenceBenchmarkConfigurationTests
 {
   [Fact]
+  public void ResolveOutputPath_WhenOutputIsOmitted_UsesToolBuildReportsDirectory()
+  {
+    var configuration = BenchmarkConfiguration.Parse(Array.Empty<string>());
+
+    var outputPath = configuration.ResolveOutputPath(
+      new DateTimeOffset(2026, 7, 25, 10, 30, 45, TimeSpan.Zero));
+
+    Assert.Equal(
+      Path.Combine(
+        "Build",
+        "tools",
+        "CpgPersistenceBenchmark",
+        "reports",
+        "cpg-persistence-benchmark-20260725103045.json"),
+      outputPath);
+  }
+
+  [Fact]
+  public void ResolveOutputPath_WhenOutputIsSpecified_PreservesRequestedPath()
+  {
+    var configuration = BenchmarkConfiguration.Parse(new[] { "--output", @"D:\\results\\report.json" });
+
+    var outputPath = configuration.ResolveOutputPath(
+      new DateTimeOffset(2026, 7, 25, 10, 30, 45, TimeSpan.Zero));
+
+    Assert.Equal(@"D:\\results\\report.json", outputPath);
+  }
+
+  [Fact]
   public void Parse_WhenFileWriteConcurrencyIsOmitted_UsesCurrentDefault()
   {
     var configuration = BenchmarkConfiguration.Parse(Array.Empty<string>());

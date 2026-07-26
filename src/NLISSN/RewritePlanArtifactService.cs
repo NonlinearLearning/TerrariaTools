@@ -1,10 +1,10 @@
-using Deletion.Application;
+using NLISSN.Application;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Deletion.Core.Rewrite;
+using NLISSN.Core.Rewrite;
 
-namespace Deletion.Cli;
+namespace NLISSN;
 
 /// <summary>
 /// Writes and validates portable rewrite-plan artifacts.
@@ -20,11 +20,7 @@ public sealed class RewritePlanArtifactService
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
   };
 
-  public void Write(
-    string artifactRoot,
-    string inputRoot,
-    int sourceFileCount,
-    IReadOnlyList<RewritePlanFile> plans)
+  public void Write(string artifactRoot, string inputRoot, int sourceFileCount, IReadOnlyList<RewritePlanFile> plans)
   {
     if (Directory.Exists(artifactRoot) || File.Exists(artifactRoot))
     {
@@ -59,9 +55,7 @@ public sealed class RewritePlanArtifactService
     File.Move(temporaryManifestPath, manifestPath);
   }
 
-  public (RewritePlanManifest Manifest, IReadOnlyList<RewritePlanFile> Plans) ReadAndValidate(
-    string artifactRoot,
-    string inputRoot)
+  public (RewritePlanManifest Manifest, IReadOnlyList<RewritePlanFile> Plans) ReadAndValidate(string artifactRoot, string inputRoot)
   {
     var manifestPath = Path.Combine(artifactRoot, ManifestFileName);
     var manifest = JsonSerializer.Deserialize<RewritePlanManifest>(File.ReadAllText(manifestPath), JsonOptions)

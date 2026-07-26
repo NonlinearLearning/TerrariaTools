@@ -1,20 +1,16 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Rewrite;
+using NLISSN.Core.Rewrite;
 
-namespace Deletion.Application;
+namespace NLISSN.Application;
 
 public sealed class DeleteClassPostRewriteCleanupService
 {
     private readonly DiffBuilder _diffBuilder = new();
     private readonly TextDiffRenderer _textDiffRenderer = new();
 
-    public PrototypeAnalysisResult ApplyUsingCleanup(
-      string filePath,
-      string originalSource,
-      PrototypeAnalysisResult result,
-      CleanupProjectState cleanupProjectState)
+    public PrototypeAnalysisResult ApplyUsingCleanup(string filePath, string originalSource, PrototypeAnalysisResult result, CleanupProjectState cleanupProjectState)
     {
         var currentSource = result.RewrittenSource;
         if (string.IsNullOrEmpty(currentSource))
@@ -69,11 +65,7 @@ public sealed class DeleteClassPostRewriteCleanupService
         return MergeCleanupEdits(filePath, originalSource, result, currentSource, cleanupEdits);
     }
 
-    public PrototypeAnalysisResult ApplyEmptyNamespaceCleanup(
-      string filePath,
-      string originalSource,
-      PrototypeAnalysisResult result,
-      CleanupProjectState cleanupProjectState)
+    public PrototypeAnalysisResult ApplyEmptyNamespaceCleanup(string filePath, string originalSource, PrototypeAnalysisResult result, CleanupProjectState cleanupProjectState)
     {
         var currentSource = result.RewrittenSource;
         if (string.IsNullOrEmpty(currentSource))
@@ -129,12 +121,7 @@ public sealed class DeleteClassPostRewriteCleanupService
         return MergeCleanupEdits(filePath, originalSource, result, currentSource, cleanupEdits);
     }
 
-    private PrototypeAnalysisResult MergeCleanupEdits(
-      string filePath,
-      string originalSource,
-      PrototypeAnalysisResult result,
-      string currentSource,
-      IReadOnlyList<RewriteEdit> cleanupEdits)
+    private PrototypeAnalysisResult MergeCleanupEdits(string filePath, string originalSource, PrototypeAnalysisResult result, string currentSource, IReadOnlyList<RewriteEdit> cleanupEdits)
     {
         if (cleanupEdits.Count == 0)
         {

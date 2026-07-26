@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Deletion.Core.Propagation;
+namespace NLISSN.Core.Propagation;
 
 public enum MethodParameterUsageMode
 {

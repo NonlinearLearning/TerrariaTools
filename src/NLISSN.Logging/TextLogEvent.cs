@@ -1,4 +1,4 @@
-namespace Deletion.Logging;
+namespace NLISSN.Logging;
 
 public sealed record TextLogEvent(
   DateTimeOffset TimestampUtc,

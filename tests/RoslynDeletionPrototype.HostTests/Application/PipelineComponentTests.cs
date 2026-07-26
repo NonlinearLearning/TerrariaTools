@@ -4,14 +4,14 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Analysis.FlowSummaries;
 using System.Text;
-using Deletion.Core.Analysis;
-using Deletion.Application;
-using Deletion.Core.Decision;
-using Deletion.Core.Lifting;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Core.Rewrite;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Application;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Lifting;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
+using NLISSN.Rules;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Common;
 using RoslynPrototype.Tests.TestCodeSet.DeleteClass;
@@ -4414,10 +4414,10 @@ public sealed class PipelineComponentTests : IDisposable
         var rules = RuleRegistry.CreateDefaultRules();
         var contractAssembly = typeof(RuleDefinitionMark).Assembly;
         var implementationAssembly = typeof(SObjectIdentifierNameMarkRule).Assembly;
-        var markRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionMark");
-        var propagateRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionPropagate");
-        var liftRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionLift");
-        var proposeRuleType = contractAssembly.GetType("Deletion.Rules.RuleDefinitionPropose");
+        var markRuleType = contractAssembly.GetType("NLISSN.Rules.RuleDefinitionMark");
+        var propagateRuleType = contractAssembly.GetType("NLISSN.Rules.RuleDefinitionPropagate");
+        var liftRuleType = contractAssembly.GetType("NLISSN.Rules.RuleDefinitionLift");
+        var proposeRuleType = contractAssembly.GetType("NLISSN.Rules.RuleDefinitionPropose");
 
         Assert.NotNull(markRuleType);
         Assert.NotNull(propagateRuleType);
@@ -4555,9 +4555,9 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var assembly = typeof(RuleRegistry).Assembly;
 
-        Assert.Null(assembly.GetType("Deletion.Rules.DeleteSObjectPropagationState"));
-        Assert.Null(assembly.GetType("Deletion.Rules.LogicalConditionPropagationStep"));
-        Assert.Null(assembly.GetType("Deletion.Rules.SymbolReferencePropagationStep"));
+        Assert.Null(assembly.GetType("NLISSN.Rules.DeleteSObjectPropagationState"));
+        Assert.Null(assembly.GetType("NLISSN.Rules.LogicalConditionPropagationStep"));
+        Assert.Null(assembly.GetType("NLISSN.Rules.SymbolReferencePropagationStep"));
     }
 
     [Fact]
@@ -4632,10 +4632,7 @@ public sealed class PipelineComponentTests : IDisposable
         return new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
     }
 
-    private static (RuleContext Context, SyntaxNode Root) CreateContext(
-      string source,
-      string? targetName = null,
-      DeletionAnalysisRuntime? runtime = null)
+    private static (RuleContext Context, SyntaxNode Root) CreateContext(string source, string? targetName = null, DeletionAnalysisRuntime? runtime = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "component-test.cs");
         var root = tree.GetRoot();
@@ -4661,10 +4658,7 @@ public sealed class PipelineComponentTests : IDisposable
           scheduler);
     }
 
-    private static TCache GetCompilationCache<TCache>(
-      DeletionAnalysisRuntime runtime,
-      Compilation compilation,
-      Func<Compilation, TCache> factory)
+    private static TCache GetCompilationCache<TCache>(DeletionAnalysisRuntime runtime, Compilation compilation, Func<Compilation, TCache> factory)
       where TCache : class
     {
         var method = typeof(DeletionAnalysisRuntime)
@@ -4810,11 +4804,7 @@ public sealed class PipelineComponentTests : IDisposable
             ItemCounts.Clear();
         }
 
-        public async Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(
-          int itemCount,
-          int maxDegreeOfParallelism,
-          Func<int, CancellationToken, Task<TResult>> workItem,
-          CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(int itemCount, int maxDegreeOfParallelism, Func<int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
         {
             _ = maxDegreeOfParallelism;
             InvocationCount++;
@@ -4897,11 +4887,7 @@ public sealed class PipelineComponentTests : IDisposable
         private readonly string _groupKey;
         private readonly ConcurrentRuleProbe _probe;
 
-        public ConcurrentClassMarkRule(
-          string ruleId,
-          string groupKey,
-          string className,
-          ConcurrentRuleProbe probe)
+        public ConcurrentClassMarkRule(string ruleId, string groupKey, string className, ConcurrentRuleProbe probe)
         {
             RuleId = ruleId;
             _groupKey = groupKey;
@@ -5248,7 +5234,7 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private sealed class TestRuleSet : Deletion.Rules.RuleSetDefinition
+    private sealed class TestRuleSet : NLISSN.Rules.RuleSetDefinition
     {
         public override string Id => "test";
 
@@ -5295,11 +5281,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
             new[] { SyntaxKind.ClassDeclaration };
 
-        public override IEnumerable<DecisionUnit> Propose(
-          RuleContext context,
-          IReadOnlyList<MarkRecord> seedMarks,
-          IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-          IReadOnlyList<LiftedMarkRecord> liftedMarks)
+        public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
         {
             _ = context;
             _ = propagatedMarks;

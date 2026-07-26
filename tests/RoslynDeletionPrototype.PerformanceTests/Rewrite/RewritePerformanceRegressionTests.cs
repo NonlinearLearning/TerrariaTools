@@ -4,8 +4,8 @@ using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Decision;
-using Deletion.Core.Rewrite;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Rewrite;
 using Xunit;
 using Xunit.Abstractions;
 

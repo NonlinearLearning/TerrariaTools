@@ -2,9 +2,9 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
-using Deletion.Rules;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Decision;
+namespace NLISSN.Core.Decision;
 
 public static class DeleteClassReplaceDecisionFactory
 {

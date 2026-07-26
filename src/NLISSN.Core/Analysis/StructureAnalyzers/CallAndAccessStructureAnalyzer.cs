@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 /// <summary>
 /// 调用、对象创建、成员访问和索引访问结构分析结果。

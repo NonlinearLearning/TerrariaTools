@@ -1,53 +1,85 @@
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
+using System.Runtime.CompilerServices;
 
 namespace MinimalRoslynCpg.Persistence;
 
 public static class CpgFrozenShardGraphReader
 {
+  private static readonly ConditionalWeakTable<CpgFrozenShard, NodeIndex> NodeIndexes = new();
+
   /// <summary>
   /// Restores only the records needed to traverse into <paramref name="targetNodeId"/>.
   /// The shard payload remains fully deserialized by the store, but this avoids building an
   /// indexed graph for unrelated shard records during a bounded slice query.
   /// </summary>
-  public static CpgFrozenShardIncomingProjection ReadIncomingProjection(
-    CpgFrozenShard shard,
-    NodeId targetNodeId,
-    IReadOnlySet<RoslynCpgEdgeKind> allowedEdgeKinds,
-    int maxEdges)
+  public static CpgFrozenShardIncomingProjection ReadIncomingProjection(CpgFrozenShard shard, NodeId targetNodeId, IReadOnlySet<RoslynCpgEdgeKind> allowedEdgeKinds, int maxEdges)
   {
     ArgumentNullException.ThrowIfNull(shard);
     ArgumentNullException.ThrowIfNull(allowedEdgeKinds);
 
-    var nodeIdsByLocalIndex = shard.Nodes.ToDictionary(node => node.LocalIndex, node => new NodeId(node.NodeId));
+    var nodeIndex = NodeIndexes.GetValue(shard, static source => new NodeIndex(source));
     var selectedEdges = new List<RoslynCpgEdge>();
     var requiredNodeIds = new HashSet<NodeId>();
-    if (nodeIdsByLocalIndex.Values.Contains(targetNodeId))
+    if (nodeIndex.TryGetByNodeId(targetNodeId, out var targetNode))
     {
       requiredNodeIds.Add(targetNodeId);
     }
-    foreach (var edge in shard.Edges)
+    if (targetNode is not null &&
+        CpgFrozenShardIncomingEdgeIndex.TryGet(shard, out var incomingEdgeOffsets, out var incomingEdgeIndexes))
     {
-      var sourceNodeId = nodeIdsByLocalIndex[edge.SourceLocalIndex];
-      var targetId = nodeIdsByLocalIndex[edge.TargetLocalIndex];
-      if (targetId != targetNodeId || !Enum.TryParse<RoslynCpgEdgeKind>(edge.Kind, out var kind) ||
-          !allowedEdgeKinds.Contains(kind))
+      for (var position = incomingEdgeOffsets[targetNode.LocalIndex];
+           position < incomingEdgeOffsets[targetNode.LocalIndex + 1];
+           position += 1)
       {
-        continue;
-      }
+        var edge = shard.Edges[incomingEdgeIndexes[position]];
+        var sourceNodeId = new NodeId(nodeIndex.GetByLocalIndex(edge.SourceLocalIndex).NodeId);
+        if (!Enum.TryParse<RoslynCpgEdgeKind>(edge.Kind, out var kind) ||
+            !allowedEdgeKinds.Contains(kind))
+        {
+          continue;
+        }
 
-      selectedEdges.Add(new RoslynCpgEdge(
-        sourceNodeId,
-        targetId,
-        kind,
-        ParseLabel(edge.Label),
-        edge.ContextId is null ? null : new RoslynCpgContextId(edge.ContextId),
-        CreateCallSiteContext(edge)));
-      requiredNodeIds.Add(sourceNodeId);
-      requiredNodeIds.Add(targetId);
-      if (selectedEdges.Count >= maxEdges)
+        selectedEdges.Add(new RoslynCpgEdge(
+          sourceNodeId,
+          targetNodeId,
+          kind,
+          ParseLabel(edge.Label),
+          edge.ContextId is null ? null : new RoslynCpgContextId(edge.ContextId),
+          CreateCallSiteContext(edge)));
+        requiredNodeIds.Add(sourceNodeId);
+        requiredNodeIds.Add(targetNodeId);
+        if (selectedEdges.Count >= maxEdges)
+        {
+          break;
+        }
+      }
+    }
+    else
+    {
+      foreach (var edge in shard.Edges)
       {
-        break;
+        var sourceNodeId = new NodeId(nodeIndex.GetByLocalIndex(edge.SourceLocalIndex).NodeId);
+        var targetId = new NodeId(nodeIndex.GetByLocalIndex(edge.TargetLocalIndex).NodeId);
+        if (targetId != targetNodeId || !Enum.TryParse<RoslynCpgEdgeKind>(edge.Kind, out var kind) ||
+            !allowedEdgeKinds.Contains(kind))
+        {
+          continue;
+        }
+
+        selectedEdges.Add(new RoslynCpgEdge(
+          sourceNodeId,
+          targetId,
+          kind,
+          ParseLabel(edge.Label),
+          edge.ContextId is null ? null : new RoslynCpgContextId(edge.ContextId),
+          CreateCallSiteContext(edge)));
+        requiredNodeIds.Add(sourceNodeId);
+        requiredNodeIds.Add(targetId);
+        if (selectedEdges.Count >= maxEdges)
+        {
+          break;
+        }
       }
     }
 
@@ -69,8 +101,10 @@ public static class CpgFrozenShardGraphReader
       }
     }
 
-    var nodes = shard.Nodes
-      .Where(node => requiredNodeIds.Contains(new NodeId(node.NodeId)))
+    var nodes = requiredNodeIds
+      .Select(nodeId => nodeIndex.TryGetByNodeId(nodeId, out var node) ? node : null)
+      .Where(node => node is not null)
+      .Select(node => node!)
       .OrderBy(node => node.LocalIndex)
       .Select(CreateNode)
       .ToDictionary(node => node.NodeId!.Value);
@@ -211,6 +245,39 @@ public static class CpgFrozenShardGraphReader
     }
 
     throw new InvalidDataException("The CPG shard contains an unknown structured edge label.");
+  }
+
+  private sealed class NodeIndex
+  {
+    private readonly Dictionary<uint, CpgFrozenNode> _nodesByNodeId = new();
+    private readonly Dictionary<int, CpgFrozenNode> _nodesByLocalIndex = new();
+
+    internal NodeIndex(CpgFrozenShard shard)
+    {
+      foreach (var node in shard.Nodes)
+      {
+        if (!_nodesByNodeId.TryAdd(node.NodeId, node) ||
+            !_nodesByLocalIndex.TryAdd(node.LocalIndex, node))
+        {
+          throw new InvalidDataException("The CPG shard contains duplicate local nodes.");
+        }
+      }
+    }
+
+    internal bool TryGetByNodeId(NodeId nodeId, out CpgFrozenNode? node)
+    {
+      return _nodesByNodeId.TryGetValue(nodeId.Value, out node);
+    }
+
+    internal CpgFrozenNode GetByLocalIndex(int localIndex)
+    {
+      if (_nodesByLocalIndex.TryGetValue(localIndex, out var node))
+      {
+        return node;
+      }
+
+      throw new InvalidDataException("The CPG shard contains an orphan local edge endpoint.");
+    }
   }
 
   private static RoslynCpgNode CreateNode(CpgFrozenNode node)

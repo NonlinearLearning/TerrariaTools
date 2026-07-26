@@ -100,19 +100,7 @@ public sealed partial class RoslynCpgBuilder
 
     private sealed class MethodDataFlowPlan
     {
-      internal MethodDataFlowPlan(
-        int order,
-        string methodFullName,
-        IOperation[] orderedOperations,
-        RoslynCpgNode[] flowNodes,
-        RoslynCpgNode[] operationNodes,
-        Dictionary<IOperation, UsedFactRecord> usedFactsByOperation,
-        Dictionary<RoslynCpgNode, DefinitionFact> parameterDefinitionFacts,
-        Dictionary<IOperation, RoslynCpgNode> operationNodesByOperation,
-        RoslynCpgNode? returnNode,
-        RoslynCpgNode? exitNode,
-        Dictionary<RoslynCpgNode, RoslynCpgNode[]> predecessors,
-        Dictionary<RoslynCpgNode, RoslynCpgNode[]> successors)
+      internal MethodDataFlowPlan(int order, string methodFullName, IOperation[] orderedOperations, RoslynCpgNode[] flowNodes, RoslynCpgNode[] operationNodes, Dictionary<IOperation, UsedFactRecord> usedFactsByOperation, Dictionary<RoslynCpgNode, DefinitionFact> parameterDefinitionFacts, Dictionary<IOperation, RoslynCpgNode> operationNodesByOperation, RoslynCpgNode? returnNode, RoslynCpgNode? exitNode, Dictionary<RoslynCpgNode, RoslynCpgNode[]> predecessors, Dictionary<RoslynCpgNode, RoslynCpgNode[]> successors)
       {
         Order = order;
         MethodFullName = methodFullName;
@@ -156,9 +144,7 @@ public sealed partial class RoslynCpgBuilder
       }
     }
 
-    private static CpgEdgeCandidate CreateDataFlowCandidate(
-      RoslynCpgNode sourceNode,
-      RoslynCpgNode targetNode)
+    private static CpgEdgeCandidate CreateDataFlowCandidate(RoslynCpgNode sourceNode, RoslynCpgNode targetNode)
     {
       return new CpgEdgeCandidate(
         sourceNode.StableAnchor ?? throw new InvalidOperationException("Data-flow source nodes require stable anchors."),
@@ -169,9 +155,7 @@ public sealed partial class RoslynCpgBuilder
         CallSiteContext: null);
     }
 
-    private static RoslynCpgNode ResolveCandidateNode(
-      RoslynCpgGraph graph,
-      StableNodeAnchor anchor)
+    private static RoslynCpgNode ResolveCandidateNode(RoslynCpgGraph graph, StableNodeAnchor anchor)
     {
       return graph.AddNode(new RoslynCpgNode(
         anchor.Kind,
@@ -313,8 +297,7 @@ public sealed partial class RoslynCpgBuilder
         metrics.CallArgumentAndReturnElapsedMilliseconds += callArgumentAndReturnStopwatch.ElapsedMilliseconds;
     }
 
-    private async Task<IReadOnlyList<UsedFactPartition>> RunUsedFactPartitionsAsync(
-      IReadOnlyList<IBlockOperation> methodBlocks)
+    private async Task<IReadOnlyList<UsedFactPartition>> RunUsedFactPartitionsAsync(IReadOnlyList<IBlockOperation> methodBlocks)
     {
         return await BoundedPartitionWorkWindow.RunAsync(
           methodBlocks,
@@ -356,12 +339,7 @@ public sealed partial class RoslynCpgBuilder
           usedFactCount);
     }
 
-    private IReadOnlyList<MethodDataFlowPlan> BuildCfgSensitivePartitionPlans(
-      IReadOnlyList<UsedFactPartition> usedFactPartitions,
-      IReadOnlyList<IBlockOperation> methodBlocks,
-      DataFlowOperationIndex operationIndex,
-      RoslynCpgGraph graph,
-      DataFlowPassMetrics metrics)
+    private IReadOnlyList<MethodDataFlowPlan> BuildCfgSensitivePartitionPlans(IReadOnlyList<UsedFactPartition> usedFactPartitions, IReadOnlyList<IBlockOperation> methodBlocks, DataFlowOperationIndex operationIndex, RoslynCpgGraph graph, DataFlowPassMetrics metrics)
     {
         var plans = new List<MethodDataFlowPlan>(usedFactPartitions.Count);
         foreach (var partition in usedFactPartitions.OrderBy(partition => partition.Order))
@@ -436,10 +414,7 @@ public sealed partial class RoslynCpgBuilder
         return plans;
     }
 
-    private RoslynCpgOrderedWorkWindowTelemetry RunCfgSensitivePartitionsInOrder(
-      IReadOnlyList<MethodDataFlowPlan> plans,
-      RoslynCpgGraph graph,
-      DataFlowPassMetrics metrics)
+    private RoslynCpgOrderedWorkWindowTelemetry RunCfgSensitivePartitionsInOrder(IReadOnlyList<MethodDataFlowPlan> plans, RoslynCpgGraph graph, DataFlowPassMetrics metrics)
     {
         return BoundedPartitionWorkWindow.RunOrdered(
           plans,
@@ -462,11 +437,7 @@ public sealed partial class RoslynCpgBuilder
           maxCompletedRecordCount: _options.EffectiveMaxOrderedResultRecordCount);
     }
 
-    private static void CommitCfgSensitivePartition(
-      MethodDataFlowPlan plan,
-      CfgSensitivePartition partition,
-      RoslynCpgGraph graph,
-      DataFlowPassMetrics metrics)
+    private static void CommitCfgSensitivePartition(MethodDataFlowPlan plan, CfgSensitivePartition partition, RoslynCpgGraph graph, DataFlowPassMetrics metrics)
     {
         if (partition.Order != plan.Order)
         {
@@ -517,9 +488,7 @@ public sealed partial class RoslynCpgBuilder
         metrics.CfgSensitiveCandidateCommitElapsedMilliseconds += commitStopwatch.ElapsedMilliseconds;
     }
 
-    private static CfgSensitivePartition AnalyzeCfgSensitivePartition(
-      MethodDataFlowPlan plan,
-      RoslynCpgDataFlowOptions options)
+    private static CfgSensitivePartition AnalyzeCfgSensitivePartition(MethodDataFlowPlan plan, RoslynCpgDataFlowOptions options)
     {
         var totalStopwatch = Stopwatch.StartNew();
         var definitionFactsByNode = new Dictionary<RoslynCpgNode, DefinitionFact>(
@@ -736,10 +705,7 @@ public sealed partial class RoslynCpgBuilder
           RoslynCpgDataFlowOverflowReason.None);
     }
 
-    private static void ThrowIfBudgetFailure(
-      RoslynCpgDataFlowOptions options,
-      string methodFullName,
-      RoslynCpgDataFlowOverflowReason overflowReason)
+    private static void ThrowIfBudgetFailure(RoslynCpgDataFlowOptions options, string methodFullName, RoslynCpgDataFlowOverflowReason overflowReason)
     {
         if (options.OverflowBehavior != RoslynCpgDataFlowOverflowBehavior.FailBuild)
         {
@@ -775,18 +741,14 @@ public sealed partial class RoslynCpgBuilder
         return plan.FlowNodes.Length - visited.Count;
     }
 
-    private static Dictionary<RoslynCpgNode, RoslynCpgNode[]> SnapshotNeighbors(
-      IReadOnlyDictionary<RoslynCpgNode, List<RoslynCpgNode>> neighbors)
+    private static Dictionary<RoslynCpgNode, RoslynCpgNode[]> SnapshotNeighbors(IReadOnlyDictionary<RoslynCpgNode, List<RoslynCpgNode>> neighbors)
     {
         return neighbors.ToDictionary(
           pair => pair.Key,
           pair => pair.Value.ToArray());
     }
 
-    private static void AddUniqueFlowNode(
-      List<RoslynCpgNode> flowNodes,
-      HashSet<RoslynCpgNode> flowNodeSet,
-      RoslynCpgNode node)
+    private static void AddUniqueFlowNode(List<RoslynCpgNode> flowNodes, HashSet<RoslynCpgNode> flowNodeSet, RoslynCpgNode node)
     {
         if (flowNodeSet.Add(node))
         {
@@ -819,10 +781,7 @@ public sealed partial class RoslynCpgBuilder
         return neighbors;
     }
 
-    private static HashSet<RoslynCpgNode> ApplyDefinitionTransfer(
-      RoslynCpgNode node,
-      HashSet<RoslynCpgNode> incomingDefinitions,
-      Dictionary<RoslynCpgNode, DefinitionFact> definitionFactsByNode)
+    private static HashSet<RoslynCpgNode> ApplyDefinitionTransfer(RoslynCpgNode node, HashSet<RoslynCpgNode> incomingDefinitions, Dictionary<RoslynCpgNode, DefinitionFact> definitionFactsByNode)
     {
         var outgoingDefinitions = new HashSet<RoslynCpgNode>(incomingDefinitions);
         if (!definitionFactsByNode.TryGetValue(node, out var definedFact))

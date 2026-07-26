@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Linq;
 
-namespace Deletion.Core.Decision;
+namespace NLISSN.Core.Decision;
 
 public static class DeleteClassMethodProposalSafety
 {

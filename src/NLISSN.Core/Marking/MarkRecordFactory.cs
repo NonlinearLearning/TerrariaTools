@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 
-namespace Deletion.Core.Marking;
+namespace NLISSN.Core.Marking;
 
 public static class MarkRecordFactory
 {

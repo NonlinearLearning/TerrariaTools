@@ -1,9 +1,9 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Marking;
-using Deletion.Rules;
+using NLISSN.Core.Marking;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Decision;
+namespace NLISSN.Core.Decision;
 
 public static class DeleteClassTypeSyntaxProposalHelpers
 {

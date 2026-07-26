@@ -1,10 +1,10 @@
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Model;
-using Deletion.Application;
-using Deletion.Core.Rewrite;
+using NLISSN.Application;
+using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
 using RoslynPrototype.Testing.TestInfrastructure;
-using Deletion.Rules;
+using NLISSN.Rules;
 using Xunit;
 using Xunit.Sdk;
 
@@ -17,11 +17,7 @@ public sealed class CpgExecutionMatrixTests
 
   [Theory]
   [CombinatorialData]
-  public void BuildFromSource_ExecutionMatrix_MatchesSerialBaseline(
-    [CombinatorialValues(1, 8, 12, 14, 16)] int maxDegreeOfParallelism,
-    bool persistenceEnabled,
-    CpgPersistenceDurabilityMode durabilityMode,
-    [CombinatorialValues(1, 2)] int maxConcurrentShardFileWrites)
+  public void BuildFromSource_ExecutionMatrix_MatchesSerialBaseline([CombinatorialValues(1, 8, 12, 14, 16)] int maxDegreeOfParallelism, bool persistenceEnabled, CpgPersistenceDurabilityMode durabilityMode, [CombinatorialValues(1, 2)] int maxConcurrentShardFileWrites)
   {
     var root = Path.Combine(Path.GetTempPath(), "cpg-execution-matrix", Guid.NewGuid().ToString("N"));
     try
@@ -96,9 +92,7 @@ public sealed class CpgExecutionMatrixTests
       ruleSets.SelectMany(ruleSet => ruleSet.Proposers).ToList());
   }
 
-  private static CpgExecutionSnapshot CreateSnapshot(
-    RoslynCpgGraph graph,
-    PrototypeAnalysisResult analysis)
+  private static CpgExecutionSnapshot CreateSnapshot(RoslynCpgGraph graph, PrototypeAnalysisResult analysis)
   {
     return new CpgExecutionSnapshot(
       graph.GraphSnapshotVersion,

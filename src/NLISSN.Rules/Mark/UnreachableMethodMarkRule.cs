@@ -3,11 +3,11 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
-using Deletion.Core.Analysis;
-using Deletion.Core.Marking;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Marking;
+using NLISSN.Rules;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 /// <summary>
 /// 基于最小调用图可达性，命中从入口点不可达的方法声明。

@@ -3,12 +3,12 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
-using Deletion.Core.Lifting;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Rules;
+using NLISSN.Core.Lifting;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Decision;
+namespace NLISSN.Core.Decision;
 
 /// <summary>
 /// 决策阶段允许的最小动作集合。
@@ -382,12 +382,7 @@ public sealed class RuleDecisionEngine
         return decisions;
     }
 
-    private static List<DecisionUnit> RunGroupsSerial(
-      RuleContext context,
-      IReadOnlyList<ProposalRuleGroup> groupedRules,
-      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
+    private static List<DecisionUnit> RunGroupsSerial(RuleContext context, IReadOnlyList<ProposalRuleGroup> groupedRules, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
     {
         var units = new List<DecisionUnit>();
         foreach (var ruleGroup in groupedRules)
@@ -403,12 +398,7 @@ public sealed class RuleDecisionEngine
         return units;
     }
 
-    private static List<DecisionUnit> RunGroupsInParallel(
-      RuleContext context,
-      IReadOnlyList<ProposalRuleGroup> groupedRules,
-      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
+    private static List<DecisionUnit> RunGroupsInParallel(RuleContext context, IReadOnlyList<ProposalRuleGroup> groupedRules, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
     {
         var orderedUnits = context.Runtime.Scheduler.RunOrderedAsync(
             groupedRules.Count,
@@ -432,12 +422,7 @@ public sealed class RuleDecisionEngine
         return orderedUnits.SelectMany(units => units).ToList();
     }
 
-    private static List<DecisionUnit> RunGroup(
-      RuleContext context,
-      ProposalRuleGroup ruleGroup,
-      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
+    private static List<DecisionUnit> RunGroup(RuleContext context, ProposalRuleGroup ruleGroup, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
     {
         var units = new List<DecisionUnit>();
         foreach (var rule in ruleGroup.Rules)
@@ -453,12 +438,7 @@ public sealed class RuleDecisionEngine
         return units;
     }
 
-    private static List<DecisionUnit> RunRule(
-      RuleContext context,
-      RuleDefinitionPropose rule,
-      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
+    private static List<DecisionUnit> RunRule(RuleContext context, RuleDefinitionPropose rule, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
     {
         seedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleSeedMarks);
         propagatedMarksByGroupKey.TryGetValue(rule.GroupKey, out var rulePropagatedMarks);
@@ -661,10 +641,7 @@ public static class DecisionCpgFactory
     /// <param name="fromFragment">关系起点片段。</param>
     /// <param name="toFragment">关系终点片段。</param>
     /// <returns>表示片段语义关系的决策边。</returns>
-    public static RoslynCpgEdge CreateRelation(
-      RoslynCpgDecisionRelationKind kind,
-      RoslynCpgNode fromFragment,
-      RoslynCpgNode toFragment)
+    public static RoslynCpgEdge CreateRelation(RoslynCpgDecisionRelationKind kind, RoslynCpgNode fromFragment, RoslynCpgNode toFragment)
     {
         return new RoslynCpgEdge(
           fromFragment.NodeId!.Value,

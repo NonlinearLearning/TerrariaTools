@@ -17,9 +17,7 @@ public sealed class CpgBuildAdmissionBudget
   private int _grantedDegreeHighWaterMark;
   private int _grantedDegreeInUse;
 
-  public CpgBuildAdmissionBudget(
-    int totalDegree,
-    CpgBuildAdmissionPolicy policy = CpgBuildAdmissionPolicy.WholeBuild)
+  public CpgBuildAdmissionBudget(int totalDegree, CpgBuildAdmissionPolicy policy = CpgBuildAdmissionPolicy.WholeBuild)
   {
     TotalDegree = Math.Max(1, totalDegree);
     Policy = policy;
@@ -68,10 +66,7 @@ public sealed class CpgBuildAdmissionBudget
     }
   }
 
-  public Task<CpgBuildAdmissionLease> AcquireAsync(
-    int requestedDegree,
-    CancellationToken cancellationToken,
-    CpgBuildAdmissionPolicy? policy = null)
+  public Task<CpgBuildAdmissionLease> AcquireAsync(int requestedDegree, CancellationToken cancellationToken, CpgBuildAdmissionPolicy? policy = null)
   {
     if (requestedDegree <= 0)
     {
@@ -207,12 +202,7 @@ public sealed class CpgBuildAdmissionBudget
 
   private sealed class PendingRequest
   {
-    public PendingRequest(
-      int requestedDegree,
-      int grantedDegree,
-      CpgBuildAdmissionPolicy policy,
-      int maxDegreePerLease,
-      CancellationToken cancellationToken)
+    public PendingRequest(int requestedDegree, int grantedDegree, CpgBuildAdmissionPolicy policy, int maxDegreePerLease, CancellationToken cancellationToken)
     {
       RequestedDegree = requestedDegree;
       GrantedDegree = grantedDegree;
@@ -248,15 +238,7 @@ public sealed class CpgBuildAdmissionBudget
     private readonly CpgBuildAdmissionBudget _owner;
     private int _disposed;
 
-    internal CpgBuildAdmissionLease(
-      CpgBuildAdmissionBudget owner,
-      int requestedDegree,
-      int grantedDegree,
-      CpgBuildAdmissionPolicy policy,
-      int maxDegreePerLease,
-      long waitMilliseconds,
-      int activeLeaseCountAtGrant,
-      int grantedDegreeHighWaterMark)
+    internal CpgBuildAdmissionLease(CpgBuildAdmissionBudget owner, int requestedDegree, int grantedDegree, CpgBuildAdmissionPolicy policy, int maxDegreePerLease, long waitMilliseconds, int activeLeaseCountAtGrant, int grantedDegreeHighWaterMark)
     {
       _owner = owner;
       RequestedDegree = requestedDegree;

@@ -211,10 +211,7 @@ public sealed class RoslynCpgSliceQuery
         return result;
     }
 
-    public async Task<RoslynCpgSliceResult> QueryBackwardAsync(
-        NodeId sinkNodeId,
-        RoslynCpgSliceQueryOptions options,
-        CancellationToken cancellationToken)
+    public async Task<RoslynCpgSliceResult> QueryBackwardAsync(NodeId sinkNodeId, RoslynCpgSliceQueryOptions options, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(options);
         ValidateOptions(options);
@@ -246,11 +243,7 @@ public sealed class RoslynCpgSliceQuery
         };
     }
 
-    private async Task<RoslynCpgGraph> LoadFrontierGraphAsync(
-        NodeId sinkNodeId,
-        RoslynCpgSliceQueryOptions options,
-        ICollection<CpgShardUnavailableResult> unavailable,
-        CancellationToken cancellationToken)
+    private async Task<RoslynCpgGraph> LoadFrontierGraphAsync(NodeId sinkNodeId, RoslynCpgSliceQueryOptions options, ICollection<CpgShardUnavailableResult> unavailable, CancellationToken cancellationToken)
     {
         var nodes = new Dictionary<NodeId, RoslynCpgNode>();
         var edges = new HashSet<RoslynCpgEdge>();
@@ -383,9 +376,7 @@ public sealed class RoslynCpgSliceQuery
             .Contains(frame, StringComparer.Ordinal);
     }
 
-    private IReadOnlyList<RoslynCpgEdge> GetAllowedIncomingEdges(
-        NodeId nodeId,
-        IReadOnlySet<RoslynCpgEdgeKind> allowedKinds)
+    private IReadOnlyList<RoslynCpgEdge> GetAllowedIncomingEdges(NodeId nodeId, IReadOnlySet<RoslynCpgEdgeKind> allowedKinds)
     {
         var edges = new List<RoslynCpgEdge>();
         foreach (var edgeKind in allowedKinds.OrderBy(kind => kind))

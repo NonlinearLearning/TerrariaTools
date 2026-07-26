@@ -1,3 +1,3 @@
-namespace Deletion.Logging;
+namespace NLISSN.Logging;
 
 public sealed record TextLogField(string Name, object? Value);

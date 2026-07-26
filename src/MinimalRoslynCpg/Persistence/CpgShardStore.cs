@@ -12,15 +12,14 @@ public sealed class CpgShardStore : ICpgShardStore
   private static readonly byte[] Magic = "CPGB"u8.ToArray();
   private const int StreamBufferSize = 64 * 1024;
   private const int MaxPooledLocalIndexCount = 16 * 1024 * 1024;
-  private const int FormatVersion = 5;
+  private const int LegacyFormatVersion = 5;
+  private const int FormatVersion = 6;
   private static Action<string>? _afterTemporaryWriteForTesting;
   private static Action<CpgShardLocation>? _afterReadForTesting;
   private readonly CpgPersistenceDurabilityMode _durabilityMode;
   private readonly string _shardsRoot;
 
-  public CpgShardStore(
-    string storeRoot,
-    CpgPersistenceDurabilityMode durabilityMode = CpgPersistenceDurabilityMode.Strict)
+  public CpgShardStore(string storeRoot, CpgPersistenceDurabilityMode durabilityMode = CpgPersistenceDurabilityMode.Strict)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(storeRoot);
     if (!Enum.IsDefined(durabilityMode))
@@ -159,9 +158,7 @@ public sealed class CpgShardStore : ICpgShardStore
     return Deserialize(payload);
   }
 
-  internal CpgShardReadBackValidationTelemetry Validate(
-    CpgShardLocation location,
-    CancellationToken cancellationToken)
+  internal CpgShardReadBackValidationTelemetry Validate(CpgShardLocation location, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(location);
     if (location.Status != CpgShardStatus.Complete)
@@ -172,18 +169,13 @@ public sealed class CpgShardStore : ICpgShardStore
     return ValidateFile(location.ShardPath, location.ShardHash, cancellationToken);
   }
 
-  public async Task<CpgFrozenShard?> TryReadAsync(
-    CpgShardLocation location,
-    CpgShardLookup lookup,
-    CancellationToken cancellationToken)
+  public async Task<CpgFrozenShard?> TryReadAsync(CpgShardLocation location, CpgShardLookup lookup, CancellationToken cancellationToken)
   {
     var shard = await ReadAsync(location, cancellationToken);
     return shard.Lookup == lookup ? shard : null;
   }
 
-  public async Task<(CpgFrozenShard Shard, CpgShardLocation Location)> ReadFromPathAsync(
-    string shardPath,
-    CancellationToken cancellationToken)
+  public async Task<(CpgFrozenShard Shard, CpgShardLocation Location)> ReadFromPathAsync(string shardPath, CancellationToken cancellationToken)
   {
     var payload = await File.ReadAllBytesAsync(shardPath, cancellationToken);
     var shard = Deserialize(payload);
@@ -209,6 +201,7 @@ public sealed class CpgShardStore : ICpgShardStore
   {
     using var stream = new MemoryStream();
     using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+    var (incomingEdgeOffsets, incomingEdgeIndexes) = CpgFrozenShardIncomingEdgeIndex.Resolve(shard);
     writer.Write(Magic);
     writer.Write(FormatVersion);
     WriteLookup(writer, shard.Lookup);
@@ -247,6 +240,16 @@ public sealed class CpgShardStore : ICpgShardStore
       WriteOptional(writer, edge.CallSiteDisplayName);
     }
 
+    foreach (var offset in incomingEdgeOffsets)
+    {
+      writer.Write(offset);
+    }
+
+    foreach (var edgeIndex in incomingEdgeIndexes)
+    {
+      writer.Write(edgeIndex);
+    }
+
     var boundaryEdges = shard.BoundaryEdges ?? Array.Empty<CpgFrozenBoundaryEdge>();
     writer.Write(boundaryEdges.Count);
     foreach (var edge in boundaryEdges)
@@ -277,7 +280,13 @@ public sealed class CpgShardStore : ICpgShardStore
   {
     using var stream = new MemoryStream(payload, writable: false);
     using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
-    if (!reader.ReadBytes(Magic.Length).SequenceEqual(Magic) || reader.ReadInt32() != FormatVersion)
+    if (!reader.ReadBytes(Magic.Length).SequenceEqual(Magic))
+    {
+      throw new InvalidDataException("The CPG shard header is unsupported or corrupt.");
+    }
+
+    var formatVersion = reader.ReadInt32();
+    if (formatVersion != LegacyFormatVersion && formatVersion != FormatVersion)
     {
       throw new InvalidDataException("The CPG shard header is unsupported or corrupt.");
     }
@@ -298,6 +307,18 @@ public sealed class CpgShardStore : ICpgShardStore
       reader.ReadInt32(), reader.ReadInt32(), ReadRequired(reader), ReadOptional(reader),
       ReadOptional(reader), ReadOptional(reader), ReadOptionalInt(reader), ReadOptionalInt(reader),
       ReadOptional(reader))).ToArray();
+    int[]? incomingEdgeOffsets = null;
+    int[]? incomingEdgeIndexes = null;
+    if (formatVersion >= FormatVersion)
+    {
+      incomingEdgeOffsets = Enumerable.Range(0, nodes.Length + 1)
+        .Select(_ => reader.ReadInt32())
+        .ToArray();
+      incomingEdgeIndexes = Enumerable.Range(0, edges.Length)
+        .Select(_ => reader.ReadInt32())
+        .ToArray();
+    }
+
     var boundaryEdges = Enumerable.Range(0, reader.ReadInt32()).Select(_ => new CpgFrozenBoundaryEdge(
       reader.ReadUInt32(), reader.ReadUInt32(), ReadRequired(reader), ReadOptional(reader),
       ReadOptional(reader), ReadOptional(reader), ReadOptionalInt(reader), ReadOptionalInt(reader),
@@ -317,13 +338,24 @@ public sealed class CpgShardStore : ICpgShardStore
       throw new InvalidDataException("The CPG shard boundary-adjacency metadata is invalid.");
     }
 
-    return new CpgFrozenShard(lookup, nodes, edges, symbols, boundaryEdges, role, adjacency);
+    if (incomingEdgeOffsets is not null && incomingEdgeIndexes is not null)
+    {
+      CpgFrozenShardIncomingEdgeIndex.Validate(nodes, edges, incomingEdgeOffsets, incomingEdgeIndexes);
+    }
+
+    return new CpgFrozenShard(
+      lookup,
+      nodes,
+      edges,
+      symbols,
+      boundaryEdges,
+      role,
+      adjacency,
+      incomingEdgeOffsets,
+      incomingEdgeIndexes);
   }
 
-  private static CpgShardReadBackValidationTelemetry ValidateFile(
-    string shardPath,
-    string expectedShardHash,
-    CancellationToken cancellationToken)
+  private static CpgShardReadBackValidationTelemetry ValidateFile(string shardPath, string expectedShardHash, CancellationToken cancellationToken)
   {
     if (string.IsNullOrWhiteSpace(expectedShardHash))
     {
@@ -370,7 +402,7 @@ public sealed class CpgShardStore : ICpgShardStore
     Span<byte> header = stackalloc byte[Magic.Length + sizeof(int)];
     stream.ReadExactly(header);
     if (!header[..Magic.Length].SequenceEqual(Magic) ||
-        BinaryPrimitives.ReadInt32LittleEndian(header[Magic.Length..]) != FormatVersion)
+        !IsSupportedFormatVersion(BinaryPrimitives.ReadInt32LittleEndian(header[Magic.Length..])))
     {
       throw new InvalidDataException("The CPG shard header is unsupported or corrupt.");
     }
@@ -389,7 +421,8 @@ public sealed class CpgShardStore : ICpgShardStore
       }
     }
 
-    if (reader.ReadInt32() != FormatVersion)
+    var formatVersion = reader.ReadInt32();
+    if (!IsSupportedFormatVersion(formatVersion))
     {
       throw new InvalidDataException("The CPG shard header is unsupported or corrupt.");
     }
@@ -443,6 +476,9 @@ public sealed class CpgShardStore : ICpgShardStore
       }
 
       var edgeCount = reader.ReadCount();
+      var edgeTargets = formatVersion >= FormatVersion
+        ? ArrayPool<int>.Shared.Rent(edgeCount)
+        : null;
       for (var index = 0; index < edgeCount; index += 1)
       {
         var sourceLocalIndex = reader.ReadInt32();
@@ -455,7 +491,13 @@ public sealed class CpgShardStore : ICpgShardStore
           throw new InvalidDataException("The CPG shard contains an orphan local edge.");
         }
 
+        edgeTargets?[index] = targetLocalIndex;
         ReadEdgePayload(reader);
+      }
+
+      if (formatVersion >= FormatVersion)
+      {
+        ValidateIncomingEdgeIndex(reader, nodeCount, edgeCount, edgeTargets!);
       }
 
       var boundaryEdgeCount = reader.ReadCount();
@@ -482,6 +524,74 @@ public sealed class CpgShardStore : ICpgShardStore
     finally
     {
       ArrayPool<byte>.Shared.Return(localIndexes, clearArray: true);
+    }
+  }
+
+  private static bool IsSupportedFormatVersion(int formatVersion)
+  {
+    return formatVersion == LegacyFormatVersion || formatVersion == FormatVersion;
+  }
+
+  private static void ValidateIncomingEdgeIndex(CpgShardPayloadReader reader, int nodeCount, int edgeCount, int[] edgeTargets)
+  {
+    var offsets = ArrayPool<int>.Shared.Rent(nodeCount + 1);
+    var seen = ArrayPool<byte>.Shared.Rent(edgeCount);
+    try
+    {
+      for (var index = 0; index <= nodeCount; index += 1)
+      {
+        offsets[index] = reader.ReadInt32();
+      }
+
+      if (offsets[0] != 0 || offsets[nodeCount] != edgeCount)
+      {
+        throw new InvalidDataException("The CPG shard incoming-edge index is invalid.");
+      }
+
+      var previousOffset = 0;
+      for (var targetLocalIndex = 0; targetLocalIndex < nodeCount; targetLocalIndex += 1)
+      {
+        var nextOffset = offsets[targetLocalIndex + 1];
+        if (nextOffset < previousOffset || nextOffset > edgeCount)
+        {
+          throw new InvalidDataException("The CPG shard incoming-edge offsets are invalid.");
+        }
+
+        previousOffset = nextOffset;
+      }
+
+      seen.AsSpan(0, edgeCount).Clear();
+      var currentTargetLocalIndex = 0;
+      var previousEdgeIndex = -1;
+      for (var position = 0; position < edgeCount; position += 1)
+      {
+        while (currentTargetLocalIndex + 1 < offsets.Length &&
+               position >= offsets[currentTargetLocalIndex + 1])
+        {
+          currentTargetLocalIndex += 1;
+          previousEdgeIndex = -1;
+        }
+
+        var edgeIndex = reader.ReadInt32();
+        if ((uint)edgeIndex >= (uint)edgeCount || seen[edgeIndex] != 0)
+        {
+          throw new InvalidDataException("The CPG shard incoming-edge index is invalid.");
+        }
+
+        if (edgeTargets[edgeIndex] != currentTargetLocalIndex || edgeIndex < previousEdgeIndex)
+        {
+          throw new InvalidDataException("The CPG shard incoming-edge index is invalid.");
+        }
+
+        seen[edgeIndex] = 1;
+        previousEdgeIndex = edgeIndex;
+      }
+    }
+    finally
+    {
+      ArrayPool<int>.Shared.Return(offsets);
+      ArrayPool<byte>.Shared.Return(seen, clearArray: true);
+      ArrayPool<int>.Shared.Return(edgeTargets);
     }
   }
 
@@ -586,10 +696,7 @@ public sealed class CpgShardStore : ICpgShardStore
     internal long ReadBackMilliseconds { get; private set; }
     internal long HashMilliseconds { get; private set; }
 
-    internal CpgShardPayloadReader(
-      Stream stream,
-      IncrementalHash hash,
-      CancellationToken cancellationToken)
+    internal CpgShardPayloadReader(Stream stream, IncrementalHash hash, CancellationToken cancellationToken)
     {
       _stream = stream;
       _hash = hash;

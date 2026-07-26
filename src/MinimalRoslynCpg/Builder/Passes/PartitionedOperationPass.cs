@@ -34,10 +34,7 @@ public sealed partial class RoslynCpgBuilder
     int SourceLineCount,
     IReadOnlyList<OperationRootPlan> OperationRoots);
 
-  private void RunPartitionedOperationPass(
-    RoslynCpgBuildContext context,
-    IReadOnlyList<OperationRootPlan> operationRoots,
-    SkeletonShardPublisher? streamingPublisher = null)
+  private void RunPartitionedOperationPass(RoslynCpgBuildContext context, IReadOnlyList<OperationRootPlan> operationRoots, SkeletonShardPublisher? streamingPublisher = null)
   {
     if (operationRoots.Count == 0)
     {
@@ -140,9 +137,7 @@ public sealed partial class RoslynCpgBuilder
     return expanded;
   }
 
-  private static OperationPartitionResult CreatePartitionResult(
-    OperationRootPlan rootPlan,
-    IReadOnlyList<OperationFragmentRecord> records)
+  private static OperationPartitionResult CreatePartitionResult(OperationRootPlan rootPlan, IReadOnlyList<OperationFragmentRecord> records)
   {
     var declarationSpan = rootPlan.BodySyntax.Parent?.Span ?? rootPlan.BodySyntax.Span;
     var owningMethodSymbolKey = rootPlan.OwningMethod is null
@@ -209,10 +204,7 @@ public sealed partial class RoslynCpgBuilder
       edgeCandidates.ToArray());
   }
 
-  private static CpgEdgeCandidate CreateEdgeCandidate(
-    RoslynCpgNode source,
-    RoslynCpgNode target,
-    Contracts.RoslynCpgEdgeKind kind)
+  private static CpgEdgeCandidate CreateEdgeCandidate(RoslynCpgNode source, RoslynCpgNode target, Contracts.RoslynCpgEdgeKind kind)
   {
     return new CpgEdgeCandidate(
       source.StableAnchor ?? throw new InvalidOperationException("Operation fragment edges require stable source anchors."),

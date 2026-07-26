@@ -1,15 +1,11 @@
-namespace Deletion.Logging;
+namespace NLISSN.Logging;
 
 public sealed class TextLogFilter
 {
     private readonly HashSet<TextLogCategory> _categories;
     private readonly HashSet<TextLogEventType> _eventTypes;
 
-    public TextLogFilter(
-      TextLogLevel minimumLevel,
-      TextLogView view,
-      IReadOnlyCollection<TextLogCategory> categories,
-      IReadOnlyCollection<TextLogEventType> eventTypes)
+    public TextLogFilter(TextLogLevel minimumLevel, TextLogView view, IReadOnlyCollection<TextLogCategory> categories, IReadOnlyCollection<TextLogEventType> eventTypes)
     {
         MinimumLevel = minimumLevel;
         View = view;
@@ -49,11 +45,7 @@ public sealed class TextLogFilter
           new[] { TextLogCategory.File, TextLogCategory.Phase, TextLogCategory.Memory, TextLogCategory.Io });
     }
 
-    private static TextLogFilter CreateFromOptions(
-      IReadOnlyDictionary<string, string> options,
-      TextLogLevel defaultLevel,
-      TextLogView defaultView,
-      IReadOnlyCollection<TextLogCategory> defaultCategories)
+    private static TextLogFilter CreateFromOptions(IReadOnlyDictionary<string, string> options, TextLogLevel defaultLevel, TextLogView defaultView, IReadOnlyCollection<TextLogCategory> defaultCategories)
     {
         var profile = TryParseProfile(options, out var profileSettings) ? profileSettings : null;
         var level = TryParseLevel(options, out var parsedLevel) ? parsedLevel : profile?.Level ?? defaultLevel;

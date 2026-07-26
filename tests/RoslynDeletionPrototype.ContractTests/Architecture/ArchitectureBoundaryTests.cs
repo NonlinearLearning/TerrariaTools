@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Xunit;
 
-namespace Deletion.Tests.Architecture;
+namespace NLISSN.Tests.Architecture;
 
 public sealed class ArchitectureBoundaryTests
 {
@@ -12,13 +12,12 @@ public sealed class ArchitectureBoundaryTests
     AssertNoProductionFiles(ProjectPath("src", "Application"));
     AssertNoProductionFiles(ProjectPath("src", "Rules"));
     AssertNoProductionFiles(ProjectPath("src", "Logging"));
-    AssertNoProductionFiles(ProjectPath("src", "RoslynPrototype", "RuleServices"));
   }
 
   [Fact]
   public void LoggingProject_HasNoDependencies()
   {
-    var projectText = File.ReadAllText(ProjectPath("src", "Deletion.Logging", "Deletion.Logging.csproj"));
+    var projectText = File.ReadAllText(ProjectPath("src", "NLISSN.Logging", "NLISSN.Logging.csproj"));
     Assert.DoesNotContain("<ProjectReference", projectText, StringComparison.Ordinal);
     Assert.DoesNotContain("<PackageReference", projectText, StringComparison.Ordinal);
   }
@@ -26,7 +25,7 @@ public sealed class ArchitectureBoundaryTests
   [Fact]
   public void CoreRuleContext_DoesNotExposeTheFullGraph()
   {
-    var contextText = File.ReadAllText(ProjectPath("src", "Deletion.Core", "Pipeline", "RuleContext.cs"));
+    var contextText = File.ReadAllText(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleContext.cs"));
     Assert.DoesNotContain("public CpgAnalysisContext AnalysisContext", contextText, StringComparison.Ordinal);
     Assert.DoesNotContain("public RoslynCpgGraph Graph", contextText, StringComparison.Ordinal);
   }
@@ -34,32 +33,32 @@ public sealed class ArchitectureBoundaryTests
   [Fact]
   public void ApplicationProject_DoesNotReferenceRules()
   {
-    var projectText = File.ReadAllText(ProjectPath("src", "Deletion.Application", "Deletion.Application.csproj"));
-    Assert.DoesNotContain("Deletion.Rules", projectText, StringComparison.Ordinal);
+    var projectText = File.ReadAllText(ProjectPath("src", "NLISSN.Application", "NLISSN.Application.csproj"));
+    Assert.DoesNotContain("NLISSN.Rules", projectText, StringComparison.Ordinal);
   }
 
   [Fact]
   public void DirectoryAnalysisUseCase_StaysWithinTheApplicationBoundary()
   {
-    var useCasePath = ProjectPath("src", "Deletion.Application", "Analysis", "DirectoryAnalysisUseCase.cs");
+    var useCasePath = ProjectPath("src", "NLISSN.Application", "Analysis", "DirectoryAnalysisUseCase.cs");
     Assert.True(File.Exists(useCasePath), "Directory analysis must have an Application-owned use case.");
 
     var useCaseText = File.ReadAllText(useCasePath);
-    Assert.DoesNotContain("Deletion.Cli", useCaseText, StringComparison.Ordinal);
+    Assert.DoesNotContain("using NLISSN;", useCaseText, StringComparison.Ordinal);
     Assert.DoesNotContain("File.", useCaseText, StringComparison.Ordinal);
     Assert.DoesNotContain("Directory.", useCaseText, StringComparison.Ordinal);
   }
 
   [Fact]
-  public void ProductionNamespaces_AreOnlyDeletionNamespaces()
+  public void ProductionNamespaces_UseNlissnNamespaceRoot()
   {
     var productionSources = new[]
       {
-        "Deletion.Core",
-        "Deletion.Rules",
-        "Deletion.Application",
-        "Deletion.Cli",
-        "Deletion.Logging"
+        "NLISSN.Core",
+        "NLISSN.Rules",
+        "NLISSN.Application",
+        "NLISSN",
+        "NLISSN.Logging"
       }
       .SelectMany(project => Directory.EnumerateFiles(
         ProjectPath("src", project),
@@ -70,6 +69,7 @@ public sealed class ArchitectureBoundaryTests
     {
       var source = File.ReadAllText(sourcePath);
       Assert.DoesNotContain("namespace RoslynPrototype", source, StringComparison.Ordinal);
+      Assert.DoesNotContain("namespace Deletion", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Application", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Rules", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Host", source, StringComparison.Ordinal);
@@ -81,7 +81,7 @@ public sealed class ArchitectureBoundaryTests
   public void MarkStage_HasNoPropagationDependency()
   {
     var markSources = Directory.EnumerateFiles(
-      ProjectPath("src", "Deletion.Rules", "Mark"),
+      ProjectPath("src", "NLISSN.Rules", "Mark"),
       "*.cs",
       SearchOption.AllDirectories);
 

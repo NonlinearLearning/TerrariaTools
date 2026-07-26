@@ -37,18 +37,18 @@ CPG 的 shard 持久化是构建器 API 配置，不是当前 CLI 参数；存�
 
 ## 3. 运行删除规则宿主
 
-`src/RoslynPrototype/RoslynPrototype.csproj` 是兼容 launcher；它只保留原有命令路径，实际 CLI 实现在 `src/Deletion.Cli/`。日常调用继续使用这个稳定入口。
+`src/NLISSN/NLISSN.csproj` 直接提供删除规则 CLI。
 
 不传输入路径时，宿主使用内置 demo：
 
 ```powershell
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj
+dotnet run --project .\src\NLISSN\NLISSN.csproj
 ```
 
 对真实输入使用：
 
 ```powershell
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path> --target-name <name> --no-diff
+dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> --target-name <name> --no-diff
 ```
 
 `<input-path>` 是一个 `.cs` 文件或目录。先保留 `--no-diff` 或默认的非写回行为；只有确认 diff 后才加入 `--write-back`。

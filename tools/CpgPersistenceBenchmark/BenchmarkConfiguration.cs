@@ -19,6 +19,16 @@ public sealed record BenchmarkConfiguration(
   string? TemporaryStoreRoot,
   string? OutputPath)
 {
+  public string ResolveOutputPath(DateTimeOffset timestamp)
+  {
+    return OutputPath ?? Path.Combine(
+      "Build",
+      "tools",
+      "CpgPersistenceBenchmark",
+      "reports",
+      $"cpg-persistence-benchmark-{timestamp:yyyyMMddHHmmss}.json");
+  }
+
   public static BenchmarkConfiguration Parse(string[] args)
   {
     var outputIndex = Array.IndexOf(args, "--output");
@@ -81,10 +91,7 @@ public sealed record BenchmarkConfiguration(
     return args[optionIndex + 1];
   }
 
-  private static int ParseNonNegativeInteger(
-    IReadOnlyList<string> args,
-    string optionName,
-    int defaultValue)
+  private static int ParseNonNegativeInteger(IReadOnlyList<string> args, string optionName, int defaultValue)
   {
     var optionIndex = Array.IndexOf(args.ToArray(), optionName);
     if (optionIndex < 0)
@@ -102,10 +109,7 @@ public sealed record BenchmarkConfiguration(
       : throw new ArgumentException($"{optionName} must be a non-negative integer.", optionName);
   }
 
-  private static int ParsePositiveInteger(
-    IReadOnlyList<string> args,
-    string optionName,
-    int defaultValue)
+  private static int ParsePositiveInteger(IReadOnlyList<string> args, string optionName, int defaultValue)
   {
     var optionIndex = Array.IndexOf(args.ToArray(), optionName);
     if (optionIndex < 0)
@@ -139,10 +143,7 @@ public sealed record BenchmarkConfiguration(
       .ToArray();
   }
 
-  private static IReadOnlyList<int> ParsePositiveIntegerList(
-    IReadOnlyList<string> args,
-    string optionName,
-    IReadOnlyList<int> defaultValues)
+  private static IReadOnlyList<int> ParsePositiveIntegerList(IReadOnlyList<string> args, string optionName, IReadOnlyList<int> defaultValues)
   {
     var optionIndex = Array.IndexOf(args.ToArray(), optionName);
     if (optionIndex < 0)

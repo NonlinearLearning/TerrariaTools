@@ -18,19 +18,14 @@ public sealed class RoslynCpgGraph
     private RoslynCpgGraphIndex? _queryIndex;
     private RoslynCpgFreezeTelemetry _freezeTelemetry = RoslynCpgFreezeTelemetry.CreateDefault();
 
-    public RoslynCpgGraph(
-        DeterministicNodeIdTable? preallocatedNodeIds = null,
-        StableNodeIdentityFactory? identityFactory = null,
-        Action<StableNodeAnchor>? anchorDiscoveryObserver = null)
+    public RoslynCpgGraph(DeterministicNodeIdTable? preallocatedNodeIds = null, StableNodeIdentityFactory? identityFactory = null, Action<StableNodeAnchor>? anchorDiscoveryObserver = null)
     {
         _preallocatedNodeIds = preallocatedNodeIds;
         _identityFactory = identityFactory ?? new StableNodeIdentityFactory();
         _anchorDiscoveryObserver = anchorDiscoveryObserver;
     }
 
-    internal static RoslynCpgGraph CreateAnchorDiscovery(
-      StableNodeIdentityFactory identityFactory,
-      Action<StableNodeAnchor> observeAnchor)
+    internal static RoslynCpgGraph CreateAnchorDiscovery(StableNodeIdentityFactory identityFactory, Action<StableNodeAnchor> observeAnchor)
     {
         ArgumentNullException.ThrowIfNull(identityFactory);
         ArgumentNullException.ThrowIfNull(observeAnchor);
@@ -64,9 +59,7 @@ public sealed class RoslynCpgGraph
 
     public string GraphSnapshotVersion => RequireQueryIndex().SnapshotVersion;
 
-    public static RoslynCpgGraph CreateFrozen(
-      IEnumerable<RoslynCpgNode> nodes,
-      IEnumerable<RoslynCpgEdge> edges)
+    public static RoslynCpgGraph CreateFrozen(IEnumerable<RoslynCpgNode> nodes, IEnumerable<RoslynCpgEdge> edges)
     {
         ArgumentNullException.ThrowIfNull(nodes);
         ArgumentNullException.ThrowIfNull(edges);
@@ -142,9 +135,7 @@ public sealed class RoslynCpgGraph
         return merged;
     }
 
-    internal void ImportMutableFacts(
-      IEnumerable<RoslynCpgNode> nodes,
-      IEnumerable<RoslynCpgEdge> edges)
+    internal void ImportMutableFacts(IEnumerable<RoslynCpgNode> nodes, IEnumerable<RoslynCpgEdge> edges)
     {
         ArgumentNullException.ThrowIfNull(nodes);
         ArgumentNullException.ThrowIfNull(edges);
@@ -176,13 +167,7 @@ public sealed class RoslynCpgGraph
     /// <summary>
     /// 在确保端点节点已注册后，补上一条带类型边。
     /// </summary>
-    public void AddEdge(
-        RoslynCpgNode source,
-        RoslynCpgNode target,
-        RoslynCpgEdgeKind kind,
-        RoslynCpgEdgeLabel? structuredLabel = null,
-        RoslynCpgContextId? contextId = null,
-        RoslynCpgCallSiteContext? callSiteContext = null)
+    public void AddEdge(RoslynCpgNode source, RoslynCpgNode target, RoslynCpgEdgeKind kind, RoslynCpgEdgeLabel? structuredLabel = null, RoslynCpgContextId? contextId = null, RoslynCpgCallSiteContext? callSiteContext = null)
     {
         EnsureMutable();
         var materializedSource = AddNode(source);

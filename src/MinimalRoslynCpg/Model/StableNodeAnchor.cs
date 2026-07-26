@@ -11,10 +11,7 @@ public readonly record struct StableNodeAnchor(
   int Ordinal,
   uint ExtraKeyId)
 {
-  public static StableNodeAnchor CreateFallback(
-    RoslynCpgNode node,
-    StringInterner interner,
-    StableNodeRole role)
+  public static StableNodeAnchor CreateFallback(RoslynCpgNode node, StringInterner interner, StableNodeRole role)
   {
     ArgumentNullException.ThrowIfNull(interner);
 

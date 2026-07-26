@@ -3,11 +3,11 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 using MinimalRoslynCpg.Builder;
-using Deletion.Application;
-using Deletion.Core.Analysis;
-using Deletion.Core.Marking;
-using Deletion.Core.Rewrite;
-using Deletion.Rules;
+using NLISSN.Application;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Rewrite;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -80,8 +80,7 @@ public sealed class MarkRuleRegistryCoverageTests
 
   [Theory]
   [MemberData(nameof(NonSObjectNegativeScenarios))]
-  public void Mark_NonSObjectRule_WhenSemanticPredicateDoesNotHold_ProducesNoMark(
-    MarkRuleNegativeScenario scenario)
+  public void Mark_NonSObjectRule_WhenSemanticPredicateDoesNotHold_ProducesNoMark(MarkRuleNegativeScenario scenario)
   {
     var (context, root) = CreateRuleContext(scenario.Source, scenario.Options);
     var rule = GetMarker(scenario.RuleId);
@@ -118,8 +117,7 @@ public sealed class MarkRuleRegistryCoverageTests
 
   [Theory]
   [MemberData(nameof(DeleteSObjectScenarios))]
-  public void Pipeline_DeleteSObjectScenario_DirectAndPlanReplaysAreEquivalentAndCompilable(
-    MarkRuleScenario scenario)
+  public void Pipeline_DeleteSObjectScenario_DirectAndPlanReplaysAreEquivalentAndCompilable(MarkRuleScenario scenario)
   {
     AssertFullPipelineOutput(
       scenario.Source,
@@ -131,8 +129,7 @@ public sealed class MarkRuleRegistryCoverageTests
 
   [Theory]
   [MemberData(nameof(NonSObjectScenarios))]
-  public void Pipeline_NonSObjectScenario_DirectAndPlanReplaysAreEquivalentAndCompilable(
-    MarkRuleScenario scenario)
+  public void Pipeline_NonSObjectScenario_DirectAndPlanReplaysAreEquivalentAndCompilable(MarkRuleScenario scenario)
   {
     AssertFullPipelineOutput(
       scenario.Source,
@@ -419,12 +416,7 @@ public sealed class MarkRuleRegistryCoverageTests
       Options(("privatize-internal-only-public-methods", "true")));
   }
 
-  private static object[] Scenario(
-    string ruleId,
-    string source,
-    string targetName,
-    SyntaxKind expectedKind,
-    string expectedText)
+  private static object[] Scenario(string ruleId, string source, string targetName, SyntaxKind expectedKind, string expectedText)
   {
     return new object[]
     {
@@ -437,20 +429,12 @@ public sealed class MarkRuleRegistryCoverageTests
     };
   }
 
-  private static object[] Scenario(
-    string ruleId,
-    string source,
-    IReadOnlyDictionary<string, string> options,
-    SyntaxKind expectedKind,
-    string expectedText)
+  private static object[] Scenario(string ruleId, string source, IReadOnlyDictionary<string, string> options, SyntaxKind expectedKind, string expectedText)
   {
     return new object[] { new MarkRuleScenario(ruleId, source, options, expectedKind, expectedText) };
   }
 
-  private static object[] NegativeScenario(
-    string ruleId,
-    string source,
-    IReadOnlyDictionary<string, string> options)
+  private static object[] NegativeScenario(string ruleId, string source, IReadOnlyDictionary<string, string> options)
   {
     return new object[] { new MarkRuleNegativeScenario(ruleId, source, options) };
   }
@@ -484,12 +468,7 @@ public sealed class MarkRuleRegistryCoverageTests
       marks.Select(mark => (mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length, mark.SyntaxNode.RawKind)));
   }
 
-  private static void AssertFullPipelineOutput(
-    string source,
-    IReadOnlyDictionary<string, string> options,
-    string ruleId,
-    SyntaxKind expectedKind,
-    string expectedText)
+  private static void AssertFullPipelineOutput(string source, IReadOnlyDictionary<string, string> options, string ruleId, SyntaxKind expectedKind, string expectedText)
   {
     const string filePath = "Scenario.cs";
     var sourceWithUnrelatedDeclaration = source + "\npublic sealed class Unrelated { }";
@@ -587,9 +566,7 @@ public sealed class MarkRuleRegistryCoverageTests
     return CreateRuleContext(source, Options(("target-name", targetName)));
   }
 
-  private static (RuleContext Context, SyntaxNode Root) CreateRuleContext(
-    string source,
-    IReadOnlyDictionary<string, string> options)
+  private static (RuleContext Context, SyntaxNode Root) CreateRuleContext(string source, IReadOnlyDictionary<string, string> options)
   {
     const string filePath = "MarkRuleRegistryCoverage.cs";
     var tree = CSharpSyntaxTree.ParseText(source, path: filePath);

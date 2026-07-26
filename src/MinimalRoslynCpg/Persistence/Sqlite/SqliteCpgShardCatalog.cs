@@ -5,12 +5,22 @@ using System.Text;
 
 namespace MinimalRoslynCpg.Persistence.Sqlite;
 
+public sealed record CpgRoutingIndexCacheTelemetry(
+  long ReadCount,
+  long CacheHitCount,
+  long CacheMissCount);
+
 public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
 {
   private const string CompletionMarkerFileName = "completed.marker";
   private readonly string _connectionString;
   private readonly string _storeRoot;
   private readonly SemaphoreSlim _schemaInitializationGate = new(1, 1);
+  private readonly Dictionary<RoutingIndexCacheKey, Task<CpgBuildRoutingIndex>> _routingIndexCache = new();
+  private readonly object _routingIndexCacheGate = new();
+  private long _routingIndexReadCount;
+  private long _routingIndexCacheHitCount;
+  private long _routingIndexCacheMissCount;
   private int _schemaInitialized;
 
   public SqliteCpgShardCatalog(string databasePath)
@@ -26,6 +36,14 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
       // handles prevent deterministic cleanup of those stores on Windows.
       Pooling = false,
     }.ToString();
+  }
+
+  public CpgRoutingIndexCacheTelemetry GetRoutingIndexCacheTelemetry()
+  {
+    return new CpgRoutingIndexCacheTelemetry(
+      Interlocked.Read(ref _routingIndexReadCount),
+      Interlocked.Read(ref _routingIndexCacheHitCount),
+      Interlocked.Read(ref _routingIndexCacheMissCount));
   }
 
   public async Task<CpgShardLease?> TryAcquireAsync(CpgShardLookup lookup, CancellationToken cancellationToken)
@@ -63,9 +81,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return new CpgShardLease(lookup, location);
   }
 
-  public async Task<CpgReusableShardLease?> TryAcquireReusableAsync(
-    CpgReusableFragmentKey key,
-    CancellationToken cancellationToken)
+  public async Task<CpgReusableShardLease?> TryAcquireReusableAsync(CpgReusableFragmentKey key, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(key);
     await using var connection = await OpenAsync(cancellationToken);
@@ -124,9 +140,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return await ReadLocationsAsync(command, cancellationToken);
   }
 
-  public async Task<IReadOnlyList<CpgShardLocation>> FindByNodeAsync(
-    uint nodeId,
-    CancellationToken cancellationToken)
+  public async Task<IReadOnlyList<CpgShardLocation>> FindByNodeAsync(uint nodeId, CancellationToken cancellationToken)
   {
     var routingLocations = await FindByNodeRoutingIndexAsync(nodeId, cancellationToken);
     if (routingLocations is not null)
@@ -165,11 +179,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return await ReadLocationsAsync(command, cancellationToken);
   }
 
-  public async Task<IReadOnlyList<CpgShardLocation>> FindByFileAsync(
-    CpgFileKey fileKey,
-    int schemaVersion,
-    string profileHash,
-    CancellationToken cancellationToken)
+  public async Task<IReadOnlyList<CpgShardLocation>> FindByFileAsync(CpgFileKey fileKey, int schemaVersion, string profileHash, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(fileKey);
     ArgumentException.ThrowIfNullOrWhiteSpace(profileHash);
@@ -286,11 +296,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return buildId;
   }
 
-  public async Task StageAsync(
-    string buildId,
-    CpgShardLease lease,
-    CpgFrozenShard shard,
-    CancellationToken cancellationToken)
+  public async Task StageAsync(string buildId, CpgShardLease lease, CpgFrozenShard shard, CancellationToken cancellationToken)
   {
     await StageBatchAsync(
       buildId,
@@ -298,12 +304,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
       cancellationToken);
   }
 
-  public async Task StageReusableAsync(
-    string buildId,
-    CpgShardLease lease,
-    CpgFrozenShard shard,
-    CpgReusableFragmentKey reusableKey,
-    CancellationToken cancellationToken)
+  public async Task StageReusableAsync(string buildId, CpgShardLease lease, CpgFrozenShard shard, CpgReusableFragmentKey reusableKey, CancellationToken cancellationToken)
   {
     await StageBatchAsync(
       buildId,
@@ -311,11 +312,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
       cancellationToken);
   }
 
-  internal async Task CloneReusableAsync(
-    string buildId,
-    CpgShardLookup targetLookup,
-    CpgReusableShardLease source,
-    CancellationToken cancellationToken)
+  internal async Task CloneReusableAsync(string buildId, CpgShardLookup targetLookup, CpgReusableShardLease source, CancellationToken cancellationToken)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
     ArgumentNullException.ThrowIfNull(targetLookup);
@@ -336,14 +333,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     await transaction.CommitAsync(cancellationToken);
   }
 
-  private static async Task CloneReusableAsync(
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    string buildId,
-    CpgShardLookup targetLookup,
-    CpgReusableShardLease source,
-    bool writeLegacyRoutingRows,
-    CancellationToken cancellationToken)
+  private static async Task CloneReusableAsync(SqliteConnection connection, SqliteTransaction transaction, string buildId, CpgShardLookup targetLookup, CpgReusableShardLease source, bool writeLegacyRoutingRows, CancellationToken cancellationToken)
   {
     ValidateReusableKey(source.Key, targetLookup);
     var fileId = Hash(
@@ -374,11 +364,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     }
   }
 
-  internal async Task FinalizeBuildAsync(
-    string buildId,
-    IReadOnlyList<Builder.CpgReusableCloneRequest> reusableCloneRequests,
-    CpgBuildRoutingIndexManifest? routingIndexManifest,
-    CancellationToken cancellationToken)
+  internal async Task FinalizeBuildAsync(string buildId, IReadOnlyList<Builder.CpgReusableCloneRequest> reusableCloneRequests, CpgBuildRoutingIndexManifest? routingIndexManifest, CancellationToken cancellationToken)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
     ArgumentNullException.ThrowIfNull(reusableCloneRequests);
@@ -411,10 +397,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     await transaction.CommitAsync(cancellationToken);
   }
 
-  internal async Task StageBatchAsync(
-    string buildId,
-    IReadOnlyList<CpgCatalogPublication> publications,
-    CancellationToken cancellationToken)
+  internal async Task StageBatchAsync(string buildId, IReadOnlyList<CpgCatalogPublication> publications, CancellationToken cancellationToken)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
     ArgumentNullException.ThrowIfNull(publications);
@@ -432,12 +415,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return OpenAsync(cancellationToken);
   }
 
-  internal async Task<CpgCatalogStageTelemetry> StageBatchAsync(
-    SqliteConnection connection,
-    string buildId,
-    IReadOnlyList<CpgCatalogPublication> publications,
-    SqliteCpgCatalogCommandCache? commandCache,
-    CancellationToken cancellationToken)
+  internal async Task<CpgCatalogStageTelemetry> StageBatchAsync(SqliteConnection connection, string buildId, IReadOnlyList<CpgCatalogPublication> publications, SqliteCpgCatalogCommandCache? commandCache, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(connection);
     ArgumentException.ThrowIfNullOrWhiteSpace(buildId);
@@ -466,14 +444,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return telemetry;
   }
 
-  private static async Task StageOneAsync(
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    string buildId,
-    CpgCatalogPublication publication,
-    SqliteCpgCatalogCommandCache? commandCache,
-    CpgCatalogStageTelemetry telemetry,
-    CancellationToken cancellationToken)
+  private static async Task StageOneAsync(SqliteConnection connection, SqliteTransaction transaction, string buildId, CpgCatalogPublication publication, SqliteCpgCatalogCommandCache? commandCache, CpgCatalogStageTelemetry telemetry, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(publication);
     var lease = publication.Lease;
@@ -660,14 +631,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
 
   }
 
-  private static async Task ExecuteStageAsync(
-    SqliteCpgCatalogCommandCache? commandCache,
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    CpgCatalogStageTelemetry telemetry,
-    string sql,
-    CancellationToken cancellationToken,
-    params object?[] values)
+  private static async Task ExecuteStageAsync(SqliteCpgCatalogCommandCache? commandCache, SqliteConnection connection, SqliteTransaction transaction, CpgCatalogStageTelemetry telemetry, string sql, CancellationToken cancellationToken, params object?[] values)
   {
     var affectedRows = commandCache is null
       ? await ExecuteAsync(connection, transaction, sql, telemetry, cancellationToken, values)
@@ -675,16 +639,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     telemetry.RecordStatement(rows: 1, affectedRows);
   }
 
-  private static async Task ExecuteStageRowsAsync(
-    SqliteCpgCatalogCommandCache? commandCache,
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    string tableName,
-    string columnNames,
-    string conflictClause,
-    IReadOnlyList<object?[]> rows,
-    CpgCatalogStageTelemetry telemetry,
-    CancellationToken cancellationToken)
+  private static async Task ExecuteStageRowsAsync(SqliteCpgCatalogCommandCache? commandCache, SqliteConnection connection, SqliteTransaction transaction, string tableName, string columnNames, string conflictClause, IReadOnlyList<object?[]> rows, CpgCatalogStageTelemetry telemetry, CancellationToken cancellationToken)
   {
     if (rows.Count == 0)
     {
@@ -726,13 +681,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     }
   }
 
-  private static async Task<int> ExecuteValuesAsync(
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    string sql,
-    IReadOnlyList<object?> values,
-    CpgCatalogStageTelemetry telemetry,
-    CancellationToken cancellationToken)
+  private static async Task<int> ExecuteValuesAsync(SqliteConnection connection, SqliteTransaction transaction, string sql, IReadOnlyList<object?> values, CpgCatalogStageTelemetry telemetry, CancellationToken cancellationToken)
   {
     await using var command = connection.CreateCommand();
     command.Transaction = transaction;
@@ -766,12 +715,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     "session_routing_indexes",
   };
 
-  private static async Task WriteRoutingIndexManifestAsync(
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    string buildId,
-    CpgBuildRoutingIndexManifest manifest,
-    CancellationToken cancellationToken)
+  private static async Task WriteRoutingIndexManifestAsync(SqliteConnection connection, SqliteTransaction transaction, string buildId, CpgBuildRoutingIndexManifest manifest, CancellationToken cancellationToken)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(manifest.RelativePath);
     ArgumentException.ThrowIfNullOrWhiteSpace(manifest.PayloadHash);
@@ -795,11 +739,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
       manifest.PayloadHash);
   }
 
-  private static async Task CompleteBuildAsync(
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    string buildId,
-    CancellationToken cancellationToken)
+  private static async Task CompleteBuildAsync(SqliteConnection connection, SqliteTransaction transaction, string buildId, CancellationToken cancellationToken)
   {
     var completedAt = DateTimeOffset.UtcNow.ToString("O");
     await using var complete = connection.CreateCommand();
@@ -841,11 +781,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
       buildId);
   }
 
-  private static async Task DecrementPhysicalShardReferencesAsync(
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    IReadOnlyList<string> buildsToPrune,
-    CancellationToken cancellationToken)
+  private static async Task DecrementPhysicalShardReferencesAsync(SqliteConnection connection, SqliteTransaction transaction, IReadOnlyList<string> buildsToPrune, CancellationToken cancellationToken)
   {
     await using var decrement = connection.CreateCommand();
     decrement.Transaction = transaction;
@@ -890,9 +826,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     await transaction.CommitAsync(cancellationToken);
   }
 
-  public async Task<CpgCatalogMaintenanceResult> PruneCompletedBuildsAsync(
-    int maxCompletedBuilds,
-    CancellationToken cancellationToken)
+  public async Task<CpgCatalogMaintenanceResult> PruneCompletedBuildsAsync(int maxCompletedBuilds, CancellationToken cancellationToken)
   {
     if (maxCompletedBuilds < 0)
     {
@@ -1138,9 +1072,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return await ReadLocationsAsync(command, cancellationToken);
   }
 
-  private async Task<IReadOnlyList<CpgShardLocation>?> FindByNodeRoutingIndexAsync(
-    uint nodeId,
-    CancellationToken cancellationToken)
+  private async Task<IReadOnlyList<CpgShardLocation>?> FindByNodeRoutingIndexAsync(uint nodeId, CancellationToken cancellationToken)
   {
     foreach (var candidate in await ReadRoutingIndexCandidatesAsync(cancellationToken))
     {
@@ -1176,9 +1108,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return null;
   }
 
-  private async Task<IReadOnlyList<CpgShardLocation>?> FindBySymbolRoutingIndexAsync(
-    CpgSymbolLookup lookup,
-    CancellationToken cancellationToken)
+  private async Task<IReadOnlyList<CpgShardLocation>?> FindBySymbolRoutingIndexAsync(CpgSymbolLookup lookup, CancellationToken cancellationToken)
   {
     foreach (var candidate in await ReadRoutingIndexCandidatesAsync(cancellationToken))
     {
@@ -1194,9 +1124,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return null;
   }
 
-  private async Task<IReadOnlyList<CpgShardLocation>?> FindBySpanRoutingIndexAsync(
-    CpgSpanLookup lookup,
-    CancellationToken cancellationToken)
+  private async Task<IReadOnlyList<CpgShardLocation>?> FindBySpanRoutingIndexAsync(CpgSpanLookup lookup, CancellationToken cancellationToken)
   {
     foreach (var candidate in await ReadRoutingIndexCandidatesAsync(cancellationToken))
     {
@@ -1212,8 +1140,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return null;
   }
 
-  private async Task<IReadOnlyList<CpgRoutingIndexCandidate>> ReadRoutingIndexCandidatesAsync(
-    CancellationToken cancellationToken)
+  private async Task<IReadOnlyList<CpgRoutingIndexCandidate>> ReadRoutingIndexCandidatesAsync(CancellationToken cancellationToken)
   {
     await using var connection = await OpenAsync(cancellationToken);
     await using var command = connection.CreateCommand();
@@ -1239,18 +1166,63 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
         throw new InvalidDataException("A completed CPG build is missing its routing index.");
       }
 
-      var index = await new CpgBuildRoutingIndexReader().ReadAsync(path, cancellationToken);
-      if (formatVersion != CpgBuildRoutingIndexWriter.FormatVersion ||
-          !string.Equals(index.BuildId, buildId, StringComparison.Ordinal) ||
-          !string.Equals(index.PayloadHash, payloadHash, StringComparison.Ordinal))
-      {
-        throw new InvalidDataException("The completed CPG build routing index manifest does not match its file.");
-      }
+      var cacheKey = new RoutingIndexCacheKey(buildId, relativePath, formatVersion, byteLength, payloadHash);
+      var index = await GetVerifiedRoutingIndexAsync(cacheKey, path, cancellationToken);
 
       candidates.Add(new CpgRoutingIndexCandidate(buildId, index));
     }
 
     return candidates;
+  }
+
+  private async Task<CpgBuildRoutingIndex> GetVerifiedRoutingIndexAsync(RoutingIndexCacheKey cacheKey, string path, CancellationToken cancellationToken)
+  {
+    Task<CpgBuildRoutingIndex> readTask;
+    lock (_routingIndexCacheGate)
+    {
+      if (_routingIndexCache.TryGetValue(cacheKey, out readTask!))
+      {
+        Interlocked.Increment(ref _routingIndexCacheHitCount);
+      }
+      else
+      {
+        Interlocked.Increment(ref _routingIndexCacheMissCount);
+        readTask = ReadAndVerifyRoutingIndexAsync(cacheKey, path);
+        _routingIndexCache.Add(cacheKey, readTask);
+      }
+    }
+
+    try
+    {
+      return await readTask.WaitAsync(cancellationToken);
+    }
+    catch
+    {
+      lock (_routingIndexCacheGate)
+      {
+        if (_routingIndexCache.TryGetValue(cacheKey, out var cachedTask) &&
+            ReferenceEquals(cachedTask, readTask))
+        {
+          _routingIndexCache.Remove(cacheKey);
+        }
+      }
+
+      throw;
+    }
+  }
+
+  private async Task<CpgBuildRoutingIndex> ReadAndVerifyRoutingIndexAsync(RoutingIndexCacheKey cacheKey, string path)
+  {
+    Interlocked.Increment(ref _routingIndexReadCount);
+    var index = await new CpgBuildRoutingIndexReader().ReadAsync(path, CancellationToken.None);
+    if (cacheKey.FormatVersion != CpgBuildRoutingIndexWriter.FormatVersion ||
+        !string.Equals(index.BuildId, cacheKey.BuildId, StringComparison.Ordinal) ||
+        !string.Equals(index.PayloadHash, cacheKey.PayloadHash, StringComparison.Ordinal))
+    {
+      throw new InvalidDataException("The completed CPG build routing index manifest does not match its file.");
+    }
+
+    return index;
   }
 
   private string ResolveRoutingIndexPath(string relativePath)
@@ -1270,10 +1242,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return path;
   }
 
-  private async Task<IReadOnlyList<string>> ReadAdjacentShardIdsAsync(
-    string buildId,
-    IEnumerable<string> primaryShardIds,
-    CancellationToken cancellationToken)
+  private async Task<IReadOnlyList<string>> ReadAdjacentShardIdsAsync(string buildId, IEnumerable<string> primaryShardIds, CancellationToken cancellationToken)
   {
     var shardIds = primaryShardIds.Distinct(StringComparer.Ordinal).ToArray();
     if (shardIds.Length == 0)
@@ -1302,10 +1271,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return results;
   }
 
-  private async Task<IReadOnlyList<CpgShardLocation>> ReadSessionLocationsByShardIdsAsync(
-    string buildId,
-    IEnumerable<string> shardIds,
-    CancellationToken cancellationToken)
+  private async Task<IReadOnlyList<CpgShardLocation>> ReadSessionLocationsByShardIdsAsync(string buildId, IEnumerable<string> shardIds, CancellationToken cancellationToken)
   {
     var distinctShardIds = shardIds.Distinct(StringComparer.Ordinal).ToArray();
     if (distinctShardIds.Length == 0)
@@ -1337,6 +1303,13 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
 
     return string.Join(", ", parameterNames);
   }
+
+  private sealed record RoutingIndexCacheKey(
+    string BuildId,
+    string RelativePath,
+    int FormatVersion,
+    long ByteLength,
+    string PayloadHash);
 
   private sealed record CpgRoutingIndexCandidate(string BuildId, CpgBuildRoutingIndex Index);
 
@@ -1506,13 +1479,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
     return await command.ExecuteNonQueryAsync(cancellationToken);
   }
 
-  private static async Task<int> ExecuteAsync(
-    SqliteConnection connection,
-    SqliteTransaction transaction,
-    string sql,
-    CpgCatalogStageTelemetry telemetry,
-    CancellationToken cancellationToken,
-    params object?[] values)
+  private static async Task<int> ExecuteAsync(SqliteConnection connection, SqliteTransaction transaction, string sql, CpgCatalogStageTelemetry telemetry, CancellationToken cancellationToken, params object?[] values)
   {
     await using var command = connection.CreateCommand();
     command.Transaction = transaction;
@@ -1610,12 +1577,7 @@ internal sealed class SqliteCpgCatalogCommandCache : IAsyncDisposable
     _connection = connection;
   }
 
-  internal async Task<int> ExecuteAsync(
-    SqliteTransaction transaction,
-    string sql,
-    CpgCatalogStageTelemetry telemetry,
-    CancellationToken cancellationToken,
-    params object?[] values)
+  internal async Task<int> ExecuteAsync(SqliteTransaction transaction, string sql, CpgCatalogStageTelemetry telemetry, CancellationToken cancellationToken, params object?[] values)
   {
     if (!_commands.TryGetValue(sql, out var command))
     {
@@ -1648,12 +1610,7 @@ internal sealed class SqliteCpgCatalogCommandCache : IAsyncDisposable
     return affectedRows;
   }
 
-  internal async Task<int> ExecuteValuesAsync(
-    SqliteTransaction transaction,
-    string sql,
-    IReadOnlyList<object?> values,
-    CpgCatalogStageTelemetry telemetry,
-    CancellationToken cancellationToken)
+  internal async Task<int> ExecuteValuesAsync(SqliteTransaction transaction, string sql, IReadOnlyList<object?> values, CpgCatalogStageTelemetry telemetry, CancellationToken cancellationToken)
   {
     if (!_commands.TryGetValue(sql, out var command))
     {

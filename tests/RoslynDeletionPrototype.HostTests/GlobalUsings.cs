@@ -1,2 +1,2 @@
-global using Deletion.Cli;
+global using NLISSN;
 global using RoslynPrototype.Testing.TestInfrastructure;

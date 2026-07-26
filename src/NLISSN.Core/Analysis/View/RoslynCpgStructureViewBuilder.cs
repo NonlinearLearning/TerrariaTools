@@ -4,7 +4,7 @@ using MinimalRoslynCpg.Model;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 /// <summary>
 /// 从主 CPG 图中复制与一个或多个代码片段相关的局部视图。
@@ -22,10 +22,7 @@ public sealed class RoslynCpgStructureViewBuilder
         return Build(new SyntaxNode[] { root }, context);
     }
 
-    public RoslynCpgStructureView Build(
-      SyntaxNode root,
-      CpgAnalysisContext context,
-      string cacheScopeKey)
+    public RoslynCpgStructureView Build(SyntaxNode root, CpgAnalysisContext context, string cacheScopeKey)
     {
         return Build(new SyntaxNode[] { root }, context, cacheScopeKey);
     }
@@ -38,10 +35,7 @@ public sealed class RoslynCpgStructureViewBuilder
         return Build(fragments, context, null);
     }
 
-    public RoslynCpgStructureView Build(
-      IReadOnlyCollection<SyntaxNode> fragments,
-      CpgAnalysisContext context,
-      string? cacheScopeKey)
+    public RoslynCpgStructureView Build(IReadOnlyCollection<SyntaxNode> fragments, CpgAnalysisContext context, string? cacheScopeKey)
     {
         if (fragments.Count == 0)
         {
@@ -161,9 +155,7 @@ public sealed class RoslynCpgStructureViewBuilder
         }
     }
 
-    private static string BuildFragmentSetKey(
-      IReadOnlyList<SyntaxNode> fragments,
-      string? cacheScopeKey)
+    private static string BuildFragmentSetKey(IReadOnlyList<SyntaxNode> fragments, string? cacheScopeKey)
     {
         var fragmentKey = string.Join(
             "|",

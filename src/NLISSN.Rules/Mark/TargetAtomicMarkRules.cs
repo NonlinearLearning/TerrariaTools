@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Core.Marking;
+using NLISSN.Core.Marking;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public sealed class SObjectIdentifierNameMarkRule : SObjectAtomicExpressionMarkRuleBase
 {

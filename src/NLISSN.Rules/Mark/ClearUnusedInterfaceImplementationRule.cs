@@ -1,10 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Analysis;
-using Deletion.Core.Marking;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Marking;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 /// <summary>
 /// 命中未被调用的接口成员对应的源码实现方法。

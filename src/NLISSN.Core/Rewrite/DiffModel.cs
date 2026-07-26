@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis.Text;
 
-namespace Deletion.Core.Rewrite;
+namespace NLISSN.Core.Rewrite;
 
 public enum DiffEditKind
 {

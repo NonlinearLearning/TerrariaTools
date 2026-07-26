@@ -11,10 +11,7 @@ public sealed partial class RoslynCpgBuilder
     SyntaxTypeResolution TypeResolution,
     bool ShouldDeferToOperation);
 
-  private void RunSyntaxPass(
-    RoslynCpgBuildContext context,
-    bool usePartitionedSyntaxPass,
-    IReadOnlyList<OperationRootPlan> operationRoots)
+  private void RunSyntaxPass(RoslynCpgBuildContext context, bool usePartitionedSyntaxPass, IReadOnlyList<OperationRootPlan> operationRoots)
   {
     if (!usePartitionedSyntaxPass)
     {
@@ -56,9 +53,7 @@ public sealed partial class RoslynCpgBuilder
     _partitionedSyntaxFacts.Clear();
   }
 
-  private async Task<IReadOnlyList<IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts>>> RunSyntaxPartitionsAsync(
-    IReadOnlyList<SyntaxNode[]> partitions,
-    SemanticModel semanticModel)
+  private async Task<IReadOnlyList<IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts>>> RunSyntaxPartitionsAsync(IReadOnlyList<SyntaxNode[]> partitions, SemanticModel semanticModel)
   {
     return await BoundedPartitionWorkWindow.RunAsync(
       partitions,
@@ -66,9 +61,7 @@ public sealed partial class RoslynCpgBuilder
       (partition, _) => AnalyzeSyntaxPartition(partition, semanticModel));
   }
 
-  private IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts> AnalyzeSyntaxPartition(
-    IReadOnlyList<SyntaxNode> syntaxNodes,
-    SemanticModel semanticModel)
+  private IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts> AnalyzeSyntaxPartition(IReadOnlyList<SyntaxNode> syntaxNodes, SemanticModel semanticModel)
   {
     var facts = new Dictionary<SyntaxNode, SyntaxSemanticFacts>(ReferenceEqualityComparer.Instance);
     foreach (var syntax in syntaxNodes)
@@ -95,9 +88,7 @@ public sealed partial class RoslynCpgBuilder
       shouldDeferToOperation);
   }
 
-  private bool ShouldUsePartitionedSyntaxPass(
-    RoslynCpgBuildContext context,
-    IReadOnlyList<OperationRootPlan> operationRoots)
+  private bool ShouldUsePartitionedSyntaxPass(RoslynCpgBuildContext context, IReadOnlyList<OperationRootPlan> operationRoots)
   {
     return true;
   }

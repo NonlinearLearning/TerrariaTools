@@ -2,9 +2,9 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
-using Deletion.Rules;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Marking;
+namespace NLISSN.Core.Marking;
 
 public static class DeleteClassMarkRuleHelpers
 {

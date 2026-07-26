@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using MinimalRoslynCpg.Model;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 /// <summary>
 /// 结构分析阶段共享的只读上下文。

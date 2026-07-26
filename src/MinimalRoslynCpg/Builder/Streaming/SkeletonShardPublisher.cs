@@ -28,11 +28,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
   private int _bufferedBoundaryEdgeCount;
   private bool _completed;
 
-  private SkeletonShardPublisher(
-    CpgShardBuildSession session,
-    CpgPersistenceOptions options,
-    CpgFileKey file,
-    IReadOnlyList<CpgFragmentOwnership> fragments)
+  private SkeletonShardPublisher(CpgShardBuildSession session, CpgPersistenceOptions options, CpgFileKey file, IReadOnlyList<CpgFragmentOwnership> fragments)
   {
     _session = session;
     _options = options;
@@ -41,10 +37,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     _ownership = new FragmentOwnershipIndex(fragments);
   }
 
-  internal static async Task<SkeletonShardPublisher> BeginAsync(
-    CpgPersistenceOptions options,
-    RoslynCpgBuildContext context,
-    CancellationToken cancellationToken)
+  internal static async Task<SkeletonShardPublisher> BeginAsync(CpgPersistenceOptions options, RoslynCpgBuildContext context, CancellationToken cancellationToken)
   {
     var session = await CpgShardBuildSession.BeginAsync(options, cancellationToken);
     try
@@ -71,9 +64,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
   }
 
-  internal async Task<CpgShardBuildResult> CompleteBaseAsync(
-    RoslynCpgBuildContext context,
-    CancellationToken cancellationToken)
+  internal async Task<CpgShardBuildResult> CompleteBaseAsync(RoslynCpgBuildContext context, CancellationToken cancellationToken)
   {
     var facts = context.Graph.SnapshotMutableFacts();
     var allocation = context.Graph.RequirePreallocatedNodeIds();
@@ -127,10 +118,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       _fragments.Count == 0 ? 0 : 1), _session.Telemetry);
   }
 
-  internal async Task PublishOperationFragmentAsync(
-    RoslynCpgBuildContext context,
-    OperationFragmentFacts facts,
-    CancellationToken cancellationToken)
+  internal async Task PublishOperationFragmentAsync(RoslynCpgBuildContext context, OperationFragmentFacts facts, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(facts);
     var lookup = CreateLookup(
@@ -216,13 +204,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
   }
 
-  private async Task PublishDescriptorsAsync(
-    RoslynCpgBuildContext context,
-    string kind,
-    TextSpan span,
-    IReadOnlyList<CpgNodeDescriptor> descriptors,
-    IReadOnlyList<CpgEdgeCandidate> candidates,
-    CancellationToken cancellationToken)
+  private async Task PublishDescriptorsAsync(RoslynCpgBuildContext context, string kind, TextSpan span, IReadOnlyList<CpgNodeDescriptor> descriptors, IReadOnlyList<CpgEdgeCandidate> candidates, CancellationToken cancellationToken)
   {
     var lookup = CreateLookup(kind, span, context.Source);
     var ignoredBoundaryEdges = new List<CpgFrozenBoundaryEdge>();
@@ -260,11 +242,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
   }
 
-  private async Task PublishPendingBoundaryAdjacenciesAsync(
-    IReadOnlyList<CpgEdgeCandidate> candidates,
-    DeterministicNodeIdTable allocation,
-    string source,
-    CancellationToken cancellationToken)
+  private async Task PublishPendingBoundaryAdjacenciesAsync(IReadOnlyList<CpgEdgeCandidate> candidates, DeterministicNodeIdTable allocation, string source, CancellationToken cancellationToken)
   {
     foreach (var candidate in candidates)
     {
@@ -304,22 +282,14 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
   }
 
-  private IReadOnlyList<CpgEdgeCandidate> FilterCandidates(
-    IReadOnlyList<CpgEdgeCandidate> candidates,
-    IReadOnlySet<NodeId> nodeIds,
-    DeterministicNodeIdTable allocation)
+  private IReadOnlyList<CpgEdgeCandidate> FilterCandidates(IReadOnlyList<CpgEdgeCandidate> candidates, IReadOnlySet<NodeId> nodeIds, DeterministicNodeIdTable allocation)
   {
     return candidates.Where(candidate =>
       nodeIds.Contains(allocation.GetRequiredId(candidate.SourceAnchor)) &&
       nodeIds.Contains(allocation.GetRequiredId(candidate.TargetAnchor))).ToArray();
   }
 
-  private async Task AppendBoundaryAsync(
-    CpgShardLookup owner,
-    CpgBoundaryAdjacencyDirection direction,
-    CpgFrozenBoundaryEdge edge,
-    string source,
-    CancellationToken cancellationToken)
+  private async Task AppendBoundaryAsync(CpgShardLookup owner, CpgBoundaryAdjacencyDirection direction, CpgFrozenBoundaryEdge edge, string source, CancellationToken cancellationToken)
   {
     var bucket = new BoundaryBucket(owner, direction);
     if (!_boundaryBatches.TryGetValue(bucket, out var batch))
@@ -386,11 +356,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       edge.CallSiteContext);
   }
 
-  private static void AddCandidateToBucket(
-    CpgFragmentOwnership? owner,
-    CpgEdgeCandidate candidate,
-    List<CpgEdgeCandidate> skeletonCandidates,
-    IReadOnlyDictionary<CpgFragmentOwnership, List<CpgEdgeCandidate>> candidateBuckets)
+  private static void AddCandidateToBucket(CpgFragmentOwnership? owner, CpgEdgeCandidate candidate, List<CpgEdgeCandidate> skeletonCandidates, IReadOnlyDictionary<CpgFragmentOwnership, List<CpgEdgeCandidate>> candidateBuckets)
   {
     if (owner is null)
     {

@@ -1,12 +1,12 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using MinimalRoslynCpg.Contracts;
-using Deletion.Core.Decision;
-using Deletion.Core.Lifting;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Lifting;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public interface IRuleDefinition
 {
@@ -48,9 +48,7 @@ public abstract class RuleDefinitionPropagate : IRuleDefinition
 
     public abstract IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; }
 
-    public abstract IEnumerable<PropagatedMarkRecord> Propagate(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks);
+    public abstract IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks);
 }
 
 public abstract class RuleDefinitionPropose : IRuleDefinition
@@ -70,11 +68,7 @@ public abstract class RuleDefinitionPropose : IRuleDefinition
 
     public abstract IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; }
 
-    public abstract IEnumerable<DecisionUnit> Propose(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks);
+    public abstract IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks);
 }
 
 public abstract class RuleDefinitionLift : IRuleDefinition
@@ -92,8 +86,5 @@ public abstract class RuleDefinitionLift : IRuleDefinition
 
     public abstract IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; }
 
-    public abstract IEnumerable<LiftedMarkRecord> Lift(
-      RuleContext context,
-      IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks);
+    public abstract IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks);
 }

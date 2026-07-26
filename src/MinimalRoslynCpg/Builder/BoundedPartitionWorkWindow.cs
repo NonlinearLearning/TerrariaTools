@@ -10,10 +10,7 @@ internal static class BoundedPartitionWorkWindow
     int RetainedRecordCount,
     long CompletedTimestamp);
 
-  public static async Task<TResult[]> RunAsync<TInput, TResult>(
-    IReadOnlyList<TInput> inputs,
-    int maxDegreeOfParallelism,
-    Func<TInput, int, TResult> workItem)
+  public static async Task<TResult[]> RunAsync<TInput, TResult>(IReadOnlyList<TInput> inputs, int maxDegreeOfParallelism, Func<TInput, int, TResult> workItem)
   {
     ArgumentNullException.ThrowIfNull(inputs);
     ArgumentNullException.ThrowIfNull(workItem);
@@ -48,15 +45,7 @@ internal static class BoundedPartitionWorkWindow
     return results;
   }
 
-  public static RoslynCpgOrderedWorkWindowTelemetry RunOrdered<TInput, TResult>(
-    IReadOnlyList<TInput> inputs,
-    int maxDegreeOfParallelism,
-    Func<TInput, int, TResult> workItem,
-    Action<TResult, int> commit,
-    CancellationToken cancellationToken = default,
-    Func<TResult, int>? retainedRecordCount = null,
-    int? reorderAllowance = null,
-    int maxCompletedRecordCount = int.MaxValue)
+  public static RoslynCpgOrderedWorkWindowTelemetry RunOrdered<TInput, TResult>(IReadOnlyList<TInput> inputs, int maxDegreeOfParallelism, Func<TInput, int, TResult> workItem, Action<TResult, int> commit, CancellationToken cancellationToken = default, Func<TResult, int>? retainedRecordCount = null, int? reorderAllowance = null, int maxCompletedRecordCount = int.MaxValue)
   {
     ArgumentNullException.ThrowIfNull(inputs);
     ArgumentNullException.ThrowIfNull(workItem);

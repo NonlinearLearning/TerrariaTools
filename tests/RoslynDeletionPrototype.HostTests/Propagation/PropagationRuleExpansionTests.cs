@@ -1,11 +1,11 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Marking;
-using Deletion.Application;
-using Deletion.Core.Rewrite;
+using NLISSN.Core.Marking;
+using NLISSN.Application;
+using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.Propagation;
-using Deletion.Rules;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

@@ -7,9 +7,7 @@ namespace MinimalRoslynCpg.Model;
 /// </summary>
 public sealed record RoslynCpgEdgeLabel
 {
-  private RoslynCpgEdgeLabel(
-    RoslynCpgInterproceduralBridgeKind? interproceduralBridgeKind,
-    RoslynCpgDecisionRelationKind? decisionRelationKind)
+  private RoslynCpgEdgeLabel(RoslynCpgInterproceduralBridgeKind? interproceduralBridgeKind, RoslynCpgDecisionRelationKind? decisionRelationKind)
   {
     if (interproceduralBridgeKind.HasValue == decisionRelationKind.HasValue &&
         interproceduralBridgeKind.HasValue)
@@ -33,14 +31,12 @@ public sealed record RoslynCpgEdgeLabel
         ? $"decision-relation:{relationKind}"
         : string.Empty;
 
-  public static RoslynCpgEdgeLabel ForDecisionRelation(
-    RoslynCpgDecisionRelationKind decisionRelationKind)
+  public static RoslynCpgEdgeLabel ForDecisionRelation(RoslynCpgDecisionRelationKind decisionRelationKind)
   {
     return new RoslynCpgEdgeLabel(null, decisionRelationKind);
   }
 
-  public static RoslynCpgEdgeLabel ForInterproceduralBridge(
-    RoslynCpgInterproceduralBridgeKind interproceduralBridgeKind)
+  public static RoslynCpgEdgeLabel ForInterproceduralBridge(RoslynCpgInterproceduralBridgeKind interproceduralBridgeKind)
   {
     return new RoslynCpgEdgeLabel(interproceduralBridgeKind, null);
   }

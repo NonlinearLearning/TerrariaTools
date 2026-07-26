@@ -2,12 +2,12 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
-using Deletion.Rules;
+using NLISSN.Rules;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
-namespace Deletion.Core.Decision;
+namespace NLISSN.Core.Decision;
 
 public sealed class DeleteClassParameterShrinkAnalyzer
 {
@@ -1403,9 +1403,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return false;
     }
 
-    private static IReadOnlyList<TreeScan> GetTreeScans(
-      Compilation compilation,
-      DeletionAnalysisRuntime runtime)
+    private static IReadOnlyList<TreeScan> GetTreeScans(Compilation compilation, DeletionAnalysisRuntime runtime)
     {
         var cache = runtime.GetOrCreateCompilationCache(
           compilation,
@@ -1415,20 +1413,14 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           .ToList();
     }
 
-    private static TreeScan GetTreeScan(
-      Compilation compilation,
-      SyntaxTree tree,
-      DeletionAnalysisRuntime runtime)
+    private static TreeScan GetTreeScan(Compilation compilation, SyntaxTree tree, DeletionAnalysisRuntime runtime)
     {
         return runtime.GetOrCreateCompilationCache(
           compilation,
           static key => new CompilationScanCache(key)).GetTreeScan(tree);
     }
 
-    private static void ForEachScan(
-      IReadOnlyList<TreeScan> scans,
-      DeletionAnalysisRuntime runtime,
-      Action<TreeScan, Action> visit)
+    private static void ForEachScan(IReadOnlyList<TreeScan> scans, DeletionAnalysisRuntime runtime, Action<TreeScan, Action> visit)
     {
         var shouldStop = 0;
         void Stop()
@@ -1541,18 +1533,14 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         }
     }
 
-    private static IMethodSymbol? ResolveMethodSymbol(
-      SemanticModel semanticModel,
-      InvocationExpressionSyntax invocation)
+    private static IMethodSymbol? ResolveMethodSymbol(SemanticModel semanticModel, InvocationExpressionSyntax invocation)
     {
         return TryResolveMethodSymbol(semanticModel, invocation, out var methodSymbol)
           ? methodSymbol
           : null;
     }
 
-    private static IPropertySymbol? ResolveIndexerSymbol(
-      SemanticModel semanticModel,
-      ElementAccessExpressionSyntax elementAccess)
+    private static IPropertySymbol? ResolveIndexerSymbol(SemanticModel semanticModel, ElementAccessExpressionSyntax elementAccess)
     {
         return TryResolveIndexerSymbol(semanticModel, elementAccess, out var indexerSymbol)
           ? indexerSymbol
@@ -1618,9 +1606,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         private int _expressionIndexBuildCount;
         private int _typeSyntaxIndexBuildCount;
 
-        public TreeScan(
-          Compilation compilation,
-          SyntaxTree syntaxTree)
+        public TreeScan(Compilation compilation, SyntaxTree syntaxTree)
         {
             _compilation = compilation;
             SyntaxTree = syntaxTree;
@@ -1775,8 +1761,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return new Lazy<T>(factory, LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
-        private static Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> BuildInvocationIndex(
-          IEnumerable<InvocationBinding> invocationBindings)
+        private static Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> BuildInvocationIndex(IEnumerable<InvocationBinding> invocationBindings)
         {
             var index = new Dictionary<IMethodSymbol, List<InvocationBinding>>(
               SymbolEqualityComparer.Default);
@@ -1796,14 +1781,12 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return FreezeIndex(index, SymbolEqualityComparer.Default);
         }
 
-        private static Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> BuildMappedInvocationIndex(
-          IEnumerable<InvocationBinding> invocationBindings)
+        private static Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> BuildMappedInvocationIndex(IEnumerable<InvocationBinding> invocationBindings)
         {
             return BuildInvocationIndex(invocationBindings);
         }
 
-        private static Dictionary<IPropertySymbol, IReadOnlyList<ElementAccessBinding>> BuildElementAccessIndex(
-          IEnumerable<ElementAccessBinding> elementAccessBindings)
+        private static Dictionary<IPropertySymbol, IReadOnlyList<ElementAccessBinding>> BuildElementAccessIndex(IEnumerable<ElementAccessBinding> elementAccessBindings)
         {
             var index = new Dictionary<IPropertySymbol, List<ElementAccessBinding>>(
               SymbolEqualityComparer.Default);
@@ -1823,8 +1806,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return FreezeIndex(index, SymbolEqualityComparer.Default);
         }
 
-        private static Dictionary<INamedTypeSymbol, IReadOnlyList<ExpressionBinding>> BuildExpressionIndex(
-          IEnumerable<ExpressionBinding> expressionBindings)
+        private static Dictionary<INamedTypeSymbol, IReadOnlyList<ExpressionBinding>> BuildExpressionIndex(IEnumerable<ExpressionBinding> expressionBindings)
         {
             var index = new Dictionary<INamedTypeSymbol, List<ExpressionBinding>>(
               SymbolEqualityComparer.Default);
@@ -1841,8 +1823,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return FreezeIndex(index, SymbolEqualityComparer.Default);
         }
 
-        private static Dictionary<INamedTypeSymbol, IReadOnlyList<TypeSyntaxBinding>> BuildTypeSyntaxIndex(
-          IEnumerable<TypeSyntaxBinding> typeSyntaxBindings)
+        private static Dictionary<INamedTypeSymbol, IReadOnlyList<TypeSyntaxBinding>> BuildTypeSyntaxIndex(IEnumerable<TypeSyntaxBinding> typeSyntaxBindings)
         {
             var index = new Dictionary<INamedTypeSymbol, List<TypeSyntaxBinding>>(
               SymbolEqualityComparer.Default);
@@ -1859,10 +1840,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return FreezeIndex(index, SymbolEqualityComparer.Default);
         }
 
-        private static void AddIndexValue<TKey, TValue>(
-          IDictionary<TKey, List<TValue>> index,
-          TKey key,
-          TValue value)
+        private static void AddIndexValue<TKey, TValue>(IDictionary<TKey, List<TValue>> index, TKey key, TValue value)
           where TKey : notnull
         {
             if (!index.TryGetValue(key, out var values))
@@ -1874,9 +1852,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             values.Add(value);
         }
 
-        private static Dictionary<TKey, IReadOnlyList<TValue>> FreezeIndex<TKey, TValue>(
-          IDictionary<TKey, List<TValue>> index,
-          IEqualityComparer<TKey> comparer)
+        private static Dictionary<TKey, IReadOnlyList<TValue>> FreezeIndex<TKey, TValue>(IDictionary<TKey, List<TValue>> index, IEqualityComparer<TKey> comparer)
           where TKey : notnull
         {
             var result = new Dictionary<TKey, IReadOnlyList<TValue>>(index.Count, comparer);

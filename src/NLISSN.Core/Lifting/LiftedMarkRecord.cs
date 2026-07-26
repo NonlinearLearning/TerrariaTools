@@ -1,6 +1,6 @@
-using Deletion.Core.Marking;
+using NLISSN.Core.Marking;
 
-namespace Deletion.Core.Lifting;
+namespace NLISSN.Core.Lifting;
 
 /// <summary>
 /// 表示 Mark Lifting 阶段产生的结构候选，以及它来自哪个原始种子标记。

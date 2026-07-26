@@ -52,13 +52,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
   private Task? _disposeTask;
   private readonly object _disposeGate = new();
 
-  private CpgShardBuildSession(
-    CpgPersistenceOptions options,
-    IDisposable storeLock,
-    SqliteCpgShardCatalog catalog,
-    string buildId,
-    string stagingRoot,
-    long storeLockWaitMilliseconds)
+  private CpgShardBuildSession(CpgPersistenceOptions options, IDisposable storeLock, SqliteCpgShardCatalog catalog, string buildId, string stagingRoot, long storeLockWaitMilliseconds)
   {
     _storeLock = storeLock;
     _catalog = catalog;
@@ -180,9 +174,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     }
   }
 
-  internal static async Task<CpgShardBuildSession> BeginAsync(
-    CpgPersistenceOptions options,
-    CancellationToken cancellationToken)
+  internal static async Task<CpgShardBuildSession> BeginAsync(CpgPersistenceOptions options, CancellationToken cancellationToken)
   {
     var lockStopwatch = Stopwatch.StartNew();
     var storeLock = await CpgShardStoreLock.AcquireAsync(
@@ -226,10 +218,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     await EnqueuePublicationAsync(shard, sourceSequence, null, cancellationToken);
   }
 
-  internal async Task PublishReusableFragmentAsync(
-    CpgFrozenShard shard,
-    CpgReusableFragmentKey reusableKey,
-    CancellationToken cancellationToken)
+  internal async Task PublishReusableFragmentAsync(CpgFrozenShard shard, CpgReusableFragmentKey reusableKey, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(reusableKey);
     ArgumentNullException.ThrowIfNull(shard);
@@ -246,10 +235,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     await EnqueuePublicationAsync(shard, sourceSequence, reusableKey, cancellationToken);
   }
 
-  internal async Task<bool> TryReuseFragmentAsync(
-    CpgFrozenShard shard,
-    CpgReusableFragmentKey reusableKey,
-    CancellationToken cancellationToken)
+  internal async Task<bool> TryReuseFragmentAsync(CpgFrozenShard shard, CpgReusableFragmentKey reusableKey, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(shard);
     ArgumentNullException.ThrowIfNull(reusableKey);
@@ -301,10 +287,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     }
   }
 
-  internal async Task PublishFragmentAsync(
-    CpgFrozenShard shard,
-    long sourceSequence,
-    CancellationToken cancellationToken)
+  internal async Task PublishFragmentAsync(CpgFrozenShard shard, long sourceSequence, CancellationToken cancellationToken)
   {
     ArgumentNullException.ThrowIfNull(shard);
     ArgumentOutOfRangeException.ThrowIfNegative(sourceSequence);
@@ -320,11 +303,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     await EnqueuePublicationAsync(shard, sourceSequence, null, cancellationToken);
   }
 
-  private async Task EnqueuePublicationAsync(
-    CpgFrozenShard shard,
-    long sourceSequence,
-    CpgReusableFragmentKey? reusableKey,
-    CancellationToken cancellationToken)
+  private async Task EnqueuePublicationAsync(CpgFrozenShard shard, long sourceSequence, CpgReusableFragmentKey? reusableKey, CancellationToken cancellationToken)
   {
     Interlocked.Increment(ref _publicationCount);
     try

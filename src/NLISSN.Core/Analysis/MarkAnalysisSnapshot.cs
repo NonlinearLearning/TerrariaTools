@@ -8,7 +8,7 @@ using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Analysis;
 using MinimalRoslynCpg.Model;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 /// <summary>
 /// Holds run-scoped, thread-safe facts shared by Mark rules for one analysis.
@@ -78,10 +78,7 @@ public sealed class MarkAnalysisSnapshot
         .OrderBy(entry => entry.Key)
         .ToDictionary(entry => entry.Key.ToString(), entry => entry.Value, StringComparer.Ordinal));
 
-    public MarkRuleTelemetryScope BeginRuleTelemetry(
-      int ruleOrder,
-      string ruleId,
-      string? groupKey)
+    public MarkRuleTelemetryScope BeginRuleTelemetry(int ruleOrder, string ruleId, string? groupKey)
     {
         var accumulator = _ruleTelemetry.GetOrAdd(
           ruleOrder,
@@ -110,10 +107,7 @@ public sealed class MarkAnalysisSnapshot
             LazyThreadSafetyMode.ExecutionAndPublication)).Value;
     }
 
-    public bool GetTargetMatch(
-      SyntaxNode syntaxNode,
-      TargetNameDescriptor targetNames,
-      Func<bool> evaluate)
+    public bool GetTargetMatch(SyntaxNode syntaxNode, TargetNameDescriptor targetNames, Func<bool> evaluate)
     {
         Interlocked.Increment(ref _targetMatchQueryCount);
         var key = new TargetMatchKey(syntaxNode, targetNames.CacheKey);
@@ -144,9 +138,7 @@ public sealed class MarkAnalysisSnapshot
         return candidates;
     }
 
-    public IReadOnlyList<ExpressionSyntax> GetAtomicCandidates(
-      SyntaxNode root,
-      IReadOnlyCollection<Microsoft.CodeAnalysis.CSharp.SyntaxKind> allowedKinds)
+    public IReadOnlyList<ExpressionSyntax> GetAtomicCandidates(SyntaxNode root, IReadOnlyCollection<Microsoft.CodeAnalysis.CSharp.SyntaxKind> allowedKinds)
     {
         var facts = GetAtomicCandidateFacts(root);
         IReadOnlyList<ExpressionSyntax> candidates;
@@ -280,9 +272,7 @@ public sealed class MarkAnalysisSnapshot
         return false;
     }
 
-    public RoslynCpgSliceResult QuerySliceBackward(
-      NodeId sinkNodeId,
-      RoslynCpgSliceQueryOptions options)
+    public RoslynCpgSliceResult QuerySliceBackward(NodeId sinkNodeId, RoslynCpgSliceQueryOptions options)
     {
         var key = SliceQueryKey.Create(sinkNodeId, options);
         if (_sliceQueries.TryGetValue(key, out var existing))
@@ -372,8 +362,7 @@ public sealed class MarkAnalysisSnapshot
         _activeRuleTelemetry.Value = previous;
     }
 
-    private static IReadOnlyDictionary<GraphBindingKey, RoslynCpgNode> BuildGraphBindingIndex(
-      IEnumerable<RoslynCpgNode> graphNodes)
+    private static IReadOnlyDictionary<GraphBindingKey, RoslynCpgNode> BuildGraphBindingIndex(IEnumerable<RoslynCpgNode> graphNodes)
     {
         var bindings = new Dictionary<GraphBindingKey, RoslynCpgNode>();
         foreach (var node in graphNodes)
@@ -559,10 +548,7 @@ public sealed class MarkAnalysisSnapshot
         private readonly MarkRuleTelemetryScope? _previous;
         private bool _disposed;
 
-        internal MarkRuleTelemetryScope(
-          MarkAnalysisSnapshot snapshot,
-          MarkRuleTelemetryAccumulator accumulator,
-          MarkRuleTelemetryScope? previous)
+        internal MarkRuleTelemetryScope(MarkAnalysisSnapshot snapshot, MarkRuleTelemetryAccumulator accumulator, MarkRuleTelemetryScope? previous)
         {
             _snapshot = snapshot;
             _accumulator = accumulator;

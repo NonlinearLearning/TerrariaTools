@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Application;
-using Deletion.Core.Decision;
+using NLISSN.Application;
+using NLISSN.Core.Decision;
 using RoslynPrototype.Tests.TestCodeSet.Reachability;
 using Xunit;
 
@@ -101,7 +101,7 @@ public sealed class DeletionApplicationServiceFlowTests
         return node.RawKind == (int)kind;
     }
 
-    private static IEnumerable<Microsoft.CodeAnalysis.SyntaxNode> EnumerateEffectiveNodes(Deletion.Core.Rewrite.PrototypeAnalysisResult result)
+    private static IEnumerable<Microsoft.CodeAnalysis.SyntaxNode> EnumerateEffectiveNodes(NLISSN.Core.Rewrite.PrototypeAnalysisResult result)
     {
         return result.SeedMarks
           .Select(mark => mark.SyntaxNode)

@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 
-namespace Deletion.Core.Analysis;
+namespace NLISSN.Core.Analysis;
 
 internal static class AnalysisSyntaxNodeCollector
 {

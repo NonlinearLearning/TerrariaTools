@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Application;
-using Deletion.Core.Decision;
+using NLISSN.Application;
+using NLISSN.Core.Decision;
 using RoslynPrototype.Tests.TestCodeSet.Decision;
-using Deletion.Rules;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

@@ -27,15 +27,7 @@ internal sealed class RoslynCpgGraphIndex
         public Dictionary<RoslynCpgEdgeKind, List<RoslynCpgEdge>> EdgesByKind { get; } = new();
     }
 
-    private RoslynCpgGraphIndex(
-        IReadOnlyDictionary<NodeId, IReadOnlyList<RoslynCpgEdge>> outgoingByNodeId,
-        IReadOnlyDictionary<NodeId, IReadOnlyList<RoslynCpgEdge>> incomingByNodeId,
-        IReadOnlyDictionary<(NodeId NodeId, RoslynCpgEdgeKind Kind), IReadOnlyList<RoslynCpgEdge>> outgoingByNodeAndKind,
-        IReadOnlyDictionary<(NodeId NodeId, RoslynCpgEdgeKind Kind), IReadOnlyList<RoslynCpgEdge>> incomingByNodeAndKind,
-        IReadOnlyDictionary<RoslynCpgEdgeKind, IReadOnlyList<RoslynCpgEdge>> edgesByKind,
-        IReadOnlyDictionary<RoslynCpgNodeKind, IReadOnlyList<RoslynCpgNode>> nodesByKind,
-        IReadOnlyDictionary<string, IReadOnlyList<RoslynCpgNode>> nodesByFilePath,
-        string snapshotVersion)
+    private RoslynCpgGraphIndex(IReadOnlyDictionary<NodeId, IReadOnlyList<RoslynCpgEdge>> outgoingByNodeId, IReadOnlyDictionary<NodeId, IReadOnlyList<RoslynCpgEdge>> incomingByNodeId, IReadOnlyDictionary<(NodeId NodeId, RoslynCpgEdgeKind Kind), IReadOnlyList<RoslynCpgEdge>> outgoingByNodeAndKind, IReadOnlyDictionary<(NodeId NodeId, RoslynCpgEdgeKind Kind), IReadOnlyList<RoslynCpgEdge>> incomingByNodeAndKind, IReadOnlyDictionary<RoslynCpgEdgeKind, IReadOnlyList<RoslynCpgEdge>> edgesByKind, IReadOnlyDictionary<RoslynCpgNodeKind, IReadOnlyList<RoslynCpgNode>> nodesByKind, IReadOnlyDictionary<string, IReadOnlyList<RoslynCpgNode>> nodesByFilePath, string snapshotVersion)
     {
         OutgoingByNodeId = outgoingByNodeId;
         IncomingByNodeId = incomingByNodeId;
@@ -63,9 +55,7 @@ internal sealed class RoslynCpgGraphIndex
 
     public string SnapshotVersion { get; }
 
-    public static BuildResult Create(
-        IEnumerable<RoslynCpgNode> nodes,
-        IEnumerable<RoslynCpgEdge> edges)
+    public static BuildResult Create(IEnumerable<RoslynCpgNode> nodes, IEnumerable<RoslynCpgEdge> edges)
     {
         var totalStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var orderEdgesStopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -155,9 +145,7 @@ internal sealed class RoslynCpgGraphIndex
         return new BuildResult(index, telemetry);
     }
 
-    private static string CreateSnapshotVersion(
-        IReadOnlyList<RoslynCpgNode> orderedNodes,
-        IReadOnlyList<RoslynCpgEdge> orderedEdges)
+    private static string CreateSnapshotVersion(IReadOnlyList<RoslynCpgNode> orderedNodes, IReadOnlyList<RoslynCpgEdge> orderedEdges)
     {
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         AppendInt32(hash, orderedNodes.Count);
@@ -205,8 +193,7 @@ internal sealed class RoslynCpgGraphIndex
         return accumulator;
     }
 
-    private static IReadOnlyDictionary<TKey, IReadOnlyList<RoslynCpgEdge>> FreezeEdgeLists<TKey>(
-        Dictionary<TKey, List<RoslynCpgEdge>> source)
+    private static IReadOnlyDictionary<TKey, IReadOnlyList<RoslynCpgEdge>> FreezeEdgeLists<TKey>(Dictionary<TKey, List<RoslynCpgEdge>> source)
         where TKey : notnull
     {
         var result = new Dictionary<TKey, IReadOnlyList<RoslynCpgEdge>>(source.Count);
@@ -218,10 +205,7 @@ internal sealed class RoslynCpgGraphIndex
         return result;
     }
 
-    private static void AddEdge<TKey>(
-        Dictionary<TKey, List<RoslynCpgEdge>> index,
-        TKey key,
-        RoslynCpgEdge edge)
+    private static void AddEdge<TKey>(Dictionary<TKey, List<RoslynCpgEdge>> index, TKey key, RoslynCpgEdge edge)
         where TKey : notnull
     {
         if (!index.TryGetValue(key, out var edges))

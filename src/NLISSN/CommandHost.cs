@@ -1,13 +1,13 @@
-using Deletion.Application;
+using NLISSN.Application;
 using System.Text;
 using MinimalRoslynCpg.Builder;
-using Deletion.Cli.Telemetry;
-using Deletion.Core.Analysis;
-using Deletion.Logging;
-using Deletion.Core.Rewrite;
-using Deletion.Rules;
+using NLISSN.Telemetry;
+using NLISSN.Core.Analysis;
+using NLISSN.Logging;
+using NLISSN.Core.Rewrite;
+using NLISSN.Rules;
 
-namespace Deletion.Cli;
+namespace NLISSN;
 
 public sealed class DeletionCommandHost
 {
@@ -170,10 +170,7 @@ public sealed class DeletionCommandHost
         }
     }
 
-    private static void CaptureRewritePlan(
-      string inputRoot,
-      string artifactRoot,
-      PrototypeAnalysisResult result)
+    private static void CaptureRewritePlan(string inputRoot, string artifactRoot, PrototypeAnalysisResult result)
     {
         var plans = (result.RewritePlans ?? Array.Empty<PrototypeFileRewritePlan>())
           .Where(plan => plan.Operations.Count > 0)
@@ -206,10 +203,7 @@ public sealed class DeletionCommandHost
         EmitLegacyWarning(options, "per-file-memory-diagnostics-log", "--per-file-memory-diagnostics-log is deprecated and use --analysis-log instead.");
     }
 
-    private static void EmitLegacyWarning(
-      IReadOnlyDictionary<string, string> options,
-      string key,
-      string message)
+    private static void EmitLegacyWarning(IReadOnlyDictionary<string, string> options, string key, string message)
     {
         if (options.ContainsKey(key))
         {
@@ -217,9 +211,7 @@ public sealed class DeletionCommandHost
         }
     }
 
-    private static RunLogContext CreateRunLogContext(
-      string? inputPath,
-      DeletionAnalysisRuntime runtime)
+    private static RunLogContext CreateRunLogContext(string? inputPath, DeletionAnalysisRuntime runtime)
     {
         var inputKind = inputPath is null
           ? "demo"

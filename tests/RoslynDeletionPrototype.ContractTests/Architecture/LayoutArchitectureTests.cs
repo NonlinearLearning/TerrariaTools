@@ -1,34 +1,31 @@
 using Xunit;
 
-namespace Deletion.Tests.Architecture;
+namespace NLISSN.Tests.Architecture;
 
 public sealed class DeletionLayoutArchitectureTests
 {
   [Fact]
-  public void ProductionProjects_UseTheDeletionProjectLayout()
+  public void ProductionProjects_UseTheNlissnProjectLayout()
   {
-    Assert.True(File.Exists(ProjectPath("src", "Deletion.Core", "Deletion.Core.csproj")));
-    Assert.True(File.Exists(ProjectPath("src", "Deletion.Rules", "Deletion.Rules.csproj")));
-    Assert.True(File.Exists(ProjectPath("src", "Deletion.Application", "Deletion.Application.csproj")));
-    Assert.True(File.Exists(ProjectPath("src", "Deletion.Cli", "Deletion.Cli.csproj")));
-    Assert.True(File.Exists(ProjectPath("src", "Deletion.Logging", "Deletion.Logging.csproj")));
+    Assert.True(File.Exists(ProjectPath("src", "NLISSN.Core", "NLISSN.Core.csproj")));
+    Assert.True(File.Exists(ProjectPath("src", "NLISSN.Rules", "NLISSN.Rules.csproj")));
+    Assert.True(File.Exists(ProjectPath("src", "NLISSN.Application", "NLISSN.Application.csproj")));
+    Assert.True(File.Exists(ProjectPath("src", "NLISSN", "NLISSN.csproj")));
+    Assert.True(File.Exists(ProjectPath("src", "NLISSN.Logging", "NLISSN.Logging.csproj")));
   }
 
   [Fact]
-  public void CompatibilityLauncher_ReferencesOnlyDeletionCli()
+  public void NlissnProject_IsTheDirectExecutableEntryPoint()
   {
-    var projectText = File.ReadAllText(ProjectPath(
-      "src",
-      "RoslynPrototype",
-      "RoslynPrototype.csproj"));
+    var legacyDirectory = Path.GetDirectoryName(ProjectPath("src", "RoslynPrototype", "placeholder"))!;
+    Assert.False(Directory.Exists(legacyDirectory));
+    Assert.True(File.Exists(ProjectPath("src", "NLISSN", "Program.cs")));
+    Assert.True(File.Exists(ProjectPath("src", "NLISSN", "AGENTS.md")));
 
-    Assert.Contains(
-      "ProjectReference Include=\"..\\Deletion.Cli\\Deletion.Cli.csproj\"",
-      projectText,
-      StringComparison.Ordinal);
-    Assert.DoesNotContain(@"..\Host\Host.csproj", projectText, StringComparison.Ordinal);
-    Assert.DoesNotContain(@"..\Application\Application.csproj", projectText, StringComparison.Ordinal);
-    Assert.DoesNotContain(@"..\Deletion.Rules\Deletion.Rules.csproj", projectText, StringComparison.Ordinal);
+    var projectText = File.ReadAllText(ProjectPath("src", "NLISSN", "NLISSN.csproj"));
+
+    Assert.Contains("<OutputType>Exe</OutputType>", projectText, StringComparison.Ordinal);
+    Assert.DoesNotContain("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>", projectText, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -36,37 +33,35 @@ public sealed class DeletionLayoutArchitectureTests
   {
     AssertProjectReferences(
       new[] { "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj" },
-      "src", "Deletion.Core", "Deletion.Core.csproj");
+      "src", "NLISSN.Core", "NLISSN.Core.csproj");
     AssertProjectReferences(
       new[]
       {
-        "..\\Deletion.Core\\Deletion.Core.csproj",
+        "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
       },
-      "src", "Deletion.Rules", "Deletion.Rules.csproj");
+      "src", "NLISSN.Rules", "NLISSN.Rules.csproj");
     AssertProjectReferences(
       new[]
       {
-        "..\\Deletion.Core\\Deletion.Core.csproj",
+        "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
       },
-      "src", "Deletion.Application", "Deletion.Application.csproj");
+      "src", "NLISSN.Application", "NLISSN.Application.csproj");
     AssertProjectReferences(
       new[]
       {
-        "..\\Deletion.Application\\Deletion.Application.csproj",
-        "..\\Deletion.Rules\\Deletion.Rules.csproj",
-        "..\\Deletion.Core\\Deletion.Core.csproj",
-        "..\\Deletion.Logging\\Deletion.Logging.csproj",
+        "..\\NLISSN.Application\\NLISSN.Application.csproj",
+        "..\\NLISSN.Rules\\NLISSN.Rules.csproj",
+        "..\\NLISSN.Core\\NLISSN.Core.csproj",
+        "..\\NLISSN.Logging\\NLISSN.Logging.csproj",
         "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
       },
-      "src", "Deletion.Cli", "Deletion.Cli.csproj");
-    AssertProjectReferences(Array.Empty<string>(), "src", "Deletion.Logging", "Deletion.Logging.csproj");
+      "src", "NLISSN", "NLISSN.csproj");
+    AssertProjectReferences(Array.Empty<string>(), "src", "NLISSN.Logging", "NLISSN.Logging.csproj");
   }
 
-  private static void AssertProjectReferences(
-    IReadOnlyList<string> expected,
-    params string[] projectParts)
+  private static void AssertProjectReferences(IReadOnlyList<string> expected, params string[] projectParts)
   {
     var references = File.ReadLines(ProjectPath(projectParts[0], projectParts[1], projectParts[2]))
       .Where(line => line.Contains("<ProjectReference", StringComparison.Ordinal))
@@ -76,11 +71,7 @@ public sealed class DeletionLayoutArchitectureTests
     Assert.Equal(expected, references);
   }
 
-  private static string ProjectPath(
-    string first,
-    string second,
-    string third,
-    [System.Runtime.CompilerServices.CallerFilePath] string sourceFile = "")
+  private static string ProjectPath(string first, string second, string third, [System.Runtime.CompilerServices.CallerFilePath] string sourceFile = "")
   {
     var current = new DirectoryInfo(Path.GetDirectoryName(sourceFile)!);
     while (current is not null && !File.Exists(Path.Combine(current.FullName, "global.json")))

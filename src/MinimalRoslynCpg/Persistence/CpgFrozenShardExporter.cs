@@ -5,12 +5,7 @@ namespace MinimalRoslynCpg.Persistence;
 
 public static class CpgFrozenShardExporter
 {
-  internal static CpgFrozenShard ExportDescriptors(
-    CpgShardLookup lookup,
-    IReadOnlyList<CpgNodeDescriptor> descriptors,
-    IReadOnlyList<CpgEdgeCandidate> edgeCandidates,
-    DeterministicNodeIdTable allocation,
-    ICollection<CpgFrozenBoundaryEdge> boundaryEdges)
+  internal static CpgFrozenShard ExportDescriptors(CpgShardLookup lookup, IReadOnlyList<CpgNodeDescriptor> descriptors, IReadOnlyList<CpgEdgeCandidate> edgeCandidates, DeterministicNodeIdTable allocation, ICollection<CpgFrozenBoundaryEdge> boundaryEdges)
   {
     ArgumentNullException.ThrowIfNull(lookup);
     ArgumentNullException.ThrowIfNull(descriptors);
@@ -71,17 +66,20 @@ public static class CpgFrozenShardExporter
       }
     }
 
+    var (incomingEdgeOffsets, incomingEdgeIndexes) = CpgFrozenShardIncomingEdgeIndex.Build(
+      nodes.Select((item, index) => ToFrozenNode(item.Descriptor, item.NodeId, index)).ToArray(),
+      edges);
+
     return new CpgFrozenShard(
       lookup,
       nodes.Select((item, index) => ToFrozenNode(item.Descriptor, item.NodeId, index)).ToArray(),
       edges,
-      Array.Empty<CpgSymbolLocation>());
+      Array.Empty<CpgSymbolLocation>(),
+      IncomingEdgeOffsets: incomingEdgeOffsets,
+      IncomingEdgeIndexes: incomingEdgeIndexes);
   }
 
-  public static CpgFrozenShard Export(
-    RoslynCpgGraph graph,
-    CpgShardLookup lookup,
-    IReadOnlySet<NodeId>? includedNodeIds = null)
+  public static CpgFrozenShard Export(RoslynCpgGraph graph, CpgShardLookup lookup, IReadOnlySet<NodeId>? includedNodeIds = null)
   {
     ArgumentNullException.ThrowIfNull(graph);
     ArgumentNullException.ThrowIfNull(lookup);
@@ -96,26 +94,33 @@ public static class CpgFrozenShardExporter
       .Select((node, index) => (Node: node, LocalIndex: index))
       .ToArray();
     var localIndexes = nodes.ToDictionary(item => item.Node.NodeId!.Value, item => item.LocalIndex);
+    var frozenNodes = nodes.Select(item => ToFrozenNode(item.Node, item.LocalIndex)).ToArray();
+    var frozenEdges = graph.Edges
+      .Where(edge => localIndexes.ContainsKey(edge.SourceNodeId) && localIndexes.ContainsKey(edge.TargetNodeId))
+      .OrderBy(edge => edge.SourceNodeId)
+      .ThenBy(edge => edge.Kind)
+      .ThenBy(edge => edge.TargetNodeId)
+      .Select(edge => new CpgFrozenEdge(
+        localIndexes[edge.SourceNodeId],
+        localIndexes[edge.TargetNodeId],
+        edge.Kind.ToString(),
+        edge.StructuredLabel?.StableKey,
+        edge.ContextId?.Value,
+        edge.CallSiteContext?.FilePath,
+        edge.CallSiteContext?.SpanStart,
+        edge.CallSiteContext?.SpanEnd,
+        edge.CallSiteContext?.DisplayName))
+      .ToArray();
+    var (incomingEdgeOffsets, incomingEdgeIndexes) = CpgFrozenShardIncomingEdgeIndex.Build(
+      frozenNodes,
+      frozenEdges);
     return new CpgFrozenShard(
       lookup,
-      nodes.Select(item => ToFrozenNode(item.Node, item.LocalIndex)).ToArray(),
-      graph.Edges
-        .Where(edge => localIndexes.ContainsKey(edge.SourceNodeId) && localIndexes.ContainsKey(edge.TargetNodeId))
-        .OrderBy(edge => edge.SourceNodeId)
-        .ThenBy(edge => edge.Kind)
-        .ThenBy(edge => edge.TargetNodeId)
-        .Select(edge => new CpgFrozenEdge(
-          localIndexes[edge.SourceNodeId],
-          localIndexes[edge.TargetNodeId],
-          edge.Kind.ToString(),
-          edge.StructuredLabel?.StableKey,
-          edge.ContextId?.Value,
-          edge.CallSiteContext?.FilePath,
-          edge.CallSiteContext?.SpanStart,
-          edge.CallSiteContext?.SpanEnd,
-          edge.CallSiteContext?.DisplayName))
-        .ToArray(),
-      Array.Empty<CpgSymbolLocation>());
+      frozenNodes,
+      frozenEdges,
+      Array.Empty<CpgSymbolLocation>(),
+      IncomingEdgeOffsets: incomingEdgeOffsets,
+      IncomingEdgeIndexes: incomingEdgeIndexes);
   }
 
   private static CpgFrozenNode ToFrozenNode(RoslynCpgNode node, int localIndex)
@@ -140,10 +145,7 @@ public static class CpgFrozenShardExporter
       node.StableAnchor?.ExtraKeyId ?? 0);
   }
 
-  private static CpgFrozenNode ToFrozenNode(
-    CpgNodeDescriptor descriptor,
-    NodeId nodeId,
-    int localIndex)
+  private static CpgFrozenNode ToFrozenNode(CpgNodeDescriptor descriptor, NodeId nodeId, int localIndex)
   {
     return new CpgFrozenNode(
       localIndex,

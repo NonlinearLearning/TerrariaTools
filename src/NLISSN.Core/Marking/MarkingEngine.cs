@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Rules;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Marking;
+namespace NLISSN.Core.Marking;
 
 public sealed class MarkingEngine
 {
@@ -28,10 +28,7 @@ public sealed class MarkingEngine
         .ToList();
     }
 
-    private static List<MarkRecord> RunRulesSerial(
-      RuleContext context,
-      SyntaxNode root,
-      IReadOnlyList<RuleDefinitionMark> rules)
+    private static List<MarkRecord> RunRulesSerial(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
     {
         var seedMarks = new List<MarkRecord>();
         for (var ruleIndex = 0; ruleIndex < rules.Count; ruleIndex++)
@@ -42,10 +39,7 @@ public sealed class MarkingEngine
         return seedMarks;
     }
 
-    private static List<MarkRecord> RunRulesInParallel(
-      RuleContext context,
-      SyntaxNode root,
-      IReadOnlyList<RuleDefinitionMark> rules)
+    private static List<MarkRecord> RunRulesInParallel(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
     {
         var orderedRuleMarks = context.Runtime.Scheduler.RunOrderedAsync(
             rules.Count,
@@ -64,11 +58,7 @@ public sealed class MarkingEngine
         return orderedRuleMarks.SelectMany(marks => marks).ToList();
     }
 
-    private static List<MarkRecord> RunRule(
-      RuleContext context,
-      SyntaxNode root,
-      RuleDefinitionMark rule,
-      int ruleOrder)
+    private static List<MarkRecord> RunRule(RuleContext context, SyntaxNode root, RuleDefinitionMark rule, int ruleOrder)
     {
         using var telemetryScope = context.BeginMarkRuleTelemetry(ruleOrder, rule.RuleId, rule.GroupKey);
         var producedMarks = new List<MarkRecord>();

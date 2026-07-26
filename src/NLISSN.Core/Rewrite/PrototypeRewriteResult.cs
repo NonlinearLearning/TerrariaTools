@@ -1,4 +1,4 @@
-namespace Deletion.Core.Rewrite;
+namespace NLISSN.Core.Rewrite;
 
 /// <summary>
 /// Contains the portable text operations and display edits produced from rule decisions.

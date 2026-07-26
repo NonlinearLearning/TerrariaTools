@@ -1,10 +1,10 @@
-using Deletion.Application;
+using NLISSN.Application;
 using System.Text;
 using Microsoft.CodeAnalysis.Text;
-using Deletion.Core.Rewrite;
-using Deletion.Rules;
+using NLISSN.Core.Rewrite;
+using NLISSN.Rules;
 
-namespace Deletion.Cli;
+namespace NLISSN;
 
 internal sealed class RewritePlanReplayService
 {
@@ -12,11 +12,7 @@ internal sealed class RewritePlanReplayService
   private readonly DiffBuilder _diffBuilder = new();
   private readonly TextDiffRenderer _diffRenderer = new();
 
-  internal async Task<PrototypeAnalysisResult> ReplayAsync(
-    string inputRoot,
-    string artifactRoot,
-    IReadOnlyDictionary<string, string> options,
-    DeletionAnalysisRuntime runtime)
+  internal async Task<PrototypeAnalysisResult> ReplayAsync(string inputRoot, string artifactRoot, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime)
   {
     var (_, plans) = _artifactService.ReadAndValidate(artifactRoot, inputRoot);
     var results = await runtime.Scheduler.RunOrderedAsync(
@@ -55,10 +51,10 @@ internal sealed class RewritePlanReplayService
 
     var diff = _diffBuilder.Combine(documents);
     return new PrototypeAnalysisResult(
-      Array.Empty<Deletion.Core.Marking.MarkRecord>(),
-      Array.Empty<Deletion.Core.Propagation.PropagatedMarkRecord>(),
-      Array.Empty<Deletion.Core.Lifting.LiftedMarkRecord>(),
-      Array.Empty<Deletion.Core.Decision.RuleDecision>(),
+      Array.Empty<NLISSN.Core.Marking.MarkRecord>(),
+      Array.Empty<NLISSN.Core.Propagation.PropagatedMarkRecord>(),
+      Array.Empty<NLISSN.Core.Lifting.LiftedMarkRecord>(),
+      Array.Empty<NLISSN.Core.Decision.RuleDecision>(),
       edits,
       $"<replay:{plans.Count}>",
       diff,

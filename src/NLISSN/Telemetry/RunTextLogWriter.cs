@@ -1,11 +1,11 @@
-using Deletion.Application;
+using NLISSN.Application;
 using System.Diagnostics;
 using MinimalRoslynCpg.Builder;
-using Deletion.Core.Analysis;
-using Deletion.Logging;
-using Deletion.Core.Rewrite;
+using NLISSN.Core.Analysis;
+using NLISSN.Logging;
+using NLISSN.Core.Rewrite;
 
-namespace Deletion.Cli.Telemetry;
+namespace NLISSN.Telemetry;
 
 internal sealed class RunTextLogWriter
 {
@@ -15,11 +15,7 @@ internal sealed class RunTextLogWriter
     private readonly string _src;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
 
-    public RunTextLogWriter(
-      ITextLogSink sink,
-      TextLogFilter filter,
-      RunLogContext context,
-      string source)
+    public RunTextLogWriter(ITextLogSink sink, TextLogFilter filter, RunLogContext context, string source)
     {
         _sink = sink;
         _filter = filter;
@@ -274,13 +270,7 @@ internal sealed class RunTextLogWriter
         _sink.Flush();
     }
 
-    private void Emit(
-      TextLogLevel level,
-      TextLogCategory category,
-      TextLogEventType eventType,
-      string message,
-      string? inputKind = null,
-      IReadOnlyList<TextLogField>? fields = null)
+    private void Emit(TextLogLevel level, TextLogCategory category, TextLogEventType eventType, string message, string? inputKind = null, IReadOnlyList<TextLogField>? fields = null)
     {
         var textLogEvent = new TextLogEvent(
           DateTimeOffset.UtcNow,

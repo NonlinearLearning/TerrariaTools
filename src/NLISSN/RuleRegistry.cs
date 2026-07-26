@@ -1,12 +1,11 @@
-using Deletion.Application;
-using Deletion.Rules;
+using NLISSN.Application;
+using NLISSN.Rules;
 
-namespace Deletion.Cli;
+namespace NLISSN;
 
 public static class RuleRegistry
 {
-  public static IReadOnlyList<MinimalRoslynCpg.Contracts.RoslynCpgCapability> GetRequiredCapabilities(
-    DeletionRulePipeline pipeline)
+  public static IReadOnlyList<MinimalRoslynCpg.Contracts.RoslynCpgCapability> GetRequiredCapabilities(DeletionRulePipeline pipeline)
   {
     return pipeline.GetRequiredCapabilities();
   }
@@ -16,9 +15,7 @@ public static class RuleRegistry
     return CreateRules(DefaultRuleSets.Create(), disabledRuleTypes);
   }
 
-  public static DeletionRulePipeline CreateRules(
-    IEnumerable<IRuleSet> ruleSets,
-    IEnumerable<string>? disabledRuleTypes = null)
+  public static DeletionRulePipeline CreateRules(IEnumerable<IRuleSet> ruleSets, IEnumerable<string>? disabledRuleTypes = null)
   {
     var disabledTypeNames = (disabledRuleTypes ?? Array.Empty<string>())
       .Where(name => !string.IsNullOrWhiteSpace(name))
@@ -32,9 +29,7 @@ public static class RuleRegistry
       Proposers: CreateRules(configuredRuleSets.SelectMany(ruleSet => ruleSet.Proposers), disabledTypeNames));
   }
 
-  private static IReadOnlyList<TRule> CreateRules<TRule>(
-    IEnumerable<TRule> rules,
-    IReadOnlySet<string> disabledTypeNames)
+  private static IReadOnlyList<TRule> CreateRules<TRule>(IEnumerable<TRule> rules, IReadOnlySet<string> disabledTypeNames)
     where TRule : class
   {
     return rules

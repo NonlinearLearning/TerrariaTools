@@ -28,10 +28,7 @@ public static class CpgPersistenceTestKit
     return new CallbackReset(property);
   }
 
-  public static Task<CpgShardStoreLock> AcquireStoreLockAsync(
-    string storeRoot,
-    TimeSpan timeout,
-    CancellationToken cancellationToken)
+  public static Task<CpgShardStoreLock> AcquireStoreLockAsync(string storeRoot, TimeSpan timeout, CancellationToken cancellationToken)
   {
     return CpgShardStoreLock.AcquireAsync(storeRoot, timeout, cancellationToken);
   }

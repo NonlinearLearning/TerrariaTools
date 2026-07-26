@@ -4,7 +4,7 @@ using FsCheck.Xunit;
 using Microsoft.CodeAnalysis.CSharp;
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Model;
-using Deletion.Application;
+using NLISSN.Application;
 using RoslynPrototype.Testing.TestCodeSet.Cpg;
 using RoslynPrototype.Testing.TestInfrastructure;
 
@@ -13,8 +13,7 @@ namespace RoslynPrototype.ContractTests.Cpg;
 public sealed class CpgPropertyEquivalenceTests
 {
   [Property(MaxTest = 8, Replay = "12345,67891", Arbitrary = [typeof(GeneratedFixtureArbitraries)])]
-  public Property BuildFromSource_GeneratedFixture_PreservesSerialSemantics(
-    GeneratedCSharpFixture fixture)
+  public Property BuildFromSource_GeneratedFixture_PreservesSerialSemantics(GeneratedCSharpFixture fixture)
   {
     var serial = Build(fixture, 1, persistence: null);
     var persistedRoot = Path.Combine(Path.GetTempPath(), "cpg-property", Guid.NewGuid().ToString("N"));
@@ -61,10 +60,7 @@ public sealed class CpgPropertyEquivalenceTests
     }
   }
 
-  private static RoslynCpgGraph Build(
-    GeneratedCSharpFixture fixture,
-    int maxDegreeOfParallelism,
-    CpgPersistenceOptions? persistence)
+  private static RoslynCpgGraph Build(GeneratedCSharpFixture fixture, int maxDegreeOfParallelism, CpgPersistenceOptions? persistence)
   {
     var trees = fixture.Files
       .OrderBy(file => file.Key, StringComparer.Ordinal)

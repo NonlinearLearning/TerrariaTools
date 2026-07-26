@@ -1,4 +1,4 @@
-namespace Deletion.Core.Rewrite;
+namespace NLISSN.Core.Rewrite;
 
 public sealed class DiffBuilder
 {

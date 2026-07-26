@@ -1,8 +1,8 @@
-using Deletion.Core.Analysis;
-using Deletion.Core.Marking;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Marking;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Propagation;
+namespace NLISSN.Core.Propagation;
 
 public sealed class PropagationEngine
 {
@@ -40,10 +40,7 @@ public sealed class PropagationEngine
         .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunGroupsSerial(
-      RuleContext context,
-      IReadOnlyList<PropagationRuleGroup> groupedRules,
-      IReadOnlyDictionary<string, List<MarkRecord>> seedMarksByGroupKey)
+    private static List<PropagatedMarkRecord> RunGroupsSerial(RuleContext context, IReadOnlyList<PropagationRuleGroup> groupedRules, IReadOnlyDictionary<string, List<MarkRecord>> seedMarksByGroupKey)
     {
         var propagatedMarks = new List<PropagatedMarkRecord>();
         foreach (var ruleGroup in groupedRules)
@@ -54,10 +51,7 @@ public sealed class PropagationEngine
         return propagatedMarks;
     }
 
-    private static List<PropagatedMarkRecord> RunGroupsInParallel(
-      RuleContext context,
-      IReadOnlyList<PropagationRuleGroup> groupedRules,
-      IReadOnlyDictionary<string, List<MarkRecord>> seedMarksByGroupKey)
+    private static List<PropagatedMarkRecord> RunGroupsInParallel(RuleContext context, IReadOnlyList<PropagationRuleGroup> groupedRules, IReadOnlyDictionary<string, List<MarkRecord>> seedMarksByGroupKey)
     {
         var orderedGroupMarks = context.Runtime.Scheduler.RunOrderedAsync(
             groupedRules.Count,
@@ -80,10 +74,7 @@ public sealed class PropagationEngine
         return orderedGroupMarks.SelectMany(marks => marks).ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunGroup(
-      RuleContext context,
-      PropagationRuleGroup ruleGroup,
-      IReadOnlyList<MarkRecord> groupSeedMarks)
+    private static List<PropagatedMarkRecord> RunGroup(RuleContext context, PropagationRuleGroup ruleGroup, IReadOnlyList<MarkRecord> groupSeedMarks)
     {
         var propagatedMarks = new List<PropagatedMarkRecord>();
         var groupMarks = new List<MarkRecord>(groupSeedMarks);
@@ -123,10 +114,7 @@ public sealed class PropagationEngine
           groupCount > 1;
     }
 
-    private static PropagatedMarkRecord BindPropagatedMarkRecord(
-        RuleContext context,
-        PropagatedMarkRecord candidate,
-        string? groupKey = null)
+    private static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate, string? groupKey = null)
     {
         return candidate with
         {

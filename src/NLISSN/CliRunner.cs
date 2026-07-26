@@ -1,6 +1,6 @@
-using Deletion.Application;
+using NLISSN.Application;
 
-namespace Deletion.Cli;
+namespace NLISSN;
 
 public static class DeletionCliRunner
 {

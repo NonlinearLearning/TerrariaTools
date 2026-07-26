@@ -63,12 +63,7 @@ public sealed class CpgBuildRoutingIndexReader
     }
   }
 
-  private static CpgBuildRoutingIndex ReadPayload(
-    string buildId,
-    int schemaVersion,
-    string profileHash,
-    string payloadHash,
-    byte[] payload)
+  private static CpgBuildRoutingIndex ReadPayload(string buildId, int schemaVersion, string profileHash, string payloadHash, byte[] payload)
   {
     using var stream = new MemoryStream(payload, writable: false);
     using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);

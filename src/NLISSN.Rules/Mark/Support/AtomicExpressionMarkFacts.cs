@@ -2,10 +2,10 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
-using Deletion.Core.Analysis;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Marking;
+namespace NLISSN.Core.Marking;
 
 public static class DeleteSObjectMarkRuleHelpers
 {
@@ -203,9 +203,7 @@ public static class DeleteSObjectMarkRuleHelpers
         return false;
     }
 
-    private static bool LiteralMatchesTarget(
-      ILiteralOperation literalOperation,
-      TargetNameDescriptor targetNames)
+    private static bool LiteralMatchesTarget(ILiteralOperation literalOperation, TargetNameDescriptor targetNames)
     {
         if (!literalOperation.ConstantValue.HasValue)
         {

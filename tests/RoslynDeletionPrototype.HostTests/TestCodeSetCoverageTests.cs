@@ -1,6 +1,6 @@
 using System.Reflection;
 using MinimalRoslynCpg.Builder;
-using Deletion.Application;
+using NLISSN.Application;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Common;
 using RoslynPrototype.Tests.TestCodeSet.Cpg;
@@ -13,7 +13,7 @@ using RoslynPrototype.Tests.TestCodeSet.Propagation;
 using RoslynPrototype.Tests.TestCodeSet.Reachability;
 using RoslynPrototype.Tests.TestCodeSet.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
-using Deletion.Rules;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

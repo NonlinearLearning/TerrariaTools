@@ -1,11 +1,11 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Core.Analysis;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Lifting;
+namespace NLISSN.Core.Lifting;
 
 public sealed class MarkLiftingEngine
 {
@@ -46,11 +46,7 @@ public sealed class MarkLiftingEngine
           .ToList();
     }
 
-    private static List<LiftedMarkRecord> RunGroupsSerial(
-      RuleContext context,
-      IReadOnlyList<LiftRuleGroup> groupedRules,
-      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    private static List<LiftedMarkRecord> RunGroupsSerial(RuleContext context, IReadOnlyList<LiftRuleGroup> groupedRules, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
     {
         var liftedMarks = new List<LiftedMarkRecord>();
         foreach (var ruleGroup in groupedRules)
@@ -65,11 +61,7 @@ public sealed class MarkLiftingEngine
         return liftedMarks;
     }
 
-    private static List<LiftedMarkRecord> RunGroupsInParallel(
-      RuleContext context,
-      IReadOnlyList<LiftRuleGroup> groupedRules,
-      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    private static List<LiftedMarkRecord> RunGroupsInParallel(RuleContext context, IReadOnlyList<LiftRuleGroup> groupedRules, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
     {
         var orderedLiftedMarks = context.Runtime.Scheduler.RunOrderedAsync(
             groupedRules.Count,
@@ -92,11 +84,7 @@ public sealed class MarkLiftingEngine
         return orderedLiftedMarks.SelectMany(marks => marks).ToList();
     }
 
-    private static List<LiftedMarkRecord> RunRule(
-      RuleContext context,
-      LiftRuleGroup ruleGroup,
-      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    private static List<LiftedMarkRecord> RunRule(RuleContext context, LiftRuleGroup ruleGroup, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
     {
         var liftedMarks = new List<LiftedMarkRecord>();
         foreach (var rule in ruleGroup.Rules)
@@ -107,11 +95,7 @@ public sealed class MarkLiftingEngine
         return liftedMarks;
     }
 
-    private static List<LiftedMarkRecord> RunRule(
-      RuleContext context,
-      RuleDefinitionLift rule,
-      IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey,
-      IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    private static List<LiftedMarkRecord> RunRule(RuleContext context, RuleDefinitionLift rule, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
     {
         seedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleSeedMarks);
         propagatedMarksByGroupKey.TryGetValue(rule.GroupKey, out var rulePropagatedMarks);

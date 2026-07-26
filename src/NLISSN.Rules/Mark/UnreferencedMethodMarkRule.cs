@@ -3,10 +3,10 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Model;
-using Deletion.Core.Analysis;
-using Deletion.Core.Marking;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Marking;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 /// <summary>
 /// 在项目级 Compilation 内查找没有外部引用的普通私有方法声明。

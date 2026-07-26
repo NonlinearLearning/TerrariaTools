@@ -1,12 +1,12 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Analysis;
+using NLISSN.Core.Analysis;
 using MinimalRoslynCpg.Builder;
-using Deletion.Application;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Rules;
+using NLISSN.Application;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

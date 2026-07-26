@@ -1,11 +1,11 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Analysis;
-using Deletion.Core.Decision;
-using Deletion.Core.Marking;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Marking;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Propagation;
+namespace NLISSN.Core.Propagation;
 
 public static class DeleteSObjectPropagationHelpers
 {

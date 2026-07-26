@@ -9,13 +9,7 @@ namespace MinimalRoslynCpg.Builder;
 internal sealed class RoslynCpgBuildContext
 {
   private readonly List<OperationInventoryEntry> _operationInventory = new();
-  private RoslynCpgBuildContext(
-    SemanticModel semanticModel,
-    SyntaxNode root,
-    string source,
-    string filePath,
-    RoslynCpgGraph graph,
-    RoslynCpgNode syntaxTreeNode)
+  private RoslynCpgBuildContext(SemanticModel semanticModel, SyntaxNode root, string source, string filePath, RoslynCpgGraph graph, RoslynCpgNode syntaxTreeNode)
   {
     SemanticModel = semanticModel;
     Root = root;
@@ -39,22 +33,13 @@ internal sealed class RoslynCpgBuildContext
 
   internal IReadOnlyList<OperationInventoryEntry> OperationInventory => _operationInventory;
 
-  internal void AddOperationInventoryEntry(
-    IOperation operation,
-    IMethodSymbol? owningMethod,
-    bool isRoot)
+  internal void AddOperationInventoryEntry(IOperation operation, IMethodSymbol? owningMethod, bool isRoot)
   {
     ArgumentNullException.ThrowIfNull(operation);
     _operationInventory.Add(new OperationInventoryEntry(operation, owningMethod, isRoot));
   }
 
-  internal static RoslynCpgBuildContext Create(
-    SemanticModel semanticModel,
-    SyntaxNode root,
-    string source,
-    string filePath,
-    DeterministicNodeIdTable? preallocatedNodeIds = null,
-    StableNodeIdentityFactory? identityFactory = null)
+  internal static RoslynCpgBuildContext Create(SemanticModel semanticModel, SyntaxNode root, string source, string filePath, DeterministicNodeIdTable? preallocatedNodeIds = null, StableNodeIdentityFactory? identityFactory = null)
   {
     var graph = new RoslynCpgGraph(preallocatedNodeIds, identityFactory);
     graph.RegisterSource(filePath, source);
@@ -76,13 +61,7 @@ internal sealed class RoslynCpgBuildContext
       syntaxTreeNode);
   }
 
-  internal static RoslynCpgBuildContext CreateAnchorDiscovery(
-    SemanticModel semanticModel,
-    SyntaxNode root,
-    string source,
-    string filePath,
-    StableNodeIdentityFactory identityFactory,
-    Action<StableNodeAnchor> observeAnchor)
+  internal static RoslynCpgBuildContext CreateAnchorDiscovery(SemanticModel semanticModel, SyntaxNode root, string source, string filePath, StableNodeIdentityFactory identityFactory, Action<StableNodeAnchor> observeAnchor)
   {
     var graph = RoslynCpgGraph.CreateAnchorDiscovery(identityFactory, observeAnchor);
     graph.RegisterSource(filePath, source);
@@ -97,11 +76,7 @@ internal sealed class RoslynCpgBuildContext
     return new RoslynCpgBuildContext(semanticModel, root, source, filePath, graph, syntaxTreeNode);
   }
 
-  internal static RoslynCpgBuildContext CreateFromSource(
-    string source,
-    string filePath,
-    DeterministicNodeIdTable? preallocatedNodeIds = null,
-    StableNodeIdentityFactory? identityFactory = null)
+  internal static RoslynCpgBuildContext CreateFromSource(string source, string filePath, DeterministicNodeIdTable? preallocatedNodeIds = null, StableNodeIdentityFactory? identityFactory = null)
   {
     var syntaxTree = CSharpSyntaxTree.ParseText(source, path: filePath);
     var compilation = CSharpCompilation.Create(
@@ -112,11 +87,7 @@ internal sealed class RoslynCpgBuildContext
     return Create(semanticModel, syntaxTree.GetRoot(), source, filePath, preallocatedNodeIds, identityFactory);
   }
 
-  internal static RoslynCpgBuildContext CreateFromSourceAnchorDiscovery(
-    string source,
-    string filePath,
-    StableNodeIdentityFactory identityFactory,
-    Action<StableNodeAnchor> observeAnchor)
+  internal static RoslynCpgBuildContext CreateFromSourceAnchorDiscovery(string source, string filePath, StableNodeIdentityFactory identityFactory, Action<StableNodeAnchor> observeAnchor)
   {
     var syntaxTree = CSharpSyntaxTree.ParseText(source, path: filePath);
     var compilation = CSharpCompilation.Create(

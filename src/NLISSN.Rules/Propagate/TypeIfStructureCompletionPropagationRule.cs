@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public sealed class ClassIfStructureCompletionPropagationRule : RuleDefinitionPropagate
 {

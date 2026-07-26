@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
-using Deletion.Core.Marking;
+using NLISSN.Core.Marking;
 
-namespace Deletion.Core.Decision;
+namespace NLISSN.Core.Decision;
 
 public static class DeleteDecisionFactory
 {

@@ -2,13 +2,13 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MinimalRoslynCpg.Builder;
-using Deletion.Core.Analysis;
-using Deletion.Application;
-using Deletion.Core.Decision;
-using Deletion.Core.Rewrite;
+using NLISSN.Core.Analysis;
+using NLISSN.Application;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.DeleteClassDirectory;
 using RoslynPrototype.Tests.TestCodeSet.Performance;
-using Deletion.Rules;
+using NLISSN.Rules;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
@@ -608,9 +608,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         }
     }
 
-    private async Task<DiffWritePerformanceMeasurement> MeasureDiffWritePerformanceAsync(
-      string sourceDirectory,
-      int maxDegreeOfParallelism)
+    private async Task<DiffWritePerformanceMeasurement> MeasureDiffWritePerformanceAsync(string sourceDirectory, int maxDegreeOfParallelism)
     {
         var diffRootPath = Path.Combine(_tempDirectory, $"diff-performance-dop-{maxDegreeOfParallelism}");
         var analysisLogPath = Path.Combine(_tempDirectory, $"diff-performance-dop-{maxDegreeOfParallelism}.log");
@@ -644,10 +642,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
               StringComparer.Ordinal));
     }
 
-    private async Task<DirectoryIoPerformanceMeasurement> MeasureDirectoryIoPerformanceAsync(
-      string sourceDirectory,
-      int maxDegreeOfParallelism,
-      bool writeLogs)
+    private async Task<DirectoryIoPerformanceMeasurement> MeasureDirectoryIoPerformanceAsync(string sourceDirectory, int maxDegreeOfParallelism, bool writeLogs)
     {
         var runName = $"directory-io-dop-{maxDegreeOfParallelism}-{(writeLogs ? "logs" : "none")}";
         var runtimeLogPath = Path.Combine(_tempDirectory, $"{runName}-runtime.log");
@@ -788,9 +783,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         return long.Parse(field[prefix.Length..]);
     }
 
-    private static AnalyzerTestContext CreateDeleteClassContext(
-      string declarationFilePath,
-      params (string FilePath, string Source)[] files)
+    private static AnalyzerTestContext CreateDeleteClassContext(string declarationFilePath, params (string FilePath, string Source)[] files)
     {
         var trees = files.ToDictionary(
           file => file.FilePath,
@@ -888,13 +881,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           .GetValue(instance)!;
     }
 
-    private static void AssertIndexBuildCounts(
-      object scan,
-      int invocation,
-      int mappedInvocation,
-      int elementAccess,
-      int expression,
-      int typeSyntax)
+    private static void AssertIndexBuildCounts(object scan, int invocation, int mappedInvocation, int elementAccess, int expression, int typeSyntax)
     {
         Assert.Equal(invocation, GetPrivateIntField(scan, "_invocationIndexBuildCount"));
         Assert.Equal(mappedInvocation, GetPrivateIntField(scan, "_mappedInvocationIndexBuildCount"));
@@ -903,10 +890,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         Assert.Equal(typeSyntax, GetPrivateIntField(scan, "_typeSyntaxIndexBuildCount"));
     }
 
-    private static TCache GetCompilationCache<TCache>(
-      DeletionAnalysisRuntime runtime,
-      Compilation compilation,
-      Func<Compilation, TCache> factory)
+    private static TCache GetCompilationCache<TCache>(DeletionAnalysisRuntime runtime, Compilation compilation, Func<Compilation, TCache> factory)
     {
         var method = typeof(DeletionAnalysisRuntime)
           .GetMethod("GetOrCreateCompilationCache", BindingFlags.Instance | BindingFlags.NonPublic)!
@@ -969,9 +953,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     {
         private readonly IReadOnlyDictionary<string, SyntaxNode> _rootsByPath;
 
-        public AnalyzerTestContext(
-          RuleContext ruleContext,
-          IReadOnlyDictionary<string, SyntaxNode> rootsByPath)
+        public AnalyzerTestContext(RuleContext ruleContext, IReadOnlyDictionary<string, SyntaxNode> rootsByPath)
         {
             RuleContext = ruleContext;
             _rootsByPath = rootsByPath;
@@ -979,10 +961,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
 
         public RuleContext RuleContext { get; }
 
-        public TypeSyntax FindParameterTypeSyntax(
-          string filePath,
-          string methodName,
-          string parameterName)
+        public TypeSyntax FindParameterTypeSyntax(string filePath, string methodName, string parameterName)
         {
             return _rootsByPath[filePath]
               .DescendantNodes()

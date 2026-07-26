@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public sealed record ExpressionRewrite(
   ExpressionSyntax Expression,

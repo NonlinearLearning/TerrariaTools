@@ -1,4 +1,4 @@
-using Deletion.Rules;
+using NLISSN.Rules;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -378,10 +378,7 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
             string.Equals(part, "obj", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static async Task<CodeSetWorkResult> ReadCodeSetWorkItemAsync(
-      CodeSetWorkItem item,
-      int index,
-      CancellationToken cancellationToken)
+    private static async Task<CodeSetWorkResult> ReadCodeSetWorkItemAsync(CodeSetWorkItem item, int index, CancellationToken cancellationToken)
     {
         var buffer = new byte[Math.Min(512, Math.Max(1, item.Length))];
         await using var stream = new FileStream(
@@ -408,10 +405,7 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
         }
     }
 
-    private static void AssertOrderedCodeSetResults(
-      IReadOnlyList<CodeSetWorkItem> files,
-      IReadOnlyList<CodeSetWorkResult> results,
-      bool allowZeroBytesRead = false)
+    private static void AssertOrderedCodeSetResults(IReadOnlyList<CodeSetWorkItem> files, IReadOnlyList<CodeSetWorkResult> results, bool allowZeroBytesRead = false)
     {
         Assert.Equal(files.Count, results.Count);
         Assert.Equal(Enumerable.Range(0, files.Count).ToArray(), results.Select(result => result.Index).ToArray());

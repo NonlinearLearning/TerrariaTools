@@ -1,11 +1,11 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Analysis;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Lifting;
+namespace NLISSN.Core.Lifting;
 
 public static class DeleteSObjectIfStructureLiftingHelpers
 {

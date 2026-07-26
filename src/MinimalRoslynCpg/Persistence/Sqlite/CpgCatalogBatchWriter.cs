@@ -73,11 +73,7 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
   internal IReadOnlyList<int> BatchPublicationCounts => _batchPublicationCounts;
   internal IReadOnlyList<int> BatchEstimatedMetadataBytes => _batchEstimatedMetadataBytes;
 
-  internal async Task EnqueueAsync(
-    CpgShardLease lease,
-    CpgFrozenShard shard,
-    CpgReusableFragmentKey? reusableKey,
-    CancellationToken cancellationToken)
+  internal async Task EnqueueAsync(CpgShardLease lease, CpgFrozenShard shard, CpgReusableFragmentKey? reusableKey, CancellationToken cancellationToken)
   {
     var before = _lifetime.ElapsedMilliseconds;
     var pending = Interlocked.Increment(ref _pending);
@@ -164,12 +160,7 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
     }
   }
 
-  private async Task FlushAsync(
-    Microsoft.Data.Sqlite.SqliteConnection connection,
-    SqliteCpgCatalogCommandCache commandCache,
-    List<CpgCatalogPublication> batch,
-    int estimatedRows,
-    int estimatedMetadataBytes)
+  private async Task FlushAsync(Microsoft.Data.Sqlite.SqliteConnection connection, SqliteCpgCatalogCommandCache commandCache, List<CpgCatalogPublication> batch, int estimatedRows, int estimatedMetadataBytes)
   {
     if (batch.Count == 0)
     {

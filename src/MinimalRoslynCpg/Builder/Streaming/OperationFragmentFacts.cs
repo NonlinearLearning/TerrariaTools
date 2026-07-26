@@ -10,15 +10,7 @@ internal sealed class OperationFragmentFacts
   private IReadOnlyList<CpgEdgeCandidate> _edgeCandidates;
   private bool _released;
 
-  internal OperationFragmentFacts(
-    int order,
-    int declarationSpanStart,
-    int declarationSpanEnd,
-    int bodySpanStart,
-    int bodySpanEnd,
-    string? owningMethodSymbolKey,
-    IReadOnlyList<CpgNodeDescriptor> nodeDescriptors,
-    IReadOnlyList<CpgEdgeCandidate> edgeCandidates)
+  internal OperationFragmentFacts(int order, int declarationSpanStart, int declarationSpanEnd, int bodySpanStart, int bodySpanEnd, string? owningMethodSymbolKey, IReadOnlyList<CpgNodeDescriptor> nodeDescriptors, IReadOnlyList<CpgEdgeCandidate> edgeCandidates)
   {
     Order = order;
     DeclarationSpanStart = declarationSpanStart;

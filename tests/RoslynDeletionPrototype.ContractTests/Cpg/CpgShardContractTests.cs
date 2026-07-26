@@ -2,6 +2,8 @@ using MinimalRoslynCpg.Persistence;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Builder;
 using MinimalRoslynCpg.Model;
+using System.Security.Cryptography;
+using System.Text;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -22,6 +24,11 @@ public sealed class CpgShardContractTests
 
       Assert.True(File.Exists(result.Location.ShardPath));
       Assert.Equal(CpgShardStatus.Complete, result.Location.Status);
+      Assert.Equal(6, ReadFormatVersion(result.Location.ShardPath));
+      Assert.NotNull(recovered.IncomingEdgeOffsets);
+      Assert.NotNull(recovered.IncomingEdgeIndexes);
+      Assert.Equal(recovered.Nodes.Count + 1, recovered.IncomingEdgeOffsets!.Count);
+      Assert.Equal(recovered.Edges.Count, recovered.IncomingEdgeIndexes!.Count);
       Assert.Equal(shard.Nodes, recovered.Nodes);
       Assert.Equal(shard.Edges, recovered.Edges);
     }
@@ -53,6 +60,31 @@ public sealed class CpgShardContractTests
       Assert.Equal((uint)7, boundary.SourceNodeId);
       Assert.Equal((uint)99, boundary.TargetNodeId);
       Assert.Equal("InterproceduralDataFlow", boundary.Kind);
+    }
+    finally
+    {
+      Directory.Delete(root, recursive: true);
+    }
+  }
+
+  [Fact]
+  public async Task ReadFromPathAsync_CorruptIncomingEdgeCsr_ThrowsInvalidDataException()
+  {
+    var root = CreateTemporaryDirectory();
+    try
+    {
+      var store = new CpgShardStore(root);
+      var shard = CreateProjectionShard();
+      var result = await store.WriteAsync(shard, CancellationToken.None);
+      var bytes = await File.ReadAllBytesAsync(result.Location.ShardPath);
+      var csrStart = bytes.Length - sizeof(int) * ((shard.Nodes.Count + 1) + shard.Edges.Count + 2);
+      var invalidOffset = BitConverter.GetBytes(shard.Edges.Count + 1);
+      Array.Copy(invalidOffset, 0, bytes, csrStart + sizeof(int), sizeof(int));
+      await File.WriteAllBytesAsync(result.Location.ShardPath, bytes);
+
+      await Assert.ThrowsAsync<InvalidDataException>(() => store.ReadFromPathAsync(
+        result.Location.ShardPath,
+        CancellationToken.None));
     }
     finally
     {
@@ -288,10 +320,7 @@ public sealed class CpgShardContractTests
   [InlineData("source-b", "profile-a", "fragment-a")]
   [InlineData("source-a", "profile-b", "fragment-a")]
   [InlineData("source-a", "profile-a", "fragment-b")]
-  public async Task TryReadAsync_IdentityHashDoesNotMatch_ReturnsNull(
-    string sourceHash,
-    string profileHash,
-    string fragmentHash)
+  public async Task TryReadAsync_IdentityHashDoesNotMatch_ReturnsNull(string sourceHash, string profileHash, string fragmentHash)
   {
     var root = CreateTemporaryDirectory();
     try
@@ -314,6 +343,36 @@ public sealed class CpgShardContractTests
     }
   }
 
+  [Fact]
+  public async Task ReadAsync_LegacyV5Shard_RemainsReadable()
+  {
+    var root = CreateTemporaryDirectory();
+    try
+    {
+      var store = new CpgShardStore(root);
+      var shard = CreateProjectionShard();
+      var location = await WriteLegacyV5ShardAsync(root, shard);
+
+      var recovered = await store.ReadAsync(location, CancellationToken.None);
+      var projection = CpgFrozenShardGraphReader.ReadIncomingProjection(
+        recovered,
+        new NodeId(13),
+        new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+        maxEdges: 16);
+
+      Assert.Null(recovered.IncomingEdgeOffsets);
+      Assert.Null(recovered.IncomingEdgeIndexes);
+      Assert.Equal(new[] { new NodeId(7), new NodeId(11), new NodeId(13) }, projection.Nodes.Keys.OrderBy(id => id).ToArray());
+      Assert.Equal(
+        new[] { new NodeId(7), new NodeId(11) },
+        projection.IncomingEdges.Select(edge => edge.SourceNodeId).ToArray());
+    }
+    finally
+    {
+      Directory.Delete(root, recursive: true);
+    }
+  }
+
   private static CpgFrozenShard CreateShard(string sourceHash, string profileHash, string fragmentHash)
   {
     var lookup = new CpgShardLookup(
@@ -325,6 +384,30 @@ public sealed class CpgShardContractTests
       lookup,
       new[] { new CpgFrozenNode(0, 7, "Operation", "input.cs", 0, 10, "M", null, null, null, false) },
       new[] { new CpgFrozenEdge(0, 0, "DataFlow", null, null) },
+      Array.Empty<CpgSymbolLocation>());
+  }
+
+  private static CpgFrozenShard CreateProjectionShard()
+  {
+    var lookup = new CpgShardLookup(
+      new CpgFileKey("project", "input.cs", "source-a"),
+      new CpgFragmentKey("method", 0, 10, "projection-fragment"),
+      SchemaVersion: 1,
+      "profile-a");
+    return new CpgFrozenShard(
+      lookup,
+      new[]
+      {
+        new CpgFrozenNode(0, 7, "Operation", "input.cs", 0, 2, "Operation", "source-a", null, null, false),
+        new CpgFrozenNode(1, 11, "Operation", "input.cs", 3, 5, "Operation", "source-b", null, null, false),
+        new CpgFrozenNode(2, 13, "Operation", "input.cs", 6, 8, "Operation", "sink", null, null, false),
+      },
+      new[]
+      {
+        new CpgFrozenEdge(0, 2, "DataFlow", null, null, "input.cs", 0, 2, "CallA"),
+        new CpgFrozenEdge(1, 2, "DataFlow", null, "callsite:input.cs:3:5:CallB", "input.cs", 3, 5, "CallB"),
+        new CpgFrozenEdge(0, 1, "DataFlow", null, null),
+      },
       Array.Empty<CpgSymbolLocation>());
   }
 
@@ -358,19 +441,12 @@ public sealed class CpgShardContractTests
       false)!;
   }
 
-  private static object CreateCandidate(
-    Type candidateType,
-    StableNodeAnchor sourceAnchor,
-    StableNodeAnchor targetAnchor,
-    RoslynCpgEdgeKind kind)
+  private static object CreateCandidate(Type candidateType, StableNodeAnchor sourceAnchor, StableNodeAnchor targetAnchor, RoslynCpgEdgeKind kind)
   {
     return Activator.CreateInstance(candidateType, sourceAnchor, targetAnchor, kind, null, null, null)!;
   }
 
-  private static RoslynCpgNode CreateOperationNode(
-    StableNodeAnchor anchor,
-    string name,
-    DeterministicNodeIdTable allocation)
+  private static RoslynCpgNode CreateOperationNode(StableNodeAnchor anchor, string name, DeterministicNodeIdTable allocation)
   {
     return new RoslynCpgNode(
       RoslynCpgNodeKind.Operation,
@@ -407,6 +483,148 @@ public sealed class CpgShardContractTests
       Path.DirectorySeparatorChar,
       Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
     return Path.GetFullPath(path).StartsWith(normalizedDirectory, StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static int ReadFormatVersion(string shardPath)
+  {
+    using var stream = new FileStream(shardPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+    using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: false);
+    _ = reader.ReadBytes(4);
+    return reader.ReadInt32();
+  }
+
+  private static async Task<CpgShardLocation> WriteLegacyV5ShardAsync(string root, CpgFrozenShard shard)
+  {
+    var shardId = CreateShardId(shard.Lookup);
+    var directory = Path.Combine(root, "shards", shardId[..2]);
+    Directory.CreateDirectory(directory);
+    var shardPath = Path.Combine(directory, $"{shardId}.cpgbin");
+    var payload = SerializeLegacyV5(shard);
+    await File.WriteAllBytesAsync(shardPath, payload);
+    return new CpgShardLocation(
+      shardId,
+      shardPath,
+      Convert.ToHexString(SHA256.HashData(payload)),
+      payload.LongLength,
+      CpgShardStatus.Complete);
+  }
+
+  private static string CreateShardId(CpgShardLookup lookup)
+  {
+    var identity = string.Join("|", lookup.File.ProjectId, lookup.File.RelativePath,
+      lookup.File.SourceHash, lookup.Fragment.Kind, lookup.Fragment.SpanStart,
+      lookup.Fragment.SpanLength, lookup.Fragment.FragmentHash, lookup.SchemaVersion,
+      lookup.ProfileHash);
+    return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
+  }
+
+  private static byte[] SerializeLegacyV5(CpgFrozenShard shard)
+  {
+    using var stream = new MemoryStream();
+    using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+    writer.Write("CPGB"u8.ToArray());
+    writer.Write(5);
+    WriteLookup(writer, shard.Lookup);
+    writer.Write((int)shard.Role);
+    WriteOptional(writer, shard.BoundaryAdjacency?.OwnerFragmentId);
+    writer.Write((int?)shard.BoundaryAdjacency?.Direction ?? -1);
+    writer.Write(shard.Nodes.Count);
+    foreach (var node in shard.Nodes.OrderBy(node => node.LocalIndex))
+    {
+      writer.Write(node.LocalIndex);
+      writer.Write(node.NodeId);
+      WriteRequired(writer, node.Kind);
+      WriteOptional(writer, node.FilePath);
+      WriteOptionalInt(writer, node.SpanStart);
+      WriteOptionalInt(writer, node.SpanEnd);
+      WriteRequired(writer, node.DisplayKind);
+      WriteOptional(writer, node.Name);
+      WriteOptional(writer, node.FullName);
+      WriteOptional(writer, node.Signature);
+      writer.Write(node.IsImplicit);
+      writer.Write(node.StableFilePathId);
+      writer.Write(node.StableSpanStart);
+      writer.Write(node.StableSpanEnd);
+      writer.Write(node.StableRole);
+      writer.Write(node.StableOrdinal);
+      writer.Write(node.StableExtraKeyId);
+    }
+
+    writer.Write(shard.Edges.Count);
+    foreach (var edge in shard.Edges)
+    {
+      writer.Write(edge.SourceLocalIndex);
+      writer.Write(edge.TargetLocalIndex);
+      WriteRequired(writer, edge.Kind);
+      WriteOptional(writer, edge.Label);
+      WriteOptional(writer, edge.ContextId);
+      WriteOptional(writer, edge.CallSiteFilePath);
+      WriteOptionalInt(writer, edge.CallSiteSpanStart);
+      WriteOptionalInt(writer, edge.CallSiteSpanEnd);
+      WriteOptional(writer, edge.CallSiteDisplayName);
+    }
+
+    var boundaryEdges = shard.BoundaryEdges ?? Array.Empty<CpgFrozenBoundaryEdge>();
+    writer.Write(boundaryEdges.Count);
+    foreach (var edge in boundaryEdges)
+    {
+      writer.Write(edge.SourceNodeId);
+      writer.Write(edge.TargetNodeId);
+      WriteRequired(writer, edge.Kind);
+      WriteOptional(writer, edge.Label);
+      WriteOptional(writer, edge.ContextId);
+      WriteOptional(writer, edge.CallSiteFilePath);
+      WriteOptionalInt(writer, edge.CallSiteSpanStart);
+      WriteOptionalInt(writer, edge.CallSiteSpanEnd);
+      WriteOptional(writer, edge.CallSiteDisplayName);
+    }
+
+    writer.Write(shard.SymbolLocations.Count);
+    foreach (var location in shard.SymbolLocations.OrderBy(location => location.SymbolKey, StringComparer.Ordinal))
+    {
+      WriteRequired(writer, location.SymbolKey);
+      writer.Write(location.LocalIndex);
+    }
+
+    writer.Flush();
+    return stream.ToArray();
+  }
+
+  private static void WriteLookup(BinaryWriter writer, CpgShardLookup lookup)
+  {
+    WriteRequired(writer, lookup.File.ProjectId);
+    WriteRequired(writer, lookup.File.RelativePath);
+    WriteRequired(writer, lookup.File.SourceHash);
+    WriteRequired(writer, lookup.Fragment.Kind);
+    writer.Write(lookup.Fragment.SpanStart);
+    writer.Write(lookup.Fragment.SpanLength);
+    WriteRequired(writer, lookup.Fragment.FragmentHash);
+    writer.Write(lookup.SchemaVersion);
+    WriteRequired(writer, lookup.ProfileHash);
+  }
+
+  private static void WriteRequired(BinaryWriter writer, string value)
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(value);
+    writer.Write(value);
+  }
+
+  private static void WriteOptional(BinaryWriter writer, string? value)
+  {
+    writer.Write(value is not null);
+    if (value is not null)
+    {
+      writer.Write(value);
+    }
+  }
+
+  private static void WriteOptionalInt(BinaryWriter writer, int? value)
+  {
+    writer.Write(value.HasValue);
+    if (value.HasValue)
+    {
+      writer.Write(value.Value);
+    }
   }
 
   private sealed class DelegateDisposable(Action dispose) : IDisposable

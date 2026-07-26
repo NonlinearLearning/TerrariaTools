@@ -2,12 +2,12 @@
 
 ## 适用范围
 
-本页说明 `src/RoslynPrototype/RoslynPrototype.csproj` 的当前宿主行为。该项目是兼容 launcher，转发至 `src/Deletion.Cli/`；原命令路径和参数保持不变。该 CLI 是研究原型；规则覆盖范围以测试和设计文档为准。
+本页说明 `src/NLISSN/NLISSN.csproj` 的当前宿主行为。该项目直接提供 CLI；参数保持不变。该 CLI 是研究原型；规则覆盖范围以测试和设计文档为准。
 
 ## 调用形式
 
 ```powershell
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path> [options]
+dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> [options]
 ```
 
 `<input-path>` 可以是单个 `.cs` 文件或包含 C# 文件的目录。省略输入路径时，宿主分析内置 demo 源码。
@@ -17,7 +17,7 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path
 ### 运行内置 demo
 
 ```powershell
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj
+dotnet run --project .\src\NLISSN\NLISSN.csproj
 ```
 
 该命令不传输入路径，宿主会分析内置 demo 源码。默认不写回任何文件。
@@ -25,7 +25,7 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj
 ### 分析你的目录中的目标类
 
 ```powershell
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <source-directory> --delete-class <class-name> --no-diff
+dotnet run --project .\src\NLISSN\NLISSN.csproj -- <source-directory> --delete-class <class-name> --no-diff
 ```
 
 先在副本或不带 `--write-back` 的路径执行。`--write-back` 会将改写后的内容写回源文件。
@@ -58,13 +58,13 @@ dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <source-dir
 
 ```powershell
 # directory=12, cpg=1
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --cpg-max-degree-of-parallelism 1 --skip-rewrite --no-diff
+dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --cpg-max-degree-of-parallelism 1 --skip-rewrite --no-diff
 
 # directory=1, cpg=12
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --disable-directory-parallelism --cpg-max-degree-of-parallelism 12 --skip-rewrite --no-diff
+dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --disable-directory-parallelism --cpg-max-degree-of-parallelism 12 --skip-rewrite --no-diff
 
 # directory=12, cpg=12
-dotnet run --project .\src\RoslynPrototype\RoslynPrototype.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --cpg-max-degree-of-parallelism 12 --skip-rewrite --no-diff
+dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> --target-name <name> --max-degree-of-parallelism 12 --cpg-max-degree-of-parallelism 12 --skip-rewrite --no-diff
 ```
 
 ## 输出与安全边界

@@ -2,14 +2,14 @@ using System.Reflection;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Analysis;
+using NLISSN.Core.Analysis;
 using MinimalRoslynCpg.Contracts;
-using Deletion.Application;
-using Deletion.Rules;
-using Deletion.Core.Decision;
-using Deletion.Core.Lifting;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
+using NLISSN.Application;
+using NLISSN.Rules;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Lifting;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
 using RoslynPrototype.Tests.TestCodeSet.Common;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
 using Xunit;
@@ -136,7 +136,7 @@ public sealed class DecisionStructureValidationTests
         Assert.Equal("Delete", dispatchKind.ToString());
     }
 
-    private static (Deletion.Rules.RuleContext Context, SyntaxNode Root, DeletionRulePipeline Rules) CreateContextAndRules(string source, string? targetName = null)
+    private static (NLISSN.Rules.RuleContext Context, SyntaxNode Root, DeletionRulePipeline Rules) CreateContextAndRules(string source, string? targetName = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
         var root = tree.GetRoot();
@@ -157,12 +157,12 @@ public sealed class DecisionStructureValidationTests
             options["target-name"] = targetName;
         }
 
-        var context = new Deletion.Rules.RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options);
+        var context = new NLISSN.Rules.RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options);
         var rules = RuleRegistry.CreateDefaultRules();
         return (context, root, rules);
     }
 
-    private static DecisionUnit ResolveMergedUnit(DefaultDecisionPolicy policy, Deletion.Rules.RuleContext context, params DecisionUnit[] units)
+    private static DecisionUnit ResolveMergedUnit(DefaultDecisionPolicy policy, NLISSN.Rules.RuleContext context, params DecisionUnit[] units)
     {
         var method = typeof(DefaultDecisionPolicy).GetMethod(
           "ResolveToUnitForTesting",
@@ -172,12 +172,12 @@ public sealed class DecisionStructureValidationTests
         return Assert.IsType<DecisionUnit>(merged);
     }
 
-    private static IReadOnlyList<LiftedMarkRecord> Lift(Deletion.Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, DeletionRulePipeline rules)
+    private static IReadOnlyList<LiftedMarkRecord> Lift(NLISSN.Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, DeletionRulePipeline rules)
     {
         return new MarkLiftingEngine().Run(context, seedMarks, propagatedMarks, rules.Lifters);
     }
 
-    private static List<MarkRecord> RunDeleteSObjectMarks(Deletion.Rules.RuleContext context, SyntaxNode root, DeletionRulePipeline rules)
+    private static List<MarkRecord> RunDeleteSObjectMarks(NLISSN.Rules.RuleContext context, SyntaxNode root, DeletionRulePipeline rules)
     {
         return new MarkingEngine()
           .Run(context, root, rules.Markers)
@@ -185,7 +185,7 @@ public sealed class DecisionStructureValidationTests
           .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(Deletion.Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, DeletionRulePipeline rules)
+    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(NLISSN.Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, DeletionRulePipeline rules)
     {
         return new PropagationEngine()
           .Run(

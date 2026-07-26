@@ -143,10 +143,7 @@ internal sealed class FragmentNodeOwnershipIndex
   private readonly IReadOnlyDictionary<NodeId, CpgFragmentOwnership?> _ownersByNodeId;
   private readonly IReadOnlyDictionary<CpgFragmentOwnership, IReadOnlySet<NodeId>> _nodeIdsByOwner;
 
-  private FragmentNodeOwnershipIndex(
-    IReadOnlyDictionary<NodeId, CpgFragmentOwnership?> ownersByNodeId,
-    IReadOnlyDictionary<CpgFragmentOwnership, IReadOnlySet<NodeId>> nodeIdsByOwner,
-    IReadOnlySet<NodeId> skeletonNodeIds)
+  private FragmentNodeOwnershipIndex(IReadOnlyDictionary<NodeId, CpgFragmentOwnership?> ownersByNodeId, IReadOnlyDictionary<CpgFragmentOwnership, IReadOnlySet<NodeId>> nodeIdsByOwner, IReadOnlySet<NodeId> skeletonNodeIds)
   {
     _ownersByNodeId = ownersByNodeId;
     _nodeIdsByOwner = nodeIdsByOwner;
@@ -155,9 +152,7 @@ internal sealed class FragmentNodeOwnershipIndex
 
   internal IReadOnlySet<NodeId> SkeletonNodeIds { get; }
 
-  internal static FragmentNodeOwnershipIndex Create(
-    IEnumerable<RoslynCpgNode> nodes,
-    FragmentOwnershipIndex ownership)
+  internal static FragmentNodeOwnershipIndex Create(IEnumerable<RoslynCpgNode> nodes, FragmentOwnershipIndex ownership)
   {
     ArgumentNullException.ThrowIfNull(nodes);
     ArgumentNullException.ThrowIfNull(ownership);

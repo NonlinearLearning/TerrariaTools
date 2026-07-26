@@ -4,9 +4,9 @@ using Microsoft.CodeAnalysis.Text;
 using MinimalRoslynCpg.Contracts;
 using MinimalRoslynCpg.Analysis;
 using MinimalRoslynCpg.Model;
-using Deletion.Core.Analysis;
+using NLISSN.Core.Analysis;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 /// <summary>
 /// 规则执行时共享的最小上下文。
@@ -22,12 +22,7 @@ public sealed class RuleContext :
     private readonly DeletionAnalysisRuntime _runtime;
     private readonly MarkAnalysisSnapshot _markAnalysisSnapshot;
 
-    public RuleContext(
-      CpgAnalysisContext analysisContext,
-      IReadOnlyDictionary<string, string> options,
-      RoslynCpgStructureView? structureView = null,
-      DeletionAnalysisRuntime? runtime = null,
-      MarkAnalysisSnapshot? markAnalysisSnapshot = null)
+    public RuleContext(CpgAnalysisContext analysisContext, IReadOnlyDictionary<string, string> options, RoslynCpgStructureView? structureView = null, DeletionAnalysisRuntime? runtime = null, MarkAnalysisSnapshot? markAnalysisSnapshot = null)
     {
         _analysisContext = analysisContext;
         _options = options;
@@ -53,10 +48,7 @@ public sealed class RuleContext :
     public RoslynCpgStructureViewCacheTelemetry StructureViewCacheTelemetry =>
       RoslynCpgStructureViewBuilder.GetCacheTelemetry(_analysisContext);
 
-    public MarkAnalysisSnapshot.MarkRuleTelemetryScope BeginMarkRuleTelemetry(
-      int ruleOrder,
-      string ruleId,
-      string? groupKey)
+    public MarkAnalysisSnapshot.MarkRuleTelemetryScope BeginMarkRuleTelemetry(int ruleOrder, string ruleId, string? groupKey)
     {
         return _markAnalysisSnapshot.BeginRuleTelemetry(ruleOrder, ruleId, groupKey);
     }
@@ -75,10 +67,7 @@ public sealed class RuleContext :
           : _markAnalysisSnapshot.GetTargetNameDescriptor(null);
     }
 
-    public bool GetCachedTargetMatch(
-      SyntaxNode syntaxNode,
-      TargetNameDescriptor targetNames,
-      Func<bool> evaluate)
+    public bool GetCachedTargetMatch(SyntaxNode syntaxNode, TargetNameDescriptor targetNames, Func<bool> evaluate)
     {
         return _markAnalysisSnapshot.GetTargetMatch(syntaxNode, targetNames, evaluate);
     }
@@ -111,9 +100,7 @@ public sealed class RuleContext :
           _runtime.CacheScopeKey);
     }
 
-    public IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(
-      SyntaxNode root,
-      IReadOnlyCollection<Microsoft.CodeAnalysis.CSharp.SyntaxKind> allowedKinds)
+    public IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(SyntaxNode root, IReadOnlyCollection<Microsoft.CodeAnalysis.CSharp.SyntaxKind> allowedKinds)
     {
         return RuleSyntaxAnalysisHelpers.EnumerateAllowedExpressions(
           root,
@@ -137,9 +124,7 @@ public sealed class RuleContext :
         return _markAnalysisSnapshot.GetOperation(syntaxNode);
     }
 
-    public RoslynCpgSliceResult QuerySliceBackward(
-      NodeId sinkNodeId,
-      RoslynCpgSliceQueryOptions options)
+    public RoslynCpgSliceResult QuerySliceBackward(NodeId sinkNodeId, RoslynCpgSliceQueryOptions options)
     {
         return _markAnalysisSnapshot.QuerySliceBackward(sinkNodeId, options);
     }
@@ -149,16 +134,12 @@ public sealed class RuleContext :
         return new LogicalConditionMarkAnalyzer().CanAnalyze(expression, _analysisContext);
     }
 
-    public LogicalConditionMarkAnalysis AnalyzeLogicalCondition(
-      ExpressionSyntax seedExpression,
-      string targetName)
+    public LogicalConditionMarkAnalysis AnalyzeLogicalCondition(ExpressionSyntax seedExpression, string targetName)
     {
         return new LogicalConditionMarkAnalyzer().Analyze(seedExpression, targetName, _analysisContext);
     }
 
-    public BinaryExpressionAnalysis AnalyzeBinaryExpression(
-      BinaryExpressionSyntax root,
-      ExpressionSyntax operand)
+    public BinaryExpressionAnalysis AnalyzeBinaryExpression(BinaryExpressionSyntax root, ExpressionSyntax operand)
     {
         return new BinaryExpressionAnalyzer().Analyze(root, operand, _analysisContext);
     }
@@ -168,9 +149,7 @@ public sealed class RuleContext :
         return new IfStructureAnalyzer().Analyze(ifStatement, _analysisContext);
     }
 
-    public bool TryFindContainingIf(
-      ExpressionSyntax expression,
-      out IfStructureAnalysis? analysis)
+    public bool TryFindContainingIf(ExpressionSyntax expression, out IfStructureAnalysis? analysis)
     {
         return new IfStructureAnalyzer().TryFindContainingIf(expression, _analysisContext, out analysis);
     }

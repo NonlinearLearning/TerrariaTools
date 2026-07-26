@@ -67,9 +67,7 @@ public sealed class RoslynCpgFlowSummaryRegistry
   private readonly IReadOnlyDictionary<string, RoslynCpgFlowSummary> _projectOverrides;
   private readonly IReadOnlyDictionary<string, RoslynCpgFlowSummary> _frameworkSummaries;
 
-  public RoslynCpgFlowSummaryRegistry(
-    IEnumerable<RoslynCpgFlowSummary>? projectOverrides = null,
-    IEnumerable<RoslynCpgFlowSummary>? frameworkSummaries = null)
+  public RoslynCpgFlowSummaryRegistry(IEnumerable<RoslynCpgFlowSummary>? projectOverrides = null, IEnumerable<RoslynCpgFlowSummary>? frameworkSummaries = null)
   {
     _projectOverrides = ToStableKeyIndex(projectOverrides);
     _frameworkSummaries = ToStableKeyIndex(frameworkSummaries);
@@ -91,8 +89,7 @@ public sealed class RoslynCpgFlowSummaryRegistry
     return RoslynCpgFlowSummaryLookupResult.Unknown;
   }
 
-  private static IReadOnlyDictionary<string, RoslynCpgFlowSummary> ToStableKeyIndex(
-    IEnumerable<RoslynCpgFlowSummary>? summaries)
+  private static IReadOnlyDictionary<string, RoslynCpgFlowSummary> ToStableKeyIndex(IEnumerable<RoslynCpgFlowSummary>? summaries)
   {
     return (summaries ?? Array.Empty<RoslynCpgFlowSummary>())
       .OrderBy(summary => summary.StableKey, StringComparer.Ordinal)

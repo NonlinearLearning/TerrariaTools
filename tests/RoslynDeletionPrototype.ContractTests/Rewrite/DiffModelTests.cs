@@ -2,8 +2,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using Deletion.Core.Decision;
-using Deletion.Core.Rewrite;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.Rewrite;
 using Xunit;
 

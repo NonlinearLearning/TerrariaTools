@@ -1,6 +1,6 @@
-using Deletion.Core.Marking;
+using NLISSN.Core.Marking;
 
-namespace Deletion.Core.Propagation;
+namespace NLISSN.Core.Propagation;
 
 /// <summary>
 /// 表示一次传播产生的标记，以及它来自哪个种子标记。

@@ -5,11 +5,7 @@ namespace RoslynPrototype.Testing.TestInfrastructure;
 
 public static class FailureArtifactWriter
 {
-  public static string Write(
-    string root,
-    GeneratedCSharpFixture fixture,
-    IReadOnlyDictionary<string, string> options,
-    CpgExecutionSnapshot snapshot)
+  public static string Write(string root, GeneratedCSharpFixture fixture, IReadOnlyDictionary<string, string> options, CpgExecutionSnapshot snapshot)
   {
     return Write(
       root,
@@ -21,11 +17,7 @@ public static class FailureArtifactWriter
       });
   }
 
-  public static string Write(
-    string root,
-    GeneratedCSharpFixture fixture,
-    IReadOnlyDictionary<string, string> options,
-    IReadOnlyDictionary<string, CpgExecutionSnapshot> snapshots)
+  public static string Write(string root, GeneratedCSharpFixture fixture, IReadOnlyDictionary<string, string> options, IReadOnlyDictionary<string, CpgExecutionSnapshot> snapshots)
   {
     ArgumentException.ThrowIfNullOrWhiteSpace(root);
     ArgumentNullException.ThrowIfNull(fixture);

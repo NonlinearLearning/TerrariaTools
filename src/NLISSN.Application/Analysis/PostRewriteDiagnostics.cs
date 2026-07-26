@@ -1,15 +1,12 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Core.Rewrite;
+using NLISSN.Core.Rewrite;
 
-namespace Deletion.Application;
+namespace NLISSN.Application;
 
 public static class DeletionPostRewriteDiagnostics
 {
-    public static PrototypeAnalysisResult AddSingleFileDiagnostics(
-      PrototypeAnalysisResult result,
-      string filePath,
-      bool skipDiagnostics)
+    public static PrototypeAnalysisResult AddSingleFileDiagnostics(PrototypeAnalysisResult result, string filePath, bool skipDiagnostics)
   {
         if (skipDiagnostics)
         {
@@ -31,17 +28,14 @@ public static class DeletionPostRewriteDiagnostics
         };
     }
 
-    public static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(
-      IReadOnlyDictionary<string, string> originalSourcesByPath,
-      IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
+    public static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(IReadOnlyDictionary<string, string> originalSourcesByPath, IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
     {
         return GetErrorDiagnostics(BuildTrees(originalSourcesByPath, rewrittenSourcesByPath))
           .Select(CreateAnalysisDiagnostic)
           .ToList();
     }
 
-    public static HashSet<string> GetStableErrorDiagnosticKeys(
-      IReadOnlyDictionary<string, string> sourcesByPath)
+    public static HashSet<string> GetStableErrorDiagnosticKeys(IReadOnlyDictionary<string, string> sourcesByPath)
     {
         return GetStableErrorDiagnosticKeys(
           sourcesByPath,
@@ -49,10 +43,7 @@ public static class DeletionPostRewriteDiagnostics
           overriddenSource: null);
     }
 
-    public static HashSet<string> GetStableErrorDiagnosticKeys(
-      IReadOnlyDictionary<string, string> sourcesByPath,
-      string? overriddenFilePath,
-      string? overriddenSource)
+    public static HashSet<string> GetStableErrorDiagnosticKeys(IReadOnlyDictionary<string, string> sourcesByPath, string? overriddenFilePath, string? overriddenSource)
     {
         return GetErrorDiagnostics(
           BuildTreesWithOverride(sourcesByPath, overriddenFilePath, overriddenSource))
@@ -65,9 +56,7 @@ public static class DeletionPostRewriteDiagnostics
         return string.Equals(diagnostic.Id, "CS5001", StringComparison.Ordinal);
     }
 
-    private static IReadOnlyList<SyntaxTree> BuildTrees(
-      IReadOnlyDictionary<string, string> originalSourcesByPath,
-      IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
+    private static IReadOnlyList<SyntaxTree> BuildTrees(IReadOnlyDictionary<string, string> originalSourcesByPath, IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
     {
         return originalSourcesByPath
           .Select(pair =>
@@ -80,10 +69,7 @@ public static class DeletionPostRewriteDiagnostics
           .ToList();
     }
 
-    private static IReadOnlyList<SyntaxTree> BuildTreesWithOverride(
-      IReadOnlyDictionary<string, string> sourcesByPath,
-      string? overriddenFilePath,
-      string? overriddenSource)
+    private static IReadOnlyList<SyntaxTree> BuildTreesWithOverride(IReadOnlyDictionary<string, string> sourcesByPath, string? overriddenFilePath, string? overriddenSource)
     {
         return sourcesByPath
           .Select(pair =>
@@ -98,8 +84,7 @@ public static class DeletionPostRewriteDiagnostics
           .ToList();
     }
 
-    private static IReadOnlyList<Diagnostic> GetErrorDiagnostics(
-      IReadOnlyList<SyntaxTree> trees)
+    private static IReadOnlyList<Diagnostic> GetErrorDiagnostics(IReadOnlyList<SyntaxTree> trees)
     {
         return RoslynCompilationFactory.CreateCompilation(trees)
           .GetDiagnostics()

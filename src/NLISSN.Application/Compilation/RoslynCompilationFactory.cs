@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
-namespace Deletion.Application;
+namespace NLISSN.Application;
 
 public static class RoslynCompilationFactory
 {

@@ -1,10 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
-using Deletion.Core.Propagation;
-using Deletion.Rules;
+using NLISSN.Core.Propagation;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Decision;
+namespace NLISSN.Core.Decision;
 
 public static class DeleteClassMethodParameterUsageProposalHelpers
 {

@@ -32,9 +32,7 @@ internal sealed class CpgShardBuildCoordinator
     set => Volatile.Write(ref _exportCheckpointObserver, value);
   }
 
-  internal async Task<CpgShardBuildResult> PersistAsync(
-    RoslynCpgBuildContext context,
-    CancellationToken cancellationToken)
+  internal async Task<CpgShardBuildResult> PersistAsync(RoslynCpgBuildContext context, CancellationToken cancellationToken)
   {
     await using var session = await CpgShardBuildSession.BeginAsync(_options, cancellationToken);
     session.Store.DeleteStaleTemporaryFiles();
@@ -155,9 +153,7 @@ internal sealed class CpgShardBuildCoordinator
       peakRetainedFragmentCount), session.Telemetry);
   }
 
-  internal async Task<CpgBaseRestoreResult?> TryRestoreBaseAsync(
-    RoslynCpgBuildContext context,
-    CancellationToken cancellationToken)
+  internal async Task<CpgBaseRestoreResult?> TryRestoreBaseAsync(RoslynCpgBuildContext context, CancellationToken cancellationToken)
   {
     var catalogPath = Path.Combine(_options.StoreRoot, "catalog.db");
     if (File.Exists(catalogPath))
@@ -180,10 +176,7 @@ internal sealed class CpgShardBuildCoordinator
     return await TryRestoreBaseFromCatalogAsync(context, catalogPath, cancellationToken);
   }
 
-  private async Task<CpgBaseRestoreResult?> TryRestoreBaseFromCatalogAsync(
-    RoslynCpgBuildContext context,
-    string catalogPath,
-    CancellationToken cancellationToken)
+  private async Task<CpgBaseRestoreResult?> TryRestoreBaseFromCatalogAsync(RoslynCpgBuildContext context, string catalogPath, CancellationToken cancellationToken)
   {
     var store = new CpgShardStore(_options.StoreRoot);
     var catalog = new SqliteCpgShardCatalog(catalogPath);
@@ -243,12 +236,7 @@ internal sealed class CpgShardBuildCoordinator
     }
   }
 
-  private CpgFrozenShard CreateShard(
-    RoslynCpgBuildContext context,
-    CpgFileKey file,
-    string kind,
-    TextSpan span,
-    IReadOnlySet<Model.NodeId> nodeIds)
+  private CpgFrozenShard CreateShard(RoslynCpgBuildContext context, CpgFileKey file, string kind, TextSpan span, IReadOnlySet<Model.NodeId> nodeIds)
   {
     var fragmentHash = Hash(context.Source.Substring(span.Start, span.Length));
     var lookup = new CpgShardLookup(
@@ -259,10 +247,7 @@ internal sealed class CpgShardBuildCoordinator
     return CpgFrozenShardExporter.Export(context.Graph, lookup, nodeIds);
   }
 
-  private CpgFrozenShard CreateBoundaryShard(
-    RoslynCpgBuildContext context,
-    CpgFileKey file,
-    IReadOnlyList<CpgFrozenBoundaryEdge> boundaryEdges)
+  private CpgFrozenShard CreateBoundaryShard(RoslynCpgBuildContext context, CpgFileKey file, IReadOnlyList<CpgFrozenBoundaryEdge> boundaryEdges)
   {
     var span = context.Root.FullSpan;
     var fragmentHash = Hash(context.Source.Substring(span.Start, span.Length));

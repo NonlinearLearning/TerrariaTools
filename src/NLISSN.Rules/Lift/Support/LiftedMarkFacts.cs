@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Deletion.Core.Marking;
+using NLISSN.Core.Marking;
 
-namespace Deletion.Core.Lifting;
+namespace NLISSN.Core.Lifting;
 
 public static class DeleteSObjectLiftingCommon
 {

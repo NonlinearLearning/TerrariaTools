@@ -13,7 +13,7 @@
     <BaseIntermediateOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\test\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
   </PropertyGroup>
   <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/tools/'))">
-    <BaseOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\tools\</BaseOutputPath>
+    <BaseOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\tools\$(MSBuildProjectName)\</BaseOutputPath>
     <BaseIntermediateOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\tools\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
   </PropertyGroup>
 </Project>

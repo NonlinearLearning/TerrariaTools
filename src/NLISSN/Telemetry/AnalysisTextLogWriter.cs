@@ -1,9 +1,9 @@
-using Deletion.Application;
+using NLISSN.Application;
 using System.Diagnostics;
-using Deletion.Logging;
-using Deletion.Core.Rewrite;
+using NLISSN.Logging;
+using NLISSN.Core.Rewrite;
 
-namespace Deletion.Cli.Telemetry;
+namespace NLISSN.Telemetry;
 
 internal sealed class AnalysisTextLogWriter
 {
@@ -13,12 +13,7 @@ internal sealed class AnalysisTextLogWriter
     private readonly string _src;
     private readonly Action _beforeMemorySnapshot;
 
-    public AnalysisTextLogWriter(
-      ITextLogSink sink,
-      TextLogFilter filter,
-      RunLogContext context,
-      string source,
-      Action? beforeMemorySnapshot = null)
+    public AnalysisTextLogWriter(ITextLogSink sink, TextLogFilter filter, RunLogContext context, string source, Action? beforeMemorySnapshot = null)
     {
         _sink = sink;
         _filter = filter;
@@ -103,11 +98,7 @@ internal sealed class AnalysisTextLogWriter
           new[] { new TextLogField("path", diffPath), new TextLogField("edits", editCount) });
     }
 
-    public void WriteDiffSummary(
-      int pendingFileCount,
-      int writtenFileCount,
-      long elapsedMilliseconds,
-      long writeElapsedMilliseconds)
+    public void WriteDiffSummary(int pendingFileCount, int writtenFileCount, long elapsedMilliseconds, long writeElapsedMilliseconds)
     {
         Emit(TextLogLevel.Debug, TextLogCategory.Diff, TextLogEventType.Summary,
           "diff summary", null,
@@ -128,11 +119,7 @@ internal sealed class AnalysisTextLogWriter
           });
     }
 
-    public void WriteDirectoryPublicationSummary(
-      int fileCount,
-      int unpublishedCountPeak,
-      long waitToPublishMilliseconds,
-      int oldestUnpublishedIndex)
+    public void WriteDirectoryPublicationSummary(int fileCount, int unpublishedCountPeak, long waitToPublishMilliseconds, int oldestUnpublishedIndex)
     {
         Emit(
           TextLogLevel.Debug,
@@ -203,14 +190,7 @@ internal sealed class AnalysisTextLogWriter
           });
     }
 
-    private void Emit(
-      TextLogLevel level,
-      TextLogCategory category,
-      TextLogEventType eventType,
-      string message,
-      string? filePath,
-      IReadOnlyList<TextLogField>? fields,
-      string? phase = null)
+    private void Emit(TextLogLevel level, TextLogCategory category, TextLogEventType eventType, string message, string? filePath, IReadOnlyList<TextLogField>? fields, string? phase = null)
     {
         var textLogEvent = new TextLogEvent(
           DateTimeOffset.UtcNow,

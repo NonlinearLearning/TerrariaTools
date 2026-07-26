@@ -1,9 +1,9 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis;
-using Deletion.Application;
-using Deletion.Core.Rewrite;
+using NLISSN.Application;
+using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
-using Deletion.Rules;
+using NLISSN.Rules;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

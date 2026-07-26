@@ -3,9 +3,9 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using MinimalRoslynCpg.Model;
-using Deletion.Core.Analysis;
+using NLISSN.Core.Analysis;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public interface IRuleOptions
 {
@@ -14,9 +14,7 @@ public interface IRuleOptions
 
 public interface IRuleAnalysisServices
 {
-  IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(
-    SyntaxNode root,
-    IReadOnlyCollection<SyntaxKind> allowedKinds);
+  IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(SyntaxNode root, IReadOnlyCollection<SyntaxKind> allowedKinds);
 
   IEnumerable<MethodDeclarationSyntax> EnumerateMethodDeclarations(SyntaxNode root);
 
@@ -24,19 +22,13 @@ public interface IRuleAnalysisServices
 
   bool CanAnalyzeLogicalCondition(ExpressionSyntax expression);
 
-  LogicalConditionMarkAnalysis AnalyzeLogicalCondition(
-    ExpressionSyntax seedExpression,
-    string targetName);
+  LogicalConditionMarkAnalysis AnalyzeLogicalCondition(ExpressionSyntax seedExpression, string targetName);
 
-  BinaryExpressionAnalysis AnalyzeBinaryExpression(
-    BinaryExpressionSyntax root,
-    ExpressionSyntax operand);
+  BinaryExpressionAnalysis AnalyzeBinaryExpression(BinaryExpressionSyntax root, ExpressionSyntax operand);
 
   IfStructureAnalysis AnalyzeIfStructure(IfStatementSyntax ifStatement);
 
-  bool TryFindContainingIf(
-    ExpressionSyntax expression,
-    out IfStructureAnalysis? analysis);
+  bool TryFindContainingIf(ExpressionSyntax expression, out IfStructureAnalysis? analysis);
 
   SyntaxNode? FindLogicalHost(ExpressionSyntax expression);
 

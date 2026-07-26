@@ -1,10 +1,10 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
 
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public sealed class ClassObjectCreationDeclarationPropagationRule : RuleDefinitionPropagate
 {

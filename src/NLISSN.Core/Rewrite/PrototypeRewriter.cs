@@ -3,10 +3,10 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
-using Deletion.Core.Decision;
-using Deletion.Rules;
+using NLISSN.Core.Decision;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Rewrite;
+namespace NLISSN.Core.Rewrite;
 
 public sealed class PrototypeRewriter
 {
@@ -28,10 +28,7 @@ public sealed class PrototypeRewriter
   /// <summary>
   /// Converts Roslyn rule decisions into a portable text-only rewrite plan.
   /// </summary>
-  public PrototypeRewritePlan BuildPlan(
-    SyntaxNode root,
-    SemanticModel semanticModel,
-    IEnumerable<RuleDecision> decisions)
+  public PrototypeRewritePlan BuildPlan(SyntaxNode root, SemanticModel semanticModel, IEnumerable<RuleDecision> decisions)
   {
     var rewritePlan = new List<RewritePlanEntry>();
 
@@ -146,10 +143,7 @@ public sealed class PrototypeRewriter
   /// <summary>
   /// Applies an in-memory plan without accessing Roslyn semantic data.
   /// </summary>
-  public PrototypeRewriteResult ExecutePlan(
-    string source,
-    string filePath,
-    PrototypeRewritePlan plan)
+  public PrototypeRewriteResult ExecutePlan(string source, string filePath, PrototypeRewritePlan plan)
   {
     ArgumentNullException.ThrowIfNull(source);
     ArgumentNullException.ThrowIfNull(filePath);
@@ -170,10 +164,7 @@ public sealed class PrototypeRewriter
   /// <summary>
   /// Applies a persisted file plan without accepting Roslyn syntax or semantic objects.
   /// </summary>
-  public PrototypeRewriteResult ExecutePlan(
-    string source,
-    string filePath,
-    RewritePlanFile plan)
+  public PrototypeRewriteResult ExecutePlan(string source, string filePath, RewritePlanFile plan)
   {
     ArgumentNullException.ThrowIfNull(plan);
 
@@ -202,10 +193,7 @@ public sealed class PrototypeRewriter
     return SyntaxFactory.DefaultExpression(SyntaxFactory.ParseTypeName(targetType.ToDisplayString()));
   }
 
-  private static bool TryCreateReturnReplacement(
-    ReturnStatementSyntax returnStatement,
-    SemanticModel semanticModel,
-    out ReturnStatementSyntax replacement)
+  private static bool TryCreateReturnReplacement(ReturnStatementSyntax returnStatement, SemanticModel semanticModel, out ReturnStatementSyntax replacement)
   {
     replacement = null!;
     if (returnStatement.Expression is null ||
@@ -224,9 +212,7 @@ public sealed class PrototypeRewriter
     return true;
   }
 
-  private static IMethodSymbol? GetContainingMethodSymbol(
-    ReturnStatementSyntax returnStatement,
-    SemanticModel semanticModel)
+  private static IMethodSymbol? GetContainingMethodSymbol(ReturnStatementSyntax returnStatement, SemanticModel semanticModel)
   {
     var declaration = returnStatement.Ancestors().FirstOrDefault(node => node is
       MethodDeclarationSyntax or
@@ -237,10 +223,7 @@ public sealed class PrototypeRewriter
       : semanticModel.GetDeclaredSymbol(declaration) as IMethodSymbol;
   }
 
-  private static ExpressionSyntax CreateReturnValueExpression(
-    ITypeSymbol returnType,
-    ISymbol enclosingSymbol,
-    Compilation compilation)
+  private static ExpressionSyntax CreateReturnValueExpression(ITypeSymbol returnType, ISymbol enclosingSymbol, Compilation compilation)
   {
     if (returnType is INamedTypeSymbol namedType &&
         namedType.TypeKind == TypeKind.Class &&
@@ -309,10 +292,7 @@ public sealed class PrototypeRewriter
       string.Empty);
   }
 
-  private static RewritePlanEntry CreateRewritePlanEntry(
-    SyntaxNode originalNode,
-    SyntaxNode replacementNode,
-    RewriteEdit? displayEdit = null)
+  private static RewritePlanEntry CreateRewritePlanEntry(SyntaxNode originalNode, SyntaxNode replacementNode, RewriteEdit? displayEdit = null)
   {
     return new RewritePlanEntry(
       CreateTextRewriteOperation(originalNode, replacementNode),

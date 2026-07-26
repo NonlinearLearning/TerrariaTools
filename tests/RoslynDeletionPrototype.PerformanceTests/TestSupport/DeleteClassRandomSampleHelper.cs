@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Deletion.Application;
-using Deletion.Core.Rewrite;
+using NLISSN.Application;
+using NLISSN.Core.Rewrite;
 
 namespace RoslynPrototype.PerformanceTests.TestSupport;
 

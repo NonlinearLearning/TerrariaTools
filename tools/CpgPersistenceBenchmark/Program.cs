@@ -102,9 +102,7 @@ var report = new BenchmarkReport(
   configuration,
   results,
   BenchmarkComparison.Create(results));
-var outputPath = configuration.OutputPath ?? Path.Combine(
-  "Build",
-  $"cpg-persistence-benchmark-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}.json");
+var outputPath = configuration.ResolveOutputPath(DateTimeOffset.UtcNow);
 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
 File.WriteAllText(outputPath, JsonSerializer.Serialize(report, new JsonSerializerOptions
 {
@@ -120,10 +118,7 @@ internal sealed record BenchmarkFixture(
   bool StreamingMode = false,
   string? SourceRoot = null)
 {
-  internal static IReadOnlyList<BenchmarkFixture> CreateAll(
-    string? sourceRoot,
-    int? sourceRootMaxFiles,
-    long? sourceRootMaxBytes)
+  internal static IReadOnlyList<BenchmarkFixture> CreateAll(string? sourceRoot, int? sourceRootMaxFiles, long? sourceRootMaxBytes)
   {
     var fixtures = new List<BenchmarkFixture>
     {
@@ -156,10 +151,7 @@ internal sealed record BenchmarkFixture(
     return fixtures;
   }
 
-  private static BenchmarkFixture CreateSourceRootFixture(
-    string sourceRoot,
-    int? maxFiles,
-    long? maxBytes)
+  private static BenchmarkFixture CreateSourceRootFixture(string sourceRoot, int? maxFiles, long? maxBytes)
   {
     var fullSourceRoot = Path.GetFullPath(sourceRoot);
     if (!Directory.Exists(fullSourceRoot))
@@ -231,15 +223,7 @@ internal sealed record BenchmarkFixture(
 
 internal static class BenchmarkCase
 {
-  internal static BenchmarkSample Run(
-    BenchmarkFixture fixture,
-    CpgPersistenceDurabilityMode durabilityMode,
-    int degreeOfParallelism,
-    int shardExportConcurrency,
-    int fileWriteConcurrency,
-    int catalogBatchRows,
-    string? temporaryStoreRoot,
-    string? persistentStoreRoot)
+  internal static BenchmarkSample Run(BenchmarkFixture fixture, CpgPersistenceDurabilityMode durabilityMode, int degreeOfParallelism, int shardExportConcurrency, int fileWriteConcurrency, int catalogBatchRows, string? temporaryStoreRoot, string? persistentStoreRoot)
   {
     var temporaryRoot = temporaryStoreRoot is null
       ? Path.GetTempPath()
@@ -379,14 +363,7 @@ internal static class BenchmarkCase
     }
   }
 
-  internal static void SeedPersistentStore(
-    BenchmarkFixture fixture,
-    CpgPersistenceDurabilityMode durabilityMode,
-    int degreeOfParallelism,
-    int shardExportConcurrency,
-    int fileWriteConcurrency,
-    int catalogBatchRows,
-    string persistentStoreRoot)
+  internal static void SeedPersistentStore(BenchmarkFixture fixture, CpgPersistenceDurabilityMode durabilityMode, int degreeOfParallelism, int shardExportConcurrency, int fileWriteConcurrency, int catalogBatchRows, string persistentStoreRoot)
   {
     var storeRoot = Path.GetFullPath(persistentStoreRoot);
     if (Directory.Exists(storeRoot) && Directory.EnumerateFileSystemEntries(storeRoot).Any())
@@ -482,15 +459,7 @@ internal sealed record BenchmarkCaseResult(
   BenchmarkSample Median,
   IReadOnlyList<BenchmarkSample> Samples)
 {
-  internal static BenchmarkCaseResult FromSamples(
-    string fixture,
-    CpgPersistenceDurabilityMode durabilityMode,
-    int degreeOfParallelism,
-    int shardExportConcurrency,
-    int fileWriteConcurrency,
-    int catalogBatchRows,
-    BenchmarkInputManifest inputManifest,
-    IReadOnlyList<BenchmarkSample> samples)
+  internal static BenchmarkCaseResult FromSamples(string fixture, CpgPersistenceDurabilityMode durabilityMode, int degreeOfParallelism, int shardExportConcurrency, int fileWriteConcurrency, int catalogBatchRows, BenchmarkInputManifest inputManifest, IReadOnlyList<BenchmarkSample> samples)
   {
     return new BenchmarkCaseResult(
       fixture,
@@ -524,8 +493,7 @@ internal sealed record BenchmarkComparison(
   bool IsComparable,
   string? Blocker)
 {
-  internal static IReadOnlyList<BenchmarkComparison> Create(
-    IReadOnlyList<BenchmarkCaseResult> cases)
+  internal static IReadOnlyList<BenchmarkComparison> Create(IReadOnlyList<BenchmarkCaseResult> cases)
   {
     var dopComparisons = CreateComparisons(
       cases,
@@ -561,11 +529,7 @@ internal sealed record BenchmarkComparison(
       .ToArray();
   }
 
-  private static IReadOnlyList<BenchmarkComparison> CreateComparisons<TKey>(
-    IReadOnlyList<BenchmarkCaseResult> cases,
-    string comparisonKind,
-    Func<BenchmarkCaseResult, TKey> groupKey,
-    Func<IGrouping<TKey, BenchmarkCaseResult>, bool> include)
+  private static IReadOnlyList<BenchmarkComparison> CreateComparisons<TKey>(IReadOnlyList<BenchmarkCaseResult> cases, string comparisonKind, Func<BenchmarkCaseResult, TKey> groupKey, Func<IGrouping<TKey, BenchmarkCaseResult>, bool> include)
     where TKey : notnull
   {
     return cases

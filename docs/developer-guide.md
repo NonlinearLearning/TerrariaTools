@@ -33,16 +33,16 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 
 `CpgShardQueryResolver` 通过 catalog 按 node、symbol 或 span 打开 shard，并以字节上限执行 LRU 缓存。跨 shard slice 查询受 hop、path、call-depth 和访问预算约束；缺少起点或 frontier anchor 时，结果会填充 `UnavailableShards`。跨项目查询尚未提供。
 
-## 修改 RoslynPrototype
+## 修改 NLISSN
 
 入口和主要区域：
 
-- CLI：`src/RoslynPrototype/Program.cs`
-- CLI 运行器：`src/Deletion.Cli/DeletionCommandHost.cs`
-- 目录分析适配：`src/Deletion.Cli/DeletionDirectoryAnalysisService.cs`
-- 应用编排：`src/Deletion.Application/Analysis/DeletionApplicationService.cs`
-- 运行时：`src/Deletion.Core/Pipeline/ExecutionRuntime.cs`
-- 规则：`src/Deletion.Rules/`
+- CLI：`src/NLISSN/Program.cs`
+- CLI 运行器：`src/NLISSN/CommandHost.cs`
+- 目录分析适配：`src/NLISSN/DirectoryAnalysisService.cs`
+- 应用编排：`src/NLISSN.Application/Analysis/ApplicationService.cs`
+- 运行时：`src/NLISSN.Core/Pipeline/ExecutionRuntime.cs`
+- 规则：`src/NLISSN.Rules/`
 
 删除规则遵循“标记 → 传播 → 提升 → 决策 → 改写”。改动此链路前读取对应局部约束和 [删除规则流水线](../设计docs/目前设计/deletion-pipeline.md)。
 

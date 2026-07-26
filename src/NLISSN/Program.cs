@@ -1,3 +1,3 @@
-using Deletion.Cli;
+using NLISSN;
 
 await DeletionCliRunner.RunAsync(args);

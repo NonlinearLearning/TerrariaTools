@@ -1,12 +1,12 @@
 using MinimalRoslynCpg.Builder;
-using Deletion.Core.Analysis;
-using Deletion.Core.Decision;
-using Deletion.Core.Lifting;
-using Deletion.Core.Marking;
-using Deletion.Core.Propagation;
-using Deletion.Rules;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Lifting;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+using NLISSN.Rules;
 
-namespace Deletion.Core.Rewrite;
+namespace NLISSN.Core.Rewrite;
 
 /// <summary>
 /// 封装删除原型一次完整分析与改写流程的输出结果。

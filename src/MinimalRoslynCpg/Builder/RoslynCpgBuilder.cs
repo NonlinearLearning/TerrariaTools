@@ -176,9 +176,7 @@ public sealed partial class RoslynCpgBuilder
             preallocation);
     }
 
-    private RoslynCpgGraph Build(
-        RoslynCpgBuildContext context,
-        RoslynCpgPreallocationTelemetry? preallocation = null)
+    private RoslynCpgGraph Build(RoslynCpgBuildContext context, RoslynCpgPreallocationTelemetry? preallocation = null)
     {
         _syntaxNodes.Clear();
         _symbolNodes.Clear();
@@ -494,12 +492,7 @@ public sealed partial class RoslynCpgBuilder
             .ToList();
     }
 
-    private void RunOptionalPass(
-        bool shouldRun,
-        IRoslynCpgPass pass,
-        RoslynCpgBuildContext context,
-        List<string> executedPassNames,
-        List<string> skippedPassNames)
+    private void RunOptionalPass(bool shouldRun, IRoslynCpgPass pass, RoslynCpgBuildContext context, List<string> executedPassNames, List<string> skippedPassNames)
     {
         if (!shouldRun)
         {
@@ -754,11 +747,7 @@ public sealed partial class RoslynCpgBuilder
         };
     }
 
-    private void AddControlFlowEdge(
-      RoslynCpgNode sourceNode,
-      RoslynCpgNode targetNode,
-      RoslynCpgEdgeKind edgeKind,
-      RoslynCpgGraph graph)
+    private void AddControlFlowEdge(RoslynCpgNode sourceNode, RoslynCpgNode targetNode, RoslynCpgEdgeKind edgeKind, RoslynCpgGraph graph)
     {
         graph.AddEdge(sourceNode, targetNode, edgeKind);
         if (edgeKind is not (RoslynCpgEdgeKind.CfgNext or RoslynCpgEdgeKind.CfgTrue or RoslynCpgEdgeKind.CfgFalse))
@@ -784,10 +773,7 @@ public sealed partial class RoslynCpgBuilder
           : Array.Empty<RoslynCpgNode>();
     }
 
-    private static void AddCfgNeighbor(
-      Dictionary<RoslynCpgNode, HashSet<RoslynCpgNode>> neighborsByNode,
-      RoslynCpgNode node,
-      RoslynCpgNode neighborNode)
+    private static void AddCfgNeighbor(Dictionary<RoslynCpgNode, HashSet<RoslynCpgNode>> neighborsByNode, RoslynCpgNode node, RoslynCpgNode neighborNode)
     {
         if (!neighborsByNode.TryGetValue(node, out var neighbors))
         {
@@ -798,9 +784,7 @@ public sealed partial class RoslynCpgBuilder
         neighbors.Add(neighborNode);
     }
 
-    private static string PropertyAccessorCallSiteKey(
-      IPropertyReferenceOperation propertyReference,
-      IMethodSymbol accessorMethod)
+    private static string PropertyAccessorCallSiteKey(IPropertyReferenceOperation propertyReference, IMethodSymbol accessorMethod)
     {
         return $"{PropertyAccessorCallSitePrefix}:{BuildStableFilePath(propertyReference.Syntax.SyntaxTree.FilePath)}:{propertyReference.Syntax.SpanStart}:{propertyReference.Syntax.Span.End}:{ComposeInvocationMethodFullName(accessorMethod)}";
     }
@@ -855,10 +839,7 @@ public sealed partial class RoslynCpgBuilder
           IsImplicit: operation.IsImplicit));
     }
 
-    private DataFlowOperationIndex CreateDataFlowOperationIndex(
-        IReadOnlyList<IBlockOperation> methodBlocks,
-        IReadOnlyDictionary<IOperation, IMethodSymbol> owningMethodsByMethodBlock,
-        RoslynCpgGraph graph)
+    private DataFlowOperationIndex CreateDataFlowOperationIndex(IReadOnlyList<IBlockOperation> methodBlocks, IReadOnlyDictionary<IOperation, IMethodSymbol> owningMethodsByMethodBlock, RoslynCpgGraph graph)
     {
         var nodesByOperation = new Dictionary<IOperation, RoslynCpgNode>(
             (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
@@ -976,11 +957,7 @@ public sealed partial class RoslynCpgBuilder
         AddReferencedSymbolEdges(syntax, syntaxNode, symbol, graph);
     }
 
-    private void AddReferencedSymbolEdges(
-      SyntaxNode syntax,
-      RoslynCpgNode syntaxNode,
-      ISymbol? symbol,
-      RoslynCpgGraph graph)
+    private void AddReferencedSymbolEdges(SyntaxNode syntax, RoslynCpgNode syntaxNode, ISymbol? symbol, RoslynCpgGraph graph)
     {
         if (symbol is null)
         {
@@ -1026,12 +1003,7 @@ public sealed partial class RoslynCpgBuilder
         graph.AddEdge(sourceNode, typeNode, RoslynCpgEdgeKind.EvalType);
     }
 
-    private void AddTypeReferenceEdges(
-      SyntaxNode syntax,
-      RoslynCpgNode syntaxNode,
-      RoslynCpgGraph graph,
-      SemanticModel semanticModel,
-      ITypeSymbol? resolvedTypeSymbol = null)
+    private void AddTypeReferenceEdges(SyntaxNode syntax, RoslynCpgNode syntaxNode, RoslynCpgGraph graph, SemanticModel semanticModel, ITypeSymbol? resolvedTypeSymbol = null)
     {
         if (syntax is not TypeSyntax and not ObjectCreationExpressionSyntax and not BaseTypeSyntax)
         {
@@ -1465,11 +1437,7 @@ public sealed partial class RoslynCpgBuilder
           : baseDispatch;
     }
 
-    private static RoslynCpgDispatchKind ComposeResolvedDispatchKind(
-      IMethodSymbol resolvedMethod,
-      IMethodSymbol requestedMethod,
-      ITypeSymbol? receiverType,
-      RoslynCpgDispatchKind baseDispatchKind)
+    private static RoslynCpgDispatchKind ComposeResolvedDispatchKind(IMethodSymbol resolvedMethod, IMethodSymbol requestedMethod, ITypeSymbol? receiverType, RoslynCpgDispatchKind baseDispatchKind)
     {
         if (!IsInternalMethod(resolvedMethod))
         {

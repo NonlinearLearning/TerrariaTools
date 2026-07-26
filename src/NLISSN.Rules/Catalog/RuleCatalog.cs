@@ -1,4 +1,4 @@
-namespace Deletion.Rules;
+namespace NLISSN.Rules;
 
 public static class RuleCatalog
 {
