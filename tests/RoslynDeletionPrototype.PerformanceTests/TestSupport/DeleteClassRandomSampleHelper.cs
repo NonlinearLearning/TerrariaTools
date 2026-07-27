@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.Json;
 using NLISSN.Application;
 using NLISSN.Core.Rewrite;
@@ -29,25 +28,6 @@ internal sealed record DeleteClassRandomSampleFileResult(
   string DiffPath,
   bool Changed);
 
-internal sealed record DeleteClassRandomSampleAnalysisPhaseTimings(
-  long PreparationMilliseconds,
-  long CpgBuildMilliseconds,
-  long MarkMilliseconds,
-  long PropagateMilliseconds,
-  long LiftMilliseconds,
-  long DecideMilliseconds,
-  long RewriteMilliseconds,
-  long TotalMilliseconds);
-
-internal sealed record DeleteClassRandomSampleTimings(
-  long CopyMilliseconds,
-  long AnalysisMilliseconds,
-  long DiffMaterializationMilliseconds,
-  long ManifestMilliseconds,
-  long WriteBackMilliseconds,
-  long TotalMilliseconds,
-  DeleteClassRandomSampleAnalysisPhaseTimings? AnalysisPhases);
-
 internal sealed record DeleteClassRandomSampleRunResult(
   DeleteClassRandomSampleMode Mode,
   int? RequestedSeed,
@@ -58,7 +38,6 @@ internal sealed record DeleteClassRandomSampleRunResult(
   string ManifestPath,
   IReadOnlyList<string> SelectedRelativePaths,
   IReadOnlyList<DeleteClassRandomSampleFileResult> FileResults,
-  DeleteClassRandomSampleTimings Timings,
   bool WriteBackApplied,
   PrototypeAnalysisResult AnalysisResult);
 
@@ -98,9 +77,6 @@ internal static class DeleteClassRandomSampleHelper
         var diffRoot = Path.Combine(workingRoot, "diffs");
         Directory.CreateDirectory(copiedSourceRoot);
         Directory.CreateDirectory(diffRoot);
-        var totalStopwatch = Stopwatch.StartNew();
-
-        var copyStopwatch = Stopwatch.StartNew();
         foreach (var relativePath in selectedRelativePaths)
         {
             var sourcePath = Path.Combine(request.SourceDirectory, relativePath);
@@ -108,9 +84,7 @@ internal static class DeleteClassRandomSampleHelper
             Directory.CreateDirectory(Path.GetDirectoryName(copiedPath)!);
             File.Copy(sourcePath, copiedPath, overwrite: true);
         }
-        copyStopwatch.Stop();
-
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
         var args = new List<string>
         {
             copiedSourceRoot,
@@ -131,19 +105,12 @@ internal static class DeleteClassRandomSampleHelper
             args.Add(maxDegreeOfParallelism.ToString());
         }
 
-        var analysisStopwatch = Stopwatch.StartNew();
         var analysisResult = application.AnalyzeFromArgs(args.ToArray());
-        analysisStopwatch.Stop();
-
-        var diffStopwatch = Stopwatch.StartNew();
         var fileResults = BuildFileResults(
           request.SourceDirectory,
           copiedSourceRoot,
           diffRoot,
           selectedRelativePaths);
-        diffStopwatch.Stop();
-
-        var manifestStopwatch = Stopwatch.StartNew();
         var manifestPath = Path.Combine(workingRoot, "manifest.json");
         WriteManifest(
           manifestPath,
@@ -153,8 +120,6 @@ internal static class DeleteClassRandomSampleHelper
           diffRoot,
           selectedRelativePaths,
           fileResults);
-        manifestStopwatch.Stop();
-        totalStopwatch.Stop();
 
         var writeBackApplied = request.WriteBackCopiedSource && analysisResult.Edits.Count > 0;
 
@@ -168,24 +133,6 @@ internal static class DeleteClassRandomSampleHelper
           manifestPath,
           selectedRelativePaths,
           fileResults,
-          new DeleteClassRandomSampleTimings(
-            copyStopwatch.ElapsedMilliseconds,
-            analysisStopwatch.ElapsedMilliseconds,
-            diffStopwatch.ElapsedMilliseconds,
-            manifestStopwatch.ElapsedMilliseconds,
-            0,
-            totalStopwatch.ElapsedMilliseconds,
-            analysisResult.Timings is null
-              ? null
-              : new DeleteClassRandomSampleAnalysisPhaseTimings(
-                analysisResult.Timings.PreparationMilliseconds,
-                analysisResult.Timings.CpgBuildMilliseconds,
-                analysisResult.Timings.MarkMilliseconds,
-                analysisResult.Timings.PropagateMilliseconds,
-                analysisResult.Timings.LiftMilliseconds,
-                analysisResult.Timings.DecideMilliseconds,
-                analysisResult.Timings.RewriteMilliseconds,
-                analysisResult.Timings.TotalMilliseconds)),
           writeBackApplied,
           analysisResult);
     }

@@ -5,18 +5,14 @@ using Microsoft.CodeAnalysis.Operations;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 表示目标符号在逻辑条件中的命中方式。
-/// </summary>
 public enum LogicalConditionHitKind
 {
     Direct = 0,
     UnaryWrapped = 1
 }
 
-/// <summary>
 /// 记录一次逻辑条件命中及其对应的包装语法。
-/// </summary>
 public sealed record LogicalConditionHit(
     ISymbol TargetSymbol,
     SyntaxNode Node,
@@ -24,9 +20,7 @@ public sealed record LogicalConditionHit(
     ExpressionSyntax? UnderlyingExpression,
     PrefixUnaryExpressionSyntax? WrapperNode);
 
-/// <summary>
 /// 汇总逻辑条件在标记阶段产出的分析事实。
-/// </summary>
 public sealed record LogicalConditionMarkAnalysis(
     MarkCodeRegion Region,
     ISymbol TargetSymbol,
@@ -35,14 +29,10 @@ public sealed record LogicalConditionMarkAnalysis(
     IReadOnlyList<BinaryExpressionSyntax> OperandGroups,
     SyntaxNode PreferredMarkedNode);
 
-/// <summary>
 /// 负责在单个逻辑条件里解析目标命中与操作数组。
-/// </summary>
 public sealed class LogicalConditionMarkAnalyzer
 {
-    /// <summary>
-    /// 分析一个种子表达式，并返回对应的逻辑条件事实。
-    /// </summary>
+    // 在逻辑条件内部定位目标命中、操作数组和优选标记节点，供 mark 阶段直接使用。
     public LogicalConditionMarkAnalysis Analyze(ExpressionSyntax seedExpression, string targetName, CpgAnalysisContext context)
     {
         var region = new MarkRegionAnalyzer().Analyze(seedExpression, context);
@@ -75,9 +65,7 @@ public sealed class LogicalConditionMarkAnalyzer
             preferredMarkedNode);
     }
 
-    /// <summary>
-    /// 判断表达式是否位于当前支持的逻辑条件形态中。
-    /// </summary>
+    // 快速判断一个表达式是否落在当前支持的逻辑条件分析范围内。
     public bool CanAnalyze(ExpressionSyntax expression, CpgAnalysisContext context)
     {
         var region = new MarkRegionAnalyzer().Analyze(expression, context);

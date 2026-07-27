@@ -4,21 +4,15 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 二元表达式结构分析结果。
-/// </summary>
 public sealed record BinaryExpressionAnalysis(IReadOnlyList<SyntaxNode> AffectedSyntaxTree);
 
-/// <summary>
 /// 分析同类二元表达式链，例如连续的 <c>&amp;&amp;</c>、<c>||</c> 或加法表达式。
-/// </summary>
 public sealed class BinaryExpressionAnalyzer
 {
     private sealed record BinaryExpressionStructure(BinaryExpressionSyntax Root, SyntaxKind OperatorKind, IReadOnlyList<BinaryExpressionSyntax> BinaryExpressions, IReadOnlyList<ExpressionSyntax> Operands);
 
-    /// <summary>
-    /// 返回同类二元表达式层级和最终操作数组成的受影响语法树。
-    /// </summary>
+    // 展开同类二元表达式链，返回规则后续需要消费的节点集合。
     public BinaryExpressionAnalysis Analyze(BinaryExpressionSyntax root, ExpressionSyntax operand, CpgAnalysisContext context)
     {
         if (!root.Span.Contains(operand.Span))
@@ -36,9 +30,6 @@ public sealed class BinaryExpressionAnalyzer
         return new BinaryExpressionAnalysis(affectedSyntaxTree);
     }
 
-    /// <summary>
-    /// 将同类二元表达式节点和叶子操作数合并为源码顺序。
-    /// </summary>
     private static IReadOnlyList<SyntaxNode> BuildAffectedSyntaxTree(BinaryExpressionSyntax root, IReadOnlyList<BinaryExpressionSyntax> binaryExpressions, IReadOnlyList<ExpressionSyntax> operands)
     {
         var affectedNodes = new List<SyntaxNode>();
@@ -64,9 +55,6 @@ public sealed class BinaryExpressionAnalyzer
             operands);
     }
 
-    /// <summary>
-    /// 按层展开同一种二元表达式，直到遇到不同类型表达式作为操作数。
-    /// </summary>
     private static (IReadOnlyList<BinaryExpressionSyntax> BinaryExpressions, IReadOnlyList<ExpressionSyntax> Operands) BuildLevels(BinaryExpressionSyntax root, SyntaxKind binaryKind)
     {
         var allBinaryExpressions = new List<BinaryExpressionSyntax>();

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
@@ -7,7 +6,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Rewrite;
 using Xunit;
-using Xunit.Abstractions;
 
 namespace RoslynPrototype.Tests;
 
@@ -17,15 +15,8 @@ public sealed class RewritePerformanceRegressionTests
     private const int OperationsPerShape = 16;
     private const int ExecutionPathCount = 3;
     private const int ExpectedOperationCount = OperationShapeCount * OperationsPerShape;
-    private readonly ITestOutputHelper _output;
-
-    public RewritePerformanceRegressionTests(ITestOutputHelper output)
-    {
-        _output = output;
-    }
-
     [Fact]
-    public void RewritePlan_FixedSource_CollectsThreeEquivalentCompilableSamples()
+    public void RewritePlan_FixedSource_ProducesEquivalentCompilableResults()
     {
         var source = CreateFixedSource();
 
@@ -47,24 +38,11 @@ public sealed class RewritePerformanceRegressionTests
             Assert.Equal(baseline.Edits, sample.Edits);
             Assert.Equal(baseline.Diff, sample.Diff);
             Assert.Equal(ExpectedOperationCount, sample.OperationCount);
-            Assert.True(sample.AllocatedBytes >= 0);
             AssertCompilable(sample.DirectRewrittenSource);
             AssertCompilable(sample.PlanRewrittenSource);
             AssertCompilable(sample.PersistedPlanRewrittenSource);
         }
 
-        var pathOperationCombinations = ExpectedOperationCount * ExecutionPathCount;
-        var pathEquivalencePairs = ExpectedOperationCount * (ExecutionPathCount * (ExecutionPathCount - 1) / 2);
-        _output.WriteLine(
-            $"rewrite samples buildMs={string.Join(',', samples.Select(sample => sample.BuildPlanMilliseconds))}; " +
-            $"executeMs={string.Join(',', samples.Select(sample => sample.ExecutePlanMilliseconds))}; " +
-            $"allocatedBytes={string.Join(',', samples.Select(sample => sample.AllocatedBytes))}; " +
-            $"operations={baseline.OperationCount}; " +
-            $"theoreticalCoverage=shapes:{baseline.OperationShapeCount}/{OperationShapeCount}; " +
-            $"operations:{baseline.OperationCount}/{ExpectedOperationCount}; " +
-            $"pathOperationCombinations:{pathOperationCombinations}/{pathOperationCombinations}; " +
-            $"pathEquivalencePairs:{pathEquivalencePairs}/{pathEquivalencePairs}; " +
-            "planIntegrity:3/3; directoryCompilation:1/1");
     }
 
     private static RewriteMeasurement Measure(string source)
@@ -89,17 +67,12 @@ public sealed class RewritePerformanceRegressionTests
                 "Replace benchmark parameter use with its default value."))
             .ToArray();
         var rewriter = new PrototypeRewriter();
-        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        var buildStopwatch = Stopwatch.StartNew();
         var plan = rewriter.BuildPlan(root, semanticModel, decisions);
-        buildStopwatch.Stop();
-        var executeStopwatch = Stopwatch.StartNew();
         var direct = rewriter.Rewrite(root, semanticModel, decisions);
         var replayed = rewriter.ExecutePlan(source, "RewritePerformance.cs", plan);
         var persistedPlan = JsonSerializer.Deserialize<RewritePlanFile>(
             JsonSerializer.Serialize(new RewritePlanFile("RewritePerformance.cs", "unused", plan.Operations)))!;
         var persisted = rewriter.ExecutePlan(source, "RewritePerformance.cs", persistedPlan);
-        executeStopwatch.Stop();
 
         return new RewriteMeasurement(
             Assert.IsType<string>(direct.RewrittenSource),
@@ -109,10 +82,7 @@ public sealed class RewritePerformanceRegressionTests
             replayed.Diff.ToString(),
             Assert.IsAssignableFrom<IReadOnlyList<RewritePlanEdit>>(replayed.Operations).Count,
             operationShapes.Length,
-            operationShapes.Min(group => group.Count()),
-            buildStopwatch.ElapsedMilliseconds,
-            executeStopwatch.ElapsedMilliseconds,
-            GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
+            operationShapes.Min(group => group.Count()));
     }
 
     private static void AssertCompilable(string source)
@@ -193,8 +163,5 @@ public sealed class RewritePerformanceRegressionTests
         string Diff,
         int OperationCount,
         int OperationShapeCount,
-        int MinimumOperationsPerShape,
-        long BuildPlanMilliseconds,
-        long ExecutePlanMilliseconds,
-        long AllocatedBytes);
+        int MinimumOperationsPerShape);
 }

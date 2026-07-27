@@ -6,8 +6,10 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Lifting;
 
+/// 判断 switch 分支是否可整体规约，避免在 case 标签和控制流边界不完整时生成改写。
 public static class DeleteSObjectSwitchLiftingHelpers
 {
+    // 基于已有 provisional mark 判断哪些 switch section / statement 已可整体规约。
     public static IEnumerable<LiftedMarkRecord> BuildSwitchLiftedMarks(string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
     {
         var provisionalMarks = seedMarks

@@ -24,7 +24,7 @@
 
 ## 已确认问题
 
-1. `RoslynCpgBuilder` 在完整 CPG 构建并冻结后才调用持久化；当前 `StreamingMode` 不降低完整图的峰值常驻内存。
+1. `NLCPGBuilder` 在完整 CPG 构建并冻结后才调用持久化；当前 `StreamingMode` 不降低完整图的峰值常驻内存。
 2. `CpgShardBuildCoordinator` 为每个方法 fragment 重扫 `context.Graph.Nodes`，开销至少为 `O(fragmentCount * nodeCount)`。
 3. fragment 发布在循环中逐个等待，`MaxConcurrentShardFileWrites` 不会形成真实并发。
 4. 每个 shard 都执行序列化、hash、临时文件写入、同步 flush、完整反序列化校验和原子移动。
@@ -52,8 +52,7 @@
 
 ### 1. 补齐测量与回归基线
 
-- 扩展 `CpgPersistenceTelemetry`，记录锁等待、队列深度、实际文件写并发、序列化、校验、flush、catalog commit 和每批 SQL 行数。
-- 为当前实现建立固定大文件和多文件 fixture 的预热后基线；每个端点运行三次并记录中位数 wall-clock、managed heap、working set、shard bytes 和 telemetry。
+- 为当前实现建立固定大文件和多文件 fixture 的预热后基线；每个端点运行三次并记录中位数 wall-clock、managed heap、working set 和 shard bytes。
 - 先锁定当前 shard 内容、source order、session 可见性、恢复图和 DOP 等价回归。
 
 ### 2. 消除重复图扫描
@@ -91,9 +90,9 @@
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet build .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShard|FullyQualifiedName~SqliteCpgShardCatalog|FullyQualifiedName~RoslynCpgSliceQuery|FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~RoslynCpgNodeIdContractTests"
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShard|FullyQualifiedName~SqliteCpgShardCatalog|FullyQualifiedName~NLCPGSliceQuery|FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~NLCPGNodeIdContractTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```

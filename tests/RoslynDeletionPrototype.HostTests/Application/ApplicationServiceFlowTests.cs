@@ -6,7 +6,7 @@ using Xunit;
 
 namespace RoslynPrototype.Tests;
 
-public sealed class DeletionApplicationServiceFlowTests
+public sealed class  ApplicationServiceFlowTests
 {
     [Fact]
     public void Analyze_DefaultRules_RunTargetRuleAndReachabilityRuleInOnePipeline()
@@ -75,9 +75,9 @@ public sealed class DeletionApplicationServiceFlowTests
         TextDiffAssert.Contains("var value = s.Seed + 1;", result.RewrittenSource, result.Diff);
     }
 
-    private static DeletionApplicationService CreateApplication()
+    private static  ApplicationService CreateApplication()
     {
-        return new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        return new  ApplicationService(RuleRegistry.CreateDefaultRules());
     }
 
     private static Dictionary<string, string> CreateOptions(string? targetName = null, string? unreachableMethods = null)

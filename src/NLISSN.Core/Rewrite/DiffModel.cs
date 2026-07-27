@@ -57,11 +57,13 @@ public sealed record DiffDocument(
 {
   public static DiffDocument Empty { get; } = new(Array.Empty<DiffFile>(), DiffSummary.Empty);
 
+  // 允许把 diff 文档直接当成字符串消费，统一走默认文本渲染逻辑。
   public static implicit operator string(DiffDocument document)
   {
     return document.ToString();
   }
 
+  // 使用默认旧格式渲染 diff 文档，便于日志和控制台直接输出。
   public override string ToString()
   {
     return new TextDiffRenderer().RenderLegacy(this);

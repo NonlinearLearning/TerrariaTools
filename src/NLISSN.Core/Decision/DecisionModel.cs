@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
+using NLCPG.Contracts;
+using NLCPG.Model;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
@@ -10,57 +10,38 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Decision;
 
-/// <summary>
 /// 决策阶段允许的最小动作集合。
-/// </summary>
 public enum DecisionActionKind
 {
-    /// <summary>
     /// 当前节点不产生实际改写。
-    /// </summary>
     Skip = 0,
 
-    /// <summary>
     /// 当前节点会被直接删除。
-    /// </summary>
     Delete = 1,
 
-    /// <summary>
     /// 当前节点会被替换为另一个节点。
-    /// </summary>
     Replace = 2
 }
 
-/// <summary>
 /// 决策引擎输出的最终结果，供 rewrite 阶段直接消费。
-/// </summary>
 public sealed record RuleDecision
 {
-    /// <summary>
     /// 决策最初绑定的原始语法节点。
-    /// </summary>
     public SyntaxNode OriginalNode { get; init; }
 
-    /// <summary>
     /// 当前决策最终作用的语法节点。
-    /// </summary>
     public SyntaxNode FinalNode { get; init; }
 
-    /// <summary>
     /// rewrite 阶段应执行的动作类型。
-    /// </summary>
     public DecisionActionKind Action { get; init; }
 
-    /// <summary>
     /// 当前决策的人类可读原因说明。
-    /// </summary>
     public string Reason { get; init; }
 
-    /// <summary>
     /// 当动作是 Replace 时使用的替换目标节点；否则为空。
-    /// </summary>
     public SyntaxNode? ReplacementNode { get; init; }
 
+    // 记录一条最终决策及其改写原因，供 rewrite 阶段直接消费。
     public RuleDecision(SyntaxNode originalNode, SyntaxNode finalNode, DecisionActionKind action, string reason, SyntaxNode? replacementNode = null)
     {
         OriginalNode = originalNode;
@@ -71,59 +52,40 @@ public sealed record RuleDecision
     }
 }
 
-/// <summary>
 /// 单条规则针对一组相关节点提出的候选决策。
-/// </summary>
 public sealed record DecisionUnit
 {
-    /// <summary>
     /// 产出当前决策单元的规则标识。
-    /// </summary>
     public string RuleId { get; init; }
 
-    /// <summary>
     /// 当前决策单元建议执行的动作类型。
-    /// </summary>
     public DecisionActionKind Action { get; init; }
 
-    /// <summary>
     /// 代表整个决策单元的 CPG 抽象节点。
-    /// </summary>
-    public RoslynCpgNode UnitNode { get; init; }
+    public NLCPGNode UnitNode { get; init; }
 
-    /// <summary>
     /// 当前决策单元包含的决策片段节点集合。
-    /// </summary>
-    public IReadOnlyList<RoslynCpgNode> Fragments { get; init; }
+    public IReadOnlyList<NLCPGNode> Fragments { get; init; }
 
-    /// <summary>
     /// 当前决策单元内部片段之间的关系边集合。
-    /// </summary>
-    public IReadOnlyList<RoslynCpgEdge> Relations { get; init; }
+    public IReadOnlyList<NLCPGEdge> Relations { get; init; }
 
-    /// <summary>
     /// 从决策片段节点回到真实 Roslyn 语法节点的绑定表。
-    /// </summary>
     public IReadOnlyDictionary<NodeId, SyntaxNode> SyntaxBindings { get; init; }
 
-    /// <summary>
     /// 显式声明的冲突域键；为空时由引擎按锚点结构推导。
-    /// </summary>
     public string? ConflictKey { get; init; }
 
-    /// <summary>
     /// 显式声明的合并域键；为空时由策略按锚点推导。
-    /// </summary>
     public string? MergeKey { get; init; }
 
-    /// <summary>
     /// 当前决策单元的人类可读原因说明。
-    /// </summary>
     public string Reason { get; init; }
 
     public string? GroupKey { get; init; }
 
-    public DecisionUnit(string ruleId, DecisionActionKind action, RoslynCpgNode unitNode, IReadOnlyList<RoslynCpgNode> fragments, IReadOnlyList<RoslynCpgEdge> relations, IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "", string? groupKey = null)
+    // 描述单条规则提出的一组相关片段、关系和冲突信息，供决策策略统一收口。
+    public DecisionUnit(string ruleId, DecisionActionKind action, NLCPGNode unitNode, IReadOnlyList<NLCPGNode> fragments, IReadOnlyList<NLCPGEdge> relations, IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "", string? groupKey = null)
     {
         RuleId = ruleId;
         Action = action;
@@ -138,27 +100,18 @@ public sealed record DecisionUnit
     }
 }
 
-/// <summary>
 /// 决策策略接口，负责判断候选是否可合并，以及在冲突域内如何选出最终结果。
-/// </summary>
 public interface DecisionPolicy
 {
-    /// <summary>
-    /// 在同一冲突域内解析出唯一的最终决策。
-    /// </summary>
+    // 在同一冲突域内解析出唯一最终决策。
     RuleDecision Resolve(RuleContext context, IReadOnlyList<DecisionUnit> units);
 }
 
-/// <summary>
 /// 默认决策策略。
 /// 当前做法按语法覆盖关系合并：父节点覆盖子节点，并继承子节点携带的关系。
-/// </summary>
 public sealed class DefaultDecisionPolicy : DecisionPolicy
 {
-    /// <summary>
-     /// 从同一冲突域内选出一个最终决策。
-    /// 若存在父子覆盖关系，则父节点成为唯一锚点，并继承子节点携带的片段和关系。
-     /// </summary>
+    // 在同一冲突域内解析出唯一最终决策，并在 Replace 场景下保留替换节点绑定。
     public RuleDecision Resolve(RuleContext context, IReadOnlyList<DecisionUnit> units)
     {
         if (units.Count == 0)
@@ -188,7 +141,7 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
         return ResolveUnit(units);
     }
 
-    private static SyntaxNode ResolveBoundSyntaxNode(DecisionUnit unit, RoslynCpgNode fragment)
+    private static SyntaxNode ResolveBoundSyntaxNode(DecisionUnit unit, NLCPGNode fragment)
     {
         if (fragment.NodeId.HasValue && unit.SyntaxBindings.TryGetValue(fragment.NodeId.Value, out var node))
         {
@@ -247,7 +200,7 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
         var rootAnchor = coveringRoot.Fragments[0];
         var childAnchor = child.Fragments[0];
         var inheritedRelation = DecisionCpgFactory.CreateRelation(
-          RoslynCpgDecisionRelationKind.Inherits,
+          NLCPGDecisionRelationKind.Inherits,
           rootAnchor,
           childAnchor);
         var fragments = coveringRoot.Fragments
@@ -319,25 +272,19 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
     }
 }
 
-/// <summary>
 /// 规则决策引擎。
 /// 负责把 mark/propagation 阶段的结果收束成最终 rewrite 决策。
-/// </summary>
 public sealed class RuleDecisionEngine
 {
     private readonly DecisionPolicy _policy;
 
-    /// <summary>
-    /// 构造决策引擎。未显式提供策略时，使用默认最小策略。
-    /// </summary>
+    // 使用给定决策策略初始化引擎；未提供时退回默认覆盖合并策略。
     public RuleDecisionEngine(DecisionPolicy? policy = null)
     {
         _policy = policy ?? new DefaultDecisionPolicy();
     }
 
-    /// <summary>
-    /// 汇总所有规则的候选决策，并按冲突域收口为最终决策列表。
-    /// </summary>
+    // 让提案规则按组消费三类标记，并在每个冲突域内收口成最终 rewrite 决策。
     public IReadOnlyList<RuleDecision> Decide(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks, IReadOnlyList<RuleDefinitionPropose> rules)
     {
         // 先按 group 分桶，避免同组规则各自重复扫描全量 marks。
@@ -498,10 +445,7 @@ public sealed class RuleDecisionEngine
           .ToList();
     }
 
-    /// <summary>
     /// 为一个决策单元确定冲突域键。
-    /// 目标不是完整建模 CPG，而是用最小语法结构把明显互斥的候选收口到一起。
-    /// </summary>
     private static string BuildConflictGroupKey(DecisionUnit unit, IReadOnlyList<RuleDefinitionPropose> rules)
     {
         if (!string.IsNullOrWhiteSpace(unit.ConflictKey))
@@ -572,24 +516,17 @@ public sealed class RuleDecisionEngine
 
 public static class DecisionCpgFactory
 {
-    /// <summary>
-    /// 为一个语法节点创建决策片段对应的 CPG 抽象节点。
-    /// </summary>
-    /// <param name="fragmentId">决策片段稳定标识。</param>
-    /// <param name="node">片段绑定的真实语法节点。</param>
-    /// <param name="role">片段在决策单元中的角色，例如 anchor 或 replacement。</param>
-    /// <param name="localAction">片段局部动作；若为空则表示仅承担结构角色。</param>
-    /// <returns>对应的决策片段 CPG 节点。</returns>
-    public static RoslynCpgNode CreateFragment(string fragmentId, SyntaxNode node, string role, DecisionActionKind? localAction = null)
+    // 为真实语法节点创建决策片段 CPG 节点，并保留角色、位置和局部动作信息。
+    public static NLCPGNode CreateFragment(string fragmentId, SyntaxNode node, string role, DecisionActionKind? localAction = null)
     {
-        return new RoslynCpgNode(
-          Kind: RoslynCpgNodeKind.DecisionFragment,
+        return new NLCPGNode(
+          Kind: NLCPGNodeKind.DecisionFragment,
           DisplayKind: node.Kind().ToString(),
           Name: role,
           FullName: BuildNodeKey(node),
           DispatchKind: localAction is null
             ? null
-            : RoslynCpgDispatchKind.ForDecisionAction(MapDecisionActionKind(localAction.Value)),
+            : NLCPGDispatchKind.ForDecisionAction(MapDecisionActionKind(localAction.Value)),
           FilePath: node.SyntaxTree.FilePath,
           SpanStart: node.Span.Start,
           SpanEnd: node.Span.End,
@@ -597,22 +534,13 @@ public static class DecisionCpgFactory
           NodeId: CreateDecisionNodeId(fragmentId));
     }
 
-    /// <summary>
-    /// 为一个候选决策创建单元级 CPG 抽象节点。
-    /// </summary>
-    /// <param name="ruleId">产出该单元的规则标识。</param>
-    /// <param name="action">该单元建议执行的动作类型。</param>
-    /// <param name="anchorFragment">作为单元锚点的决策片段节点。</param>
-    /// <param name="reason">人类可读原因说明。</param>
-    /// <param name="conflictKey">显式冲突域键。</param>
-    /// <param name="mergeKey">显式合并域键。</param>
-    /// <returns>对应的决策单元 CPG 节点。</returns>
-    public static RoslynCpgNode CreateUnit(string ruleId, DecisionActionKind action, RoslynCpgNode anchorFragment, string reason, string? conflictKey = null, string? mergeKey = null)
+    // 为一个候选决策创建单元级 CPG 节点，承载规则标识、动作和冲突域信息。
+    public static NLCPGNode CreateUnit(string ruleId, DecisionActionKind action, NLCPGNode anchorFragment, string reason, string? conflictKey = null, string? mergeKey = null)
     {
         var unitIdentity = $"decision-unit:{ruleId}:{anchorFragment.NodeId}:{action}";
-        return new RoslynCpgNode(
-          Kind: RoslynCpgNodeKind.DecisionUnit,
-          DisplayKind: nameof(RoslynCpgNodeKind.DecisionUnit),
+        return new NLCPGNode(
+          Kind: NLCPGNodeKind.DecisionUnit,
+          DisplayKind: nameof(NLCPGNodeKind.DecisionUnit),
           Name: ruleId,
           FullName: conflictKey ?? mergeKey ?? BuildNodeKey(anchorFragment),
           Signature: action.ToString(),
@@ -623,39 +551,24 @@ public static class DecisionCpgFactory
           NodeId: CreateDecisionNodeId(unitIdentity));
     }
 
-    /// <summary>
-    /// 创建决策单元到决策片段的包含边。
-    /// </summary>
-    /// <param name="unitNode">决策单元节点。</param>
-    /// <param name="fragmentNode">被包含的决策片段节点。</param>
-    /// <returns>表示包含关系的决策边。</returns>
-    public static RoslynCpgEdge CreateContainment(RoslynCpgNode unitNode, RoslynCpgNode fragmentNode)
+    // 创建决策单元到片段节点的包含边。
+    public static NLCPGEdge CreateContainment(NLCPGNode unitNode, NLCPGNode fragmentNode)
     {
-        return new RoslynCpgEdge(unitNode.NodeId!.Value, fragmentNode.NodeId!.Value, RoslynCpgEdgeKind.DecisionContains);
+        return new NLCPGEdge(unitNode.NodeId!.Value, fragmentNode.NodeId!.Value, NLCPGEdgeKind.DecisionContains);
     }
 
-    /// <summary>
-    /// 创建两个决策片段之间的语义关系边。
-    /// </summary>
-    /// <param name="kind">关系标签类型，例如 DerivedFrom 或 ReducedTo。</param>
-    /// <param name="fromFragment">关系起点片段。</param>
-    /// <param name="toFragment">关系终点片段。</param>
-    /// <returns>表示片段语义关系的决策边。</returns>
-    public static RoslynCpgEdge CreateRelation(RoslynCpgDecisionRelationKind kind, RoslynCpgNode fromFragment, RoslynCpgNode toFragment)
+    // 创建两个决策片段之间的语义关系边。
+    public static NLCPGEdge CreateRelation(NLCPGDecisionRelationKind kind, NLCPGNode fromFragment, NLCPGNode toFragment)
     {
-        return new RoslynCpgEdge(
+        return new NLCPGEdge(
           fromFragment.NodeId!.Value,
           toFragment.NodeId!.Value,
-          RoslynCpgEdgeKind.DecisionRelation,
-          RoslynCpgEdgeLabel.ForDecisionRelation(kind));
+          NLCPGEdgeKind.DecisionRelation,
+          NLCPGEdgeLabel.ForDecisionRelation(kind));
     }
 
-    /// <summary>
-    /// 建立决策片段节点到真实语法节点的绑定表。
-    /// </summary>
-    /// <param name="bindings">片段节点与语法节点的绑定对集合。</param>
-    /// <returns>以片段节点 id 为键的语法绑定表。</returns>
-    public static Dictionary<NodeId, SyntaxNode> CreateSyntaxBindings(params (RoslynCpgNode Fragment, SyntaxNode Node)[] bindings)
+    // 建立决策片段节点到真实语法节点的绑定表。
+    public static Dictionary<NodeId, SyntaxNode> CreateSyntaxBindings(params (NLCPGNode Fragment, SyntaxNode Node)[] bindings)
     {
         return bindings.ToDictionary(binding => binding.Fragment.NodeId!.Value, binding => binding.Node);
     }
@@ -677,22 +590,14 @@ public static class DecisionCpgFactory
         }
     }
 
-    /// <summary>
-    /// 把语法节点编码成稳定键，供冲突域和合并域分组使用。
-    /// </summary>
-    /// <param name="node">需要编码的语法节点。</param>
-    /// <returns>由文件路径、跨度和语法种类组成的稳定键。</returns>
+    // 把语法节点编码成稳定键，供冲突域和合并域分组使用。
     public static string BuildNodeKey(SyntaxNode node)
     {
         return $"{node.SyntaxTree?.FilePath}|{node.Span.Start}|{node.Span.End}|{node.RawKind}";
     }
 
-    /// <summary>
-    /// 为一个 CPG 节点生成稳定键。
-    /// </summary>
-    /// <param name="node">需要编码的 CPG 节点。</param>
-    /// <returns>优先使用节点 FullName，否则回退到文件位置和显示种类组成的键。</returns>
-    public static string BuildNodeKey(RoslynCpgNode node)
+    // 为一个 CPG 节点生成稳定键，优先复用已有 FullName。
+    public static string BuildNodeKey(NLCPGNode node)
     {
         if (!string.IsNullOrWhiteSpace(node.FullName))
         {
@@ -702,23 +607,19 @@ public static class DecisionCpgFactory
         return $"{node.FilePath}|{node.SpanStart}|{node.SpanEnd}|{node.DisplayKind}";
     }
 
-    /// <summary>
-    /// 读取决策片段节点的角色名称。
-    /// </summary>
-    /// <param name="fragment">目标决策片段节点。</param>
-    /// <returns>片段角色名；若未设置则返回空字符串。</returns>
-    public static string GetFragmentRole(RoslynCpgNode fragment)
+    // 读取决策片段节点的角色名称，缺失时返回空字符串。
+    public static string GetFragmentRole(NLCPGNode fragment)
     {
         return fragment.Name ?? string.Empty;
     }
 
-    private static RoslynCpgDecisionActionKind MapDecisionActionKind(DecisionActionKind action)
+    private static NLCPGDecisionActionKind MapDecisionActionKind(DecisionActionKind action)
     {
         return action switch
         {
-            DecisionActionKind.Skip => RoslynCpgDecisionActionKind.Skip,
-            DecisionActionKind.Delete => RoslynCpgDecisionActionKind.Delete,
-            DecisionActionKind.Replace => RoslynCpgDecisionActionKind.Replace,
+            DecisionActionKind.Skip => NLCPGDecisionActionKind.Skip,
+            DecisionActionKind.Delete => NLCPGDecisionActionKind.Delete,
+            DecisionActionKind.Replace => NLCPGDecisionActionKind.Replace,
             _ => throw new ArgumentOutOfRangeException(nameof(action)),
         };
     }

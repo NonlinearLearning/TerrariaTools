@@ -1,9 +1,9 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
+using NLCPG.Builder;
+using NLCPG.Contracts;
+using NLCPG.Model;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -20,7 +20,7 @@ public sealed class DeepSyntaxTraversalTests
     var compilation = CreateCompilation(tree);
     var semanticModel = compilation.GetSemanticModel(tree, ignoreAccessibility: true);
 
-    var graph = new RoslynCpgBuilder().BuildFromSemanticModel(
+    var graph = new NLCPGBuilder().BuildFromSemanticModel(
       semanticModel,
       root,
       root.ToFullString(),
@@ -28,7 +28,7 @@ public sealed class DeepSyntaxTraversalTests
 
     var parenthesizedNodes = graph.Nodes
       .Where(node =>
-        node.Kind == RoslynCpgNodeKind.SyntaxNode &&
+        node.Kind == NLCPGNodeKind.SyntaxNode &&
         string.Equals(node.DisplayKind, nameof(SyntaxKind.ParenthesizedExpression), StringComparison.Ordinal))
       .ToList();
 

@@ -1,4 +1,4 @@
-using MinimalRoslynCpg.Builder;
+using NLCPG.Builder;
 using Xunit;
 
 namespace RoslynPrototype.PerformanceTests.Concurrency;

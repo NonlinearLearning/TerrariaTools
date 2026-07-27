@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
+using NLCPG.Contracts;
+using NLCPG.Model;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -10,6 +10,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 删除已确认不再需要的接口实现方法体，同时保留接口声明的其他契约。
 public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinitionPropose
 {
   public override string CapabilityId { get; } = "propose.clear-unused-interface-implementation";
@@ -26,6 +27,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
   public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
     Array.Empty<SyntaxKind>();
 
+  // 把已确认无引用的接口实现方法改写成编译安全的空壳实现，而不是直接删除签名。
   public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
   {
     _ = propagatedMarks;
@@ -148,7 +150,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
         DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
         DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
         DecisionCpgFactory.CreateRelation(
-          RoslynCpgDecisionRelationKind.ClearedTo,
+          NLCPGDecisionRelationKind.ClearedTo,
           anchorFragment,
           replacementFragment)
       },
@@ -160,7 +162,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
       reason: reason);
   }
 
-  private static RoslynCpgNode CreateFragment(SyntaxNode node, string role, DecisionActionKind action)
+  private static NLCPGNode CreateFragment(SyntaxNode node, string role, DecisionActionKind action)
   {
     return DecisionCpgFactory.CreateFragment(
       $"frag:{DecisionCpgFactory.BuildNodeKey(node)}",

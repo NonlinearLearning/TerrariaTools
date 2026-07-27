@@ -11,8 +11,9 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.14.0" />
     <ProjectReference Include="..\NLISSN.Application\NLISSN.Application.csproj" />
-    <ProjectReference Include="..\NLISSN.Core\NLISSN.Core.csproj" />
     <ProjectReference Include="..\NLISSN.Logging\NLISSN.Logging.csproj" />
-    <ProjectReference Include="..\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
+    <ProjectReference Include="..\NLISSN.Rules\NLISSN.Rules.csproj" />
+    <ProjectReference Include="..\NLISSN.Core\NLISSN.Core.csproj" />
+    <ProjectReference Include="..\NLCPG\NLCPG.csproj" />
   </ItemGroup>
 </Project>

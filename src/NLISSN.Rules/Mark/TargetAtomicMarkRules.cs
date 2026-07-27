@@ -4,6 +4,7 @@ using NLISSN.Core.Marking;
 
 namespace NLISSN.Rules;
 
+/// 为 s-object 删除规则登记允许作为最小 seed mark 的原子表达式种类。
 public sealed class SObjectIdentifierNameMarkRule : SObjectAtomicExpressionMarkRuleBase
 {
     public override string CapabilityId { get; } = "mark.target.identifier-name";
@@ -40,6 +41,7 @@ public sealed class SObjectVariableDeclaratorMarkRule : RuleDefinitionMark
     public override string Name { get; } = "Match s-rooted variable declarators";
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } = new[] { SyntaxKind.VariableDeclarator };
 
+    // 把命中目标名称的变量定义点收束为 declarator，供后续符号传播沿定义继续扩展。
     public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
     {
         return DeleteSObjectMarkRuleHelpers.BuildDefinitionLeftValueMarks(context, root, RuleId);

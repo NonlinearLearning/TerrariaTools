@@ -7,6 +7,8 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 把 delete-class 的 TypeSyntax 命中收束到稳定声明宿主，
+/// 让后续提案直接对字段、属性、方法、接口成员等可改写边界做决策。
 public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagate
 {
     public override string CapabilityId { get; } = "propagate.type.declaration-host";
@@ -32,6 +34,7 @@ public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagat
         SyntaxKind.SimpleBaseType
       };
 
+    // 把 TypeSyntax 命中收束成唯一声明宿主，避免同一类型片段落入多个提案入口。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         _ = context;
@@ -61,6 +64,7 @@ public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagat
         }
     }
 
+    /// 按“越具体越先匹配”的顺序选择唯一宿主，
     private static bool TryBuildPayload(MarkRecord seedMark, out DeclarationHostPayload payload, out string reason)
     {
         payload = null!;
@@ -141,9 +145,9 @@ public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagat
             return true;
         }
 
-        if (TryResolveBaseDeletionTarget(typeSyntax, out var baseDeletionTarget))
+        if (TryResolveBase Target(typeSyntax, out var base Target))
         {
-            payload = new DeclarationHostPayload(baseDeletionTarget, DeclarationHostKind.BaseType);
+            payload = new DeclarationHostPayload(base Target, DeclarationHostKind.BaseType);
             reason = "Base type references the delete-class target; propagate to the owning base-list deletion host.";
             return true;
         }
@@ -272,7 +276,7 @@ public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagat
         return DeleteClassMethodProposalSafety.IsSafeExtensionReceiverMethod(methodDeclaration);
     }
 
-    private static bool TryResolveBaseDeletionTarget(TypeSyntax typeSyntax, out SyntaxNode deletionTarget)
+    private static bool TryResolveBase Target(TypeSyntax typeSyntax, out SyntaxNode deletionTarget)
     {
         var simpleBaseType = typeSyntax.Ancestors()
           .OfType<SimpleBaseTypeSyntax>()

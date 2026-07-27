@@ -4,8 +4,10 @@ using NLISSN.Core.Rewrite;
 
 namespace NLISSN.Application;
 
-public static class DeletionPostRewriteDiagnostics
+/// 比较改写前后的 Roslyn 错误诊断，将新增错误作为分析结果的一部分返回。
+public static class  PostRewriteDiagnostics
 {
+    // 为单文件分析结果补充改写后诊断，必要时可按选项跳过这一步。
     public static PrototypeAnalysisResult AddSingleFileDiagnostics(PrototypeAnalysisResult result, string filePath, bool skipDiagnostics)
   {
         if (skipDiagnostics)
@@ -28,6 +30,7 @@ public static class DeletionPostRewriteDiagnostics
         };
     }
 
+    // 比较原始文件集与改写结果，返回新增 Roslyn 错误诊断的稳定快照。
     public static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(IReadOnlyDictionary<string, string> originalSourcesByPath, IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
     {
         return GetErrorDiagnostics(BuildTrees(originalSourcesByPath, rewrittenSourcesByPath))
@@ -35,6 +38,7 @@ public static class DeletionPostRewriteDiagnostics
           .ToList();
     }
 
+    // 为一组源码生成稳定错误键集合，便于后续做前后诊断差集比较。
     public static HashSet<string> GetStableErrorDiagnosticKeys(IReadOnlyDictionary<string, string> sourcesByPath)
     {
         return GetStableErrorDiagnosticKeys(
@@ -43,6 +47,7 @@ public static class DeletionPostRewriteDiagnostics
           overriddenSource: null);
     }
 
+    // 在单文件覆盖场景下生成稳定错误键集合，用于判断候选清理是否引入新错误。
     public static HashSet<string> GetStableErrorDiagnosticKeys(IReadOnlyDictionary<string, string> sourcesByPath, string? overriddenFilePath, string? overriddenSource)
     {
         return GetErrorDiagnostics(

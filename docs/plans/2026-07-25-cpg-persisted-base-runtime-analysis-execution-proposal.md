@@ -6,7 +6,7 @@
 
 **Architecture:** Persistence remains a base-fragment cache, addressed through the current catalog and routing.cpgidx lookup path. A hit restores those existing fragments into a mutable graph, binds current SyntaxNode, IOperation, and symbol facts to stable NodeIds, runs the normal derived passes, and freezes once. Persisted shards never replace process-local semantic state.
 
-**Tech Stack:** .NET 10, Roslyn, MinimalRoslynCpg, SQLite, binary shard store, xUnit
+**Tech Stack:** .NET 10, Roslyn, NLCPG, SQLite, binary shard store, xUnit
 
 ---
 
@@ -57,12 +57,12 @@ On an absent, incomplete, corrupt, incompatible, or unbindable base result, disc
 
 | File | Current responsibility | Planned responsibility |
 | --- | --- | --- |
-| src/MinimalRoslynCpg/Builder/RoslynCpgBuilder.cs | Early return after TryRestoreAsync | Orchestrate restore, binding, dynamic passes, final freeze, fallback |
-| src/MinimalRoslynCpg/Builder/CpgShardBuildCoordinator.cs | Catalog/routing lookup and frozen reconstruction | Return validated base restoration only |
-| src/MinimalRoslynCpg/Persistence/CpgFrozenShardGraphReader.cs | Read shard records | Populate existing base facts into mutable reconstruction |
-| src/MinimalRoslynCpg/Builder/RoslynCpgBuildContext.cs | Current source/root/model/graph/inventory | Supply current runtime semantic state for binding |
-| src/MinimalRoslynCpg/Builder/Passes/*.cs | Build derived facts | Remain the sole source of derived facts on a hit |
-| tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs | Restore and DOP tests | Exact equivalence, fallback, and no-growth contracts |
+| src/NLCPG/Builder/NLCPGBuilder.cs | Early return after TryRestoreAsync | Orchestrate restore, binding, dynamic passes, final freeze, fallback |
+| src/NLCPG/Builder/CpgShardBuildCoordinator.cs | Catalog/routing lookup and frozen reconstruction | Return validated base restoration only |
+| src/NLCPG/Persistence/CpgFrozenShardGraphReader.cs | Read shard records | Populate existing base facts into mutable reconstruction |
+| src/NLCPG/Builder/NLCPGBuildContext.cs | Current source/root/model/graph/inventory | Supply current runtime semantic state for binding |
+| src/NLCPG/Builder/Passes/*.cs | Build derived facts | Remain the sole source of derived facts on a hit |
+| tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs | Restore and DOP tests | Exact equivalence, fallback, and no-growth contracts |
 
 ## Tasks
 
@@ -70,9 +70,9 @@ On an absent, incomplete, corrupt, incompatible, or unbindable base result, disc
 
 **Files:**
 
-- Modify: tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
-- Modify: tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs
-- Modify only if its helper is insufficient: tests/RoslynDeletionPrototype.ContractTests/Cpg/MinimalRoslynCpgPartitionedBuilderTests.cs
+- Modify: tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
+- Modify: tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs
+- Modify only if its helper is insufficient: tests/Roslyn Prototype.ContractTests/Cpg/NLCPGPartitionedBuilderTests.cs
 
 **Step 1: Write a failing exact-graph hit test.**
 
@@ -92,7 +92,7 @@ Run:
 
 ~~~powershell
 $env:DOTNET_CLI_HOME=(Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests.BuildFromSource_PersistenceHit_RebuildsCompleteGraph"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests.BuildFromSource_PersistenceHit_RebuildsCompleteGraph"
 ~~~
 
 Expected: FAIL. The current hit has an empty ExecutedPassNames list and/or different exact edges because it returns before dynamic passes.
@@ -105,7 +105,7 @@ Use Theory DOP values 1 and 12. For each, compare baseline, cold seed, and hit. 
 
 ~~~powershell
 $env:DOTNET_CLI_HOME=(Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~RoslynCpgSliceQueryTests"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~NLCPGSliceQueryTests"
 ~~~
 
 Expected: new cases fail; existing cases stay green.
@@ -113,7 +113,7 @@ Expected: new cases fail; existing cases stay green.
 **Step 5: Commit.**
 
 ~~~powershell
-git add tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs
+git add tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs
 git commit -m "Lock persisted CPG hit equivalence contract"
 ~~~
 
@@ -121,10 +121,10 @@ git commit -m "Lock persisted CPG hit equivalence contract"
 
 **Files:**
 
-- Modify: src/MinimalRoslynCpg/Builder/CpgShardBuildCoordinator.cs
-- Modify: src/MinimalRoslynCpg/Persistence/CpgFrozenShardGraphReader.cs
-- Modify only if an in-memory type needs a contract: src/MinimalRoslynCpg/Persistence/CpgShardContracts.cs
-- Test: tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
+- Modify: src/NLCPG/Builder/CpgShardBuildCoordinator.cs
+- Modify: src/NLCPG/Persistence/CpgFrozenShardGraphReader.cs
+- Modify only if an in-memory type needs a contract: src/NLCPG/Persistence/CpgShardContracts.cs
+- Test: tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
 
 **Step 1: Define an internal base-restore result.**
 
@@ -132,8 +132,7 @@ Replace the plan-level meaning of TryRestoreAsync with TryRestoreBaseAsync (or e
 
 ~~~csharp
 internal sealed record CpgBaseRestoreResult(
-    RoslynCpgGraph Graph,
-    CpgPersistenceTelemetry PersistenceTelemetry);
+    CpgFrozenShardGraphFacts Facts);
 ~~~
 
 The exact shape may differ, but it stays internal and is never serialized.
@@ -154,7 +153,7 @@ Restore only existing owned node/edge facts and boundary-adjacency records. Pres
 
 ~~~powershell
 $env:DOTNET_CLI_HOME=(Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~SqliteCpgShardCatalogTests"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~SqliteCpgShardCatalogTests"
 ~~~
 
 Expected: existing completed-session/routing/catalog tests and new fallback test pass.
@@ -162,7 +161,7 @@ Expected: existing completed-session/routing/catalog tests and new fallback test
 **Step 6: Commit.**
 
 ~~~powershell
-git add src/MinimalRoslynCpg/Builder/CpgShardBuildCoordinator.cs src/MinimalRoslynCpg/Persistence/CpgFrozenShardGraphReader.cs src/MinimalRoslynCpg/Persistence/CpgShardContracts.cs tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
+git add src/NLCPG/Builder/CpgShardBuildCoordinator.cs src/NLCPG/Persistence/CpgFrozenShardGraphReader.cs src/NLCPG/Persistence/CpgShardContracts.cs tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
 git commit -m "Restore persisted CPG fragments as a mutable base"
 ~~~
 
@@ -170,10 +169,10 @@ git commit -m "Restore persisted CPG fragments as a mutable base"
 
 **Files:**
 
-- Create: src/MinimalRoslynCpg/Builder/Persistence/RoslynCpgRuntimeBindingPass.cs
-- Modify: src/MinimalRoslynCpg/Builder/RoslynCpgBuilder.cs
-- Modify only for minimal internal accessors: src/MinimalRoslynCpg/Builder/RoslynCpgBuildContext.cs
-- Test: tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
+- Create: src/NLCPG/Builder/Persistence/NLCPGRuntimeBindingPass.cs
+- Modify: src/NLCPG/Builder/NLCPGBuilder.cs
+- Modify only for minimal internal accessors: src/NLCPG/Builder/NLCPGBuildContext.cs
+- Test: tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
 
 **Step 1: Write failing binding tests.**
 
@@ -181,11 +180,11 @@ After a base hit, prove representative syntax, operation, declaration/method, sy
 
 **Step 2: Implement runtime-only binding.**
 
-RoslynCpgRuntimeBindingPass walks the *current* context.Root with the *current* context.SemanticModel and reconstructs the maps needed by current passes:
+NLCPGRuntimeBindingPass walks the *current* context.Root with the *current* context.SemanticModel and reconstructs the maps needed by current passes:
 
-- SyntaxNode -> RoslynCpgNode
-- IOperation -> RoslynCpgNode
-- symbol key -> RoslynCpgNode
+- SyntaxNode -> NLCPGNode
+- IOperation -> NLCPGNode
+- symbol key -> NLCPGNode
 - method/declaration and call-site mappings
 - OperationInventory entries used by CFG and data-flow
 
@@ -193,7 +192,7 @@ Resolve with cold-build stable inputs: file path, source span, syntax/operation 
 
 **Step 3: Remove the semantic early return.**
 
-In RoslynCpgBuilder.Build, replace the current TryRestoreAsync early return with:
+In NLCPGBuilder.Build, replace the current TryRestoreAsync early return with:
 
 ~~~csharp
 var baseRestore = coordinator.TryRestoreBaseAsync(context, CancellationToken.None)
@@ -218,7 +217,7 @@ Add runtime-only telemetry: PersistenceHit, BaseRestoreElapsedMilliseconds, Runt
 
 ~~~powershell
 $env:DOTNET_CLI_HOME=(Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests.BuildFromSource_PersistenceHit|FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~RoslynCpgNodeIdContractTests"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests.BuildFromSource_PersistenceHit|FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~NLCPGNodeIdContractTests"
 ~~~
 
 Expected: exact hit equality, binding coverage, and deterministic identity contracts pass.
@@ -226,7 +225,7 @@ Expected: exact hit equality, binding coverage, and deterministic identity contr
 **Step 6: Commit.**
 
 ~~~powershell
-git add src/MinimalRoslynCpg/Builder/Persistence/RoslynCpgRuntimeBindingPass.cs src/MinimalRoslynCpg/Builder/RoslynCpgBuilder.cs src/MinimalRoslynCpg/Builder/RoslynCpgBuildContext.cs tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
+git add src/NLCPG/Builder/Persistence/NLCPGRuntimeBindingPass.cs src/NLCPG/Builder/NLCPGBuilder.cs src/NLCPG/Builder/NLCPGBuildContext.cs tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
 git commit -m "Bind current Roslyn state to restored CPG bases"
 ~~~
 
@@ -234,10 +233,10 @@ git commit -m "Bind current Roslyn state to restored CPG bases"
 
 **Files:**
 
-- Modify: src/MinimalRoslynCpg/Builder/RoslynCpgBuilder.cs
-- Modify only if a documented recovered-state seam is required: src/MinimalRoslynCpg/Builder/Passes/ControlFlowPass.cs, DataFlowPass.cs, InterproceduralDataFlowPass.cs, PartitionedOperationPass.cs, or PartitionedSyntaxPass.cs
-- Test: tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
-- Test: tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs
+- Modify: src/NLCPG/Builder/NLCPGBuilder.cs
+- Modify only if a documented recovered-state seam is required: src/NLCPG/Builder/Passes/ControlFlowPass.cs, DataFlowPass.cs, InterproceduralDataFlowPass.cs, PartitionedOperationPass.cs, or PartitionedSyntaxPass.cs
+- Test: tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
+- Test: tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs
 
 **Step 1: Add failing derived-edge matrix assertions.**
 
@@ -259,7 +258,7 @@ Preferred behavior is no write on an unchanged complete hit. If present lifecycl
 
 ~~~powershell
 $env:DOTNET_CLI_HOME=(Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~RoslynCpgSliceQueryTests|FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~NLCPGSliceQueryTests|FullyQualifiedName~NLCPGPartitionedBuilderTests"
 ~~~
 
 Expected: exact edges, slices, snapshots, and capability telemetry pass for cold and hit builds.
@@ -267,7 +266,7 @@ Expected: exact edges, slices, snapshots, and capability telemetry pass for cold
 **Step 6: Commit.**
 
 ~~~powershell
-git add src/MinimalRoslynCpg/Builder/RoslynCpgBuilder.cs src/MinimalRoslynCpg/Builder/Passes tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs
+git add src/NLCPG/Builder/NLCPGBuilder.cs src/NLCPG/Builder/Passes tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs
 git commit -m "Rebuild CPG derived analysis after base restoration"
 ~~~
 
@@ -275,9 +274,9 @@ git commit -m "Rebuild CPG derived analysis after base restoration"
 
 **Files:**
 
-- Modify: tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
-- Modify only if assertions are absent: tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs
-- Modify telemetry surface only if needed: tests/RoslynDeletionPrototype.PerformanceTests/Cpg/CpgPersistenceBenchmarkConfigurationTests.cs, tools/CpgPersistenceBenchmark/BenchmarkConfiguration.cs, tools/CpgPersistenceBenchmark/Program.cs
+- Modify: tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs
+- Modify only if assertions are absent: tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs
+- Modify telemetry surface only if needed: tests/Roslyn Prototype.PerformanceTests/Cpg/CpgPersistenceBenchmarkConfigurationTests.cs, tools/CpgPersistenceBenchmark/BenchmarkConfiguration.cs, tools/CpgPersistenceBenchmark/Program.cs
 
 **Step 1: Write failing non-growth tests.**
 
@@ -295,7 +294,7 @@ Dispose/discard candidate graph and recovered maps together. Only cache-read/bin
 
 ~~~powershell
 $env:DOTNET_CLI_HOME=(Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~SqliteCpgShardCatalogTests|FullyQualifiedName~CpgFrozen"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~SqliteCpgShardCatalogTests|FullyQualifiedName~CpgFrozen"
 ~~~
 
 Expected: fallback, non-growth, Strict, catalog, and reader contracts pass.
@@ -303,7 +302,7 @@ Expected: fallback, non-growth, Strict, catalog, and reader contracts pass.
 **Step 5: Commit.**
 
 ~~~powershell
-git add tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs tests/RoslynDeletionPrototype.PerformanceTests/Cpg/CpgPersistenceBenchmarkConfigurationTests.cs tools/CpgPersistenceBenchmark/BenchmarkConfiguration.cs tools/CpgPersistenceBenchmark/Program.cs
+git add tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs tests/Roslyn Prototype.PerformanceTests/Cpg/CpgPersistenceBenchmarkConfigurationTests.cs tools/CpgPersistenceBenchmark/BenchmarkConfiguration.cs tools/CpgPersistenceBenchmark/Program.cs
 git commit -m "Guard persisted CPG hits against storage growth"
 ~~~
 
@@ -318,8 +317,8 @@ git commit -m "Guard persisted CPG hits against storage growth"
 
 ~~~powershell
 $env:DOTNET_CLI_HOME=(Resolve-Path '.').Path
-dotnet build .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\src\NLCPG\NLCPG.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
 ~~~
 
 Expected: build succeeds and contract project passes.
@@ -396,4 +395,3 @@ git commit -m "Record persisted base CPG analysis verification"
 ## Definition of complete
 
 Implementation is complete only when every acceptance gate passes and retained evidence proves a persisted-base hit returns a graph-equivalent full CPG without adding data to each existing shard. Until then, persistence is partial/base restoration, not a substitute for a complete analysis build.
-

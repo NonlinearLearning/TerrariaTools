@@ -1,7 +1,8 @@
 using NLISSN.Application;
 namespace NLISSN;
 
-internal static class DeletionDiffPathResolver
+/// 在遵循 <c>--diff-out</c> 的前提下，将分析输入映射为确定性的差异文件路径。
+internal static class  DiffPathResolver
 {
     internal static string ResolveDiffPath(string inputPath, IReadOnlyDictionary<string, string> options)
     {

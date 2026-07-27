@@ -3,8 +3,10 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Decision;
 
+/// 从声明宿主传播事实中筛出唯一宿主，避免同一语法节点产生重复决策。
 public static class DeleteClassDeclarationHostProposalHelpers
 {
+    // 按宿主种类提取传播 payload，并用宿主节点键去重，避免重复生成同类决策。
     public static IEnumerable<DeclarationHostPayload> EnumeratePayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks, DeclarationHostKind kind)
     {
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);

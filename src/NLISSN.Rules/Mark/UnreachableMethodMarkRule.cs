@@ -1,40 +1,30 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
+using NLCPG.Contracts;
+using NLCPG.Model;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
 using NLISSN.Rules;
 
 namespace NLISSN.Rules;
 
-/// <summary>
 /// 基于最小调用图可达性，命中从入口点不可达的方法声明。
-/// </summary>
 public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
 {
-    /// <summary>
     /// 规则稳定标识。
-    /// </summary>
     public override string CapabilityId { get; } = "mark.unreachable-method";
 
     public override string RuleId { get; } = "DEL-DEAD-001";
 
-    /// <summary>
     /// 规则的人类可读名称。
-    /// </summary>
     public override string Name { get; } = "Match unreachable methods by graph reachability";
 
-    /// <summary>
     /// 标记阶段允许产出的语法节点种类。
-    /// </summary>
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
       new[] { SyntaxKind.MethodDeclaration };
 
-    /// <summary>
-    /// 从入口点出发计算可达方法集合，并命中剩余不可达的方法声明。
-    /// </summary>
+    // 从入口点沿调用图寻找可达方法，并把剩余方法声明标记为不可达删除候选。
     public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
     {
         if (context.SemanticModel.Compilation.GetEntryPoint(CancellationToken.None) is null)
@@ -67,14 +57,11 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
         }
     }
 
-    /// <summary>
-    /// 从入口方法出发，沿调用图做最小广度优先遍历，收集可达方法。
-    /// </summary>
     private static HashSet<NodeId> FindReachableMethodIds(RuleContext context, IReadOnlyDictionary<NodeId, MethodDeclarationSyntax> methodSyntaxById)
     {
         var reachable = new HashSet<NodeId>();
-        var worklist = new Queue<RoslynCpgNode>();
-        var methodNodes = context.GetGraphNodesByKind(RoslynCpgNodeKind.Method);
+        var worklist = new Queue<NLCPGNode>();
+        var methodNodes = context.GetGraphNodesByKind(NLCPGNodeKind.Method);
         var symbolMethodToMethod = BuildSymbolMethodMap(context, methodNodes);
 
         var entrySymbol = context.SemanticModel.Compilation.GetEntryPoint(CancellationToken.None);
@@ -113,8 +100,8 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
                     continue;
                 }
 
-                foreach (var targetSymbolNode in GetOutgoingTargets(context, callSiteNode.NodeId.Value, RoslynCpgEdgeKind.CallTargets)
-                           .Where(node => node.Kind == RoslynCpgNodeKind.SymbolMethod))
+                foreach (var targetSymbolNode in GetOutgoingTargets(context, callSiteNode.NodeId.Value, NLCPGEdgeKind.CallTargets)
+                           .Where(node => node.Kind == NLCPGNodeKind.SymbolMethod))
                 {
                     if (!targetSymbolNode.NodeId.HasValue ||
                         !symbolMethodToMethod.TryGetValue(targetSymbolNode.NodeId.Value, out var targetMethodNode) ||
@@ -134,28 +121,23 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
         return reachable;
     }
 
-    /// <summary>
     /// 把方法符号节点映射回对应的方法抽象节点，便于沿调用目标回到方法级可达性。
-    /// </summary>
-    private static IReadOnlyDictionary<NodeId, RoslynCpgNode> BuildSymbolMethodMap(RuleContext context, IReadOnlyList<RoslynCpgNode> methodNodes)
+    private static IReadOnlyDictionary<NodeId, NLCPGNode> BuildSymbolMethodMap(RuleContext context, IReadOnlyList<NLCPGNode> methodNodes)
     {
         var methodByLocation = methodNodes
           .Where(node => node.NodeId.HasValue && node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
           .ToDictionary(node => BuildLocationKey(node.FilePath!, node.SpanStart!.Value, node.SpanEnd!.Value), StringComparer.Ordinal);
 
-        return context.GetGraphNodesByKind(RoslynCpgNodeKind.SymbolMethod)
+        return context.GetGraphNodesByKind(NLCPGNodeKind.SymbolMethod)
           .Where(node => node.NodeId.HasValue && node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
           .Select(node => new { SymbolNode = node, MethodNode = ResolveMethodNode(node, methodByLocation) })
           .Where(item => item.MethodNode is not null)
           .ToDictionary(item => item.SymbolNode.NodeId!.Value, item => item.MethodNode!);
     }
 
-    /// <summary>
-    /// 找出方法体范围内的所有调用点节点。
-    /// </summary>
-    private static IEnumerable<RoslynCpgNode> GetCallSitesForMethod(RuleContext context, MethodDeclarationSyntax methodSyntax)
+    private static IEnumerable<NLCPGNode> GetCallSitesForMethod(RuleContext context, MethodDeclarationSyntax methodSyntax)
     {
-        foreach (var callSite in context.GetGraphNodesByKind(RoslynCpgNodeKind.CallSite))
+        foreach (var callSite in context.GetGraphNodesByKind(NLCPGNodeKind.CallSite))
         {
             if (IsInsideMethod(callSite, methodSyntax))
             {
@@ -164,10 +146,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
         }
     }
 
-    /// <summary>
-    /// 读取某个图节点沿指定边种类指向的所有目标节点。
-    /// </summary>
-    private static IEnumerable<RoslynCpgNode> GetOutgoingTargets(RuleContext context, NodeId sourceNodeId, RoslynCpgEdgeKind edgeKind)
+    private static IEnumerable<NLCPGNode> GetOutgoingTargets(RuleContext context, NodeId sourceNodeId, NLCPGEdgeKind edgeKind)
     {
         var targetIds = context.GetGraphEdgesByKind(sourceNodeId, edgeKind)
           .Select(edge => edge.TargetNodeId)
@@ -183,10 +162,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
         }
     }
 
-    /// <summary>
-    /// 判断图节点是否位于给定方法声明的源码范围内。
-    /// </summary>
-    private static bool IsInsideMethod(RoslynCpgNode node, MethodDeclarationSyntax methodSyntax)
+    private static bool IsInsideMethod(NLCPGNode node, MethodDeclarationSyntax methodSyntax)
     {
         if (node.FilePath is null || methodSyntax.SyntaxTree.FilePath is null)
         {
@@ -206,19 +182,13 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
         return node.SpanStart.Value >= methodSyntax.SpanStart && node.SpanEnd.Value <= methodSyntax.Span.End;
     }
 
-    /// <summary>
-    /// 在无法从编译入口恢复时，退化按 Main 名称识别入口方法。
-    /// </summary>
-    private static bool IsEntryMethod(RoslynCpgNode node)
+    private static bool IsEntryMethod(NLCPGNode node)
     {
-        return node.Kind == RoslynCpgNodeKind.Method &&
+        return node.Kind == NLCPGNodeKind.Method &&
           string.Equals(node.Name, "Main", StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// 根据方法符号的源码位置，在图中定位对应的方法抽象节点。
-    /// </summary>
-    private static RoslynCpgNode? FindMethodNodeBySymbol(RuleContext context, IMethodSymbol methodSymbol)
+    private static NLCPGNode? FindMethodNodeBySymbol(RuleContext context, IMethodSymbol methodSymbol)
     {
         var location = methodSymbol.Locations.FirstOrDefault(location => location.IsInSource);
         if (location is null || location.SourceTree?.FilePath is not string filePath)
@@ -226,7 +196,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
             return null;
         }
 
-        return context.GetGraphNodesByKind(RoslynCpgNodeKind.Method)
+        return context.GetGraphNodesByKind(NLCPGNodeKind.Method)
           .FirstOrDefault(node =>
             string.Equals(node.FilePath, filePath, StringComparison.Ordinal) &&
             node.SpanStart == location.SourceSpan.Start &&
@@ -234,9 +204,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
             string.Equals(node.Name, methodSymbol.Name, StringComparison.Ordinal));
     }
 
-    /// <summary>
     /// 为每个方法抽象节点建立到源码方法声明的映射。
-    /// </summary>
     private static IReadOnlyDictionary<NodeId, MethodDeclarationSyntax> BuildMethodSyntaxMap(RuleContext context, SyntaxNode root)
     {
         var map = new Dictionary<NodeId, MethodDeclarationSyntax>();
@@ -258,18 +226,12 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
         return map;
     }
 
-    /// <summary>
-    /// 用文件路径和跨度构造稳定的位置键。
-    /// </summary>
     private static string BuildLocationKey(string filePath, int spanStart, int spanEnd)
     {
         return $"{filePath}|{spanStart}|{spanEnd}";
     }
 
-    /// <summary>
-    /// 基于源码位置，把方法符号节点对齐回方法抽象节点。
-    /// </summary>
-    private static RoslynCpgNode? ResolveMethodNode(RoslynCpgNode symbolNode, IReadOnlyDictionary<string, RoslynCpgNode> methodByLocation)
+    private static NLCPGNode? ResolveMethodNode(NLCPGNode symbolNode, IReadOnlyDictionary<string, NLCPGNode> methodByLocation)
     {
         if (symbolNode.FilePath is null || symbolNode.SpanStart is null || symbolNode.SpanEnd is null)
         {

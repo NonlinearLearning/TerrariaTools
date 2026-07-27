@@ -1,4 +1,4 @@
-using MinimalRoslynCpg.Builder;
+using NLCPG.Builder;
 using RoslynPrototype.Testing.TestInfrastructure;
 using VerifyXunit;
 
@@ -10,7 +10,7 @@ public sealed class CpgReviewedSnapshotTests
   public Task BuildFromSource_ComplexFragment_MatchesReviewedSnapshot()
   {
     const string source = "class Example { int Add(int left, int right) => left + right; int Run(int value) => Add(value, 2); }";
-    var graph = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault()).BuildFromSource(source, "reviewed.cs");
+    var graph = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault()).BuildFromSource(source, "reviewed.cs");
     var projection = CpgSnapshotNormalizer.Normalize(graph.Edges.Select(edge =>
       $"source={edge.SourceNodeId} target={edge.TargetNodeId} kind={edge.Kind} context={edge.ContextId}"));
     return Verify(projection.Take(3));

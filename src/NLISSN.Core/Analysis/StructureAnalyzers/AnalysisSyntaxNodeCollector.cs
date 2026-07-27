@@ -4,9 +4,6 @@ namespace NLISSN.Core.Analysis;
 
 internal static class AnalysisSyntaxNodeCollector
 {
-    /// <summary>
-    /// 按源码位置整理一个结构分析器命中的语法节点。
-    /// </summary>
     public static IReadOnlyList<SyntaxNode> BuildAffectedSyntaxTree(SyntaxNode root, IEnumerable<SyntaxNode?> nodes)
     {
         return nodes
@@ -19,9 +16,6 @@ internal static class AnalysisSyntaxNodeCollector
             .ToList();
     }
 
-    /// <summary>
-    /// 添加可选语法节点，避免每个分析器重复空值判断。
-    /// </summary>
     public static void AddIfNotNull(ICollection<SyntaxNode> nodes, SyntaxNode? node)
     {
         if (node is not null)

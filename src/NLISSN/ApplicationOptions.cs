@@ -1,11 +1,12 @@
 using NLISSN.Application;
-using NLISSN.Logging;
 using NLISSN.Rules;
 
 namespace NLISSN;
 
-internal static class DeletionApplicationOptions
+/// 解析命令行开关，并集中处理其派生的执行决策。
+internal static class  ApplicationOptions
 {
+    /// 将支持的 <c>--key value</c> 和仅含开关的参数转换为不区分大小写的映射。
     internal static Dictionary<string, string> Parse(string[] args)
     {
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -149,69 +150,6 @@ internal static class DeletionApplicationOptions
           IsTrueOption(options, "filter-delete-class-files-by-target-name");
     }
 
-    internal static bool HasAnyTextLogOptions(IReadOnlyDictionary<string, string> options)
-    {
-        return ResolveRuntimeLogPath(options) is not null ||
-          ResolveAnalysisLogPath(options) is not null ||
-          options.ContainsKey("log-level") ||
-          options.ContainsKey("log-categories") ||
-          options.ContainsKey("log-events") ||
-          options.ContainsKey("log-view") ||
-          options.ContainsKey("log-profile");
-    }
-
-    internal static string? ResolveRuntimeLogPath(IReadOnlyDictionary<string, string> options)
-    {
-        if (options.TryGetValue("runtime-log", out var runtimeLogPath) &&
-            !string.IsNullOrWhiteSpace(runtimeLogPath))
-        {
-            return runtimeLogPath;
-        }
-
-        if (options.TryGetValue("runtime-metrics-log", out var legacyRuntimeLogPath) &&
-            !string.IsNullOrWhiteSpace(legacyRuntimeLogPath))
-        {
-            return legacyRuntimeLogPath;
-        }
-
-        return null;
-    }
-
-    internal static string? ResolveAnalysisLogPath(IReadOnlyDictionary<string, string> options)
-    {
-        if (options.TryGetValue("analysis-log", out var analysisLogPath) &&
-            !string.IsNullOrWhiteSpace(analysisLogPath))
-        {
-            return analysisLogPath;
-        }
-
-        if (options.TryGetValue("analysis-events-log", out var analysisEventsLogPath) &&
-            !string.IsNullOrWhiteSpace(analysisEventsLogPath))
-        {
-            return analysisEventsLogPath;
-        }
-
-        if (options.TryGetValue("per-file-timing-log", out var perFileTimingLogPath) &&
-            !string.IsNullOrWhiteSpace(perFileTimingLogPath))
-        {
-            return perFileTimingLogPath;
-        }
-
-        if (options.TryGetValue("per-file-memory-diagnostics-log", out var perFileMemoryDiagnosticsLogPath) &&
-            !string.IsNullOrWhiteSpace(perFileMemoryDiagnosticsLogPath))
-        {
-            return perFileMemoryDiagnosticsLogPath;
-        }
-
-        if (options.TryGetValue("per-file-phase-timing-log-directory", out var legacyDirectoryPath) &&
-            !string.IsNullOrWhiteSpace(legacyDirectoryPath))
-        {
-            return Path.Combine(legacyDirectoryPath, "analysis.log");
-        }
-
-        return null;
-    }
-
     internal static int ResolveMaxDegreeOfParallelism(IReadOnlyDictionary<string, string> options)
     {
         if (!options.TryGetValue("max-degree-of-parallelism", out var rawValue) ||
@@ -230,11 +168,11 @@ internal static class DeletionApplicationOptions
 
     internal static RoslynPrototypeExecutionOptions CreateExecutionOptions(IReadOnlyDictionary<string, string> options)
     {
-        return DeletionAnalysisRuntime.CreateExecutionOptions(options);
+        return  AnalysisRuntime.CreateExecutionOptions(options);
     }
 
-    internal static DeletionAnalysisRuntime CreateRuntime(IReadOnlyDictionary<string, string> options)
+    internal static  AnalysisRuntime CreateRuntime(IReadOnlyDictionary<string, string> options)
     {
-        return DeletionAnalysisRuntime.CreateFromOptions(options);
+        return  AnalysisRuntime.CreateFromOptions(options);
     }
 }

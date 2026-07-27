@@ -10,7 +10,7 @@ public sealed class TestWorkspaceWriter
 
     var rootPath = Path.Combine(
       Path.GetTempPath(),
-      "RoslynDeletionPrototype.Tests",
+      "Roslyn Prototype.Tests",
       asset.Id,
       Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(rootPath);

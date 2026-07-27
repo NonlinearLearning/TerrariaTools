@@ -40,8 +40,8 @@
 
 - 修改：`src/RoslynPrototype/Analysis/MarkAnalysisSnapshot.cs`
 - 修改：`src/Host/Logging/RunTextLogWriter.cs`
-- 修改：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.HostTests/Logging/TextLogSystemTests.cs`
+- 修改：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
+- 修改：`tests/Roslyn Prototype.HostTests/Logging/TextLogSystemTests.cs`
 
 **实施：**
 
@@ -54,7 +54,7 @@
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~MarkingEngine_Run_SObjectRules_PreservesSeedMarksAcrossGroupParallelismAndUsesSnapshotCaches|FullyQualifiedName~TextLogSystemTests"
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~MarkingEngine_Run_SObjectRules_PreservesSeedMarksAcrossGroupParallelismAndUsesSnapshotCaches|FullyQualifiedName~TextLogSystemTests"
 ```
 
 ## 任务 2：按 region node 缓存 region facts
@@ -63,7 +63,7 @@ dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.Ho
 
 - 修改：`src/RoslynPrototype/Analysis/otherAnalyzers/MarkRegionAnalyzer.cs`
 - 修改：`src/RoslynPrototype/Analysis/MarkAnalysisSnapshot.cs`
-- 修改：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- 修改：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 
 **实施：**
 
@@ -82,7 +82,7 @@ dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.Ho
 - 修改：`src/RoslynPrototype/Analysis/MarkAnalysisSnapshot.cs`
 - 修改：`src/RoslynPrototype/Analysis/RuleSyntaxAnalysisHelpers.cs`
 - 修改：`src/RoslynPrototype/RuleServices/RuleContext.cs`
-- 修改：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- 修改：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 
 **实施：**
 
@@ -101,8 +101,8 @@ dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.Ho
 - 修改：`src/RoslynPrototype/Analysis/MarkAnalysisSnapshot.cs`
 - 修改：`src/RoslynPrototype/RuleServices/RuleContext.cs`
 - 修改：`src/RoslynPrototype/RuleServices/RuleHelpers/DeleteSObjectMarkRuleHelpers.cs`
-- 修改：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.HostTests/Mark/MarkRuleEffectTests.cs`
+- 修改：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
+- 修改：`tests/Roslyn Prototype.HostTests/Mark/MarkRuleEffectTests.cs`
 
 **实施：**
 
@@ -118,8 +118,8 @@ dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.Ho
 
 **范围文件：**
 
-- 修改：`tests/RoslynDeletionPrototype.PerformanceTests/Performance/PerformanceOptimizationRegressionTests.cs`
-- 可选修改：`tests/RoslynDeletionPrototype.Testing/TestCodeSet/Performance/PerformanceSources.cs`
+- 修改：`tests/Roslyn Prototype.PerformanceTests/Performance/PerformanceOptimizationRegressionTests.cs`
+- 可选修改：`tests/Roslyn Prototype.Testing/TestCodeSet/Performance/PerformanceSources.cs`
 - 不修改：生产默认 DOP 和规则行为。
 
 **实施：**
@@ -134,8 +134,8 @@ dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.Ho
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
 dotnet build .\src\RoslynPrototype\RoslynPrototype.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~PipelineComponentTests|FullyQualifiedName~MarkRuleEffectTests|FullyQualifiedName~LogicalConditionMarkAnalyzerTests|FullyQualifiedName~TextLogSystemTests"
-dotnet test .\tests\RoslynDeletionPrototype.PerformanceTests\RoslynDeletionPrototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~PerformanceOptimizationRegressionTests"
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~PipelineComponentTests|FullyQualifiedName~MarkRuleEffectTests|FullyQualifiedName~LogicalConditionMarkAnalyzerTests|FullyQualifiedName~TextLogSystemTests"
+dotnet test .\tests\Roslyn Prototype.PerformanceTests\Roslyn Prototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~PerformanceOptimizationRegressionTests"
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```

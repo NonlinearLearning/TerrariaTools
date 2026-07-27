@@ -6,7 +6,7 @@
 
 **架构：** 先为 `PropagationEngine` 建立规则/组级遥测与等价基线；再由规则显式声明是否需要 `StructureView`，避免给纯 Roslyn 规则构建局部 CPG 视图；最后把只在命中 local definition 时执行的全树符号引用扫描提升为一次构建、可复用的索引。`GroupKey` 仍是链式依赖和确定性顺序的边界，不以拆组并行换取吞吐。
 
-**技术栈：** .NET 10、Roslyn `SemanticModel`、MinimalRoslynCpg、xUnit、现有 CLI 文本日志。
+**技术栈：** .NET 10、Roslyn `SemanticModel`、NLCPG、xUnit、现有 CLI 文本日志。
 
 ---
 
@@ -38,14 +38,14 @@
 
 - 修改：`src/RoslynPrototype/Propagation/PropagationEngine.cs`
 - 修改：`src/RoslynPrototype/Rewrite/PrototypeAnalysisResult.cs`
-- 修改：`src/Application/DeletionApplicationService.cs`
+- 修改：`src/Application/ ApplicationService.cs`
 - 修改：`src/Host/Logging/RunTextLogWriter.cs`
-- 修改：`src/Host/DeletionCommandHost.cs`（仅接线需要时）
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Logging/TextLogSystemTests.cs`
+- 修改：`src/Host/ CommandHost.cs`（仅接线需要时）
+- 测试：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Logging/TextLogSystemTests.cs`
 
 1. 在 `PropagationEngine` 内创建只读 telemetry 值对象：按 group 与 rule 记录输入 mark 数、产出数、组内重复跳过数、结构视图请求/命中/未命中、视图节点/边数和 elapsed ticks。计数必须在现有枚举路径上累加，不允许为遥测再扫描语法树或图。
-2. 将 telemetry 作为 `PrototypeAnalysisResult` 的可选字段，由 `DeletionApplicationService.RunAnalysis` 传出；无 propagator 时返回零值而不是 `null`。
+2. 将 telemetry 作为 `PrototypeAnalysisResult` 的可选字段，由 ` ApplicationService.RunAnalysis` 传出；无 propagator 时返回零值而不是 `null`。
 3. 运行日志增加一条稳定的 `propagation summary` 记录，包含总规则数、总输入/产出、去重数、view request/hit/miss 和最慢 rule ID/耗时。每 rule 明细仅在明确的 Debug 过滤下写出。
 4. 扩展现有 chain、dedup、scheduler 和 `ViewAwarePropagationRule` 测试：断言计数、规则顺序和最终 mark key；不要断言绝对 elapsed 时间。
 5. 日志测试只断言新增字段存在、过滤遵守现有 profile，并验证关闭 Debug 时不创建逐 rule 日志字符串。
@@ -58,7 +58,7 @@
 
 - 修改：`src/RoslynPrototype/RuleServices/RuleDefinition.cs`
 - 修改：`src/RoslynPrototype/Propagation/PropagationEngine.cs`
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 
 1. 先写失败测试：一个默认 `RuleDefinitionPropagate` 必须收到 `context.StructureView == null`；一个显式 opt-in 的 `ViewAwarePropagationRule` 必须收到与当前契约相同的非空视图和节点集合。
 2. 给 `RuleDefinitionPropagate` 添加默认 `false` 的 `RequiresStructureView` 契约。它只描述调用期需求，不改变 `AllowedPropagateNodeKinds`、capability 或 group 语义。
@@ -75,7 +75,7 @@
 **文件：**
 
 - 修改：`src/RoslynPrototype/Propagation/PropagationEngine.cs`
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 
 1. 写失败测试：构造同组内多个规则持续产生相同和不同 span 的 mark，断言后续规则只看到首次进入 `groupMarks` 的 syntax node，且最终输出保留不同 rule ID 对同一 span 的记录。
 2. 在 `RunGroup` 初始化时，以当前 `groupSeedMarks` 的 `(SpanStart, Span.Length, RawKind)` 建立 `HashSet`。每个 `producedMark` 先通过该集合判断是否加入 `groupMarks`，替换 `groupMarks.Any(...)` 的线性扫描。
@@ -93,13 +93,13 @@
 - 新建：`src/RoslynPrototype/Analysis/LocalSymbolReferenceIndex.cs`
 - 修改：`src/Rules/Implementations/Propagate/DeleteClassSymbolReferencePropagationRule.cs`
 - 修改：`src/Rules/Implementations/Propagate/DeleteSObjectPropagationRules.cs`
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Mark/MarkRuleEffectTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Mark/MarkRuleEffectTests.cs`
 
 1. 写失败测试：同一 executable scope 内的多个 marked local definition 只触发一次 identifier traversal；不同 method、local function、lambda 和同名 shadowed local 必须保持当前 `IsSameScope` 和 source-order 结果。
 2. 实现一次分析生命周期内惰性创建的索引，按 executable scope 保存 `ILocalSymbol ->` 已按 span 排序的 `IdentifierNameSyntax` 引用。索引建造时仅解析 identifier 的 symbol；禁止对每个 marked local 再全树 `GetSymbolInfo`。
 3. 将两个 symbol-reference propagation rule 改为查询该索引，再保留各自既有前置条件：DeleteClass 仍要求 object-creation definition 且 reference 在定义之后；DeleteSObject 保留当前初始化 definition、scope 和允许的 local/parameter 行为。
-4. 缓存归属 `DeletionAnalysisRuntime` 的 compilation scope，避免跨 compilation 或 epoch 复用 Roslyn 节点；索引只保存当前树的 syntax node，不向全局静态集合泄漏。
+4. 缓存归属 ` AnalysisRuntime` 的 compilation scope，避免跨 compilation 或 epoch 复用 Roslyn 节点；索引只保存当前树的 syntax node，不向全局静态集合泄漏。
 5. 增加 shadowing、跨 executable scope、重复 reference、多个已标记定义以及 DOP 等价回归；比较完整 PropagatedMark key 和 reason text。
 
 **停止条件：** 如果既有 `GetSymbolInfo` 对错误恢复语法或候选符号有无法用 `ILocalSymbol` index 表达的行为，保留受限 fallback，并将其次数写入 telemetry；不得静默丢弃该类 reference。
@@ -111,8 +111,8 @@
 **文件：**
 
 - 修改：`src/Rules/RuleServices/RuleHelpers/DeleteClassParameterShrinkAnalyzer.cs`（仅 telemetry 或已证实的局部修复）
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Decision/DecisionStructureValidationTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Decision/DecisionStructureValidationTests.cs`
 
 1. 使用任务 0 的规则级耗时和新增 TreeScan materialization/index-build 计数，先记录 method/local-function/indexer/delegate 传播规则在多文件 fixture 上首次及再次调用的工作量。
 2. 证明 `CompilationScanCache` 能在一次 runtime/compilation 内复用后，才针对实际重复的 index build 改动；不要重写已经由 `Lazy<TreeScan>` 覆盖的路径。
@@ -125,8 +125,8 @@
 
 **文件：**
 
-- 修改：`tests/RoslynDeletionPrototype.PerformanceTests/Performance/PerformanceOptimizationRegressionTests.cs`
-- 可选新建：`tests/RoslynDeletionPrototype.Testing/TestCodeSet/Performance/PropagationPerformanceSources.cs`
+- 修改：`tests/Roslyn Prototype.PerformanceTests/Performance/PerformanceOptimizationRegressionTests.cs`
+- 可选新建：`tests/Roslyn Prototype.Testing/TestCodeSet/Performance/PropagationPerformanceSources.cs`
 - 不修改：默认 DOP 与 production CLI 行为。
 
 1. 添加确定性压力 fixture：一个 group 内的链式 propagation、大量同 scope local references、重复 span、一个 opt-in view rule 与一个不需 view rule。测试只断言 telemetry 计数、mark/decision/rewrite 等价和 DOP 一致，不断言毫秒。
@@ -139,8 +139,8 @@
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
 dotnet build .\src\RoslynPrototype\RoslynPrototype.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~PipelineComponentTests|FullyQualifiedName~DecisionStructureValidationTests|FullyQualifiedName~MarkRuleEffectTests|FullyQualifiedName~TextLogSystemTests"
-dotnet test .\tests\RoslynDeletionPrototype.PerformanceTests\RoslynDeletionPrototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~PerformanceOptimizationRegressionTests"
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~PipelineComponentTests|FullyQualifiedName~DecisionStructureValidationTests|FullyQualifiedName~MarkRuleEffectTests|FullyQualifiedName~TextLogSystemTests"
+dotnet test .\tests\Roslyn Prototype.PerformanceTests\Roslyn Prototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~PerformanceOptimizationRegressionTests"
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```

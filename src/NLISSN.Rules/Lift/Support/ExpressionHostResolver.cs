@@ -8,8 +8,10 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Lifting;
 
+/// 从已验证的表达式标记向上寻找最小可改写宿主，并在宿主语义不明确时停止提升。
 public static class DeleteSObjectHostLiftingHelpers
 {
+    // 沿表达式、声明和控制结构向上寻找最小可改写宿主，并为每一步提升保留来源深度。
     public static IEnumerable<LiftedMarkRecord> BuildHostLiftedMarks(RuleContext context, string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var liftedMarks = new List<LiftedMarkRecord>();

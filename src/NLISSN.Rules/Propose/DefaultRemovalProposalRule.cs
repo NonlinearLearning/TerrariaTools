@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 为没有更专门语法宿主的有效标记生成默认删除决策。
 public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.default-removal";
@@ -22,6 +23,7 @@ public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<Microsoft.CodeAnalysis.CSharp.SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为没有被逻辑、if 或控制结构专门规则接管的剩余 mark 生成默认删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;

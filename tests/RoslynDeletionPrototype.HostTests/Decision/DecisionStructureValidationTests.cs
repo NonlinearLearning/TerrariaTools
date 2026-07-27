@@ -3,7 +3,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLISSN.Core.Analysis;
-using MinimalRoslynCpg.Contracts;
+using NLCPG.Contracts;
 using NLISSN.Application;
 using NLISSN.Rules;
 using NLISSN.Core.Decision;
@@ -129,14 +129,14 @@ public sealed class DecisionStructureValidationTests
           "anchor",
           DecisionActionKind.Delete);
 
-        var dispatchKind = Assert.IsType<RoslynCpgDispatchKind>(fragment.DispatchKind);
-        Assert.Equal(RoslynCpgDispatchCategory.DecisionAction, dispatchKind.Category);
-        Assert.Equal(RoslynCpgDispatchFlags.None, dispatchKind.Flags);
-        Assert.Equal(RoslynCpgDecisionActionKind.Delete, dispatchKind.Action);
+        var dispatchKind = Assert.IsType<NLCPGDispatchKind>(fragment.DispatchKind);
+        Assert.Equal(NLCPGDispatchCategory.DecisionAction, dispatchKind.Category);
+        Assert.Equal(NLCPGDispatchFlags.None, dispatchKind.Flags);
+        Assert.Equal(NLCPGDecisionActionKind.Delete, dispatchKind.Action);
         Assert.Equal("Delete", dispatchKind.ToString());
     }
 
-    private static (NLISSN.Rules.RuleContext Context, SyntaxNode Root, DeletionRulePipeline Rules) CreateContextAndRules(string source, string? targetName = null)
+    private static (NLISSN.Rules.RuleContext Context, SyntaxNode Root,  RulePipeline Rules) CreateContextAndRules(string source, string? targetName = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
         var root = tree.GetRoot();
@@ -150,7 +150,7 @@ public sealed class DecisionStructureValidationTests
             MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
           });
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(source, "test.cs");
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(source, "test.cs");
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(targetName))
         {
@@ -172,12 +172,12 @@ public sealed class DecisionStructureValidationTests
         return Assert.IsType<DecisionUnit>(merged);
     }
 
-    private static IReadOnlyList<LiftedMarkRecord> Lift(NLISSN.Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, DeletionRulePipeline rules)
+    private static IReadOnlyList<LiftedMarkRecord> Lift(NLISSN.Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks,  RulePipeline rules)
     {
         return new MarkLiftingEngine().Run(context, seedMarks, propagatedMarks, rules.Lifters);
     }
 
-    private static List<MarkRecord> RunDeleteSObjectMarks(NLISSN.Rules.RuleContext context, SyntaxNode root, DeletionRulePipeline rules)
+    private static List<MarkRecord> RunDeleteSObjectMarks(NLISSN.Rules.RuleContext context, SyntaxNode root,  RulePipeline rules)
     {
         return new MarkingEngine()
           .Run(context, root, rules.Markers)
@@ -185,7 +185,7 @@ public sealed class DecisionStructureValidationTests
           .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(NLISSN.Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, DeletionRulePipeline rules)
+    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(NLISSN.Rules.RuleContext context, IReadOnlyList<MarkRecord> seedMarks,  RulePipeline rules)
     {
         return new PropagationEngine()
           .Run(

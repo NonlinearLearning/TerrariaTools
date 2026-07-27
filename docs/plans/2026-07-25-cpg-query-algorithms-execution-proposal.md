@@ -13,7 +13,7 @@
 ## 执行记录（2026-07-25）
 
 - 已实施：Dominance/PostDominance 位集计算、v6 shard CSR 入边表及 v5 读取兼容、已验证 routing-sidecar single-flight 缓存、span/symbol lower-bound 范围查询，以及 resolver 的 O(1) LRU。
-- 已通过：`CpgShardContractTests|RoslynCpgSliceQueryTests` 为 34/34；`DominancePassContractTests|SqliteCpgShardCatalogTests|CpgBuildRoutingIndexTests|MinimalRoslynCpgPartitionedBuilderTests`（排除两项 interprocedural 测试）为 66/66；`check-harness-consistency.ps1` 通过。
+- 已通过：`CpgShardContractTests|NLCPGSliceQueryTests` 为 34/34；`DominancePassContractTests|SqliteCpgShardCatalogTests|CpgBuildRoutingIndexTests|NLCPGPartitionedBuilderTests`（排除两项 interprocedural 测试）为 66/66；`check-harness-consistency.ps1` 通过。
 - 未关闭：同一完整筛选中的两项 interprocedural 断言仍失败，尚未归因到本次算法改动；96-method Strict/DOP1 三样本基准在 124 秒上限内未产出 JSON，样本无效。DataFlow bitset 与冻结图 CSR 邻接仍维持遥测准入，未实施。
 
 ---
@@ -59,18 +59,18 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 修改：`src/MinimalRoslynCpg/Analysis/CpgShardQueryResolver.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 修改：`src/NLCPG/Analysis/CpgShardQueryResolver.cs`
 - 修改：`tools/CpgPersistenceBenchmark/Program.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/MinimalRoslynCpgPartitionedBuilderTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGPartitionedBuilderTests.cs`
 
 **步骤：**
 
 1. 写失败测试，要求 node/span/symbol lookup telemetry 分别记录 manifest 查询、sidecar read、hash/结构校验、缓存命中、缓存失效、legacy fallback、shard read 与总耗时。
 2. 写失败测试，锁定 `ReadIncomingProjection` 对相同 target、edge-kind、maxEdges 的 nodes、edges、顺序和 maxEdges 截断结果。
-3. 为 `RoslynCpgDataFlowPassTelemetry` 和 `RoslynCpgFreezeTelemetry` 的已有子项写 benchmark 投影测试；测试只验证字段可用与语义，不能用机器时间阈值断言。
+3. 为 `NLCPGDataFlowPassTelemetry` 和 `NLCPGFreezeTelemetry` 的已有子项写 benchmark 投影测试；测试只验证字段可用与语义，不能用机器时间阈值断言。
 4. 实现只追加诊断字段的最小改动；日志与 benchmark JSON 报告冷/热 lookup 的 p50/p95、CSR/legacy 读取分支和 freeze 子阶段。
 5. 运行 focused ContractTests，确认未更改查询结果、图快照或默认开关。
 
@@ -80,9 +80,9 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Builder/Passes/DominancePass.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/MinimalRoslynCpgPartitionedBuilderTests.cs`
-- 新建：`tests/RoslynDeletionPrototype.ContractTests/Cpg/DominancePassContractTests.cs`
+- 修改：`src/NLCPG/Builder/Passes/DominancePass.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGPartitionedBuilderTests.cs`
+- 新建：`tests/Roslyn Prototype.ContractTests/Cpg/DominancePassContractTests.cs`
 
 **步骤：**
 
@@ -99,12 +99,12 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgShardContracts.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgShardStore.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgFrozenShardGraphReader.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgFrozenShardExporter.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardContractTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs`
+- 修改：`src/NLCPG/Persistence/CpgShardContracts.cs`
+- 修改：`src/NLCPG/Persistence/CpgShardStore.cs`
+- 修改：`src/NLCPG/Persistence/CpgFrozenShardGraphReader.cs`
+- 修改：`src/NLCPG/Persistence/CpgFrozenShardExporter.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardContractTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs`
 
 **步骤：**
 
@@ -121,11 +121,11 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgBuildRoutingIndexReader.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgShardContracts.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgBuildRoutingIndexTests.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 修改：`src/NLCPG/Persistence/CpgBuildRoutingIndexReader.cs`
+- 修改：`src/NLCPG/Persistence/CpgShardContracts.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/CpgBuildRoutingIndexTests.cs`
 
 **步骤：**
 
@@ -142,11 +142,11 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgBuildRoutingIndex.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgBuildRoutingIndexReader.cs`
-- 修改：`src/MinimalRoslynCpg/Analysis/CpgShardQueryResolver.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgBuildRoutingIndexTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs`
+- 修改：`src/NLCPG/Persistence/CpgBuildRoutingIndex.cs`
+- 修改：`src/NLCPG/Persistence/CpgBuildRoutingIndexReader.cs`
+- 修改：`src/NLCPG/Analysis/CpgShardQueryResolver.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/CpgBuildRoutingIndexTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs`
 
 **步骤：**
 
@@ -164,7 +164,7 @@
 **文件：**
 
 - 修改：`tools/CpgPersistenceBenchmark/Program.cs`
-- 修改：`tests/RoslynDeletionPrototype.PerformanceTests/` 下对应 CPG 性能测试
+- 修改：`tests/Roslyn Prototype.PerformanceTests/` 下对应 CPG 性能测试
 - 修改：`docs/plans/2026-07-25-cpg-query-algorithms-execution-proposal.md`
 
 **步骤：**
@@ -181,11 +181,11 @@
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
 
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj `
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj `
   --no-restore -p:UseSharedCompilation=false `
-  --filter "FullyQualifiedName~DominancePassContractTests|FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~CpgShardContractTests|FullyQualifiedName~RoslynCpgSliceQueryTests|FullyQualifiedName~SqliteCpgShardCatalogTests|FullyQualifiedName~CpgBuildRoutingIndexTests"
+  --filter "FullyQualifiedName~DominancePassContractTests|FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~CpgShardContractTests|FullyQualifiedName~NLCPGSliceQueryTests|FullyQualifiedName~SqliteCpgShardCatalogTests|FullyQualifiedName~CpgBuildRoutingIndexTests"
 
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj `
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj `
   --no-restore -p:UseSharedCompilation=false
 
 pwsh -File .\scripts\Run-TestTiers.ps1 -Fast

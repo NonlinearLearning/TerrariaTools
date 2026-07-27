@@ -2,9 +2,9 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLISSN.Core.Analysis;
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
+using NLCPG.Builder;
+using NLCPG.Contracts;
+using NLCPG.Model;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
 using NLISSN.Rules;
 using Xunit;
@@ -16,13 +16,13 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void QueryIndex_AfterFreeze_ProvidesStableSortedAdjacencyAndEdgesByKind()
     {
-        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        var graph = new NLCPG.Model.NLCPGGraph();
         var first = CreateLabeledNode("first");
         var second = CreateLabeledNode("second");
         var third = CreateLabeledNode("third");
 
-        graph.AddEdge(first, third, RoslynCpgEdgeKind.DataFlow);
-        graph.AddEdge(first, second, RoslynCpgEdgeKind.OpChild);
+        graph.AddEdge(first, third, NLCPGEdgeKind.DataFlow);
+        graph.AddEdge(first, second, NLCPGEdgeKind.OpChild);
 
         Assert.False(graph.HasQueryIndex);
         graph.FreezeQueryIndex();
@@ -33,17 +33,17 @@ public sealed class StructureViewBuilderTests
         Assert.True(graph.HasQueryIndex);
         Assert.Equal(new[] { RequireNodeId(frozenSecond), RequireNodeId(frozenThird) }, graph.GetOutgoingEdges(RequireNodeId(frozenFirst)).Select(edge => edge.TargetNodeId));
         Assert.Equal(new[] { RequireNodeId(frozenFirst) }, graph.GetIncomingEdges(RequireNodeId(frozenThird)).Select(edge => edge.SourceNodeId));
-        Assert.Equal(new[] { RequireNodeId(frozenFirst) }, graph.GetEdges(RoslynCpgEdgeKind.DataFlow).Select(edge => edge.SourceNodeId));
+        Assert.Equal(new[] { RequireNodeId(frozenFirst) }, graph.GetEdges(NLCPGEdgeKind.DataFlow).Select(edge => edge.SourceNodeId));
         Assert.Throws<InvalidOperationException>(() => graph.AddNode(CreateLabeledNode("fourth")));
     }
 
     [Fact]
     public void QueryIndex_AfterFreeze_ProvidesStableNodesByKind()
     {
-        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        var graph = new NLCPG.Model.NLCPGGraph();
         var second = CreateLabeledNode("second");
         var first = CreateLabeledNode("first");
-        var method = new MinimalRoslynCpg.Model.RoslynCpgNode(RoslynCpgNodeKind.Method, "Method", Name: "method");
+        var method = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.Method, "Method", Name: "method");
 
         graph.AddNode(second);
         graph.AddNode(method);
@@ -51,21 +51,21 @@ public sealed class StructureViewBuilderTests
         graph.FreezeQueryIndex();
 
         Assert.Equal(
-            graph.GetNodes(RoslynCpgNodeKind.Operation).OrderBy(node => node.NodeId).Select(node => node.Name),
-            graph.GetNodes(RoslynCpgNodeKind.Operation).Select(node => node.Name));
+            graph.GetNodes(NLCPGNodeKind.Operation).OrderBy(node => node.NodeId).Select(node => node.Name),
+            graph.GetNodes(NLCPGNodeKind.Operation).Select(node => node.Name));
     }
 
     [Fact]
     public void QueryIndex_AfterFreeze_ResolvesSymbolReferencesCallsitesAndHalfOpenFileSpan()
     {
-        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
-        var symbol = new MinimalRoslynCpg.Model.RoslynCpgNode(RoslynCpgNodeKind.SymbolMethod, "SymbolMethod", Name: "symbol", FullName: "Demo.Callee");
-        var reference = new MinimalRoslynCpg.Model.RoslynCpgNode(RoslynCpgNodeKind.Reference, "Reference", Name: "reference", FilePath: "sample.cs", SpanStart: 2, SpanEnd: 4);
-        var callSite = new MinimalRoslynCpg.Model.RoslynCpgNode(RoslynCpgNodeKind.CallSite, "CallSite", Name: "call", FilePath: "sample.cs", SpanStart: 4, SpanEnd: 8);
-        var method = new MinimalRoslynCpg.Model.RoslynCpgNode(RoslynCpgNodeKind.Method, "Method", Name: "method", FullName: "Demo.Caller");
-        graph.AddEdge(reference, symbol, RoslynCpgEdgeKind.Ref);
-        graph.AddEdge(callSite, symbol, RoslynCpgEdgeKind.CallTargets);
-        graph.AddEdge(method, callSite, RoslynCpgEdgeKind.ContainsSymbol);
+        var graph = new NLCPG.Model.NLCPGGraph();
+        var symbol = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.SymbolMethod, "SymbolMethod", Name: "symbol", FullName: "Demo.Callee");
+        var reference = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.Reference, "Reference", Name: "reference", FilePath: "sample.cs", SpanStart: 2, SpanEnd: 4);
+        var callSite = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.CallSite, "CallSite", Name: "call", FilePath: "sample.cs", SpanStart: 4, SpanEnd: 8);
+        var method = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.Method, "Method", Name: "method", FullName: "Demo.Caller");
+        graph.AddEdge(reference, symbol, NLCPGEdgeKind.Ref);
+        graph.AddEdge(callSite, symbol, NLCPGEdgeKind.CallTargets);
+        graph.AddEdge(method, callSite, NLCPGEdgeKind.ContainsSymbol);
         graph.FreezeQueryIndex();
         var frozenSymbol = FindNode(graph, "symbol");
         var frozenMethod = FindNode(graph, "method");
@@ -73,21 +73,21 @@ public sealed class StructureViewBuilderTests
         Assert.Equal(new[] { "reference" }, graph.GetSymbolReferences(RequireNodeId(frozenSymbol)).Select(node => node.Name));
         Assert.Equal(new[] { "call" }, graph.GetMethodOwnedCallSites(RequireNodeId(frozenMethod)).Select(node => node.Name));
         Assert.Equal(new[] { "reference" }, graph.GetNodesInFileSpan("sample.cs", 2, 4).Select(node => node.Name));
-        Assert.NotEqual(0, graph.GetEdgeMaskId(new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow }));
+        Assert.NotEqual(0, graph.GetEdgeMaskId(new HashSet<NLCPGEdgeKind> { NLCPGEdgeKind.DataFlow }));
     }
 
     [Fact]
     public void ExtractLocalView_AfterFreeze_AppliesDirectionKindAndHopLimits()
     {
-        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        var graph = new NLCPG.Model.NLCPGGraph();
         var first = CreateLabeledNode("first");
         var second = CreateLabeledNode("second");
         var third = CreateLabeledNode("third");
         var fourth = CreateLabeledNode("fourth");
 
-        graph.AddEdge(first, second, RoslynCpgEdgeKind.DataFlow);
-        graph.AddEdge(second, third, RoslynCpgEdgeKind.DataFlow);
-        graph.AddEdge(second, fourth, RoslynCpgEdgeKind.OpChild);
+        graph.AddEdge(first, second, NLCPGEdgeKind.DataFlow);
+        graph.AddEdge(second, third, NLCPGEdgeKind.DataFlow);
+        graph.AddEdge(second, fourth, NLCPGEdgeKind.OpChild);
 
         Assert.Throws<InvalidOperationException>(() => graph.ExtractLocalView(new NodeId(2), 1));
         graph.FreezeQueryIndex();
@@ -97,8 +97,8 @@ public sealed class StructureViewBuilderTests
         var view = graph.ExtractLocalView(
             RequireNodeId(frozenSecond),
             1,
-            RoslynCpgViewDirection.Incoming,
-            new[] { RoslynCpgEdgeKind.DataFlow });
+            NLCPGViewDirection.Incoming,
+            new[] { NLCPGEdgeKind.DataFlow });
 
         Assert.Equal(new[] { RequireNodeId(frozenFirst), RequireNodeId(frozenSecond) }, view.Nodes.Select(node => node.NodeId!.Value));
         Assert.Equal(new[] { RequireNodeId(frozenFirst) }, view.Edges.Select(edge => edge.SourceNodeId));
@@ -114,7 +114,7 @@ public sealed class StructureViewBuilderTests
         var expectedNodeIds = ResolveGraphNodeIdsInside(context, memberAccess);
         var expectedEdgeKeys = ResolveGraphEdgeKeysInside(context, expectedNodeIds);
 
-        var view = new RoslynCpgStructureViewBuilder().Build(memberAccess, context);
+        var view = new NLCPGStructureViewBuilder().Build(memberAccess, context);
 
         Assert.NotEmpty(expectedNodeIds);
         Assert.Equal(expectedNodeIds, view.Nodes.Select(node => node.NodeId!.Value).ToHashSet());
@@ -134,7 +134,7 @@ public sealed class StructureViewBuilderTests
         var declaratorNodeIds = ResolveGraphNodeIdsInside(context, declarator);
         var memberAccessNodeIds = ResolveGraphNodeIdsInside(context, memberAccess);
 
-        var view = new RoslynCpgStructureViewBuilder().Build(new SyntaxNode[] { declarator, memberAccess }, context);
+        var view = new NLCPGStructureViewBuilder().Build(new SyntaxNode[] { declarator, memberAccess }, context);
 
         Assert.NotEmpty(declaratorNodeIds);
         Assert.NotEmpty(memberAccessNodeIds);
@@ -165,7 +165,7 @@ public sealed class StructureViewBuilderTests
         var firstNodeIds = ResolveGraphNodeIdsInside(context, firstLiteral);
         var secondNodeIds = ResolveGraphNodeIdsInside(context, secondLiteral);
 
-        var view = new RoslynCpgStructureViewBuilder().Build(
+        var view = new NLCPGStructureViewBuilder().Build(
             new SyntaxNode[] { firstLiteral, secondLiteral },
             context);
 
@@ -183,7 +183,7 @@ public sealed class StructureViewBuilderTests
         var memberAccess = root.DescendantNodes()
             .OfType<MemberAccessExpressionSyntax>()
             .Single(node => node.ToString() == "s.Seed");
-        var builder = new RoslynCpgStructureViewBuilder();
+        var builder = new NLCPGStructureViewBuilder();
 
         var firstView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
         var secondView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
@@ -200,7 +200,7 @@ public sealed class StructureViewBuilderTests
         var memberAccess = root.DescendantNodes()
             .OfType<MemberAccessExpressionSyntax>()
             .Single(node => node.ToString() == "s.Seed");
-        var runtime = DeletionAnalysisRuntime.CreateDefault();
+        var runtime =  AnalysisRuntime.CreateDefault();
         var firstRuleContext = new RuleContext(
             context,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
@@ -227,7 +227,7 @@ public sealed class StructureViewBuilderTests
         var memberAccess = root.DescendantNodes()
             .OfType<MemberAccessExpressionSyntax>()
             .Single(node => node.ToString() == "s.Seed");
-        var builder = new RoslynCpgStructureViewBuilder();
+        var builder = new NLCPGStructureViewBuilder();
 
         var declaratorFirstView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
         var memberAccessFirstView = builder.Build(new SyntaxNode[] { memberAccess, declarator }, context);
@@ -238,7 +238,7 @@ public sealed class StructureViewBuilderTests
     }
 
     [Fact]
-    public void Build_ForRepeatedRequests_RecordsCacheHitTelemetry()
+    public void Build_ForRepeatedRequests_ReusesCachedViewForTheSameFragmentOrder()
     {
         var source = SObjectExpressionSources.TargetNameSource;
         var (context, root) = CreateAnalysisContext(source, "structure-view-cache-telemetry.cs");
@@ -246,20 +246,14 @@ public sealed class StructureViewBuilderTests
         var memberAccess = root.DescendantNodes()
             .OfType<MemberAccessExpressionSyntax>()
             .Single(node => node.ToString() == "s.Seed");
-        var builder = new RoslynCpgStructureViewBuilder();
+        var builder = new NLCPGStructureViewBuilder();
 
-        _ = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
-        _ = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
-        _ = builder.Build(new SyntaxNode[] { memberAccess, declarator }, context);
+        var first = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
+        var second = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
+        var reversed = builder.Build(new SyntaxNode[] { memberAccess, declarator }, context);
 
-        var telemetry = RoslynCpgStructureViewBuilder.GetCacheTelemetry(context);
-
-        Assert.Equal(3, telemetry.RequestCount);
-        Assert.Equal(1, telemetry.CacheHitCount);
-        Assert.Equal(2, telemetry.CacheMissCount);
-        Assert.Equal(2, telemetry.UniqueFragmentSetCount);
-        Assert.Equal(2, telemetry.MaxCachedViewCount);
-        Assert.Equal(1d / 3d, telemetry.CacheHitRate, 6);
+        Assert.Same(first, second);
+        Assert.NotSame(first, reversed);
     }
 
     [Fact]
@@ -291,8 +285,8 @@ public sealed class StructureViewBuilderTests
                 MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
             });
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graphWithPath = new RoslynCpgBuilder().BuildFromSource(source, "structure-view-no-path.cs");
-        var graph = new MinimalRoslynCpg.Model.RoslynCpgGraph();
+        var graphWithPath = new NLCPGBuilder().BuildFromSource(source, "structure-view-no-path.cs");
+        var graph = new NLCPG.Model.NLCPGGraph();
         foreach (var node in graphWithPath.Nodes)
         {
             graph.AddNode(node with { FilePath = string.Empty });
@@ -317,7 +311,7 @@ public sealed class StructureViewBuilderTests
         var context = new CpgAnalysisContext(graph, semanticModel, root);
         var memberAccess = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>().Single();
 
-        var view = new RoslynCpgStructureViewBuilder().Build(memberAccess, context);
+        var view = new NLCPGStructureViewBuilder().Build(memberAccess, context);
 
         Assert.NotEmpty(view.Nodes);
         Assert.Contains(view.Nodes, node => node.SpanStart == memberAccess.SpanStart);
@@ -427,7 +421,7 @@ public sealed class StructureViewBuilderTests
                 MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location)
             });
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new RoslynCpgBuilder().BuildFromSource(source, filePath);
+        var graph = new NLCPGBuilder().BuildFromSource(source, filePath);
         return (new CpgAnalysisContext(graph, semanticModel, root), root);
     }
 
@@ -443,7 +437,7 @@ public sealed class StructureViewBuilderTests
             .ToHashSet();
     }
 
-    private static bool HasUndirectedPath(RoslynCpgStructureView view, IReadOnlySet<NodeId> sourceNodeIds, IReadOnlySet<NodeId> targetNodeIds)
+    private static bool HasUndirectedPath(NLCPGStructureView view, IReadOnlySet<NodeId> sourceNodeIds, IReadOnlySet<NodeId> targetNodeIds)
     {
         var adjacency = new Dictionary<NodeId, List<NodeId>>();
         foreach (var edge in view.Edges)
@@ -499,7 +493,7 @@ public sealed class StructureViewBuilderTests
             .ToArray();
     }
 
-    private static string[] ResolveViewEdgeKeys(RoslynCpgStructureView view)
+    private static string[] ResolveViewEdgeKeys(NLCPGStructureView view)
     {
         return view.Edges
             .Select(FormatEdgeKey)
@@ -507,17 +501,17 @@ public sealed class StructureViewBuilderTests
             .ToArray();
     }
 
-    private static string FormatEdgeKey(RoslynCpgEdge edge)
+    private static string FormatEdgeKey(NLCPGEdge edge)
     {
         return $"{edge.SourceNodeId}|{edge.Kind}|{edge.StructuredLabel?.StableKey}|{edge.TargetNodeId}";
     }
 
-    private static RoslynCpgNode CreateLabeledNode(string name)
+    private static NLCPGNode CreateLabeledNode(string name)
     {
-        return new RoslynCpgNode(RoslynCpgNodeKind.Operation, "Operation", Name: name);
+        return new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: name);
     }
 
-    private static string BuildNodeContractKey(RoslynCpgNode node)
+    private static string BuildNodeContractKey(NLCPGNode node)
     {
         return string.Join(
             "|",
@@ -532,12 +526,12 @@ public sealed class StructureViewBuilderTests
             node.IsImplicit);
     }
 
-    private static RoslynCpgNode FindNode(RoslynCpgGraph graph, string displayId)
+    private static NLCPGNode FindNode(NLCPGGraph graph, string displayId)
     {
         return Assert.Single(graph.Nodes, node => node.Name == displayId || node.FullName == displayId);
     }
 
-    private static NodeId RequireNodeId(RoslynCpgNode node)
+    private static NodeId RequireNodeId(NLCPGNode node)
     {
         return Assert.NotNull(node.NodeId);
     }

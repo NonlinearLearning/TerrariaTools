@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using MinimalRoslynCpg.Model;
+using NLCPG.Model;
 using NLISSN.Core.Analysis;
 
 namespace NLISSN.Rules;
@@ -37,16 +37,16 @@ public interface IRuleAnalysisServices
 
 public interface IRuleGraphBindingServices
 {
-  bool TryResolvePrimaryGraphNode(SyntaxNode syntaxNode, out RoslynCpgNode? graphNode);
+  bool TryResolvePrimaryGraphNode(SyntaxNode syntaxNode, out NLCPGNode? graphNode);
 
   bool ContainsPrimaryGraphNodeInRegion(SyntaxNode syntaxNode, TextSpan regionSpan);
 }
 
 public interface IRuleStructureViewServices
 {
-  RoslynCpgStructureView? StructureView { get; }
+  NLCPGStructureView? StructureView { get; }
 
-  RoslynCpgStructureView BuildStructureView(IReadOnlyCollection<SyntaxNode> fragments);
+  NLCPGStructureView BuildStructureView(IReadOnlyCollection<SyntaxNode> fragments);
 
-  RuleContext WithStructureView(RoslynCpgStructureView structureView);
+  RuleContext WithStructureView(NLCPGStructureView structureView);
 }

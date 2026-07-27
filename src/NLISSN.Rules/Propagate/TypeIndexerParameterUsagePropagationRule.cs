@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 为 indexer 参数删除收集声明宿主和访问点，保证提案阶段能同时改声明与所有受影响的 element access。
 public sealed class ClassIndexerParameterUsagePropagationRule : RuleDefinitionPropagate
 {
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
@@ -25,6 +26,7 @@ public sealed class ClassIndexerParameterUsagePropagationRule : RuleDefinitionPr
         SyntaxKind.ElementAccessExpression
       };
 
+    // 收集索引器声明与受影响访问点，供后续同步收缩签名和 element access。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -68,6 +70,7 @@ public sealed class ClassIndexerParameterUsagePropagationRule : RuleDefinitionPr
         }
     }
 
+    /// 先匹配命名参数，再退回位置参数，
     private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out IndexerParameterUsagePayload payload)
     {
         payload = null!;

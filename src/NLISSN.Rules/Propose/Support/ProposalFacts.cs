@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Contracts;
+using NLCPG.Contracts;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -10,6 +10,7 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Decision;
 
+/// 汇集 Proposal 阶段共用的冲突节点、标记筛选与决策构造约定。
 public static class DeleteSObjectProposalHelpers
 {
     public static readonly IReadOnlyList<SyntaxKind> LogicalConflictNodeKinds =
@@ -102,6 +103,7 @@ public static class DeleteSObjectProposalHelpers
           .ToList();
     }
 
+    // 返回尚未被传播或提升宿主覆盖的 seed mark，供默认删除规则兜底消费。
     public static IEnumerable<MarkRecord> EnumerateUncoveredSeedMarks(IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         var derivedMarks = propagatedMarks
@@ -122,6 +124,7 @@ public static class DeleteSObjectProposalHelpers
         }
     }
 
+    // 识别来自局部定义符号引用传播的 mark，避免把它们当成原始结构事实再次处理。
     public static bool IsSymbolReferencePropagation(PropagatedMarkRecord propagatedMark)
     {
         return propagatedMark.Mark.Reason.StartsWith(
@@ -129,6 +132,7 @@ public static class DeleteSObjectProposalHelpers
           StringComparison.Ordinal);
     }
 
+    // 提取唯一的逻辑宿主 payload，并按源码顺序交给逻辑替换提案规则。
     public static IEnumerable<LogicalHostPayload> EnumerateLogicalHostPayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         return propagatedMarks
@@ -139,6 +143,7 @@ public static class DeleteSObjectProposalHelpers
           .ThenByDescending(payload => payload.Host.Span.Length);
     }
 
+    // 提取唯一的 if 结构完成态 payload，并按决策节点顺序交给 if 提案规则。
     public static IEnumerable<IfStructureCompletionPayload> EnumerateIfStructureCompletionPayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         return propagatedMarks
@@ -149,6 +154,7 @@ public static class DeleteSObjectProposalHelpers
           .ThenByDescending(payload => GetIfStructureDecisionNode(payload).Span.Length);
     }
 
+    // 计算已经被更大 propagated mark 覆盖的 seed 节点键，避免默认删除重复落在子节点上。
     public static HashSet<(int Start, int Length, int RawKind)> BuildCoveredSeedKeys(IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<MarkRecord> propagatedMarks)
     {
         var coveredSeedKeys = new HashSet<(int Start, int Length, int RawKind)>();
@@ -165,6 +171,7 @@ public static class DeleteSObjectProposalHelpers
         return coveredSeedKeys;
     }
 
+    // 按宿主的逻辑运算符把保留操作数重新拼回替换表达式。
     public static ExpressionSyntax? BuildLogicalReplacement(LogicalHostPayload payload)
     {
         if (payload.RemovableOperands.Count == 0 || payload.SurvivorOperands.Count == 0)
@@ -192,6 +199,7 @@ public static class DeleteSObjectProposalHelpers
         return replacement;
     }
 
+    // 为逻辑表达式规约生成带锚点、替换片段和关系边的 Replace 决策。
     public static DecisionUnit CreateLogicalReplaceDecision(string ruleId, BinaryExpressionSyntax anchorNode, ExpressionSyntax replacementNode)
     {
         var anchorFragment = DecisionCpgFactory.CreateFragment(
@@ -222,7 +230,7 @@ public static class DeleteSObjectProposalHelpers
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
             DecisionCpgFactory.CreateRelation(
-              RoslynCpgDecisionRelationKind.ReducedTo,
+              NLCPGDecisionRelationKind.ReducedTo,
               anchorFragment,
               replacementFragment)
           },
@@ -234,6 +242,7 @@ public static class DeleteSObjectProposalHelpers
           reason: $"Reduced {anchorNode.Kind()} to the surviving operand.");
     }
 
+    // 按 if 完成态 payload 生成对应的删除或替换决策，并返回本次消费掉的结构节点。
     public static bool TryBuildIfStructureDecisionFromMark(string ruleId, IfStructureCompletionPayload payload, out DecisionUnit? decision, out IReadOnlyList<SyntaxNode> consumedNodes)
     {
         decision = null;
@@ -302,6 +311,7 @@ public static class DeleteSObjectProposalHelpers
         }
     }
 
+    // 为普通语句宿主生成 Replace 决策，供 if 结构和局部函数等规则复用。
     public static DecisionUnit CreateStatementReplaceDecision(string ruleId, StatementSyntax anchorNode, StatementSyntax replacementNode, string reason)
     {
         var anchorFragment = DecisionCpgFactory.CreateFragment(
@@ -332,7 +342,7 @@ public static class DeleteSObjectProposalHelpers
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
             DecisionCpgFactory.CreateRelation(
-              RoslynCpgDecisionRelationKind.ReducedTo,
+              NLCPGDecisionRelationKind.ReducedTo,
               anchorFragment,
               replacementFragment)
           },
@@ -344,6 +354,7 @@ public static class DeleteSObjectProposalHelpers
           reason: reason);
     }
 
+    // 为 else 子句生成 Replace 决策，保留父结构上的冲突键与语法绑定。
     public static DecisionUnit CreateElseClauseReplaceDecision(string ruleId, ElseClauseSyntax anchorNode, ElseClauseSyntax replacementNode, string reason)
     {
         var anchorFragment = DecisionCpgFactory.CreateFragment(
@@ -374,7 +385,7 @@ public static class DeleteSObjectProposalHelpers
             DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
             DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
             DecisionCpgFactory.CreateRelation(
-              RoslynCpgDecisionRelationKind.ReducedTo,
+              NLCPGDecisionRelationKind.ReducedTo,
               anchorFragment,
               replacementFragment)
           },
@@ -386,6 +397,7 @@ public static class DeleteSObjectProposalHelpers
           reason: reason);
     }
 
+    // 用 span 与 raw kind 生成稳定节点键，供传播、提升和提案跨阶段去重。
     public static (int Start, int Length, int RawKind) BuildNodeKey(SyntaxNode syntaxNode)
     {
         return (syntaxNode.SpanStart, syntaxNode.Span.Length, syntaxNode.RawKind);
@@ -396,6 +408,7 @@ public static class DeleteSObjectProposalHelpers
         return $"frag:{DecisionCpgFactory.BuildNodeKey(node)}";
     }
 
+    // 把任意命中节点解析回所属 if 结构分析结果，供完成态判断与改写决策复用。
     public static bool TryResolveMarkedIfStructure(RuleContext context, SyntaxNode markedNode, IfStructureAnalyzer ifStructureAnalyzer, out IfStructureAnalysis? ifAnalysis)
     {
         ifAnalysis = null;
@@ -422,6 +435,7 @@ public static class DeleteSObjectProposalHelpers
         return true;
     }
 
+    // 仅在当前命中足以判定整段 if 结构的删除或折叠结果时，构造结构化完成态 payload。
     public static IfStructureCompletionPayload? TryBuildIfStructureCompletionPayload(RuleContext context, SyntaxNode markedNode)
     {
         if (!TryResolveMarkedIfStructure(
@@ -493,6 +507,7 @@ public static class DeleteSObjectProposalHelpers
         return null;
     }
 
+    // 返回当前 if 完成态真正参与冲突检测和决策去重的结构节点。
     public static SyntaxNode GetIfStructureDecisionNode(IfStructureCompletionPayload payload)
     {
         return payload.Kind switch

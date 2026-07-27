@@ -1,7 +1,9 @@
 namespace NLISSN.Rules;
 
+/// 校验规则集配置的唯一性，并保留调用方给出的稳定规则集顺序。
 public static class RuleCatalog
 {
+    // 校验 RuleSet Id 与 CapabilityId 没有冲突，并保留调用方给出的规则集顺序。
     public static IReadOnlyList<IRuleSet> Create(IEnumerable<IRuleSet> ruleSets)
     {
         ArgumentNullException.ThrowIfNull(ruleSets);

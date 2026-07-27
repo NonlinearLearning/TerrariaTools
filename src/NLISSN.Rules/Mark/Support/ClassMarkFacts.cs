@@ -6,8 +6,10 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Marking;
 
+/// 封装删除类标记需要的符号与语法事实，集中保守地处理不可解析的绑定。
 public static class DeleteClassMarkRuleHelpers
 {
+    // 解析 delete-class 选项里的目标类名列表，并去掉空值与重复项。
     public static IReadOnlyList<string> ParseTargetClassNames(RuleContext context)
     {
         if (!context.TryGetOption("delete-class", out var className) ||
@@ -23,6 +25,7 @@ public static class DeleteClassMarkRuleHelpers
           .ToList();
     }
 
+    // 只为名称直接命中的类声明生成删除类 seed mark。
     public static IEnumerable<MarkRecord> BuildDeclarationMarks(RuleContext context, SyntaxNode root, string ruleId)
     {
         var targetClassNames = ParseTargetClassNames(context);
@@ -41,6 +44,7 @@ public static class DeleteClassMarkRuleHelpers
           .ToList();
     }
 
+    // 找出语义上引用目标类的最小表达式命中，并按位置稳定去重排序。
     public static IEnumerable<MarkRecord> BuildExpressionMarks(RuleContext context, SyntaxNode root, string ruleId, IReadOnlyCollection<SyntaxKind> allowedKinds)
     {
         var targetClassNames = ParseTargetClassNames(context);
@@ -65,6 +69,7 @@ public static class DeleteClassMarkRuleHelpers
           .ToList();
     }
 
+    // 只在声明位置上标记目标类 TypeSyntax，避免把泛型嵌套类型片段重复扩散到多个宿主。
     public static IEnumerable<MarkRecord> BuildTypeSyntaxMarks(RuleContext context, SyntaxNode root, string ruleId, IReadOnlyCollection<SyntaxKind> allowedKinds)
     {
         var targetClassNames = ParseTargetClassNames(context);

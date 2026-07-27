@@ -6,9 +6,9 @@
 
 ## 两条主线
 
-### MinimalRoslynCpg
+### NLCPG
 
-`src/MinimalRoslynCpg/` 从 Roslyn 的语法、符号和操作事实构建最小 CPG。当前工作覆盖图节点与边、查询、局部 CFG、DataFlow、调用上下文和可选持久化分片。
+`src/NLCPG/` 从 Roslyn 的语法、符号和操作事实构建最小 CPG。当前工作覆盖图节点与边、查询、局部 CFG、DataFlow、调用上下文和可选持久化分片。
 
 构建器中的并行 worker 只读取 Roslyn semantic facts；图节点、边、去重和顺序由稳定调用线程物化。这是保持不同并行度图等价的核心约束。
 
@@ -20,7 +20,7 @@
 分析 → 标记 → 传播 → 提升 → 决策 → 改写
 ```
 
-`DeletionApplicationService` 是最小应用层入口；命令行宿主负责输入、目录调度、diff、日志、计划保存与可选写回。
+` ApplicationService` 是最小应用层入口；命令行宿主负责输入、目录调度、diff、日志、计划保存与可选写回。
 
 ## Roslyn-first
 

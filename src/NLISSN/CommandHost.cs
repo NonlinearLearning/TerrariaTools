@@ -1,173 +1,97 @@
 using NLISSN.Application;
 using System.Text;
-using MinimalRoslynCpg.Builder;
-using NLISSN.Telemetry;
-using NLISSN.Core.Analysis;
-using NLISSN.Logging;
 using NLISSN.Core.Rewrite;
 using NLISSN.Rules;
 
 namespace NLISSN;
 
-public sealed class DeletionCommandHost
+/// 协调命令行解析、分析、可选的制品回放和输出发布。
+public sealed class  CommandHost
 {
-    private readonly DeletionRulePipeline _pipeline;
+    private readonly  RulePipeline _pipeline;
     private readonly TextDiffRenderer _textDiffRenderer = new();
 
-    public DeletionCommandHost(DeletionRulePipeline pipeline)
+    // 持有一条默认规则管道，供单文件和目录入口按同一规则集运行。
+    public  CommandHost( RulePipeline pipeline)
     {
         _pipeline = pipeline;
     }
 
+    // 提供同步 CLI 入口，内部复用异步实现并阻塞等待结果。
     public PrototypeAnalysisResult AnalyzeFromArgs(string[] args)
     {
         return AnalyzeFromArgsAsync(args).GetAwaiter().GetResult();
     }
 
+    // 解析命令行参数后选择目录分析、计划回放或单文件分析，并处理写回与 diff 输出。
     public async Task<PrototypeAnalysisResult> AnalyzeFromArgsAsync(string[] args)
     {
         var inputPath = args.FirstOrDefault(path => !path.StartsWith("--", StringComparison.Ordinal));
-        var options = DeletionApplicationOptions.Parse(args);
-        DeletionApplicationOptions.ValidateRewritePlanOptions(options);
-        var runtime = DeletionApplicationOptions.CreateRuntime(options);
-        var diffView = DeletionApplicationOptions.ResolveDiffView(options);
-        EmitLegacyTextLogWarnings(options);
-        var rules = DeletionApplicationOptions.TryParseDisabledRuleTypes(
+        var options =  ApplicationOptions.Parse(args);
+         ApplicationOptions.ValidateRewritePlanOptions(options);
+        var runtime =  ApplicationOptions.CreateRuntime(options);
+        var diffView =  ApplicationOptions.ResolveDiffView(options);
+        var rules =  ApplicationOptions.TryParseDisabledRuleTypes(
           options,
           out var disabledRuleTypes)
           ? RuleRegistry.CreateDefaultRules(disabledRuleTypes)
           : _pipeline;
-        var runtimeLogPath = DeletionApplicationOptions.ResolveRuntimeLogPath(options);
-        var analysisLogPath = DeletionApplicationOptions.ResolveAnalysisLogPath(options);
-        using var runtimeSink = runtimeLogPath is null
-          ? null
-          : TextLogFileSink.Create(runtimeLogPath, new TextLogFormatter(), TextLogFilter.CreateRuntimeFilter(options));
-        using var analysisSink = analysisLogPath is null
-          ? null
-          : TextLogFileSink.Create(analysisLogPath, new TextLogFormatter(), TextLogFilter.CreateAnalysisFilter(options));
-        var runContext = CreateRunLogContext(inputPath, runtime);
-        var runtimeWriter = runtimeSink is null
-          ? null
-          : new RunTextLogWriter(runtimeSink, TextLogFilter.CreateRuntimeFilter(options), runContext, "host.runtime");
-        var analysisWriter = analysisSink is null
-          ? null
-          : new AnalysisTextLogWriter(analysisSink, TextLogFilter.CreateAnalysisFilter(options), runContext, "host.analysis");
 
-        runtimeWriter?.Start();
-        runtimeWriter?.Sample();
-
-        try
+        if (inputPath is not null && Directory.Exists(inputPath))
         {
-            PrototypeAnalysisResult result;
-            if (inputPath is not null && Directory.Exists(inputPath))
+            var replayPlanPath =  ApplicationOptions.ResolveRewritePlanInPath(options);
+            if (replayPlanPath is not null)
             {
-                var replayPlanPath = DeletionApplicationOptions.ResolveRewritePlanInPath(options);
-                if (replayPlanPath is not null)
-                {
-                    result = await new RewritePlanReplayService().ReplayAsync(
-                      inputPath,
-                      replayPlanPath,
-                      options,
-                      runtime);
-                }
-                else
-                {
-                    result = await new DeletionDirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
-                      inputPath,
-                      options,
-                      runtime,
-                      analysisWriter);
-                    var capturePlanPath = DeletionApplicationOptions.ResolveRewritePlanOutPath(options);
-                    if (capturePlanPath is not null)
-                    {
-                        CaptureRewritePlan(inputPath, capturePlanPath, result);
-                    }
-                }
-            }
-            else
-            {
-                var source = inputPath is not null && File.Exists(inputPath)
-                  ? File.ReadAllText(inputPath)
-                  : DefaultSourceProvider.GetDefaultSource();
-                var filePath = inputPath ?? "demo.cs";
-                var application = new DeletionApplicationService(rules);
-                result = application.Analyze(source, filePath, options, runtime);
-                result = DeletionPostRewriteDiagnostics.AddSingleFileDiagnostics(
-                  result,
-                  filePath,
-                  DeletionApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options));
-                analysisWriter?.WriteResult(filePath, result);
-
-                if (inputPath is not null && File.Exists(inputPath) && result.Edits.Count > 0)
-                {
-                    if (DeletionApplicationOptions.ShouldWriteBack(options))
-                    {
-                        File.WriteAllText(inputPath, result.RewrittenSource ?? source, Encoding.UTF8);
-                    }
-
-                    if (DeletionApplicationOptions.ShouldWriteDiff(options))
-                    {
-                        var diffPath = DeletionDiffPathResolver.ResolveDiffPath(inputPath, options);
-                        var renderedDiff = _textDiffRenderer.Render(result.Diff, diffView);
-                        File.WriteAllText(diffPath, renderedDiff, Encoding.UTF8);
-                        result = result with { DiffFilePath = diffPath };
-                    }
-                }
+                return await new RewritePlanReplayService().ReplayAsync(
+                  inputPath,
+                  replayPlanPath,
+                  options,
+                  runtime);
             }
 
-            runtimeWriter?.WriteDiagnostics(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
-            runtimeWriter?.WriteCpgSummary(result.CpgBuildTelemetry ?? RoslynCpgBuildTelemetry.CreateDefault());
-            runtimeWriter?.WriteMarkSummary(result.MarkAnalysisTelemetry ?? CreateEmptyMarkTelemetry());
-            if (runtimeSink is not null)
+            var directoryResult = await new  DirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
+              inputPath,
+              options,
+              runtime);
+            var capturePlanPath =  ApplicationOptions.ResolveRewritePlanOutPath(options);
+            if (capturePlanPath is not null)
             {
-                runtimeWriter?.WriteIoSummary(runtimeSink);
+                CaptureRewritePlan(inputPath, capturePlanPath, directoryResult);
             }
-            if (analysisSink is not null)
-            {
-                analysisWriter?.WriteIoSummary(analysisSink);
-            }
-            var inputKind = inputPath is not null && Directory.Exists(inputPath) ? "directory" : inputPath is not null ? "single-file" : "demo";
-            runtimeWriter?.Complete(result, "completed", inputKind);
-            if (inputKind == "directory" && result.Stats is not null && runtimeSink is not null)
-            {
-                runtimeWriter?.WriteDirectoryPerformanceSummary(result.Stats, runtimeSink);
-            }
-            runtimeWriter?.Sample();
+
+            return directoryResult;
+        }
+
+        var source = inputPath is not null && File.Exists(inputPath)
+          ? File.ReadAllText(inputPath)
+          : DefaultSourceProvider.GetDefaultSource();
+        var filePath = inputPath ?? "demo.cs";
+        var application = new  ApplicationService(rules);
+        var result = application.Analyze(source, filePath, options, runtime);
+        result =  PostRewriteDiagnostics.AddSingleFileDiagnostics(
+          result,
+          filePath,
+           ApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options));
+
+        if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
+        {
             return result;
         }
-        catch (Exception exception)
-        {
-            if (runtimeSink is not null)
-            {
-                try
-                {
-                    runtimeWriter?.WriteIoFailure(exception, runtimeSink);
-                }
-                catch
-                {
-                }
-            }
 
-            if (analysisSink is not null)
-            {
-                try
-                {
-                    analysisWriter?.WriteIoFailure(exception, analysisSink);
-                }
-                catch
-                {
-                }
-            }
-
-            runtimeWriter?.Fail(exception, inputPath is not null && Directory.Exists(inputPath) ? "directory" : inputPath is not null ? "single-file" : "demo");
-            throw;
-        }
-        finally
+        if ( ApplicationOptions.ShouldWriteBack(options))
         {
-            runtimeWriter?.Flush();
-            analysisSink?.Flush();
-            runtimeSink?.Flush();
+            File.WriteAllText(inputPath, result.RewrittenSource ?? source, Encoding.UTF8);
         }
+
+        if (! ApplicationOptions.ShouldWriteDiff(options))
+        {
+            return result;
+        }
+
+        var diffPath =  DiffPathResolver.ResolveDiffPath(inputPath, options);
+        var renderedDiff = _textDiffRenderer.Render(result.Diff, diffView);
+        File.WriteAllText(diffPath, renderedDiff, Encoding.UTF8);
+        return result with { DiffFilePath = diffPath };
     }
 
     private static void CaptureRewritePlan(string inputRoot, string artifactRoot, PrototypeAnalysisResult result)
@@ -193,62 +117,6 @@ public sealed class DeletionCommandHost
           inputRoot,
           Directory.EnumerateFiles(inputRoot, "*.cs", SearchOption.AllDirectories).Count(),
           plans);
-    }
-
-    private static void EmitLegacyTextLogWarnings(IReadOnlyDictionary<string, string> options)
-    {
-        EmitLegacyWarning(options, "runtime-metrics-log", "--runtime-metrics-log is deprecated and use --runtime-log instead.");
-        EmitLegacyWarning(options, "per-file-timing-log", "--per-file-timing-log is deprecated and use --analysis-log instead.");
-        EmitLegacyWarning(options, "per-file-phase-timing-log-directory", "--per-file-phase-timing-log-directory is deprecated and use --analysis-log instead.");
-        EmitLegacyWarning(options, "per-file-memory-diagnostics-log", "--per-file-memory-diagnostics-log is deprecated and use --analysis-log instead.");
-    }
-
-    private static void EmitLegacyWarning(IReadOnlyDictionary<string, string> options, string key, string message)
-    {
-        if (options.ContainsKey(key))
-        {
-            Console.Error.WriteLine(message);
-        }
-    }
-
-    private static RunLogContext CreateRunLogContext(string? inputPath, DeletionAnalysisRuntime runtime)
-    {
-        var inputKind = inputPath is null
-          ? "demo"
-          : Directory.Exists(inputPath)
-            ? "directory"
-            : "single-file";
-        return new RunLogContext(
-          Guid.NewGuid().ToString("N")[..12],
-          "delete-class",
-          inputKind,
-          inputPath,
-          runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-    }
-
-    private static MarkAnalysisTelemetry CreateEmptyMarkTelemetry()
-    {
-        return new MarkAnalysisTelemetry(
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          0,
-          Array.Empty<MarkRuleTelemetry>(),
-          new Dictionary<string, long>(StringComparer.Ordinal));
     }
 
 }

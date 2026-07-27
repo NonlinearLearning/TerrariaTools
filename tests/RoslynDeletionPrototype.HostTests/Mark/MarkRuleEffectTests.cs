@@ -869,14 +869,14 @@ public sealed class MarkRuleEffectTests : IDisposable
             "d||e||(f && g)||h||i||j||k||l");
     }
 
-    private static DeletionApplicationService CreateApplication()
+    private static  ApplicationService CreateApplication()
     {
-        return new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        return new  ApplicationService(RuleRegistry.CreateDefaultRules());
     }
 
-    private static DeletionCommandHost CreateCommandHost()
+    private static  CommandHost CreateCommandHost()
     {
-        return new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+        return new  CommandHost(RuleRegistry.CreateDefaultRules());
     }
 
     private string WriteSourceFile(string fileName, string source)

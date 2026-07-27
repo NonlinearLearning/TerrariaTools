@@ -3,23 +3,17 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 一元表达式结构分析结果。
-/// </summary>
 public sealed record UnaryExpressionAnalysis(IReadOnlyList<SyntaxNode> AffectedSyntaxTree);
 
-/// <summary>
 /// 分析前缀、后缀、await 和强制类型转换这类单操作数表达式。
-/// </summary>
 public sealed class UnaryExpressionAnalyzer
 {
     private sealed record UnaryStructure(
         SyntaxNode Root,
         IReadOnlyList<SyntaxNode> Members);
 
-    /// <summary>
-    /// 返回一元表达式本身和它的核心操作数。
-    /// </summary>
+    // 提取单操作数表达式的根节点和其核心成员节点。
     public UnaryExpressionAnalysis Analyze(ExpressionSyntax root, CpgAnalysisContext context)
     {
         _ = context;

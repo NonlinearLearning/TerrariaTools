@@ -7,6 +7,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 将 Lift 阶段确认完整的 if / else if / else 结构规约为单个改写决策。
 public sealed class IfStructureProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.if-structure";
@@ -23,6 +24,7 @@ public sealed class IfStructureProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 把 if 完成态 payload 规约成唯一结构决策，并记录已消费的节点避免重复产出。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;

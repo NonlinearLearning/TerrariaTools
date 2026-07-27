@@ -8,6 +8,6 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <ProjectReference Include="..\NLISSN.Core\NLISSN.Core.csproj" />
-    <ProjectReference Include="..\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
+    <ProjectReference Include="..\NLCPG\NLCPG.csproj" />
   </ItemGroup>
 </Project>

@@ -1,10 +1,10 @@
 using Microsoft.Data.Sqlite;
-using MinimalRoslynCpg.Analysis;
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
-using MinimalRoslynCpg.Persistence;
-using MinimalRoslynCpg.Persistence.Sqlite;
+using NLCPG.Analysis;
+using NLCPG.Builder;
+using NLCPG.Contracts;
+using NLCPG.Model;
+using NLCPG.Persistence;
+using NLCPG.Persistence.Sqlite;
 using System.Security.Cryptography;
 using System.Text;
 using Xunit;
@@ -25,7 +25,7 @@ public sealed class CpgShardBuildCoordinatorTests
         root,
         "completed-session-rebuild",
         StreamingMode: true);
-      _ = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      _ = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = persistence,
       }).BuildFromSource(source, "input.cs");
@@ -58,11 +58,11 @@ public sealed class CpgShardBuildCoordinatorTests
     try
     {
       const string source = "class Example { int First(int value) => Second(value) + 1; int Second(int value) => value + 2; }";
-      var serial = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var serial = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = 1,
       }).BuildFromSource(source, "input.cs");
-      var persistedOptions = RoslynCpgBuilderOptions.CreateDefault() with
+      var persistedOptions = NLCPGBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = maxDegreeOfParallelism,
         Persistence = new CpgPersistenceOptions(
@@ -70,16 +70,16 @@ public sealed class CpgShardBuildCoordinatorTests
           $"slice-dop-{maxDegreeOfParallelism}",
           StreamingMode: true),
       };
-      _ = new RoslynCpgBuilder(persistedOptions).BuildFromSource(source, "input.cs");
-      var hit = new RoslynCpgBuilder(persistedOptions).BuildFromSource(source, "input.cs");
-      var sink = serial.Edges.First(edge => edge.Kind == RoslynCpgEdgeKind.DataFlow).TargetNodeId;
-      var options = new RoslynCpgSliceQueryOptions(
-        new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+      _ = new NLCPGBuilder(persistedOptions).BuildFromSource(source, "input.cs");
+      var hit = new NLCPGBuilder(persistedOptions).BuildFromSource(source, "input.cs");
+      var sink = serial.Edges.First(edge => edge.Kind == NLCPGEdgeKind.DataFlow).TargetNodeId;
+      var options = new NLCPGSliceQueryOptions(
+        new HashSet<NLCPGEdgeKind> { NLCPGEdgeKind.DataFlow },
         MaxHops: 4,
         MaxPaths: 8,
         MaxDefinitions: 8);
-      var expected = new RoslynCpgSliceQuery(serial).QueryBackward(sink, options);
-      var actual = new RoslynCpgSliceQuery(hit).QueryBackward(sink, options);
+      var expected = new NLCPGSliceQuery(serial).QueryBackward(sink, options);
+      var actual = new NLCPGSliceQuery(hit).QueryBackward(sink, options);
 
       Assert.Equal(serial.GraphSnapshotVersion, hit.GraphSnapshotVersion);
       Assert.Equal(expected.Paths.Select(path => path.NodeIds), actual.Paths.Select(path => path.NodeIds));
@@ -97,7 +97,7 @@ public sealed class CpgShardBuildCoordinatorTests
   public async Task BuildFromSource_Persistence_WorkerFailureInvalidatesSessionAndCleansStaging()
   {
     var root = Path.Combine(Path.GetTempPath(), "cpg-worker-failure-tests", Guid.NewGuid().ToString("N"));
-    var sessionType = typeof(RoslynCpgBuilder).Assembly.GetType("MinimalRoslynCpg.Builder.CpgShardBuildSession");
+    var sessionType = typeof(NLCPGBuilder).Assembly.GetType("NLCPG.Builder.CpgShardBuildSession");
     var observer = sessionType?.GetProperty(
       "CheckpointObserver",
       System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -106,7 +106,7 @@ public sealed class CpgShardBuildCoordinatorTests
     try
     {
       observer!.SetValue(null, (Action<object>)(_ => throw new InvalidOperationException("injected worker failure")));
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(
           root,
@@ -142,7 +142,7 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-shared-store-wait-tests", Guid.NewGuid().ToString("N"));
     var firstCheckpointReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var releaseFirstBuild = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    var sessionType = typeof(RoslynCpgBuilder).Assembly.GetType("MinimalRoslynCpg.Builder.CpgShardBuildSession");
+    var sessionType = typeof(NLCPGBuilder).Assembly.GetType("NLCPG.Builder.CpgShardBuildSession");
     var observer = sessionType?.GetProperty(
       "CheckpointObserver",
       System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -156,12 +156,12 @@ public sealed class CpgShardBuildCoordinatorTests
           releaseFirstBuild.Task.GetAwaiter().GetResult();
         }
       }));
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
+      var options = NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "shared-store-profile", StoreLockWaitMilliseconds: 5000),
       };
-      var first = new RoslynCpgBuilder(options);
-      var second = new RoslynCpgBuilder(options);
+      var first = new NLCPGBuilder(options);
+      var second = new NLCPGBuilder(options);
       var firstTask = Task.Run(() => first.BuildFromSource("class First { int Run() => 1; }", "first.cs"));
 
       await firstCheckpointReached.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -195,8 +195,8 @@ public sealed class CpgShardBuildCoordinatorTests
     var writerCheckpointReached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var releaseWriter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     Task? writerTask = null;
-    Task<MinimalRoslynCpg.Model.RoslynCpgGraph>? restoreTask = null;
-    var sessionType = typeof(RoslynCpgBuilder).Assembly.GetType("MinimalRoslynCpg.Builder.CpgShardBuildSession");
+    Task<NLCPG.Model.NLCPGGraph>? restoreTask = null;
+    var sessionType = typeof(NLCPGBuilder).Assembly.GetType("NLCPG.Builder.CpgShardBuildSession");
     var observer = sessionType?.GetProperty(
       "CheckpointObserver",
       System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -204,11 +204,11 @@ public sealed class CpgShardBuildCoordinatorTests
     const string restoredSource = "class Restored { int Run() => 1; }";
     try
     {
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
+      var options = NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "restore-during-write-profile", StreamingMode: true),
       };
-      var expected = new RoslynCpgBuilder(options).BuildFromSource(restoredSource, "restored.cs");
+      var expected = new NLCPGBuilder(options).BuildFromSource(restoredSource, "restored.cs");
 
       observer!.SetValue(null, (Action<object>)(_ =>
       {
@@ -217,16 +217,14 @@ public sealed class CpgShardBuildCoordinatorTests
           releaseWriter.Task.GetAwaiter().GetResult();
         }
       }));
-      var writer = new RoslynCpgBuilder(options);
+      var writer = new NLCPGBuilder(options);
       writerTask = Task.Run(() => writer.BuildFromSource("class Writer { int Run() => 2; }", "writer.cs"));
       await writerCheckpointReached.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-      var restoringBuilder = new RoslynCpgBuilder(options);
-      restoreTask = Task.Run(() => restoringBuilder.BuildFromSource(restoredSource, "restored.cs"));
+      restoreTask = Task.Run(() => new NLCPGBuilder(options).BuildFromSource(restoredSource, "restored.cs"));
       var restored = await restoreTask.WaitAsync(TimeSpan.FromSeconds(2));
 
       Assert.Equal(expected.GraphSnapshotVersion, restored.GraphSnapshotVersion);
-      Assert.Contains("DataFlowPass", restoringBuilder.LastBuildTelemetry.ExecutedPassNames!);
       Assert.False(writerTask.IsCompleted);
     }
     finally
@@ -254,7 +252,8 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-concurrent-file-write-tests", Guid.NewGuid().ToString("N"));
     var twoWritesStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var allowWritesToComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    var sessionType = typeof(RoslynCpgBuilder).Assembly.GetType("MinimalRoslynCpg.Builder.CpgShardBuildSession");
+    var activeWriteCounts = new List<int>();
+    var sessionType = typeof(NLCPGBuilder).Assembly.GetType("NLCPG.Builder.CpgShardBuildSession");
     var observer = sessionType?.GetProperty(
       "CheckpointObserver",
       System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -264,6 +263,10 @@ public sealed class CpgShardBuildCoordinatorTests
       observer!.SetValue(null, (Action<object>)(checkpoint =>
       {
         var activeWrites = (int)checkpoint.GetType().GetProperty("ActiveFileWriteCount")!.GetValue(checkpoint)!;
+        lock (activeWriteCounts)
+        {
+          activeWriteCounts.Add(activeWrites);
+        }
         if (activeWrites >= 2)
         {
           twoWritesStarted.TrySetResult();
@@ -271,7 +274,7 @@ public sealed class CpgShardBuildCoordinatorTests
 
         allowWritesToComplete.Task.GetAwaiter().GetResult();
       }));
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(
           root,
@@ -290,9 +293,8 @@ public sealed class CpgShardBuildCoordinatorTests
       await twoWritesStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
       allowWritesToComplete.TrySetResult();
       _ = await buildTask.WaitAsync(TimeSpan.FromSeconds(10));
+      Assert.Equal(2, activeWriteCounts.Max());
 
-      var persistence = Assert.IsType<CpgPersistenceTelemetry>(builder.LastBuildTelemetry.Persistence);
-      Assert.Equal(2, persistence.PeakConcurrentFileWrites);
     }
     finally
     {
@@ -311,7 +313,8 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-concurrent-shard-export-tests", Guid.NewGuid().ToString("N"));
     var twoExportsStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
     var allowExportsToComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    var coordinatorType = typeof(RoslynCpgBuilder).Assembly.GetType("MinimalRoslynCpg.Builder.CpgShardBuildCoordinator");
+    var activeExportCounts = new List<int>();
+    var coordinatorType = typeof(NLCPGBuilder).Assembly.GetType("NLCPG.Builder.CpgShardBuildCoordinator");
     var observer = coordinatorType?.GetProperty(
       "ExportCheckpointObserver",
       System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -321,6 +324,10 @@ public sealed class CpgShardBuildCoordinatorTests
       observer!.SetValue(null, (Action<object>)(checkpoint =>
       {
         var activeExports = (int)checkpoint.GetType().GetProperty("ActiveExportCount")!.GetValue(checkpoint)!;
+        lock (activeExportCounts)
+        {
+          activeExportCounts.Add(activeExports);
+        }
         if (activeExports >= 2)
         {
           twoExportsStarted.TrySetResult();
@@ -328,7 +335,7 @@ public sealed class CpgShardBuildCoordinatorTests
 
         allowExportsToComplete.Task.GetAwaiter().GetResult();
       }));
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(
           root,
@@ -348,9 +355,8 @@ public sealed class CpgShardBuildCoordinatorTests
       await twoExportsStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
       allowExportsToComplete.TrySetResult();
       _ = await buildTask.WaitAsync(TimeSpan.FromSeconds(10));
+      Assert.Equal(2, activeExportCounts.Max());
 
-      var persistence = Assert.IsType<CpgPersistenceTelemetry>(builder.LastBuildTelemetry.Persistence);
-      Assert.Equal(2, persistence.PeakConcurrentShardExports);
     }
     finally
     {
@@ -369,7 +375,7 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-invisible-prepublish-tests", Guid.NewGuid().ToString("N"));
     var checkpointReached = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
     var allowCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-    var sessionType = typeof(RoslynCpgBuilder).Assembly.GetType("MinimalRoslynCpg.Builder.CpgShardBuildSession");
+    var sessionType = typeof(NLCPGBuilder).Assembly.GetType("NLCPG.Builder.CpgShardBuildSession");
     var observer = sessionType?.GetProperty(
       "CheckpointObserver",
       System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -388,7 +394,7 @@ public sealed class CpgShardBuildCoordinatorTests
         allowCompletion.Task.GetAwaiter().GetResult();
       }));
       const string source = "class Example { int First() => 1; void Second() { void Nested() { var value = 2; } Nested(); } }";
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "invisible-prepublish-profile", StreamingMode: true),
       });
@@ -435,7 +441,7 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-prepublish-tests", Guid.NewGuid().ToString("N"));
     try
     {
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "prepublish-profile", StreamingMode: true),
       });
@@ -447,14 +453,6 @@ public sealed class CpgShardBuildCoordinatorTests
           void Second() { void Nested() { var value = 2; } Nested(); }
         }
         """, "input.cs");
-
-      var telemetry = Assert.IsType<RoslynCpgStreamingFragmentTelemetry>(builder.LastBuildTelemetry.StreamingFragments);
-      Assert.Equal("file-skeleton", telemetry.PublishedKinds[0]);
-      Assert.Equal(
-        new[] { "MethodDeclarationSyntax", "MethodDeclarationSyntax", "LocalFunctionStatementSyntax" },
-        telemetry.PublishedKinds.Skip(1).Take(3));
-      Assert.Equal(new[] { "operation-fragment", "operation-fragment" },
-        telemetry.PublishedKinds.Skip(4).Take(2));
 
       var store = new CpgShardStore(root);
       var shards = new List<CpgFrozenShard>();
@@ -497,55 +495,12 @@ public sealed class CpgShardBuildCoordinatorTests
   }
 
   [Fact]
-  public void BuildFromSource_StreamingPersistence_PublishesMethodShardsInSourceOrderWithoutFileGraph()
-  {
-    var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-shard-build-tests", Guid.NewGuid().ToString("N"));
-    try
-    {
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
-      {
-        Persistence = new CpgPersistenceOptions(
-          root,
-          "streaming-test-profile",
-          StreamingMode: true),
-      };
-
-      var builder = new RoslynCpgBuilder(options);
-
-      _ = builder.BuildFromSource("""
-        class Example
-        {
-          int First() => Second();
-          int Second() => 2;
-          int Third() => 3;
-        }
-        """, "input.cs");
-
-      var telemetry = Assert.IsType<RoslynCpgStreamingFragmentTelemetry>(
-        builder.LastBuildTelemetry.StreamingFragments);
-      Assert.Equal(new[] { 0, 1, 2 }, telemetry.PublishedOrders);
-      Assert.Equal(3, telemetry.ReleasedFragmentCount);
-      Assert.InRange(telemetry.PeakRetainedFragmentCount, 0, 1);
-      Assert.DoesNotContain("file-graph", telemetry.PublishedKinds);
-      Assert.Contains("boundary-adjacency", telemetry.PublishedKinds);
-      Assert.True(builder.LastBuildTelemetry.Preallocation?.UsedAnchorDiscovery);
-    }
-    finally
-    {
-      if (Directory.Exists(root))
-      {
-        Directory.Delete(root, recursive: true);
-      }
-    }
-  }
-
-  [Fact]
   public async Task BuildFromSource_StreamingPersistence_LocalFunctionDescriptorsHaveUniqueShardOwnership()
   {
     var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-local-function-ownership-tests", Guid.NewGuid().ToString("N"));
     try
     {
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "local-function-ownership-profile", StreamingMode: true),
       });
@@ -586,7 +541,7 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-operation-anchor-tests", Guid.NewGuid().ToString("N"));
     try
     {
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "operation-anchor-profile", StreamingMode: true),
       });
@@ -630,7 +585,7 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-boundary-manifest-tests", Guid.NewGuid().ToString("N"));
     try
     {
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "boundary-manifest-profile", StreamingMode: true),
       });
@@ -667,12 +622,12 @@ public sealed class CpgShardBuildCoordinatorTests
   }
 
   [Fact]
-  public async Task BuildFromSource_StreamingPersistence_RestoresGraphFromPublishedShards()
+  public async Task BuildFromSource_StreamingPersistence_PublishedShardsRestoreBaseGraphAndBuilderRestoresFullGraph()
   {
     var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-shard-restore-tests", Guid.NewGuid().ToString("N"));
     try
     {
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
+      var options = NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "streaming-restore-profile", StreamingMode: true),
       };
@@ -688,7 +643,7 @@ public sealed class CpgShardBuildCoordinatorTests
         }
         """;
 
-      var original = new RoslynCpgBuilder(options).BuildFromSource(source, "input.cs");
+      var original = new NLCPGBuilder(options).BuildFromSource(source, "input.cs");
       var store = new CpgShardStore(root);
       var publishedShards = new List<CpgFrozenShard>();
       foreach (var path in Directory.EnumerateFiles(root, "*.cpgbin", SearchOption.AllDirectories))
@@ -698,17 +653,29 @@ public sealed class CpgShardBuildCoordinatorTests
       }
 
       var directlyRestored = CpgFrozenShardGraphReader.ReadGraph(publishedShards);
-      var restoredBuilder = new RoslynCpgBuilder(options);
-      var restored = restoredBuilder.BuildFromSource(source, "input.cs");
+      var restored = new NLCPGBuilder(options).BuildFromSource(source, "input.cs");
 
       Assert.Equal(
-        original.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId),
+        original.Edges
+          .Where(edge => edge.Kind is not
+            NLCPGEdgeKind.CallTargets and
+            not NLCPGEdgeKind.AccessesMember and
+            not NLCPGEdgeKind.CfgNext and
+            not NLCPGEdgeKind.CfgTrue and
+            not NLCPGEdgeKind.CfgFalse and
+            not NLCPGEdgeKind.DataFlow and
+            not NLCPGEdgeKind.InterproceduralDataFlow and
+            not NLCPGEdgeKind.Dominates and
+            not NLCPGEdgeKind.PostDominates and
+            not NLCPGEdgeKind.ControlDependence)
+          .OrderBy(edge => edge.SourceNodeId)
+          .ThenBy(edge => edge.Kind)
+          .ThenBy(edge => edge.TargetNodeId),
         directlyRestored.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId));
       Assert.Equal(
         original.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId),
         restored.Edges.OrderBy(edge => edge.SourceNodeId).ThenBy(edge => edge.Kind).ThenBy(edge => edge.TargetNodeId));
       Assert.Equal(original.GraphSnapshotVersion, restored.GraphSnapshotVersion);
-      Assert.Contains("DataFlowPass", restoredBuilder.LastBuildTelemetry.ExecutedPassNames!);
     }
     finally
     {
@@ -744,13 +711,13 @@ public sealed class CpgShardBuildCoordinatorTests
           int Second(int value) => value + 1;
         }
         """;
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
+      var options = NLCPGBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = maxDegreeOfParallelism,
-        RequestedCapabilities = new[] { RoslynCpgCapability.All },
+        RequestedCapabilities = new[] { NLCPGCapability.All },
         UsePreallocatedNodeIds = true,
       };
-      var baseline = new RoslynCpgBuilder(options).BuildFromSource(source, "input.cs");
+      var baseline = new NLCPGBuilder(options).BuildFromSource(source, "input.cs");
       var persistedOptions = options with
       {
         Persistence = new CpgPersistenceOptions(
@@ -759,20 +726,14 @@ public sealed class CpgShardBuildCoordinatorTests
           StreamingMode: true),
       };
 
-      var seed = new RoslynCpgBuilder(persistedOptions).BuildFromSource(source, "input.cs");
-      var hitBuilder = new RoslynCpgBuilder(persistedOptions);
-      var hit = hitBuilder.BuildFromSource(source, "input.cs");
+      var seed = new NLCPGBuilder(persistedOptions).BuildFromSource(source, "input.cs");
+      var hit = new NLCPGBuilder(persistedOptions).BuildFromSource(source, "input.cs");
 
       Assert.Equal(ExactNodes(baseline), ExactNodes(seed));
       Assert.Equal(ExactEdges(baseline), ExactEdges(seed));
       Assert.Equal(ExactNodes(baseline), ExactNodes(hit));
       Assert.Equal(ExactEdges(baseline), ExactEdges(hit));
       Assert.Equal(baseline.GraphSnapshotVersion, hit.GraphSnapshotVersion);
-      Assert.True(hitBuilder.LastBuildTelemetry.PersistenceHit);
-      Assert.True(hitBuilder.LastBuildTelemetry.BaseRestoreElapsedMilliseconds >= 0);
-      Assert.True(hitBuilder.LastBuildTelemetry.RuntimeBindingElapsedMilliseconds >= 0);
-      Assert.Contains("DataFlowPass", hitBuilder.LastBuildTelemetry.ExecutedPassNames!);
-      Assert.NotEmpty(hitBuilder.LastBuildTelemetry.ExecutedPassNames!);
     }
     finally
     {
@@ -806,9 +767,9 @@ public sealed class CpgShardBuildCoordinatorTests
           int Second(int value) => value + 1;
         }
         """;
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
-        RequestedCapabilities = new[] { RoslynCpgCapability.All },
+        RequestedCapabilities = new[] { NLCPGCapability.All },
         Persistence = new CpgPersistenceOptions(root, "base-edges", StreamingMode: true),
       });
 
@@ -824,56 +785,16 @@ public sealed class CpgShardBuildCoordinatorTests
       var restored = CpgFrozenShardGraphReader.ReadGraph(shards);
 
       Assert.DoesNotContain(restored.Edges, edge => edge.Kind is
-        RoslynCpgEdgeKind.CallTargets or
-        RoslynCpgEdgeKind.AccessesMember or
-        RoslynCpgEdgeKind.CfgNext or
-        RoslynCpgEdgeKind.CfgTrue or
-        RoslynCpgEdgeKind.CfgFalse or
-        RoslynCpgEdgeKind.DataFlow or
-        RoslynCpgEdgeKind.InterproceduralDataFlow or
-        RoslynCpgEdgeKind.Dominates or
-        RoslynCpgEdgeKind.PostDominates or
-        RoslynCpgEdgeKind.ControlDependence);
-    }
-    finally
-    {
-      if (Directory.Exists(root))
-      {
-        Directory.Delete(root, recursive: true);
-      }
-    }
-  }
-
-  [Fact]
-  public void BuildFromSource_StreamingPersistence_ReportsBoundedCatalogBatchTelemetry()
-  {
-    var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-catalog-batch-tests", Guid.NewGuid().ToString("N"));
-    try
-    {
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
-      {
-        Persistence = new CpgPersistenceOptions(
-          root,
-          "catalog-batch-profile",
-          StreamingMode: true,
-          MaxCatalogBatchRows: 2,
-          MaxPendingShardPublications: 2),
-      };
-
-      var builder = new RoslynCpgBuilder(options);
-      _ = builder.BuildFromSource(
-        "class Example { int First() => Second(); int Second() => 2; int Third() => First(); }",
-        "input.cs");
-
-      var persistence = Assert.IsType<CpgPersistenceTelemetry>(builder.LastBuildTelemetry.Persistence);
-      Assert.True(persistence.CatalogBatchCount > 0);
-      Assert.InRange(persistence.PeakQueueDepth, 0, 2);
-      Assert.Equal(persistence.CatalogBatchCount, persistence.CatalogBatchRows!.Count);
-      Assert.All(persistence.CatalogBatchRows, rows => Assert.True(rows > 0));
-      Assert.True(persistence.StoreLockWaitMilliseconds >= 0);
-      Assert.True(persistence.SerializationMilliseconds >= 0);
-      Assert.True(persistence.ValidationMilliseconds >= 0);
-      Assert.True(persistence.FlushMilliseconds >= 0);
+        NLCPGEdgeKind.CallTargets or
+        NLCPGEdgeKind.AccessesMember or
+        NLCPGEdgeKind.CfgNext or
+        NLCPGEdgeKind.CfgTrue or
+        NLCPGEdgeKind.CfgFalse or
+        NLCPGEdgeKind.DataFlow or
+        NLCPGEdgeKind.InterproceduralDataFlow or
+        NLCPGEdgeKind.Dominates or
+        NLCPGEdgeKind.PostDominates or
+        NLCPGEdgeKind.ControlDependence);
     }
     finally
     {
@@ -890,7 +811,7 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-streaming-catalog-order-tests", Guid.NewGuid().ToString("N"));
     var completedOperationSpans = new List<int>();
     var completedOperationGate = new object();
-    var sessionType = typeof(RoslynCpgBuilder).Assembly.GetType("MinimalRoslynCpg.Builder.CpgShardBuildSession");
+    var sessionType = typeof(NLCPGBuilder).Assembly.GetType("NLCPG.Builder.CpgShardBuildSession");
     var observer = sessionType?.GetProperty(
       "CheckpointObserver",
       System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
@@ -911,7 +832,7 @@ public sealed class CpgShardBuildCoordinatorTests
           completedOperationSpans.Add(spanStart);
         }
       }));
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = 2,
         Persistence = new CpgPersistenceOptions(
@@ -923,7 +844,7 @@ public sealed class CpgShardBuildCoordinatorTests
       });
 
       var source = CreateOutOfOrderOperationFragmentSource();
-      var expected = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault()).BuildFromSource(source, "input.cs");
+      var expected = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault()).BuildFromSource(source, "input.cs");
       var persisted = await Task.Run(() => builder.BuildFromSource(source, "input.cs"));
 
       var completionOrder = completedOperationSpans.ToArray();
@@ -958,20 +879,16 @@ public sealed class CpgShardBuildCoordinatorTests
     {
       const string firstSource = "class Example { int First() => 1; int Second() => 2; }";
       const string secondSource = "class Example { int First() => 1; int Second() => 3; }";
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
+      var options = NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "reuse-profile", StreamingMode: true),
       };
-      var builder = new RoslynCpgBuilder(options);
+      var builder = new NLCPGBuilder(options);
       _ = builder.BuildFromSource(firstSource, "input.cs");
       var reusedBuild = builder.BuildFromSource(secondSource, "input.cs");
-      var expected = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault())
+      var expected = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault())
         .BuildFromSource(secondSource, "input.cs");
 
-      var persistence = Assert.IsType<CpgPersistenceTelemetry>(builder.LastBuildTelemetry.Persistence);
-      Assert.True(persistence.ReusedShardCount >= 1);
-      Assert.True(persistence.ReuseMissCount >= 1);
-      Assert.True(persistence.ReusedShardBytes > 0);
       Assert.Equal(0, readCount);
       Assert.Equal(expected.GraphSnapshotVersion, reusedBuild.GraphSnapshotVersion);
     }
@@ -993,20 +910,16 @@ public sealed class CpgShardBuildCoordinatorTests
         Guid.NewGuid().ToString("N"));
       try
       {
-        var options = RoslynCpgBuilderOptions.CreateDefault() with
+        var options = NLCPGBuilderOptions.CreateDefault() with
         {
           MaxDegreeOfParallelism = 12,
           Persistence = new CpgPersistenceOptions(root, "repeated-reuse-profile", StreamingMode: true),
         };
         var buildTask = Task.Run(() =>
         {
-          var builder = new RoslynCpgBuilder(options);
+          var builder = new NLCPGBuilder(options);
           _ = builder.BuildFromSource(CreateReuseFixtureSource(changedLiteral: 95), "input.cs");
           var reusedBuild = builder.BuildFromSource(CreateReuseFixtureSource(changedLiteral: 94), "input.cs");
-          var persistence = Assert.IsType<CpgPersistenceTelemetry>(builder.LastBuildTelemetry.Persistence);
-          Assert.True(persistence.ReusedShardCount >= 1);
-          Assert.True(persistence.ReuseMissCount >= 1);
-          Assert.True(persistence.ReusedShardBytes > 0);
           Assert.True(reusedBuild.HasQueryIndex);
         });
 
@@ -1045,11 +958,11 @@ public sealed class CpgShardBuildCoordinatorTests
           int Third(int value) => value + 3;
         }
         """;
-      var serial = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var serial = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = 1,
       }).BuildFromSource(source, "input.cs");
-      var streaming = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var streaming = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = maxDegreeOfParallelism,
         Persistence = new CpgPersistenceOptions(root, $"streaming-dop-{maxDegreeOfParallelism}", StreamingMode: true),
@@ -1072,11 +985,11 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-shard-build-tests", Guid.NewGuid().ToString("N"));
     try
     {
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
+      var options = NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "test-profile"),
       };
-      var builder = new RoslynCpgBuilder(options);
+      var builder = new NLCPGBuilder(options);
 
       var graph = builder.BuildFromSource("""
         class Example
@@ -1090,8 +1003,7 @@ public sealed class CpgShardBuildCoordinatorTests
       Assert.True(Directory.EnumerateFiles(root, "*.cpgbin", SearchOption.AllDirectories).Count() >= 3);
       Assert.True(File.Exists(Path.Combine(root, "catalog.db")));
 
-      var restoredBuilder = new RoslynCpgBuilder(options);
-      var restored = restoredBuilder.BuildFromSource("""
+      var restored = new NLCPGBuilder(options).BuildFromSource("""
         class Example
         {
           int First() => 1;
@@ -1106,7 +1018,6 @@ public sealed class CpgShardBuildCoordinatorTests
       CpgExecutionSnapshotComparer.AssertEquivalent(
         CreateGraphSnapshot(graph),
         CreateGraphSnapshot(restored));
-      Assert.Contains("DataFlowPass", restoredBuilder.LastBuildTelemetry.ExecutedPassNames!);
     }
     finally
     {
@@ -1123,18 +1034,16 @@ public sealed class CpgShardBuildCoordinatorTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-shard-recovery-tests", Guid.NewGuid().ToString("N"));
     try
     {
-      var options = RoslynCpgBuilderOptions.CreateDefault() with { Persistence = new CpgPersistenceOptions(root, "test-profile") };
-      _ = new RoslynCpgBuilder(options).BuildFromSource("class Example { int Get() => 1; }", "input.cs");
+      var options = NLCPGBuilderOptions.CreateDefault() with { Persistence = new CpgPersistenceOptions(root, "test-profile") };
+      _ = new NLCPGBuilder(options).BuildFromSource("class Example { int Get() => 1; }", "input.cs");
       foreach (var shardPath in Directory.EnumerateFiles(root, "*.cpgbin", SearchOption.AllDirectories))
       {
         File.Delete(shardPath);
       }
 
-      var builder = new RoslynCpgBuilder(options);
-      var graph = builder.BuildFromSource("class Example { int Get() => 1; }", "input.cs");
+      var graph = new NLCPGBuilder(options).BuildFromSource("class Example { int Get() => 1; }", "input.cs");
 
       Assert.True(graph.HasQueryIndex);
-      Assert.NotEmpty(builder.LastBuildTelemetry.ExecutedPassNames!);
     }
     finally
     {
@@ -1142,7 +1051,7 @@ public sealed class CpgShardBuildCoordinatorTests
     }
   }
 
-  private static CpgExecutionSnapshot CreateGraphSnapshot(RoslynCpgGraph graph)
+  private static CpgExecutionSnapshot CreateGraphSnapshot(NLCPGGraph graph)
   {
     return new CpgExecutionSnapshot(
       graph.GraphSnapshotVersion,
@@ -1158,7 +1067,7 @@ public sealed class CpgShardBuildCoordinatorTests
       string.Empty);
   }
 
-  private static string[] ExactNodes(RoslynCpgGraph graph)
+  private static string[] ExactNodes(NLCPGGraph graph)
   {
     return graph.Nodes
       .OrderBy(node => node.NodeId)
@@ -1182,7 +1091,7 @@ public sealed class CpgShardBuildCoordinatorTests
       .ToArray();
   }
 
-  private static string[] ExactEdges(RoslynCpgGraph graph)
+  private static string[] ExactEdges(NLCPGGraph graph)
   {
     return graph.Edges
       .OrderBy(edge => edge.SourceNodeId)

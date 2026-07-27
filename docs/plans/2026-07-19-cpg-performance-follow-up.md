@@ -31,16 +31,16 @@
 
 ## 完成条件
 
-- `feature_list.json` 中下列 feature 的 definition of done 均有对应的当前证据：`cpg-query-and-overlay-performance`、`threadpool-memory-execution`、`stable-graph-commit-parallelization`、`directory-io-and-async-api-optimization`、`minimal-roslyn-cpg-declared-symbol-query-optimization`、`roslyn-deletion-prototype-mark-analysis-snapshot-optimization`。
+- `feature_list.json` 中下列 feature 的 definition of done 均有对应的当前证据：`cpg-query-and-overlay-performance`、`threadpool-memory-execution`、`stable-graph-commit-parallelization`、`directory-io-and-async-api-optimization`、`nlcpg-declared-symbol-query-optimization`、`roslyn-deletion-prototype-mark-analysis-snapshot-optimization`。
 - 真实工程实测不可用时，明确保留未验证项，不将 feature 标为完成，也不改变默认值。
 
 ## 验证
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet build .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\src\NLCPG\NLCPG.csproj --no-restore -p:UseSharedCompilation=false
 dotnet build .\src\RoslynPrototype\RoslynPrototype.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~RoslynCpgSliceQueryTests|FullyQualifiedName~PipelineComponentTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~NLCPGSliceQueryTests|FullyQualifiedName~PipelineComponentTests"
 pwsh -File .\scripts\check-harness-consistency.ps1
 ```
 

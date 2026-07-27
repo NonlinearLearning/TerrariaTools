@@ -38,9 +38,9 @@ dotnet run --project .\tools\CpgPersistenceBenchmark\CpgPersistenceBenchmark.csp
 
 - 修改：`tools/CpgPersistenceBenchmark/Program.cs`
 - 修改：`tools/CpgPersistenceBenchmark/BenchmarkConfiguration.cs`
-- 修改：`src/MinimalRoslynCpg/Builder/RoslynCpgBuildTelemetry.cs`（或现有 builder telemetry 定义处）
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs`
+- 修改：`src/NLCPG/Builder/NLCPGBuildTelemetry.cs`（或现有 builder telemetry 定义处）
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs`
 
 1. 为 operation inventory build、fragment owner lookup、shard 解码/读取、reuse clone batch、物理引用维护分别增加计数和耗时 telemetry。计数不得通过额外全图遍历取得。
 2. 在 benchmark JSON 中输出上述字段，并保留已有 `coldBuildMilliseconds`、`incrementalBuildMilliseconds`、catalog commit、reuse 命中和 heap/working-set 字段。
@@ -53,11 +53,11 @@ dotnet run --project .\tools\CpgPersistenceBenchmark\CpgPersistenceBenchmark.csp
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Builder/RoslynCpgBuilder.cs`
-- 修改：`src/MinimalRoslynCpg/Builder/Passes/CallGraphPass.cs`
-- 修改：`src/MinimalRoslynCpg/Builder/Passes/MemberAccessPass.cs`
-- 修改：`src/MinimalRoslynCpg/Builder/Passes/DataFlowPass.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/MinimalRoslynCpgPartitionedBuilderTests.cs`
+- 修改：`src/NLCPG/Builder/NLCPGBuilder.cs`
+- 修改：`src/NLCPG/Builder/Passes/CallGraphPass.cs`
+- 修改：`src/NLCPG/Builder/Passes/MemberAccessPass.cs`
+- 修改：`src/NLCPG/Builder/Passes/DataFlowPass.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGPartitionedBuilderTests.cs`
 
 1. 写失败回归：同一 build 的 CallGraph、MemberAccess 和 DataFlow 全部执行后，operation root 规划与 `SemanticModel.GetOperation`/`DescendantsAndSelf` 的调用次数不随 consumer pass 数量重复增长；同时断言节点、边、顺序和 NodeId 与基线一致。
 2. 在 `OperationPass` 后建立一次仅供本 build 使用的、稳定排序的 operation inventory；它必须保留现有 root/body 过滤语义及 reference identity，不能以字符串 ID 重建。
@@ -71,9 +71,9 @@ dotnet run --project .\tools\CpgPersistenceBenchmark\CpgPersistenceBenchmark.csp
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Builder/Streaming/FragmentOwnershipIndex.cs`
-- 修改：`src/MinimalRoslynCpg/Builder/Streaming/SkeletonShardPublisher.cs`（仅在调用端需要批量路由时）
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 修改：`src/NLCPG/Builder/Streaming/FragmentOwnershipIndex.cs`
+- 修改：`src/NLCPG/Builder/Streaming/SkeletonShardPublisher.cs`（仅在调用端需要批量路由时）
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
 
 1. 写失败回归：构造重叠/嵌套 fragment span，验证原有语义为“最短 span、随后 span start、最后 source order”，并记录 N 个 node/descriptor、F 个 fragment 时的比较次数。
 2. 实现按起点可二分搜索的区间索引，并在候选集合中按上述既有优先级选择 owner；不得假设 fragment span 不重叠。
@@ -87,14 +87,14 @@ dotnet run --project .\tools\CpgPersistenceBenchmark\CpgPersistenceBenchmark.csp
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Analysis/RoslynCpgSliceQuery.cs`
-- 修改：`src/MinimalRoslynCpg/Analysis/CpgShardQueryResolver.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgFrozenShardGraphReader.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 修改：`src/NLCPG/Analysis/NLCPGSliceQuery.cs`
+- 修改：`src/NLCPG/Analysis/CpgShardQueryResolver.cs`
+- 修改：`src/NLCPG/Persistence/CpgFrozenShardGraphReader.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
 
 1. 写失败回归：同一大 shard 中请求 `MaxVisitedNodes=1`、`MaxVisitedEdges=1` 的 query 不得完整冻结整 shard；另加多 frontier node 指向同一 shard 的回归，断言每个 shard 每 query 最多解码一次。
-2. 将 `LoadFrontierGraphAsync` 接收完整 `RoslynCpgSliceQueryOptions`，而非只接收 `MaxHops`。每层只解析定位当前 frontier 与所需入边的目录/边界记录，在加 node、edge、下一 frontier 前检查 hop/node/edge budget。
+2. 将 `LoadFrontierGraphAsync` 接收完整 `NLCPGSliceQueryOptions`，而非只接收 `MaxHops`。每层只解析定位当前 frontier 与所需入边的目录/边界记录，在加 node、edge、下一 frontier 前检查 hop/node/edge budget。
 3. 为当前 query 的 `shardId -> decoded projection` 建立有界 memo；memo 保存必要的 node/edge/boundary projection，不跨 query 缓存已截断的 slice 结果。
 4. 无法在 shard 文件格式中按需读取时，先增加 reader 的索引化/流式投影 API；不要以“先 `ReadGraph` 再丢弃多数数据”的适配层冒充 budget 支持。
 5. 保留 source/NodeId/edge kind 的稳定排序、`anchorUnavailable`、取消传播和现有 truncation reason；小预算必须返回同样的截断语义，而不是把加载限制误报为 query 成功。
@@ -106,12 +106,12 @@ dotnet run --project .\tools\CpgPersistenceBenchmark\CpgPersistenceBenchmark.csp
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Builder/CpgShardBuildSession.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardSchema.cs`（仅当需要迁移/约束）
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 修改：`src/NLCPG/Builder/CpgShardBuildSession.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardSchema.cs`（仅当需要迁移/约束）
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
 
 1. 写失败回归：96 个复用 fragment 必须在一个 catalog connection/transaction 内完成 clone；注入第 N 个 clone 失败时，build 不得 completed，且目标 build 不留部分 clone 行。
 2. 将 `_reusableCloneRequests` 交给既有 catalog batch writer 或新增的 build-finalization batch；prepared `INSERT ... SELECT` 按有界批量执行，保留 source-order 和原有 reusable-key 校验。
@@ -127,7 +127,7 @@ dotnet run --project .\tools\CpgPersistenceBenchmark\CpgPersistenceBenchmark.csp
 **文件：**
 
 - 修改：`src/Host/Logging/AnalysisTextLogWriter.cs`
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Logging/TextLogSystemTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Logging/TextLogSystemTests.cs`
 
 1. 写失败回归：默认 Info/profile 过滤掉 `memory snapshot` 时，替身采样器的 GC、process、ThreadPool 调用数必须为零；显式允许该 Debug event 时必须产生完整字段和原有一行文本格式。
 2. 在 `WriteMemorySnapshot` 起始处先以固定 level/category/event 调用 filter；不允许时直接返回，之后才调用 `GC.GetGCMemoryInfo`、`Process.GetCurrentProcess`、`ThreadPool.GetAvailableThreads` 与 `GetMaxThreads`。
@@ -141,8 +141,8 @@ dotnet run --project .\tools\CpgPersistenceBenchmark\CpgPersistenceBenchmark.csp
 **文件：**
 
 - 修改：`src/Host/DeleteClassPostRewriteCleanupService.cs`
-- 修改：`src/Host/DeletionDirectoryAnalysisService.cs`
-- 新建：`tests/RoslynDeletionPrototype.HostTests/DeleteClassPostRewriteCleanupServiceTests.cs`
+- 修改：`src/Host/ DirectoryAnalysisService.cs`
+- 新建：`tests/Roslyn Prototype.HostTests/DeleteClassPostRewriteCleanupServiceTests.cs`
 
 1. 写失败回归：传入已加载的 `originalSource` 和含 cleanup 的 `currentSource`，断言没有额外文件读取或 `PrototypeRewriter.ExecutePlan` 调用，同时 `Edits`、`Diff`、`RewritePlans`（需要时）和 `RewrittenSource` 与旧结果一致。
 2. 让 cleanup 服务接收/保留 directory analysis 已经读取的 source buffer；`MergeCleanupEdits` 直接以它构造必要的 diff/plan metadata，并把 `currentSource` 作为最终文本。
@@ -157,9 +157,9 @@ dotnet run --project .\tools\CpgPersistenceBenchmark\CpgPersistenceBenchmark.csp
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet build .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~SqliteCpgShardCatalogTests|FullyQualifiedName~RoslynCpgSliceQueryTests"
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~TextLogSystemTests|FullyQualifiedName~DeleteClass"
+dotnet build .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~SqliteCpgShardCatalogTests|FullyQualifiedName~NLCPGSliceQueryTests"
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~TextLogSystemTests|FullyQualifiedName~DeleteClass"
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```

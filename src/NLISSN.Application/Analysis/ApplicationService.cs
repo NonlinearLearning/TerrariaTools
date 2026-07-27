@@ -1,7 +1,6 @@
-using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using MinimalRoslynCpg.Builder;
+using NLCPG.Builder;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
@@ -12,7 +11,8 @@ using NLISSN.Rules;
 
 namespace NLISSN.Application;
 
-public sealed class DeletionApplicationService
+/// 编排单个源码文件的删除规则分析：构图、标记、传播、提升、决策和改写。
+public sealed class ApplicationService
 {
     private readonly IReadOnlyList<RuleDefinitionMark> _markers;
     private readonly IReadOnlyList<RuleDefinitionPropagate> _propagators;
@@ -24,7 +24,8 @@ public sealed class DeletionApplicationService
     private readonly RuleDecisionEngine _decisionEngine;
     private readonly PrototypeRewriter _rewriter;
 
-    public DeletionApplicationService(DeletionRulePipeline pipeline)
+    // 用完整规则管道初始化单文件分析服务，并准备四个阶段的执行器和改写器。
+    public ApplicationService(RulePipeline pipeline)
     {
         _markers = pipeline.Markers;
         _propagators = pipeline.Propagators;
@@ -37,38 +38,43 @@ public sealed class DeletionApplicationService
         _rewriter = new PrototypeRewriter();
     }
 
-    public DeletionApplicationService(IReadOnlyList<RuleDefinitionMark> markers, IReadOnlyList<RuleDefinitionPropagate> propagators, IReadOnlyList<RuleDefinitionLift> lifters, IReadOnlyList<RuleDefinitionPropose> proposers)
-      : this(new DeletionRulePipeline(markers, propagators, lifters, proposers))
+    // 允许调用方直接注入四个阶段的规则列表，内部仍组装成统一规则管道。
+    public ApplicationService(IReadOnlyList<RuleDefinitionMark> markers, IReadOnlyList<RuleDefinitionPropagate> propagators, IReadOnlyList<RuleDefinitionLift> lifters, IReadOnlyList<RuleDefinitionPropose> proposers)
+      : this(new RulePipeline(markers, propagators, lifters, proposers))
     {
     }
 
+    // 从源码、文件路径和 CLI 选项构建默认运行时后执行一次完整分析。
     public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options)
     {
         return Analyze(
           source,
           filePath,
           options,
-          DeletionAnalysisRuntime.CreateFromOptions(options));
+           AnalysisRuntime.CreateFromOptions(options));
     }
 
-    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime)
+    // 使用调用方提供的运行时执行完整分析，保留外部传入的并行和缓存设置。
+    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
     {
         var analysisContext = BuildAnalysisContext(source, filePath, options, runtime);
         return RunAnalysis(analysisContext);
     }
 
+    // 复用现成语义模型和语法树执行分析，避免调用方重复创建运行时和编译。
     public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options, SemanticModel semanticModel, SyntaxNode root)
     {
         return Analyze(
           source,
           filePath,
           options,
-          DeletionAnalysisRuntime.CreateFromOptions(options),
+           AnalysisRuntime.CreateFromOptions(options),
           semanticModel,
           root);
     }
 
-    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root)
+    // 在复用现成语义模型的同时接收外部运行时，适合目录级批量分析共享上下文。
+    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root)
     {
         var analysisContext = BuildAnalysisContext(
           source,
@@ -80,39 +86,29 @@ public sealed class DeletionApplicationService
         return RunAnalysis(analysisContext);
     }
 
-    private PrototypeAnalysisResult RunAnalysis(DeletionAnalysisContext analysisContext)
+    private PrototypeAnalysisResult RunAnalysis(AnalysisContext analysisContext)
     {
-        var totalStopwatch = Stopwatch.StartNew();
-        var markStopwatch = Stopwatch.StartNew();
         var seedMarks = _markingEngine.Run(analysisContext.RuleContext, analysisContext.Root, _markers);
-        markStopwatch.Stop();
 
-        var propagateStopwatch = Stopwatch.StartNew();
         var propagatedMarks = _propagationEngine.Run(
           analysisContext.RuleContext,
           seedMarks,
           _propagators);
-        propagateStopwatch.Stop();
 
-        var liftStopwatch = Stopwatch.StartNew();
         var liftedMarks = _markLiftingEngine.Run(
           analysisContext.RuleContext,
           seedMarks,
           propagatedMarks,
           _lifters);
-        liftStopwatch.Stop();
 
-        var decideStopwatch = Stopwatch.StartNew();
         var decisions = _decisionEngine.Decide(
           analysisContext.RuleContext,
           seedMarks,
           propagatedMarks,
           liftedMarks,
           _proposers);
-        decideStopwatch.Stop();
 
         var filteredDecisions = FilterNestedDeleteDecisions(decisions);
-        var rewriteStopwatch = Stopwatch.StartNew();
         var rewriteResult = ShouldSkipRewrite(analysisContext.RuleContext)
           ? new PrototypeRewriteResult(
             null,
@@ -122,8 +118,6 @@ public sealed class DeletionApplicationService
             analysisContext.Root,
             analysisContext.SemanticModel,
             filteredDecisions);
-        rewriteStopwatch.Stop();
-        totalStopwatch.Stop();
 
         return new PrototypeAnalysisResult(
           seedMarks,
@@ -134,42 +128,27 @@ public sealed class DeletionApplicationService
           rewriteResult.RewrittenSource,
           rewriteResult.Diff,
           null,
-          Timings: new AnalysisPhaseTimings(
-            analysisContext.PreparationMilliseconds,
-            analysisContext.CpgBuildMilliseconds,
-            markStopwatch.ElapsedMilliseconds,
-            propagateStopwatch.ElapsedMilliseconds,
-            liftStopwatch.ElapsedMilliseconds,
-            decideStopwatch.ElapsedMilliseconds,
-            rewriteStopwatch.ElapsedMilliseconds,
-            totalStopwatch.ElapsedMilliseconds),
-          CpgBuildTelemetry: analysisContext.CpgBuildTelemetry,
-          MarkAnalysisTelemetry: analysisContext.RuleContext.MarkAnalysisTelemetry,
-          StructureViewCacheTelemetry: analysisContext.RuleContext.StructureViewCacheTelemetry,
           RewritePlans: rewriteResult.Operations is { Count: > 0 }
             ? new[] { new PrototypeFileRewritePlan(analysisContext.Root.SyntaxTree.FilePath, rewriteResult.Operations) }
             : Array.Empty<PrototypeFileRewritePlan>());
     }
 
-    private DeletionAnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime)
+    private AnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
     {
-        var preparationStopwatch = Stopwatch.StartNew();
         var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
         var root = tree.GetRoot();
         var compilation = RoslynCompilationFactory.CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        preparationStopwatch.Stop();
         return BuildAnalysisContext(
           source,
           filePath,
           options,
           runtime,
           semanticModel,
-          root,
-          preparationStopwatch.ElapsedMilliseconds);
+          root);
     }
 
-    private DeletionAnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root, long preparationMilliseconds = 0)
+    private AnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root)
     {
         if (runtime.CurrentCpgBuildAdmissionLease is not null)
         {
@@ -178,9 +157,8 @@ public sealed class DeletionApplicationService
               filePath,
               options,
               runtime,
-              semanticModel,
-              root,
-              preparationMilliseconds);
+               semanticModel,
+               root);
         }
 
         using var lease = runtime.CpgBuildAdmissionBudget
@@ -197,44 +175,30 @@ public sealed class DeletionApplicationService
           options,
           runtime,
           semanticModel,
-          root,
-          preparationMilliseconds);
+          root);
     }
 
-    private DeletionAnalysisContext BuildAnalysisContextCore(string source, string filePath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root, long preparationMilliseconds)
+    private AnalysisContext BuildAnalysisContextCore(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root)
     {
-        var cpgBuildStopwatch = Stopwatch.StartNew();
-        var builderOptions = RoslynCpgBuilderOptions.CreateDefault() with
+        var builderOptions = NLCPGBuilderOptions.CreateDefault() with
         {
             MaxDegreeOfParallelism = runtime.CurrentCpgBuildAdmissionLease!.GrantedDegree,
-            AdmissionTelemetry = new CpgBuildAdmissionTelemetry(
-            runtime.CurrentCpgBuildAdmissionLease.RequestedDegree,
-            runtime.CurrentCpgBuildAdmissionLease.GrantedDegree,
-            runtime.CurrentCpgBuildAdmissionLease.WaitMilliseconds,
-            runtime.CurrentCpgBuildAdmissionLease.ActiveLeaseCountAtGrant,
-            runtime.CurrentCpgBuildAdmissionLease.GrantedDegreeHighWaterMark,
-            runtime.CurrentCpgBuildAdmissionLease.Policy,
-            runtime.CurrentCpgBuildAdmissionLease.MaxDegreePerLease),
-            RequestedCapabilities = new DeletionRulePipeline(_markers, _propagators, _lifters, _proposers)
+            RequestedCapabilities = new RulePipeline(_markers, _propagators, _lifters, _proposers)
             .GetRequiredCapabilities()
         };
-        var builder = new RoslynCpgBuilder(builderOptions);
+        var builder = new NLCPGBuilder(builderOptions);
         var graph = builder.BuildFromSemanticModel(
           semanticModel,
           root,
           source,
           filePath);
-        cpgBuildStopwatch.Stop();
         var cpgAnalysisContext = new CpgAnalysisContext(graph, semanticModel, root);
         var ruleContext = new RuleContext(cpgAnalysisContext, options, runtime: runtime);
 
-        return new DeletionAnalysisContext(
+        return new AnalysisContext(
           root,
           semanticModel,
-          ruleContext,
-          preparationMilliseconds,
-          cpgBuildStopwatch.ElapsedMilliseconds,
-          builder.LastBuildTelemetry);
+          ruleContext);
     }
 
     private static IReadOnlyList<RuleDecision> FilterNestedDeleteDecisions(IReadOnlyList<RuleDecision> decisions)
@@ -284,11 +248,8 @@ public sealed class DeletionApplicationService
           decision.FinalNode.Span.Contains(deleteDecision.FinalNode.Span));
     }
 
-    private sealed record DeletionAnalysisContext(
+    private sealed record AnalysisContext(
       SyntaxNode Root,
       SemanticModel SemanticModel,
-      RuleContext RuleContext,
-      long PreparationMilliseconds,
-      long CpgBuildMilliseconds,
-      RoslynCpgBuildTelemetry CpgBuildTelemetry);
+      RuleContext RuleContext);
 }

@@ -6,9 +6,7 @@ using NLISSN.Core.Marking;
 
 namespace NLISSN.Rules;
 
-/// <summary>
 /// 命中只被同一类型内部调用的 public 方法，供后续改成 private。
-/// </summary>
 public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
 {
     public override string CapabilityId { get; } = "mark.privatize-internal-only-public-method";
@@ -22,6 +20,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
       new[] { SyntaxKind.MethodDeclaration };
 
+    // 仅标记只在声明类型内部被调用、且没有外部引用的 public 方法。
     public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
     {
         if (!IsEnabled(context))

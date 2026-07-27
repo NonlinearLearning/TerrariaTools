@@ -4,14 +4,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 查找删除规则可直接标记的最小原子表达式单元。
-/// </summary>
 public sealed class AtomicExpressionAnalyzer
 {
-    /// <summary>
-    /// 从给定根节点中筛出所有不再向上折叠的原子表达式。
-    /// </summary>
+    // 扫描根节点下所有可单独判断的原子表达式，并剔除被更大原子宿主覆盖的子项。
     public IReadOnlyList<ExpressionSyntax> Analyze(SyntaxNode root)
     {
         return root
@@ -24,9 +20,7 @@ public sealed class AtomicExpressionAnalyzer
           .ToList();
     }
 
-    /// <summary>
-    /// 判断一个表达式节点是否属于当前允许直接标记的原子集合。
-    /// </summary>
+    // 判断一个表达式是否属于删除规则允许直接标记的原子表达式种类。
     public bool IsAtomicExpression(ExpressionSyntax expression)
     {
         return expression switch
@@ -46,9 +40,6 @@ public sealed class AtomicExpressionAnalyzer
         };
     }
 
-    /// <summary>
-    /// 检查表达式是否已经处在更大的原子访问或调用结构内部。
-    /// </summary>
     private static bool HasAtomicExpressionAncestor(ExpressionSyntax expression)
     {
         for (var current = expression.Parent as ExpressionSyntax;

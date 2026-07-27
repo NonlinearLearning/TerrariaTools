@@ -3,9 +3,10 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
-
+//傻逼helper怎么还在
 public static class RuleSyntaxAnalysisHelpers
 {
+    // 枚举当前根节点里既是原子候选又能通过结构分析的允许表达式。
     public static IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(SyntaxNode root, IReadOnlyCollection<SyntaxKind> allowedKinds, CpgAnalysisContext context, IReadOnlyList<ExpressionSyntax>? atomicCandidates = null)
     {
         foreach (var expression in atomicCandidates ?? new AtomicExpressionAnalyzer().Analyze(root))
@@ -24,6 +25,7 @@ public static class RuleSyntaxAnalysisHelpers
         }
     }
 
+    // 枚举当前根节点下经定义结构分析确认的方法声明。
     public static IEnumerable<MethodDeclarationSyntax> EnumerateMethodDeclarations(SyntaxNode root, CpgAnalysisContext context)
     {
         foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
@@ -36,6 +38,7 @@ public static class RuleSyntaxAnalysisHelpers
         }
     }
 
+    // 沿表达式父链查找同一逻辑链上的最外层逻辑宿主。
     public static ExpressionSyntax? FindLogicalHost(ExpressionSyntax expression, CpgAnalysisContext context)
     {
         ExpressionSyntax? logicalHost = null;
@@ -65,6 +68,7 @@ public static class RuleSyntaxAnalysisHelpers
         return logicalHost;
     }
 
+    // 按结构优先级向上寻找最贴近当前表达式的语句或控制结构宿主。
     public static SyntaxNode? FindStructuralHost(ExpressionSyntax expression, CpgAnalysisContext context)
     {
         foreach (var ancestor in expression.Ancestors())
@@ -83,6 +87,7 @@ public static class RuleSyntaxAnalysisHelpers
         return expression.FirstAncestorOrSelf<StatementSyntax>();
     }
 
+    // 向上定位当前表达式所在的赋值或定义宿主，供传播阶段收口局部结构。
     public static SyntaxNode? FindAssignmentOrDefinitionHost(ExpressionSyntax expression, CpgAnalysisContext context)
     {
         _ = context;

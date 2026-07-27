@@ -15,7 +15,7 @@ directory, with explicit caller-supplied paths still taking precedence.
 ### Task 1: Lock persistence-report path behavior
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.PerformanceTests/Cpg/CpgPersistenceBenchmarkConfigurationTests.cs`
+- Modify: `tests/Roslyn Prototype.PerformanceTests/Cpg/CpgPersistenceBenchmarkConfigurationTests.cs`
 - Modify: `tools/CpgPersistenceBenchmark/BenchmarkConfiguration.cs`
 - Modify: `tools/CpgPersistenceBenchmark/Program.cs`
 

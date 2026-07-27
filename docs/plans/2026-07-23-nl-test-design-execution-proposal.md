@@ -6,7 +6,7 @@
 
 **Architecture:** Complete the existing test-project split before introducing new test libraries. Add one canonical equivalence surface, use it for finite DOP and persistence matrices, then add constrained random generation and failure injection. Snapshot, benchmark, concurrency, and mutation tools stay isolated so they cannot redefine semantic correctness or slow normal test runs.
 
-**Tech Stack:** .NET 10, C# 13, xUnit, `Xunit.Combinatorial`, FsCheck, Verify, BenchmarkDotNet, Microsoft Coyote, Stryker.NET, existing Roslyn CPG and persistence APIs.
+**Tech Stack:** .NET 10, C# 13, xUnit, `Xunit.Combinatorial`, FsCheck, Verify, BenchmarkDotNet, Microsoft Coyote, Stryker.NET, existing NLCPG and persistence APIs.
 
 ---
 
@@ -17,7 +17,7 @@
 - Do not add a package while the test-project move is still changing test count or discovery.
 - `xUnit` remains the only primary runner. This proposal does not migrate to NUnit or TUnit.
 - Terraria runs remain outside `dotnet test`, CI pull requests, and routine local verification.
-- Every new test must preserve the input/oracle split: `RoslynDeletionPrototype.Testing` owns inputs and test infrastructure; the owning test project owns expected graph, rule, rewrite, and performance outcomes.
+- Every new test must preserve the input/oracle split: `Roslyn Prototype.Testing` owns inputs and test infrastructure; the owning test project owns expected graph, rule, rewrite, and performance outcomes.
 
 ## Phase 0: establish the split baseline
 
@@ -25,10 +25,10 @@
 
 **Files:**
 - Execute: `docs/plans/2026-07-19-multi-project-test-framework-execution-plan.md`
-- Verify: `tests/RoslynDeletionPrototype.UnitTests/`
-- Verify: `tests/RoslynDeletionPrototype.ContractTests/`
-- Verify: `tests/RoslynDeletionPrototype.HostTests/`
-- Verify: `tests/RoslynDeletionPrototype.PerformanceTests/`
+- Verify: `tests/Roslyn Prototype.UnitTests/`
+- Verify: `tests/Roslyn Prototype.ContractTests/`
+- Verify: `tests/Roslyn Prototype.HostTests/`
+- Verify: `tests/Roslyn Prototype.PerformanceTests/`
 - Verify: `scripts/Run-TestTiers.ps1`
 
 **Step 1: Freeze the current monolithic result.**
@@ -36,8 +36,8 @@
 Run:
 
 ```powershell
-dotnet build .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --logger "trx;LogFileName=pre-split-baseline.trx"
+dotnet build .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --logger "trx;LogFileName=pre-split-baseline.trx"
 ```
 
 Expected: record the exact count, failures, warnings, elapsed time, SDK, and git SHA. Stop on a new failure.
@@ -67,11 +67,11 @@ Do not combine project moves with test-framework packages or changed semantic as
 ### Task 2: Add a canonical equivalence comparator
 
 **Files:**
-- Create: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/CpgExecutionSnapshot.cs`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/CpgExecutionSnapshotComparer.cs`
-- Test: `tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgExecutionSnapshotComparerTests.cs`
-- Modify: `tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
-- Modify: `tests/RoslynDeletionPrototype.ContractTests/Application/GraphAnalyzerTests.cs`
+- Create: `tests/Roslyn Prototype.Testing/TestInfrastructure/CpgExecutionSnapshot.cs`
+- Create: `tests/Roslyn Prototype.Testing/TestInfrastructure/CpgExecutionSnapshotComparer.cs`
+- Test: `tests/Roslyn Prototype.ContractTests/Cpg/CpgExecutionSnapshotComparerTests.cs`
+- Modify: `tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- Modify: `tests/Roslyn Prototype.ContractTests/Application/GraphAnalyzerTests.cs`
 
 **Step 1: Write failing comparer tests.**
 
@@ -82,7 +82,7 @@ Create snapshots that differ by exactly one contract at a time: graph edge, dire
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~CpgExecutionSnapshotComparerTests
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~CpgExecutionSnapshotComparerTests
 ```
 
 Expected: fail because the comparer types do not exist.
@@ -100,7 +100,7 @@ Keep fixture-specific exact edge assertions. The common comparer supplements the
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgExecutionSnapshotComparerTests|FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~GraphAnalyzerTests"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgExecutionSnapshotComparerTests|FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~GraphAnalyzerTests"
 pwsh -File .\scripts\Run-TestTiers.ps1 -Fast
 ```
 
@@ -113,13 +113,13 @@ Expected: comparer failures identify one stable semantic field; existing focused
 ### Task 3: Introduce the DOP and persistence matrix
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.ContractTests/RoslynDeletionPrototype.ContractTests.csproj`
-- Create: `tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgExecutionMatrixTests.cs`
-- Modify: `tests/RoslynDeletionPrototype.Testing/TestCodeSet/Cpg/`
+- Modify: `tests/Roslyn Prototype.ContractTests/Roslyn Prototype.ContractTests.csproj`
+- Create: `tests/Roslyn Prototype.ContractTests/Cpg/CpgExecutionMatrixTests.cs`
+- Modify: `tests/Roslyn Prototype.Testing/TestCodeSet/Cpg/`
 
 **Step 1: Add one package.**
 
-Add `Xunit.Combinatorial` only to `RoslynDeletionPrototype.ContractTests`. Pin its version with the project's package-version convention.
+Add `Xunit.Combinatorial` only to `Roslyn Prototype.ContractTests`. Pin its version with the project's package-version convention.
 
 **Step 2: Write a failing matrix test.**
 
@@ -130,7 +130,7 @@ Use a small named CPG fixture with control flow, repeated references, and a call
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~CpgExecutionMatrixTests --logger "console;verbosity=detailed"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~CpgExecutionMatrixTests --logger "console;verbosity=detailed"
 ```
 
 Expected: the initial test fails until it calls the canonical comparator for every selected row.
@@ -156,10 +156,10 @@ Expected: every selected row is graph, rule, decision, and rewrite equivalent to
 ### Task 4: Add reproducible FsCheck fixture generation
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.ContractTests/RoslynDeletionPrototype.ContractTests.csproj`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestCodeSet/Cpg/GeneratedCSharpFixture.cs`
-- Create: `tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgPropertyEquivalenceTests.cs`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/FailureArtifactWriter.cs`
+- Modify: `tests/Roslyn Prototype.ContractTests/Roslyn Prototype.ContractTests.csproj`
+- Create: `tests/Roslyn Prototype.Testing/TestCodeSet/Cpg/GeneratedCSharpFixture.cs`
+- Create: `tests/Roslyn Prototype.ContractTests/Cpg/CpgPropertyEquivalenceTests.cs`
+- Create: `tests/Roslyn Prototype.Testing/TestInfrastructure/FailureArtifactWriter.cs`
 
 **Step 1: Add `FsCheck.Xunit`.**
 
@@ -178,7 +178,7 @@ On failure, write the effective seed, all input files, options, canonical snapsh
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~CpgPropertyEquivalenceTests
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~CpgPropertyEquivalenceTests
 ```
 
 Expected: a failing seed leaves a self-contained replay artifact; passing cases compare serial, selected DOP, and persistence recovery.
@@ -190,10 +190,10 @@ Expected: a failing seed leaves a self-contained replay artifact; passing cases 
 ### Task 5: Add `CpgPersistenceTestKit`
 
 **Files:**
-- Create: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/CpgPersistenceTestKit.cs`
-- Create: `tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgPersistenceStateTests.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/CpgShardBuildSession.cs`
-- Modify: `src/MinimalRoslynCpg/Persistence/`
+- Create: `tests/Roslyn Prototype.Testing/TestInfrastructure/CpgPersistenceTestKit.cs`
+- Create: `tests/Roslyn Prototype.ContractTests/Cpg/CpgPersistenceStateTests.cs`
+- Modify: `src/NLCPG/Builder/CpgShardBuildSession.cs`
+- Modify: `src/NLCPG/Persistence/`
 
 **Step 1: Write failing state tests.**
 
@@ -212,7 +212,7 @@ The test kit controls when a write starts, fails, completes, or observes cancell
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgPersistenceStateTests|FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~SqliteCpgShardCatalogTests"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgPersistenceStateTests|FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~SqliteCpgShardCatalogTests"
 ```
 
 Expected: no failed or cancelled build appears as completed, and every temporary root can be reopened after test disposal.
@@ -224,10 +224,10 @@ Expected: no failed or cancelled build appears as completed, and every temporary
 ### Task 6: Add canonical snapshots with Verify
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.ContractTests/RoslynDeletionPrototype.ContractTests.csproj`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/CpgSnapshotNormalizer.cs`
-- Create: `tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgReviewedSnapshotTests.cs`
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Rewrite/RewritePlanPersistenceTests.cs`
+- Modify: `tests/Roslyn Prototype.ContractTests/Roslyn Prototype.ContractTests.csproj`
+- Create: `tests/Roslyn Prototype.Testing/TestInfrastructure/CpgSnapshotNormalizer.cs`
+- Create: `tests/Roslyn Prototype.ContractTests/Cpg/CpgReviewedSnapshotTests.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Rewrite/RewritePlanPersistenceTests.cs`
 
 **Step 1: Write normalizer tests.**
 
@@ -274,7 +274,7 @@ Expected: a BenchmarkDotNet report with environment data; no comparison against 
 ### Task 8: Evaluate Coyote and Stryker.NET in isolated scopes
 
 **Files:**
-- Create: `tests/RoslynDeletionPrototype.ContractTests/Concurrency/CpgSchedulerCoyoteTests.cs`
+- Create: `tests/Roslyn Prototype.ContractTests/Concurrency/CpgSchedulerCoyoteTests.cs`
 - Create: `scripts/Run-MutationTests.ps1`
 - Modify: `docs/developer-guide.md`
 

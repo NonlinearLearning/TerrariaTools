@@ -5,12 +5,13 @@ namespace NLISSN.Core.Decision;
 
 public static class DeleteDecisionFactory
 {
+    // 为一个锚点语法节点创建删除决策单元，并在需要时附带来源片段关系。
     public static DecisionUnit CreateDeleteDecision(string ruleId, SyntaxNode anchorNode, string reason, SyntaxNode? sourceNode = null, string? conflictKey = null)
     {
         var anchorFragment = CreateFragment(anchorNode, "anchor", DecisionActionKind.Delete);
-        var fragments = new List<MinimalRoslynCpg.Model.RoslynCpgNode> { anchorFragment };
-        var relations = new List<MinimalRoslynCpg.Model.RoslynCpgEdge>();
-        var bindings = new List<(MinimalRoslynCpg.Model.RoslynCpgNode Fragment, SyntaxNode Node)>
+        var fragments = new List<NLCPG.Model.NLCPGNode> { anchorFragment };
+        var relations = new List<NLCPG.Model.NLCPGEdge>();
+        var bindings = new List<(NLCPG.Model.NLCPGNode Fragment, SyntaxNode Node)>
         {
           (anchorFragment, anchorNode)
         };
@@ -20,7 +21,7 @@ public static class DeleteDecisionFactory
             var sourceFragment = CreateFragment(sourceNode, "source");
             fragments.Add(sourceFragment);
             relations.Add(DecisionCpgFactory.CreateRelation(
-              MinimalRoslynCpg.Contracts.RoslynCpgDecisionRelationKind.DerivedFrom,
+              NLCPG.Contracts.NLCPGDecisionRelationKind.DerivedFrom,
               sourceFragment,
               anchorFragment));
             bindings.Add((sourceFragment, sourceNode));
@@ -50,7 +51,7 @@ public static class DeleteDecisionFactory
           reason: reason);
     }
 
-    private static MinimalRoslynCpg.Model.RoslynCpgNode CreateFragment(SyntaxNode node, string role, DecisionActionKind? localAction = null)
+    private static NLCPG.Model.NLCPGNode CreateFragment(SyntaxNode node, string role, DecisionActionKind? localAction = null)
     {
         return DecisionCpgFactory.CreateFragment(
           $"frag:{DecisionCpgFactory.BuildNodeKey(node)}",

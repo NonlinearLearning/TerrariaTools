@@ -1,4 +1,4 @@
-using MinimalRoslynCpg.Persistence;
+using NLCPG.Persistence;
 using Xunit;
 
 namespace RoslynPrototype.Tests;

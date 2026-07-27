@@ -6,6 +6,8 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 把 delete-class 对象创建命中收束到局部声明点，
+/// 让后续局部符号引用传播只依赖稳定 declarator，而不是具体 new 表达式形状。
 public sealed class ClassObjectCreationDeclarationPropagationRule : RuleDefinitionPropagate
 {
     public override string CapabilityId { get; } = "propagate.type.object-creation-declaration";
@@ -22,6 +24,7 @@ public sealed class ClassObjectCreationDeclarationPropagationRule : RuleDefiniti
         SyntaxKind.VariableDeclarator
       };
 
+    // 把对象创建命中收束到局部 declarator，后续符号传播只依赖稳定的定义点。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         _ = context;

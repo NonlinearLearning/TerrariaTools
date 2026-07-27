@@ -22,8 +22,8 @@
 
 ## Baseline Evidence
 
-- In [CpgShardStore.cs](../../src/MinimalRoslynCpg/Persistence/CpgShardStore.cs), Strict currently calls `Validate(payload, ...)` on the in-memory payload after writing the file. It does not read the temporary shard back.
-- `Deserialize(...)` checks each local edge using two `nodes.Any(...)` scans, producing O(E * N) work at [CpgShardStore.cs](../../src/MinimalRoslynCpg/Persistence/CpgShardStore.cs:287).
+- In [CpgShardStore.cs](../../src/NLCPG/Persistence/CpgShardStore.cs), Strict currently calls `Validate(payload, ...)` on the in-memory payload after writing the file. It does not read the temporary shard back.
+- `Deserialize(...)` checks each local edge using two `nodes.Any(...)` scans, producing O(E * N) work at [CpgShardStore.cs](../../src/NLCPG/Persistence/CpgShardStore.cs:287).
 - The 96-method Strict DOP 12 benchmark reported validation as the dominant phase: six-sample medians were `4409 ms` with one file writer, `5704 ms` with two, `5691 ms` with four, and `5352 ms` with six. Serialization and flush were negligible in that synthetic fixture.
 - Existing shard lookup keys include the whole-file source hash. A changed file therefore cannot reuse an unchanged method fragment through `TryAcquireAsync`; reuse needs a separate, narrower catalog key.
 
@@ -31,9 +31,9 @@
 
 **Files:**
 
-- Modify: `src/MinimalRoslynCpg/Persistence/CpgShardStore.cs`
-- Modify: `tests/RoslynDeletionPrototype.Tests/Cpg/CpgShardContractTests.cs`
-- Modify: `tests/RoslynDeletionPrototype.Tests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- Modify: `src/NLCPG/Persistence/CpgShardStore.cs`
+- Modify: `tests/Roslyn Prototype.Tests/Cpg/CpgShardContractTests.cs`
+- Modify: `tests/Roslyn Prototype.Tests/Cpg/CpgShardBuildCoordinatorTests.cs`
 
 **Step 1: Write failing Strict write-path tests**
 
@@ -61,7 +61,7 @@ Run:
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardContractTests|FullyQualifiedName~CpgShardBuildCoordinatorTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardContractTests|FullyQualifiedName~CpgShardBuildCoordinatorTests"
 ```
 
 Expected: the Strict mutation test fails because validation still consumes the original in-memory `payload`.
@@ -81,7 +81,7 @@ Run the command from Step 2. Expected: all shard contract and coordinator tests 
 **Step 5: Commit**
 
 ```powershell
-git add src/MinimalRoslynCpg/Persistence/CpgShardStore.cs tests/RoslynDeletionPrototype.Tests/Cpg/CpgShardContractTests.cs tests/RoslynDeletionPrototype.Tests/Cpg/CpgShardBuildCoordinatorTests.cs
+git add src/NLCPG/Persistence/CpgShardStore.cs tests/Roslyn Prototype.Tests/Cpg/CpgShardContractTests.cs tests/Roslyn Prototype.Tests/Cpg/CpgShardBuildCoordinatorTests.cs
 git commit -m "Verify Strict shards from flushed temporary bytes"
 ```
 
@@ -89,8 +89,8 @@ git commit -m "Verify Strict shards from flushed temporary bytes"
 
 **Files:**
 
-- Modify: `src/MinimalRoslynCpg/Persistence/CpgShardStore.cs`
-- Test: `tests/RoslynDeletionPrototype.Tests/Cpg/CpgShardContractTests.cs`
+- Modify: `src/NLCPG/Persistence/CpgShardStore.cs`
+- Test: `tests/Roslyn Prototype.Tests/Cpg/CpgShardContractTests.cs`
 
 **Step 1: Write failing structural-validator tests**
 
@@ -101,7 +101,7 @@ Create malformed binary fixtures from an otherwise valid serialized shard. Cover
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardContractTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardContractTests"
 ```
 
 Expected: new validator-specific tests fail because no non-materializing validator exists.
@@ -120,7 +120,7 @@ Expected: new validator-specific tests fail because no non-materializing validat
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShard|FullyQualifiedName~SqliteCpgShardCatalog|FullyQualifiedName~RoslynCpgSliceQuery|FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~RoslynCpgNodeIdContractTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShard|FullyQualifiedName~SqliteCpgShardCatalog|FullyQualifiedName~NLCPGSliceQuery|FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~NLCPGNodeIdContractTests"
 ```
 
 Expected: no malformed shard is accepted; DOP and shard-backed query regressions remain green.
@@ -128,7 +128,7 @@ Expected: no malformed shard is accepted; DOP and shard-backed query regressions
 **Step 5: Commit**
 
 ```powershell
-git add src/MinimalRoslynCpg/Persistence/CpgShardStore.cs tests/RoslynDeletionPrototype.Tests/Cpg/CpgShardContractTests.cs
+git add src/NLCPG/Persistence/CpgShardStore.cs tests/Roslyn Prototype.Tests/Cpg/CpgShardContractTests.cs
 git commit -m "Validate Strict shard structure without materializing graphs"
 ```
 
@@ -136,11 +136,11 @@ git commit -m "Validate Strict shard structure without materializing graphs"
 
 **Files:**
 
-- Modify: `src/MinimalRoslynCpg/Persistence/CpgShardContracts.cs`
-- Modify: `src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardSchema.cs`
-- Modify: `src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- Modify: `src/MinimalRoslynCpg/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
-- Test: `tests/RoslynDeletionPrototype.Tests/Cpg/SqliteCpgShardCatalogTests.cs`
+- Modify: `src/NLCPG/Persistence/CpgShardContracts.cs`
+- Modify: `src/NLCPG/Persistence/Sqlite/SqliteCpgShardSchema.cs`
+- Modify: `src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- Modify: `src/NLCPG/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
+- Test: `tests/Roslyn Prototype.Tests/Cpg/SqliteCpgShardCatalogTests.cs`
 
 **Step 1: Write failing catalog tests**
 
@@ -151,7 +151,7 @@ Define an internal `CpgReusableFragmentKey` containing project id, relative path
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~SqliteCpgShardCatalogTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~SqliteCpgShardCatalogTests"
 ```
 
 Expected: compile or assertion failure because reusable fragment metadata and lookup do not exist.
@@ -170,7 +170,7 @@ Run the command from Step 2. Expected: deterministic compatible lookup and no le
 **Step 5: Commit**
 
 ```powershell
-git add src/MinimalRoslynCpg/Persistence/CpgShardContracts.cs src/MinimalRoslynCpg/Persistence/Sqlite tests/RoslynDeletionPrototype.Tests/Cpg/SqliteCpgShardCatalogTests.cs
+git add src/NLCPG/Persistence/CpgShardContracts.cs src/NLCPG/Persistence/Sqlite tests/Roslyn Prototype.Tests/Cpg/SqliteCpgShardCatalogTests.cs
 git commit -m "Index completed CPG fragments for safe reuse"
 ```
 
@@ -178,11 +178,11 @@ git commit -m "Index completed CPG fragments for safe reuse"
 
 **Files:**
 
-- Modify: `src/MinimalRoslynCpg/Builder/CpgShardBuildCoordinator.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/CpgShardBuildSession.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/RoslynCpgBuilderOptions.cs`
-- Modify: `src/MinimalRoslynCpg/Persistence/CpgFrozenShardExporter.cs` only if it must expose the NodeId-compatibility fingerprint
-- Test: `tests/RoslynDeletionPrototype.Tests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- Modify: `src/NLCPG/Builder/CpgShardBuildCoordinator.cs`
+- Modify: `src/NLCPG/Builder/CpgShardBuildSession.cs`
+- Modify: `src/NLCPG/Builder/NLCPGBuilderOptions.cs`
+- Modify: `src/NLCPG/Persistence/CpgFrozenShardExporter.cs` only if it must expose the NodeId-compatibility fingerprint
+- Test: `tests/Roslyn Prototype.Tests/Cpg/CpgShardBuildCoordinatorTests.cs`
 
 **Step 1: Write failing changed-file reuse tests**
 
@@ -200,7 +200,7 @@ Add negative cases for changed builder profile, schema version, local span, frag
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShardBuildCoordinatorTests"
 ```
 
 Expected: the build republishes every method shard because it has no reusable-fragment lookup path.
@@ -219,7 +219,7 @@ Expected: the build republishes every method shard because it has no reusable-fr
 Run:
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShard|FullyQualifiedName~SqliteCpgShardCatalog|FullyQualifiedName~RoslynCpgSliceQuery|FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~RoslynCpgNodeIdContractTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShard|FullyQualifiedName~SqliteCpgShardCatalog|FullyQualifiedName~NLCPGSliceQuery|FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~NLCPGNodeIdContractTests"
 ```
 
 Expected: unchanged methods avoid writes; all graph/query equivalence checks pass.
@@ -227,7 +227,7 @@ Expected: unchanged methods avoid writes; all graph/query equivalence checks pas
 **Step 5: Commit**
 
 ```powershell
-git add src/MinimalRoslynCpg/Builder src/MinimalRoslynCpg/Persistence tests/RoslynDeletionPrototype.Tests/Cpg
+git add src/NLCPG/Builder src/NLCPG/Persistence tests/Roslyn Prototype.Tests/Cpg
 git commit -m "Reuse compatible completed CPG method shards"
 ```
 
@@ -262,8 +262,8 @@ Create a controlled two-run fixture from the same source tree: first build cold,
 Run:
 
 ```powershell
-dotnet build .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```
@@ -305,14 +305,9 @@ git commit -m "Measure Strict shard validation and reuse performance"
 - Compatible completed operation fragments are cataloged by project/path/schema/profile,
   span, fragment hash, and NodeId fingerprint. The streaming publisher stages a verified
   physical location on a reuse hit and rebuilds skeleton, boundary, and changed fragments.
-  The changed-later-method regression observes a reuse hit and graph-snapshot equivalence.
-- `CpgPersistenceTelemetry` and benchmark JSON include reuse hits, misses, rejections,
-  reused bytes, read-back, hash, and structural-validation timings. The Strict 96-method
-  DOP 12 smoke report is
-  `Build/cpg-persistence-benchmark-20260723-strict-validation-reuse-smoke.json`:
-  median wall time `3640 ms`, read-back `<1 ms`, SHA-256 `2 ms`, structural validation
-  `230 ms`, and flush `367 ms`. It creates a fresh store, so all reuse counters are zero
-  by design.
+- The changed-later-method regression keeps graph-snapshot equivalence as the reuse
+  acceptance signal. The Strict 96-method DOP 12 smoke report is
+  `Build/cpg-persistence-benchmark-20260723-strict-validation-reuse-smoke.json`.
 - The warmed repository fixture report is
   `Build/cpg-persistence-benchmark-20260723-repository-dataflow-pass-reuse.json`.
   It builds `DataFlowPass.cs`, changes only a late same-width string literal, and uses

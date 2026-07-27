@@ -7,8 +7,10 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Marking;
 
+/// 缓存同一分析内的语义绑定和目标匹配事实，保证原子标记规则使用一致证据。
 public static class DeleteSObjectMarkRuleHelpers
 {
+    // 在允许的原子表达式里筛出确实以目标为根、且拥有 CPG 绑定的最小 seed mark。
     public static IEnumerable<MarkRecord> BuildExpressionMarks(RuleContext context, SyntaxNode root, string ruleId, IReadOnlyCollection<SyntaxKind> allowedKinds)
     {
         var targetNames = ParseTargetNames(context);
@@ -50,6 +52,7 @@ public static class DeleteSObjectMarkRuleHelpers
         return FinalizeMarks(marks);
     }
 
+    // 把目标名称命中的变量定义点直接标记为 declarator，供局部定义传播复用。
     public static IEnumerable<MarkRecord> BuildDefinitionLeftValueMarks(RuleContext context, SyntaxNode root, string ruleId)
     {
         var targetNames = ParseTargetNames(context);

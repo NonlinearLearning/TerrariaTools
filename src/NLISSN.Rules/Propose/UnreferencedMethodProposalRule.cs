@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 仅为已证明无引用的方法生成声明删除决策。
 public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
 {
   public override string CapabilityId { get; } = "propose.unreferenced-method";
@@ -22,6 +23,7 @@ public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
   public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
     Array.Empty<SyntaxKind>();
 
+  // 为已证明无剩余引用的私有方法声明直接生成删除决策。
   public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
   {
     _ = context;

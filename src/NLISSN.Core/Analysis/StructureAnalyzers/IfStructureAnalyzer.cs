@@ -3,18 +3,14 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 区分头部 if 与 else-if 复用出来的 if 节点。
-/// </summary>
 public enum IfStructureVariant
 {
     HeadIf = 0,
     ElseIf = 1
 }
 
-/// <summary>
 /// 标记 if / else-if / else 链中某一段的结构角色。
-/// </summary>
 public enum IfSectionKind
 {
     If = 0,
@@ -22,18 +18,14 @@ public enum IfSectionKind
     Else = 2
 }
 
-/// <summary>
 /// 表示一个分支片段及其条件和语句体。
-/// </summary>
 public sealed record IfSection(
     IfSectionKind Kind,
     SyntaxNode Node,
     ExpressionSyntax? Condition,
     StatementSyntax Statement);
 
-/// <summary>
 /// 汇总锚点 `if` 及其直接相邻的尾段结构。
-/// </summary>
 public sealed record IfStructureAnalysis(
     IfStatementSyntax AnchorIf,
     IfStructureVariant AnchorVariant,
@@ -42,14 +34,10 @@ public sealed record IfStructureAnalysis(
     ElseClauseSyntax? ParentElseClause,
     IReadOnlyList<SyntaxNode> AffectedSyntaxTree);
 
-/// <summary>
 /// 分析 if / else-if / else 链的局部结构。
-/// </summary>
 public sealed class IfStructureAnalyzer
 {
-    /// <summary>
-    /// 返回锚点 `if` 分支及其可直接到达的尾段。
-    /// </summary>
+    // 提取 if 或 else-if 片段的条件、语句体和直接尾段结构。
     public IfStructureAnalysis Analyze(IfStatementSyntax root, CpgAnalysisContext context)
     {
         _ = context;
@@ -95,9 +83,7 @@ public sealed class IfStructureAnalyzer
                 nodes));
     }
 
-    /// <summary>
-    /// 找到仍覆盖目标表达式跨度的最窄 if 条件。
-    /// </summary>
+    // 从当前表达式向上定位包住它的最小 if 条件结构。
     public bool TryFindContainingIf(ExpressionSyntax expression, CpgAnalysisContext context, out IfStructureAnalysis? analysis)
     {
         analysis = expression.AncestorsAndSelf()

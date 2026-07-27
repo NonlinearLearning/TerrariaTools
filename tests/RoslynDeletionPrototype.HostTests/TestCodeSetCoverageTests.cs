@@ -1,12 +1,11 @@
 using System.Reflection;
-using MinimalRoslynCpg.Builder;
+using NLCPG.Builder;
 using NLISSN.Application;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Common;
 using RoslynPrototype.Tests.TestCodeSet.Cpg;
 using RoslynPrototype.Tests.TestCodeSet.DeleteClass;
 using RoslynPrototype.Tests.TestCodeSet.Decision;
-using RoslynPrototype.Tests.TestCodeSet.Logging;
 using RoslynPrototype.Tests.TestCodeSet.Performance;
 using RoslynPrototype.Tests.TestCodeSet.Pipeline;
 using RoslynPrototype.Tests.TestCodeSet.Propagation;
@@ -32,8 +31,8 @@ public sealed class TestCodeSetCoverageTests
   [MemberData(nameof(AllSourceCases))]
   public void Analyze_AllTestCodeSetSources_BuildsGraphAndRunsApplicationPipeline(TestSourceCase testCase)
   {
-    var graph = new RoslynCpgBuilder().BuildFromSource(testCase.Source, testCase.FilePath);
-    var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+    var graph = new NLCPGBuilder().BuildFromSource(testCase.Source, testCase.FilePath);
+    var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
     var result = application.Analyze(testCase.Source, testCase.FilePath, testCase.Options);
 
@@ -60,7 +59,6 @@ public sealed class TestCodeSetCoverageTests
     yield return typeof(DecisionComplexSources);
     yield return typeof(ReachabilitySources);
     yield return typeof(RewriteSources);
-    yield return typeof(LoggingSources);
     yield return typeof(PerformanceSources);
     yield return typeof(PipelineSources);
     yield return typeof(PropagationSources);

@@ -3,14 +3,10 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 带初始化值的定义结构分析结果。
-/// </summary>
 public sealed record AssignmentDefinitionAnalysis(IReadOnlyList<SyntaxNode> AffectedSyntaxTree);
 
-/// <summary>
 /// 分析变量定义和赋值同时出现的结构，例如 <c>int value = seed + 1</c>。
-/// </summary>
 public sealed class AssignmentDefinitionAnalyzer
 {
     private sealed record AssignmentDefinitionStructure(
@@ -20,9 +16,7 @@ public sealed class AssignmentDefinitionAnalyzer
         SyntaxNode Initializer,
         SyntaxNode Value);
 
-    /// <summary>
-    /// 返回变量定义、类型、初始化子句和初始化表达式组成的受影响语法树。
-    /// </summary>
+    // 提取带初始化值定义的局部结构节点，供 mark 和 propagation 规则复用。
     public AssignmentDefinitionAnalysis Analyze(VariableDeclaratorSyntax root, CpgAnalysisContext context)
     {
         if (root.Initializer is null)

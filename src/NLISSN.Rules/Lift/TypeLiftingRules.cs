@@ -5,6 +5,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 删除类链路的表达式宿主提升规则。
 public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
 {
     public override string CapabilityId { get; } = "lift.type.expression-host";
@@ -18,6 +19,7 @@ public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
     public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
       DeleteSObjectLiftingCommon.AllowedLiftNodeKinds;
 
+    // 复用通用宿主提升逻辑，把删除类命中提升到最小可改写的表达式或语句宿主。
     public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         return DeleteSObjectHostLiftingHelpers.BuildHostLiftedMarks(
@@ -28,6 +30,7 @@ public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
     }
 }
 
+/// 删除类链路的 if 结构完成态提升规则。
 public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
 {
     public override string CapabilityId { get; } = "lift.type.if-structure";
@@ -41,6 +44,7 @@ public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
     public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
       DeleteSObjectLiftingCommon.AllowedLiftNodeKinds;
 
+    // 仅在 if 结构已形成完整删除条件时，补出后续提案需要的 lifted mark。
     public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         return DeleteSObjectIfStructureLiftingHelpers.BuildIfStructureLiftedMarks(
@@ -51,6 +55,7 @@ public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
     }
 }
 
+/// 删除类链路的 switch 结构完成态提升规则。
 public sealed class ClassSwitchStructureLiftingRule : RuleDefinitionLift
 {
     public override string CapabilityId { get; } = "lift.type.switch-structure";
@@ -64,6 +69,7 @@ public sealed class ClassSwitchStructureLiftingRule : RuleDefinitionLift
     public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
       DeleteSObjectLiftingCommon.AllowedLiftNodeKinds;
 
+    // 先收集宿主与 if 提升结果，再把它们继续折叠成可整体规约的 switch 结构标记。
     public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var hostLiftedMarks = DeleteSObjectHostLiftingHelpers.BuildHostLiftedMarks(

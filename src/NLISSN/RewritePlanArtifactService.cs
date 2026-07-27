@@ -6,9 +6,7 @@ using NLISSN.Core.Rewrite;
 
 namespace NLISSN;
 
-/// <summary>
-/// Writes and validates portable rewrite-plan artifacts.
-/// </summary>
+/// 写入并验证可移植的重写计划制品，确保其通过验证后才能回放。
 public sealed class RewritePlanArtifactService
 {
   internal const int SchemaVersion = 1;
@@ -20,6 +18,7 @@ public sealed class RewritePlanArtifactService
     PropertyNamingPolicy = JsonNamingPolicy.CamelCase
   };
 
+  // 把排序后的重写计划和清单原子写入制品目录，供后续安全回放使用。
   public void Write(string artifactRoot, string inputRoot, int sourceFileCount, IReadOnlyList<RewritePlanFile> plans)
   {
     if (Directory.Exists(artifactRoot) || File.Exists(artifactRoot))
@@ -55,6 +54,7 @@ public sealed class RewritePlanArtifactService
     File.Move(temporaryManifestPath, manifestPath);
   }
 
+  // 读取并校验制品目录，确保回放前的清单、哈希和源文件状态都一致。
   public (RewritePlanManifest Manifest, IReadOnlyList<RewritePlanFile> Plans) ReadAndValidate(string artifactRoot, string inputRoot)
   {
     var manifestPath = Path.Combine(artifactRoot, ManifestFileName);
@@ -87,6 +87,7 @@ public sealed class RewritePlanArtifactService
     return (manifest, plans);
   }
 
+  // 计算计划文件和源码快照使用的 SHA-256 十六进制摘要。
   public static string ComputeSha256(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 
   private static void ValidatePlan(string inputRoot, RewritePlanFile plan, ISet<string> seenPaths)

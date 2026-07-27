@@ -17,7 +17,7 @@ completeness while timing remains diagnostic output.
 ### Task 1: Add the failing multi-file directory measurement test
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.Tests/Performance/PerformanceOptimizationRegressionTests.cs`
+- Modify: `tests/Roslyn Prototype.Tests/Performance/PerformanceOptimizationRegressionTests.cs`
 
 1. Add a test that measures DOP 1 and DOP 16 runs with and without text logs.
 2. Assert the intended fixture size, equivalent analysis results, runtime completion, and
@@ -27,18 +27,18 @@ completeness while timing remains diagnostic output.
 ### Task 2: Implement the minimal test-only fixture and measurement helper
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.Tests/Performance/PerformanceOptimizationRegressionTests.cs`
+- Modify: `tests/Roslyn Prototype.Tests/Performance/PerformanceOptimizationRegressionTests.cs`
 
 1. Create the fixed 33-file source directory under the test temporary directory.
-2. Add a helper that invokes `DeletionCommandHost.AnalyzeFromArgsAsync`, times the call,
+2. Add a helper that invokes ` CommandHost.AnalyzeFromArgsAsync`, times the call,
    reads log lines, and returns immutable measurement data.
 3. Re-run the focused test and verify the expected assertions pass.
 
 ### Task 3: Verify the affected test surface
 
 **Files:**
-- Verify: `tests/RoslynDeletionPrototype.Tests/Performance/PerformanceOptimizationRegressionTests.cs`
-- Verify: `tests/RoslynDeletionPrototype.Tests/Logging/TextLogSystemTests.cs`
+- Verify: `tests/Roslyn Prototype.Tests/Performance/PerformanceOptimizationRegressionTests.cs`
+- Verify: `tests/Roslyn Prototype.Tests/Logging/TextLogSystemTests.cs`
 
 1. Build the test project without restore.
 2. Run the performance and text-log focused test groups.

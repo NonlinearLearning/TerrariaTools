@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 
-[assembly: InternalsVisibleTo("RoslynDeletionPrototype.Tests")]
-[assembly: InternalsVisibleTo("RoslynDeletionPrototype.UnitTests")]
-[assembly: InternalsVisibleTo("RoslynDeletionPrototype.ContractTests")]
-[assembly: InternalsVisibleTo("RoslynDeletionPrototype.HostTests")]
-[assembly: InternalsVisibleTo("RoslynDeletionPrototype.PerformanceTests")]
+[assembly: InternalsVisibleTo("Roslyn Prototype.Tests")]
+[assembly: InternalsVisibleTo("Roslyn Prototype.UnitTests")]
+[assembly: InternalsVisibleTo("Roslyn Prototype.ContractTests")]
+[assembly: InternalsVisibleTo("Roslyn Prototype.HostTests")]
+[assembly: InternalsVisibleTo("Roslyn Prototype.PerformanceTests")]

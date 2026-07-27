@@ -1,5 +1,5 @@
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Model;
+using NLCPG.Builder;
+using NLCPG.Model;
 using NLISSN.Application;
 using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
@@ -22,12 +22,12 @@ public sealed class CpgExecutionMatrixTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-execution-matrix", Guid.NewGuid().ToString("N"));
     try
     {
-      var serial = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var serial = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = 1,
       }).BuildFromSource(Source, "matrix.cs");
       var serialAnalysis = Analyze(1);
-      var options = RoslynCpgBuilderOptions.CreateDefault() with
+      var options = NLCPGBuilderOptions.CreateDefault() with
       {
         MaxDegreeOfParallelism = maxDegreeOfParallelism,
         Persistence = persistenceEnabled
@@ -39,7 +39,7 @@ public sealed class CpgExecutionMatrixTests
             MaxConcurrentShardFileWrites: maxConcurrentShardFileWrites)
           : null,
       };
-      var actual = new RoslynCpgBuilder(options).BuildFromSource(Source, "matrix.cs");
+      var actual = new NLCPGBuilder(options).BuildFromSource(Source, "matrix.cs");
       var actualAnalysis = Analyze(maxDegreeOfParallelism);
 
       try
@@ -82,17 +82,17 @@ public sealed class CpgExecutionMatrixTests
       });
   }
 
-  private static DeletionApplicationService CreateApplication()
+  private static  ApplicationService CreateApplication()
   {
     var ruleSets = DefaultRuleSets.Create();
-    return new DeletionApplicationService(
+    return new  ApplicationService(
       ruleSets.SelectMany(ruleSet => ruleSet.Markers).ToList(),
       ruleSets.SelectMany(ruleSet => ruleSet.Propagators).ToList(),
       ruleSets.SelectMany(ruleSet => ruleSet.Lifters).ToList(),
       ruleSets.SelectMany(ruleSet => ruleSet.Proposers).ToList());
   }
 
-  private static CpgExecutionSnapshot CreateSnapshot(RoslynCpgGraph graph, PrototypeAnalysisResult analysis)
+  private static CpgExecutionSnapshot CreateSnapshot(NLCPGGraph graph, PrototypeAnalysisResult analysis)
   {
     return new CpgExecutionSnapshot(
       graph.GraphSnapshotVersion,

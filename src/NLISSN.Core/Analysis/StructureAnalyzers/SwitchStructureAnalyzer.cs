@@ -3,23 +3,17 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// switch 结构分析结果。
-/// </summary>
 public sealed record SwitchStructureAnalysis(IReadOnlyList<SyntaxNode> AffectedSyntaxTree);
 
-/// <summary>
 /// 分析 <c>switch</c> 语句和 <c>switch</c> 表达式。
-/// </summary>
 public sealed class SwitchStructureAnalyzer
 {
     private sealed record SwitchStructure(
         SyntaxNode Root,
         IReadOnlyList<SyntaxNode> Members);
 
-    /// <summary>
-    /// 返回 switch 控制表达式、case/default 标签、语句块或表达式 arms。
-    /// </summary>
+    // 统一提取 switch 语句或表达式中的 governing 表达式和各个分支节点。
     public SwitchStructureAnalysis Analyze(SyntaxNode root, CpgAnalysisContext context)
     {
         _ = context;

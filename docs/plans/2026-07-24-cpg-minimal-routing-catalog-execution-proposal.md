@@ -77,9 +77,9 @@ boundary-node 条目，则直接返回其 boundary shards。这保持现有 `Fin
 
 **文件：**
 
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
 - 修改：`tools/CpgPersistenceBenchmark/Program.cs`
 
 **步骤：**
@@ -99,11 +99,11 @@ boundary-node 条目，则直接返回其 boundary shards。这保持现有 `Fin
 
 **文件：**
 
-- 新建：`src/MinimalRoslynCpg/Persistence/CpgBuildRoutingIndex.cs`
-- 新建：`src/MinimalRoslynCpg/Persistence/CpgBuildRoutingIndexWriter.cs`
-- 新建：`src/MinimalRoslynCpg/Persistence/CpgBuildRoutingIndexReader.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgShardContracts.cs`
-- 新建：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgBuildRoutingIndexTests.cs`
+- 新建：`src/NLCPG/Persistence/CpgBuildRoutingIndex.cs`
+- 新建：`src/NLCPG/Persistence/CpgBuildRoutingIndexWriter.cs`
+- 新建：`src/NLCPG/Persistence/CpgBuildRoutingIndexReader.cs`
+- 修改：`src/NLCPG/Persistence/CpgShardContracts.cs`
+- 新建：`tests/Roslyn Prototype.ContractTests/Cpg/CpgBuildRoutingIndexTests.cs`
 
 **步骤：**
 
@@ -124,12 +124,12 @@ boundary-node 条目，则直接返回其 boundary shards。这保持现有 `Fin
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Builder/CpgShardBuildSession.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardSchema.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`src/NLCPG/Builder/CpgShardBuildSession.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardSchema.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
 
 **步骤：**
 
@@ -152,11 +152,11 @@ boundary-node 条目，则直接返回其 boundary shards。这保持现有 `Fin
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 修改：`src/MinimalRoslynCpg/Analysis/CpgShardQueryResolver.cs`
-- 修改：`src/MinimalRoslynCpg/Analysis/RoslynCpgSliceQuery.cs`（仅在需要暴露 routing telemetry 时）
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/RoslynCpgSliceQueryTests.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 修改：`src/NLCPG/Analysis/CpgShardQueryResolver.cs`
+- 修改：`src/NLCPG/Analysis/NLCPGSliceQuery.cs`（仅在需要暴露 routing telemetry 时）
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/NLCPGSliceQueryTests.cs`
 
 **步骤：**
 
@@ -177,12 +177,12 @@ boundary-node 条目，则直接返回其 boundary shards。这保持现有 `Fin
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardSchema.cs`
-- 修改：`src/MinimalRoslynCpg/Builder/RoslynCpgBuilderOptions.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgCatalogBatchWriterTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardSchema.cs`
+- 修改：`src/NLCPG/Builder/NLCPGBuilderOptions.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/CpgCatalogBatchWriterTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
 
 **步骤：**
 
@@ -206,7 +206,7 @@ boundary-node 条目，则直接返回其 boundary shards。这保持现有 `Fin
 
 - 修改：`tools/CpgPersistenceBenchmark/Program.cs`
 - 修改：`scripts/Run-CpgPersistenceBenchmark.ps1`
-- 修改：`tests/RoslynDeletionPrototype.PerformanceTests/Cpg/CpgPersistenceBenchmarkConfigurationTests.cs`
+- 修改：`tests/Roslyn Prototype.PerformanceTests/Cpg/CpgPersistenceBenchmarkConfigurationTests.cs`
 - 修改：`progress.md`
 - 修改：`feature_list.json`
 - 修改：本提案
@@ -237,11 +237,11 @@ boundary-node 条目，则直接返回其 boundary shards。这保持现有 `Fin
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
 
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj `
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj `
   --no-restore -p:UseSharedCompilation=false `
-  --filter "FullyQualifiedName~CpgBuildRoutingIndexTests|FullyQualifiedName~SqliteCpgShardCatalogTests|FullyQualifiedName~RoslynCpgSliceQueryTests|FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~CpgCatalogBatchWriterTests"
+  --filter "FullyQualifiedName~CpgBuildRoutingIndexTests|FullyQualifiedName~SqliteCpgShardCatalogTests|FullyQualifiedName~NLCPGSliceQueryTests|FullyQualifiedName~CpgShardBuildCoordinatorTests|FullyQualifiedName~CpgCatalogBatchWriterTests"
 
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj `
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj `
   --no-restore -p:UseSharedCompilation=false
 
 pwsh -File .\scripts\Run-TestTiers.ps1 -Fast

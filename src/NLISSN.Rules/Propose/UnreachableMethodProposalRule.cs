@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 将不可达方法的阶段事实转换为方法声明删除决策。
 public sealed class UnreachableMethodProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.unreachable-method";
@@ -20,6 +21,7 @@ public sealed class UnreachableMethodProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
       Array.Empty<SyntaxKind>();
 
+    // 为标记阶段已经证明不可达的方法直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;

@@ -1,6 +1,6 @@
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
+using NLCPG.Builder;
+using NLCPG.Contracts;
+using NLCPG.Model;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -10,14 +10,14 @@ public sealed class DominancePassContractTests
   [Fact]
   public void BuildFromSource_DominanceBitSetOverlay_PreservesEdgeOrderAcrossRepeatedBuilds()
   {
-    Assert.NotNull(typeof(RoslynCpgBuilder).Assembly.GetType(
-      "MinimalRoslynCpg.Builder.RoslynCpgBuilder+BlockBitSet"));
+    Assert.NotNull(typeof(NLCPGBuilder).Assembly.GetType(
+      "NLCPG.Builder.NLCPGBuilder+BlockBitSet"));
     var expectedGraph = BuildGraph(maxDegreeOfParallelism: 1);
-    var expectedDominanceEdges = FormatOverlayEdges(expectedGraph, RoslynCpgEdgeKind.Dominates);
-    var expectedPostDominanceEdges = FormatOverlayEdges(expectedGraph, RoslynCpgEdgeKind.PostDominates);
+    var expectedDominanceEdges = FormatOverlayEdges(expectedGraph, NLCPGEdgeKind.Dominates);
+    var expectedPostDominanceEdges = FormatOverlayEdges(expectedGraph, NLCPGEdgeKind.PostDominates);
     var expectedControlDependenceEdges = FormatOverlayEdges(
       expectedGraph,
-      RoslynCpgEdgeKind.ControlDependence);
+      NLCPGEdgeKind.ControlDependence);
 
     Assert.NotEmpty(expectedDominanceEdges);
     Assert.NotEmpty(expectedPostDominanceEdges);
@@ -27,30 +27,30 @@ public sealed class DominancePassContractTests
     {
       var actualGraph = BuildGraph(maxDegreeOfParallelism);
 
-      Assert.Equal(expectedDominanceEdges, FormatOverlayEdges(actualGraph, RoslynCpgEdgeKind.Dominates));
+      Assert.Equal(expectedDominanceEdges, FormatOverlayEdges(actualGraph, NLCPGEdgeKind.Dominates));
       Assert.Equal(
         expectedPostDominanceEdges,
-        FormatOverlayEdges(actualGraph, RoslynCpgEdgeKind.PostDominates));
+        FormatOverlayEdges(actualGraph, NLCPGEdgeKind.PostDominates));
       Assert.Equal(
         expectedControlDependenceEdges,
-        FormatOverlayEdges(actualGraph, RoslynCpgEdgeKind.ControlDependence));
+        FormatOverlayEdges(actualGraph, NLCPGEdgeKind.ControlDependence));
     }
   }
 
-  private static RoslynCpgGraph BuildGraph(int maxDegreeOfParallelism)
+  private static NLCPGGraph BuildGraph(int maxDegreeOfParallelism)
   {
-    var options = new RoslynCpgBuilderOptions(
-      RoslynCpgBuilderMode.Partitioned,
+    var options = new NLCPGBuilderOptions(
+      NLCPGBuilderMode.Partitioned,
       MaxDegreeOfParallelism: maxDegreeOfParallelism,
       LargeFileLineThreshold: 1,
       LargeFileMethodThreshold: 1,
       LargeMethodLineSpanThreshold: 1,
       RequestedCapabilities: new[]
       {
-        RoslynCpgCapability.ControlDependence,
+        NLCPGCapability.ControlDependence,
       });
 
-    return new RoslynCpgBuilder(options).BuildFromSource(
+    return new NLCPGBuilder(options).BuildFromSource(
       """
       namespace Demo;
 
@@ -92,7 +92,7 @@ public sealed class DominancePassContractTests
       $"dominance-contract-dop-{maxDegreeOfParallelism}.cs");
   }
 
-  private static string[] FormatOverlayEdges(RoslynCpgGraph graph, RoslynCpgEdgeKind edgeKind)
+  private static string[] FormatOverlayEdges(NLCPGGraph graph, NLCPGEdgeKind edgeKind)
   {
     return graph.Edges
       .Where(edge => edge.Kind == edgeKind)
@@ -104,7 +104,7 @@ public sealed class DominancePassContractTests
       .ToArray();
   }
 
-  private static string DescribeNode(RoslynCpgGraph graph, RoslynCpgNode node)
+  private static string DescribeNode(NLCPGGraph graph, NLCPGNode node)
   {
     var displayText = graph.GetDisplayText(node).Replace("\r\n", "\n", StringComparison.Ordinal);
     return string.Join(
@@ -115,7 +115,7 @@ public sealed class DominancePassContractTests
       displayText);
   }
 
-  private static RoslynCpgNode GetRequiredNode(RoslynCpgGraph graph, NodeId nodeId)
+  private static NLCPGNode GetRequiredNode(NLCPGGraph graph, NodeId nodeId)
   {
     var node = graph.GetNode(nodeId);
     Assert.NotNull(node);

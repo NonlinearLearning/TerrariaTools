@@ -1,7 +1,7 @@
-using MinimalRoslynCpg.Persistence;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Model;
+using NLCPG.Persistence;
+using NLCPG.Contracts;
+using NLCPG.Builder;
+using NLCPG.Model;
 using System.Security.Cryptography;
 using System.Text;
 using Xunit;
@@ -20,11 +20,11 @@ public sealed class CpgShardContractTests
       var shard = CreateShard("source-a", "profile-a", "fragment-a");
 
       var result = await store.WriteAsync(shard, CancellationToken.None);
-      var recovered = await store.ReadAsync(result.Location, CancellationToken.None);
+      var recovered = await store.ReadAsync(result, CancellationToken.None);
 
-      Assert.True(File.Exists(result.Location.ShardPath));
-      Assert.Equal(CpgShardStatus.Complete, result.Location.Status);
-      Assert.Equal(6, ReadFormatVersion(result.Location.ShardPath));
+      Assert.True(File.Exists(result.ShardPath));
+      Assert.Equal(CpgShardStatus.Complete, result.Status);
+      Assert.Equal(6, ReadFormatVersion(result.ShardPath));
       Assert.NotNull(recovered.IncomingEdgeOffsets);
       Assert.NotNull(recovered.IncomingEdgeIndexes);
       Assert.Equal(recovered.Nodes.Count + 1, recovered.IncomingEdgeOffsets!.Count);
@@ -54,7 +54,7 @@ public sealed class CpgShardContractTests
       };
 
       var result = await store.WriteAsync(shard, CancellationToken.None);
-      var recovered = await store.ReadAsync(result.Location, CancellationToken.None);
+      var recovered = await store.ReadAsync(result, CancellationToken.None);
 
       var boundary = Assert.Single(recovered.BoundaryEdges!);
       Assert.Equal((uint)7, boundary.SourceNodeId);
@@ -76,14 +76,14 @@ public sealed class CpgShardContractTests
       var store = new CpgShardStore(root);
       var shard = CreateProjectionShard();
       var result = await store.WriteAsync(shard, CancellationToken.None);
-      var bytes = await File.ReadAllBytesAsync(result.Location.ShardPath);
+      var bytes = await File.ReadAllBytesAsync(result.ShardPath);
       var csrStart = bytes.Length - sizeof(int) * ((shard.Nodes.Count + 1) + shard.Edges.Count + 2);
       var invalidOffset = BitConverter.GetBytes(shard.Edges.Count + 1);
       Array.Copy(invalidOffset, 0, bytes, csrStart + sizeof(int), sizeof(int));
-      await File.WriteAllBytesAsync(result.Location.ShardPath, bytes);
+      await File.WriteAllBytesAsync(result.ShardPath, bytes);
 
       await Assert.ThrowsAsync<InvalidDataException>(() => store.ReadFromPathAsync(
-        result.Location.ShardPath,
+        result.ShardPath,
         CancellationToken.None));
     }
     finally
@@ -139,8 +139,8 @@ public sealed class CpgShardContractTests
         CreateShard("source-a", "profile-a", "fragment-a"),
         CancellationToken.None);
 
-      Assert.True(File.Exists(result.Location.ShardPath));
-      await Assert.ThrowsAsync<InvalidDataException>(() => store.ReadAsync(result.Location, CancellationToken.None));
+      Assert.True(File.Exists(result.ShardPath));
+      await Assert.ThrowsAsync<InvalidDataException>(() => store.ReadAsync(result, CancellationToken.None));
     }
     finally
     {
@@ -178,10 +178,10 @@ public sealed class CpgShardContractTests
   [Fact]
   public void Export_FrozenGraph_PreservesOrderedNodeIdsAndEdges()
   {
-    var graph = new RoslynCpgGraph();
-    var first = graph.AddNode(new RoslynCpgNode(RoslynCpgNodeKind.Operation, "Operation", Name: "first"));
-    var second = graph.AddNode(new RoslynCpgNode(RoslynCpgNodeKind.Operation, "Operation", Name: "second"));
-    graph.AddEdge(first, second, RoslynCpgEdgeKind.DataFlow);
+    var graph = new NLCPGGraph();
+    var first = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: "first"));
+    var second = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: "second"));
+    graph.AddEdge(first, second, NLCPGEdgeKind.DataFlow);
     graph.FreezeQueryIndex();
 
     var shard = CpgFrozenShardExporter.Export(graph, CreateShard("source-a", "profile-a", "fragment-a").Lookup);
@@ -193,8 +193,8 @@ public sealed class CpgShardContractTests
   [Fact]
   public void Export_MutableGraph_Throws()
   {
-    var graph = new RoslynCpgGraph();
-    graph.AddNode(new RoslynCpgNode(RoslynCpgNodeKind.Operation, "Operation", Name: "node"));
+    var graph = new NLCPGGraph();
+    graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: "node"));
 
     Assert.Throws<InvalidOperationException>(() => CpgFrozenShardExporter.Export(graph, CreateShard("source-a", "profile-a", "fragment-a").Lookup));
   }
@@ -207,16 +207,16 @@ public sealed class CpgShardContractTests
     var externalAnchor = CreateOperationAnchor(spanStart: 5, spanEnd: 6);
     var allocation = DeterministicNodeIdTable.Create(new[] { firstAnchor, secondAnchor, externalAnchor });
     var streamingAssembly = typeof(CpgFrozenShardExporter).Assembly;
-    var descriptorType = streamingAssembly.GetType("MinimalRoslynCpg.Builder.Streaming.CpgNodeDescriptor");
-    var candidateType = streamingAssembly.GetType("MinimalRoslynCpg.Builder.Streaming.CpgEdgeCandidate");
+    var descriptorType = streamingAssembly.GetType("NLCPG.Builder.Streaming.CpgNodeDescriptor");
+    var candidateType = streamingAssembly.GetType("NLCPG.Builder.Streaming.CpgEdgeCandidate");
     Assert.NotNull(descriptorType);
     Assert.NotNull(candidateType);
     var descriptors = Array.CreateInstance(descriptorType!, 2);
     descriptors.SetValue(CreateOperationDescriptor(descriptorType, firstAnchor, "first"), 0);
     descriptors.SetValue(CreateOperationDescriptor(descriptorType, secondAnchor, "second"), 1);
     var candidates = Array.CreateInstance(candidateType!, 2);
-    candidates.SetValue(CreateCandidate(candidateType, firstAnchor, secondAnchor, RoslynCpgEdgeKind.DataFlow), 0);
-    candidates.SetValue(CreateCandidate(candidateType, secondAnchor, externalAnchor, RoslynCpgEdgeKind.CallTargets), 1);
+    candidates.SetValue(CreateCandidate(candidateType, firstAnchor, secondAnchor, NLCPGEdgeKind.DataFlow), 0);
+    candidates.SetValue(CreateCandidate(candidateType, secondAnchor, externalAnchor, NLCPGEdgeKind.CallTargets), 1);
     var boundaryEdges = new List<CpgFrozenBoundaryEdge>();
     var method = typeof(CpgFrozenShardExporter).GetMethod(
       "ExportDescriptors",
@@ -235,10 +235,10 @@ public sealed class CpgShardContractTests
       }));
 
     var expectedAllocation = DeterministicNodeIdTable.Create(new[] { firstAnchor, secondAnchor });
-    var graph = new RoslynCpgGraph(expectedAllocation);
+    var graph = new NLCPGGraph(expectedAllocation);
     var first = graph.AddNode(CreateOperationNode(firstAnchor, "first", expectedAllocation));
     var second = graph.AddNode(CreateOperationNode(secondAnchor, "second", expectedAllocation));
-    graph.AddEdge(first, second, RoslynCpgEdgeKind.DataFlow);
+    graph.AddEdge(first, second, NLCPGEdgeKind.DataFlow);
     graph.FreezeQueryIndex();
     var expected = CpgFrozenShardExporter.Export(graph, shard.Lookup);
 
@@ -257,10 +257,10 @@ public sealed class CpgShardContractTests
     var secondAnchor = CreateOperationAnchor(spanStart: 3, spanEnd: 4);
     var allocation = DeterministicNodeIdTable.Create(new[] { firstAnchor, secondAnchor });
     var assembly = typeof(CpgFrozenShardExporter).Assembly;
-    var descriptorType = assembly.GetType("MinimalRoslynCpg.Builder.Streaming.CpgNodeDescriptor");
-    var candidateType = assembly.GetType("MinimalRoslynCpg.Builder.Streaming.CpgEdgeCandidate");
-    var factsType = assembly.GetType("MinimalRoslynCpg.Builder.Streaming.OperationFragmentFacts");
-    var committerType = assembly.GetType("MinimalRoslynCpg.Builder.Streaming.StreamingFragmentCommitter");
+    var descriptorType = assembly.GetType("NLCPG.Builder.Streaming.CpgNodeDescriptor");
+    var candidateType = assembly.GetType("NLCPG.Builder.Streaming.CpgEdgeCandidate");
+    var factsType = assembly.GetType("NLCPG.Builder.Streaming.OperationFragmentFacts");
+    var committerType = assembly.GetType("NLCPG.Builder.Streaming.StreamingFragmentCommitter");
     Assert.NotNull(descriptorType);
     Assert.NotNull(candidateType);
     Assert.NotNull(factsType);
@@ -269,7 +269,7 @@ public sealed class CpgShardContractTests
     descriptors.SetValue(CreateOperationDescriptor(descriptorType, firstAnchor, "first"), 0);
     descriptors.SetValue(CreateOperationDescriptor(descriptorType, secondAnchor, "second"), 1);
     var candidates = Array.CreateInstance(candidateType!, 1);
-    candidates.SetValue(CreateCandidate(candidateType, firstAnchor, secondAnchor, RoslynCpgEdgeKind.DataFlow), 0);
+    candidates.SetValue(CreateCandidate(candidateType, firstAnchor, secondAnchor, NLCPGEdgeKind.DataFlow), 0);
     var facts = factsType!.GetConstructors(
       System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
       .Single()
@@ -299,14 +299,14 @@ public sealed class CpgShardContractTests
   public void Create_CrossShardEdge_PreservesGlobalNodeIdsAndCallSiteContext()
   {
     var assembly = typeof(CpgFrozenShardExporter).Assembly;
-    var committerType = assembly.GetType("MinimalRoslynCpg.Builder.Streaming.CrossShardEdgeCommitter");
+    var committerType = assembly.GetType("NLCPG.Builder.Streaming.CrossShardEdgeCommitter");
     Assert.NotNull(committerType);
     var create = committerType!.GetMethod(
       "Create",
       System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
     Assert.NotNull(create);
-    var context = new RoslynCpgCallSiteContext("input.cs", 3, 9, "Run");
-    var edge = new RoslynCpgEdge(new NodeId(2), new NodeId(7), RoslynCpgEdgeKind.CallTargets, callSiteContext: context);
+    var context = new NLCPGCallSiteContext("input.cs", 3, 9, "Run");
+    var edge = new NLCPGEdge(new NodeId(2), new NodeId(7), NLCPGEdgeKind.CallTargets, callSiteContext: context);
 
     var boundary = Assert.IsType<CpgFrozenBoundaryEdge>(create!.Invoke(null, new object[] { edge }));
 
@@ -333,7 +333,7 @@ public sealed class CpgShardContractTests
         SchemaVersion: 1,
         profileHash);
 
-      var recovered = await store.TryReadAsync(result.Location, lookup, CancellationToken.None);
+      var recovered = await store.TryReadAsync(result, lookup, CancellationToken.None);
 
       Assert.Null(recovered);
     }
@@ -357,7 +357,7 @@ public sealed class CpgShardContractTests
       var projection = CpgFrozenShardGraphReader.ReadIncomingProjection(
         recovered,
         new NodeId(13),
-        new HashSet<RoslynCpgEdgeKind> { RoslynCpgEdgeKind.DataFlow },
+        new HashSet<NLCPGEdgeKind> { NLCPGEdgeKind.DataFlow },
         maxEdges: 16);
 
       Assert.Null(recovered.IncomingEdgeOffsets);
@@ -414,7 +414,7 @@ public sealed class CpgShardContractTests
   private static StableNodeAnchor CreateOperationAnchor(int spanStart, int spanEnd)
   {
     return new StableNodeAnchor(
-      RoslynCpgNodeKind.Operation,
+      NLCPGNodeKind.Operation,
       FilePathId: 1,
       spanStart,
       spanEnd,
@@ -428,7 +428,7 @@ public sealed class CpgShardContractTests
     return Activator.CreateInstance(
       descriptorType,
       anchor,
-      RoslynCpgNodeKind.Operation,
+      NLCPGNodeKind.Operation,
       "Operation",
       name,
       null,
@@ -441,15 +441,15 @@ public sealed class CpgShardContractTests
       false)!;
   }
 
-  private static object CreateCandidate(Type candidateType, StableNodeAnchor sourceAnchor, StableNodeAnchor targetAnchor, RoslynCpgEdgeKind kind)
+  private static object CreateCandidate(Type candidateType, StableNodeAnchor sourceAnchor, StableNodeAnchor targetAnchor, NLCPGEdgeKind kind)
   {
     return Activator.CreateInstance(candidateType, sourceAnchor, targetAnchor, kind, null, null, null)!;
   }
 
-  private static RoslynCpgNode CreateOperationNode(StableNodeAnchor anchor, string name, DeterministicNodeIdTable allocation)
+  private static NLCPGNode CreateOperationNode(StableNodeAnchor anchor, string name, DeterministicNodeIdTable allocation)
   {
-    return new RoslynCpgNode(
-      RoslynCpgNodeKind.Operation,
+    return new NLCPGNode(
+      NLCPGNodeKind.Operation,
       "Operation",
       Name: name,
       FilePath: "input.cs",

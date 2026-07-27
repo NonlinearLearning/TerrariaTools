@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 为局部函数参数删除收集声明与调用点，把“删除哪个参数”变成可重放的结构化 payload。
 public sealed class ClassLocalFunctionParameterUsagePropagationRule : RuleDefinitionPropagate
 {
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
@@ -25,6 +26,7 @@ public sealed class ClassLocalFunctionParameterUsagePropagationRule : RuleDefini
         SyntaxKind.InvocationExpression
       };
 
+    // 收集局部函数声明和调用点，让参数删除能以结构化 payload 形式进入提案阶段。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -68,6 +70,7 @@ public sealed class ClassLocalFunctionParameterUsagePropagationRule : RuleDefini
         }
     }
 
+    /// 优先保留命名参数和可省略默认值的事实，再退回普通位置参数，
     private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out LocalFunctionParameterUsagePayload payload)
     {
         payload = null!;

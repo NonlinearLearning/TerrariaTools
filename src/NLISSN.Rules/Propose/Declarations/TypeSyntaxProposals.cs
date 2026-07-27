@@ -5,10 +5,12 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Decision;
 
+/// 将删除类的 TypeSyntax seed mark 映射到拥有该类型语法的可改写声明。
 public static class DeleteClassTypeSyntaxProposalHelpers
 {
     private const string DeleteClassTypeSyntaxMarkRuleId = "DEL-CLASS-MARK-TYPE-001";
 
+    // 把 delete-class 的 TypeSyntax seed mark 映射到唯一声明宿主，并直接产出删除决策。
     public static IEnumerable<DecisionUnit> CreateDeleteDecisions<TNode>(string ruleId, string reason, IReadOnlyList<MarkRecord> seedMarks, Func<TypeSyntax, TNode?> resolver)
       where TNode : SyntaxNode
     {

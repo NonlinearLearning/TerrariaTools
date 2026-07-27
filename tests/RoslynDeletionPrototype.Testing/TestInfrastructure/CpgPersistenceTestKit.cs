@@ -1,4 +1,4 @@
-using MinimalRoslynCpg.Persistence;
+using NLCPG.Persistence;
 
 namespace RoslynPrototype.Testing.TestInfrastructure;
 
@@ -8,7 +8,7 @@ public static class CpgPersistenceTestKit
   {
     ArgumentNullException.ThrowIfNull(observer);
     var sessionType = typeof(CpgShardStoreLock).Assembly.GetType(
-      "MinimalRoslynCpg.Builder.CpgShardBuildSession")
+      "NLCPG.Builder.CpgShardBuildSession")
       ?? throw new InvalidOperationException("CPG shard build session type was not found.");
     var property = sessionType.GetProperty(
       "CheckpointObserver",

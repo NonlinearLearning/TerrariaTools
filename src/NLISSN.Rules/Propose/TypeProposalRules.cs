@@ -9,6 +9,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 默认处理未被专门规则接管的类删除标记，避免与结构或声明宿主决策重叠。
 public sealed class ClassDefaultRemovalProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.default-removal";
@@ -25,6 +26,7 @@ public sealed class ClassDefaultRemovalProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为未被专门规则接管的删除类 mark 生成默认删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -80,6 +82,7 @@ public sealed class ClassDefaultRemovalProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 仅为传播确认的控制结构宿主生成删除决策。
 public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.control-structure-removal";
@@ -96,6 +99,7 @@ public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPro
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 把删除类链路中已提升到控制结构宿主的 mark 转成直接删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -120,6 +124,7 @@ public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPro
     }
 }
 
+/// 将 TypeSyntax 标记提升为包含该类型语法的声明改写。
 public sealed class ClassTypeSyntaxDeclarationProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.type-syntax-declaration";
@@ -140,6 +145,7 @@ public sealed class ClassTypeSyntaxDeclarationProposalRule : RuleDefinitionPropo
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 把字段和属性上的声明宿主 payload 直接落成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -170,6 +176,7 @@ public sealed class ClassTypeSyntaxDeclarationProposalRule : RuleDefinitionPropo
     }
 }
 
+/// 删除可安全替换的方法返回类型，并保留声明主体。
 public sealed class ClassMethodReturnTypeProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.method-return-type";
@@ -189,6 +196,7 @@ public sealed class ClassMethodReturnTypeProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为返回类型引用目标类的私有方法生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -214,6 +222,7 @@ public sealed class ClassMethodReturnTypeProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 处理公开方法返回类型，要求调用与重载绑定不会因替换而漂移。
 public sealed class ClassPublicMethodReturnTypeProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.public-method-return-type";
@@ -233,6 +242,7 @@ public sealed class ClassPublicMethodReturnTypeProposalRule : RuleDefinitionProp
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为返回类型引用目标类的非私有方法生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -258,6 +268,7 @@ public sealed class ClassPublicMethodReturnTypeProposalRule : RuleDefinitionProp
     }
 }
 
+/// 保留旧参数删除入口的规则标识；具体收缩由更严格的专门规则完成。
 public sealed class ClassParameterProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.parameter";
@@ -277,6 +288,7 @@ public sealed class ClassParameterProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 当前刻意不为“整方法参数删除”直接产出决策，避免与更细粒度的收缩规则冲突。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -287,6 +299,7 @@ public sealed class ClassParameterProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 删除私有方法参数，并同步改写可证明的稳定位置调用。
 public sealed class ClassPrivateMethodParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.private-method-parameter-shrink";
@@ -307,6 +320,7 @@ public sealed class ClassPrivateMethodParameterShrinkProposalRule : RuleDefiniti
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 同步收缩私有方法声明和所有稳定位置调用点的目标参数。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -341,6 +355,7 @@ public sealed class ClassPrivateMethodParameterShrinkProposalRule : RuleDefiniti
     }
 }
 
+/// 处理具名实参方法调用，按参数符号而非位置删除对应实参。
 public sealed class ClassNamedArgumentMethodParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.named-argument-method-parameter-shrink";
@@ -361,6 +376,7 @@ public sealed class ClassNamedArgumentMethodParameterShrinkProposalRule : RuleDe
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 针对命名参数调用同步收缩方法声明与命名实参。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -395,6 +411,7 @@ public sealed class ClassNamedArgumentMethodParameterShrinkProposalRule : RuleDe
     }
 }
 
+/// 删除可省略的可选参数，同时维持省略调用的绑定语义。
 public sealed class ClassOptionalParameterDefaultedMethodShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.optional-parameter-defaulted-method-shrink";
@@ -415,6 +432,7 @@ public sealed class ClassOptionalParameterDefaultedMethodShrinkProposalRule : Ru
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 收缩带默认值的方法参数，并只在需要时改写显式传参调用点。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -449,6 +467,7 @@ public sealed class ClassOptionalParameterDefaultedMethodShrinkProposalRule : Ru
     }
 }
 
+/// 对未被已验证收缩路径覆盖的公开参数保持保守，不生成整方法删除决策。
 public sealed class ClassPublicParameterProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.public-parameter";
@@ -468,6 +487,7 @@ public sealed class ClassPublicParameterProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 当前对非私有参数整方法删除保持空操作，未支持情形交给诊断或更细粒度规则处理。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -493,6 +513,7 @@ public sealed class ClassPublicParameterProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 仅收缩末尾 params 参数，并拒绝显式数组或展开形状不确定的调用。
 public sealed class ClassParamsMethodParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.params-method-parameter-shrink";
@@ -512,6 +533,7 @@ public sealed class ClassParamsMethodParameterShrinkProposalRule : RuleDefinitio
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 仅在所有调用都省略 params 槽位时，收缩 params 方法声明。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -538,6 +560,7 @@ public sealed class ClassParamsMethodParameterShrinkProposalRule : RuleDefinitio
     }
 }
 
+/// 仅在收集到全部调用点时收缩非私有方法参数。
 public sealed class ClassPublicMethodParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.public-method-parameter-shrink";
@@ -558,6 +581,7 @@ public sealed class ClassPublicMethodParameterShrinkProposalRule : RuleDefinitio
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 为非私有方法同步收缩声明和可证明完整覆盖的调用点。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -592,6 +616,7 @@ public sealed class ClassPublicMethodParameterShrinkProposalRule : RuleDefinitio
     }
 }
 
+/// 处理局部函数的具名实参，并与局部声明同步替换。
 public sealed class ClassNamedArgumentLocalFunctionParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.named-argument-local-function-parameter-shrink";
@@ -612,6 +637,7 @@ public sealed class ClassNamedArgumentLocalFunctionParameterShrinkProposalRule :
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 针对命名参数局部函数调用，同步收缩声明与命名实参。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -646,6 +672,7 @@ public sealed class ClassNamedArgumentLocalFunctionParameterShrinkProposalRule :
     }
 }
 
+/// 删除局部函数的可选参数，同时保留省略实参调用的合法性。
 public sealed class ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.optional-parameter-defaulted-local-function-shrink";
@@ -666,6 +693,7 @@ public sealed class ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRu
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 收缩带默认值的局部函数参数，并只改写确实需要调整的调用点。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -700,6 +728,7 @@ public sealed class ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRu
     }
 }
 
+/// 删除局部函数参数并改写同一作用域内可绑定的调用点。
 public sealed class ClassLocalFunctionParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.local-function-parameter-shrink";
@@ -720,6 +749,7 @@ public sealed class ClassLocalFunctionParameterShrinkProposalRule : RuleDefiniti
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 为普通位置参数局部函数同步收缩声明与调用点。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -754,6 +784,7 @@ public sealed class ClassLocalFunctionParameterShrinkProposalRule : RuleDefiniti
     }
 }
 
+/// 处理索引器具名参数的声明与元素访问同步收缩。
 public sealed class ClassNamedArgumentIndexerParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.named-argument-indexer-parameter-shrink";
@@ -774,6 +805,7 @@ public sealed class ClassNamedArgumentIndexerParameterShrinkProposalRule : RuleD
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 针对命名索引实参同步收缩索引器声明与 element access。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -808,6 +840,7 @@ public sealed class ClassNamedArgumentIndexerParameterShrinkProposalRule : RuleD
     }
 }
 
+/// 仅在所有元素访问都可安全重写时收缩索引器参数。
 public sealed class ClassIndexerParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.indexer-parameter-shrink";
@@ -828,6 +861,7 @@ public sealed class ClassIndexerParameterShrinkProposalRule : RuleDefinitionProp
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 针对位置索引实参同步收缩索引器声明与 element access。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -862,6 +896,7 @@ public sealed class ClassIndexerParameterShrinkProposalRule : RuleDefinitionProp
     }
 }
 
+/// 处理没有方法组或 lambda 绑定链的简单委托参数删除。
 public sealed class ClassDelegateParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.delegate-parameter-shrink";
@@ -881,6 +916,7 @@ public sealed class ClassDelegateParameterShrinkProposalRule : RuleDefinitionPro
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 在委托没有外部复杂绑定时，只收缩委托签名本身。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -907,6 +943,7 @@ public sealed class ClassDelegateParameterShrinkProposalRule : RuleDefinitionPro
     }
 }
 
+/// 收缩委托参数并同步改写经方法组绑定的目标方法。
 public sealed class ClassMethodGroupDelegateParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.method-group-delegate-parameter-shrink";
@@ -929,6 +966,7 @@ public sealed class ClassMethodGroupDelegateParameterShrinkProposalRule : RuleDe
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 同步收缩委托签名以及所有 method group 绑定与调用链。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -1014,6 +1052,7 @@ public sealed class ClassMethodGroupDelegateParameterShrinkProposalRule : RuleDe
     }
 }
 
+/// 收缩委托参数并同步改写依赖该签名的 lambda 形参。
 public sealed class ClassLambdaDelegateParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.lambda-delegate-parameter-shrink";
@@ -1037,6 +1076,7 @@ public sealed class ClassLambdaDelegateParameterShrinkProposalRule : RuleDefinit
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 同步收缩委托签名以及所有 lambda 绑定与调用链。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -1106,6 +1146,7 @@ public sealed class ClassLambdaDelegateParameterShrinkProposalRule : RuleDefinit
     }
 }
 
+/// 覆盖直接委托调用链，确保声明、绑定和调用实参一起收缩。
 public sealed class ClassDelegateInvocationChainParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.delegate-invocation-chain-parameter-shrink";
@@ -1126,6 +1167,7 @@ public sealed class ClassDelegateInvocationChainParameterShrinkProposalRule : Ru
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 同步收缩委托签名以及直接委托调用链上的实参。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -1173,6 +1215,7 @@ public sealed class ClassDelegateInvocationChainParameterShrinkProposalRule : Ru
     }
 }
 
+/// 只收缩扩展方法的非接收者参数；接收者参数受调用形式约束而保留。
 public sealed class ClassExtensionReceiverNonFirstParameterShrinkProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.extension-receiver-non-first-parameter-shrink";
@@ -1193,6 +1236,7 @@ public sealed class ClassExtensionReceiverNonFirstParameterShrinkProposalRule : 
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       Array.Empty<SyntaxKind>();
 
+    // 保持扩展方法接收者不变，只收缩非首个目标参数及其映射调用点。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = seedMarks;
@@ -1226,6 +1270,7 @@ public sealed class ClassExtensionReceiverNonFirstParameterShrinkProposalRule : 
     }
 }
 
+/// 将接口方法签名中的目标类型删除映射为接口成员声明改写。
 public sealed class ClassInterfaceMethodProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.interface-method";
@@ -1245,6 +1290,7 @@ public sealed class ClassInterfaceMethodProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为接口方法签名中的目标类引用直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -1269,6 +1315,7 @@ public sealed class ClassInterfaceMethodProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 将接口属性签名中的目标类型删除映射为属性声明改写。
 public sealed class ClassInterfacePropertyProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.interface-property";
@@ -1288,6 +1335,7 @@ public sealed class ClassInterfacePropertyProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为接口属性签名中的目标类引用直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -1307,6 +1355,7 @@ public sealed class ClassInterfacePropertyProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 将接口事件签名中的目标类型删除映射为事件声明改写。
 public sealed class ClassInterfaceEventProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.interface-event";
@@ -1327,6 +1376,7 @@ public sealed class ClassInterfaceEventProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为接口事件签名中的目标类引用直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -1346,6 +1396,7 @@ public sealed class ClassInterfaceEventProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 将接口索引器签名中的目标类型删除映射为索引器声明改写。
 public sealed class ClassInterfaceIndexerProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.interface-indexer";
@@ -1365,6 +1416,7 @@ public sealed class ClassInterfaceIndexerProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为接口索引器签名中的目标类引用直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -1384,6 +1436,7 @@ public sealed class ClassInterfaceIndexerProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 处理委托返回类型删除；参数删除由参数收缩专门规则承担。
 public sealed class ClassDelegateProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.delegate";
@@ -1403,6 +1456,7 @@ public sealed class ClassDelegateProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为委托返回类型上的目标类引用直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -1427,6 +1481,7 @@ public sealed class ClassDelegateProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 处理扩展接收者类型删除，并避免把实例调用改写为不等价形式。
 public sealed class ClassExtensionReceiverProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.extension-receiver";
@@ -1446,6 +1501,7 @@ public sealed class ClassExtensionReceiverProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为接收者类型命中目标类的扩展方法直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -1470,6 +1526,7 @@ public sealed class ClassExtensionReceiverProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 删除基类型列表中已标记的目标类型，保留其余继承和接口项。
 public sealed class ClassBaseTypeProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.base-type";
@@ -1490,6 +1547,7 @@ public sealed class ClassBaseTypeProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为基类或接口列表中的目标类引用直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -1509,6 +1567,7 @@ public sealed class ClassBaseTypeProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 处理泛型局部声明中的目标类型实参，且只在宿主语法可完整替换时提出决策。
 public sealed class ClassGenericTypeArgumentProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.generic-type-argument";
@@ -1528,6 +1587,7 @@ public sealed class ClassGenericTypeArgumentProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 为局部泛型声明中引用目标类的类型实参直接生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
@@ -1547,6 +1607,7 @@ public sealed class ClassGenericTypeArgumentProposalRule : RuleDefinitionPropose
     }
 }
 
+/// 将类删除传播出的完整条件结构转换为结构化改写决策。
 public sealed class ClassIfStructureProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.type.if-structure";
@@ -1563,6 +1624,7 @@ public sealed class ClassIfStructureProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 把删除类链路的 if 完成态 payload 规约成唯一结构改写决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;

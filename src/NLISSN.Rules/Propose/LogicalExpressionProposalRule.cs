@@ -8,6 +8,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 为逻辑表达式的可删操作数选择保持短路语义的规约决策。
 public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.logical-expression";
@@ -24,6 +25,7 @@ public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 根据逻辑宿主 payload 生成保持短路语义的 Replace 决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;

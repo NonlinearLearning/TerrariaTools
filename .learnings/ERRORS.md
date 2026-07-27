@@ -44,14 +44,14 @@ Assert.True() Failure: io summary did not contain batches
 
 ### Context
 - Current `AnalysisTextLogWriter` source already emitted the `batches` field.
-- Rebuilding `RoslynDeletionPrototype.Tests.csproj` before rerunning the focused test made it pass.
+- Rebuilding `Roslyn Prototype.Tests.csproj` before rerunning the focused test made it pass.
 
 ### Resolution
 - Build the test project before treating a `--no-build` result as a baseline whenever the worktree has changed since the last build.
 
 ### Metadata
 - Reproducible: yes
-- Related Files: tests/RoslynDeletionPrototype.Tests/RoslynDeletionPrototype.Tests.csproj, src/Host/Logging/AnalysisTextLogWriter.cs
+- Related Files: tests/Roslyn Prototype.Tests/Roslyn Prototype.Tests.csproj, src/Host/Logging/AnalysisTextLogWriter.cs
 
 ---
 
@@ -67,7 +67,7 @@ Passing comma-separated paths or an un-splatted PowerShell array to the harness 
 
 ### Error
 ```
-Unclassified changed paths: src\\MinimalRoslynCpg\\...cs,tests\\RoslynDeletionPrototype.Tests\\...cs
+Unclassified changed paths: src\\MinimalRoslynCpg\\...cs,tests\\Roslyn Prototype.Tests\\...cs
 ```
 
 ### Resolution
@@ -149,7 +149,7 @@ Actual:   concurrent-diff-output-2
 
 ### Metadata
 - Reproducible: yes
-- Related Files: tests/RoslynDeletionPrototype.Tests/PipelineComponentTests.cs
+- Related Files: tests/Roslyn Prototype.Tests/PipelineComponentTests.cs
 
 ---
 
@@ -207,7 +207,7 @@ Actual:   2
 
 ### Metadata
 - Reproducible: yes
-- Related Files: tests/RoslynDeletionPrototype.Tests/Cpg/RoslynCpgNodeIdContractTests.cs
+- Related Files: tests/Roslyn Prototype.Tests/Cpg/RoslynCpgNodeIdContractTests.cs
 
 ---
 
@@ -276,7 +276,7 @@ Strict and Throughput both returned rebuilt == 0.
 ```
 
 ### Context
-- Command: `dotnet test tests/RoslynDeletionPrototype.Tests/RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false`
+- Command: `dotnet test tests/Roslyn Prototype.Tests/Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false`
 - The newly added directory I/O/log performance regression passed before this full run.
 - The failing test builds a persisted CPG, deletes `catalog.db`, then calls `RebuildFromShardHeadersAsync`.
 
@@ -285,7 +285,7 @@ Reproduce the failing theory in isolation and inspect the completed shard header
 
 ### Metadata
 - Reproducible: unknown
-- Related Files: tests/RoslynDeletionPrototype.Tests/Cpg/CpgShardBuildCoordinatorTests.cs, src/MinimalRoslynCpg/Persistence/
+- Related Files: tests/Roslyn Prototype.Tests/Cpg/CpgShardBuildCoordinatorTests.cs, src/MinimalRoslynCpg/Persistence/
 
 ### Investigation
 - **2026-07-23**: The isolated theory passed both Strict and Throughput variants (2/2).

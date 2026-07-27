@@ -3,23 +3,17 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 循环结构分析结果。
-/// </summary>
 public sealed record LoopStructureAnalysis(IReadOnlyList<SyntaxNode> AffectedSyntaxTree);
 
-/// <summary>
 /// 分析 C# 常见循环结构，包括 <c>for</c>、<c>foreach</c>、<c>while</c> 和 <c>do</c>。
-/// </summary>
 public sealed class LoopStructureAnalyzer
 {
     private sealed record LoopStructure(
         StatementSyntax Root,
         IReadOnlyList<SyntaxNode> Members);
 
-    /// <summary>
-    /// 返回循环头部、条件、迭代器、集合表达式和循环体等关键语法节点。
-    /// </summary>
+    // 针对具体循环类型抽取头部和语句体的受影响节点。
     public LoopStructureAnalysis Analyze(StatementSyntax root, CpgAnalysisContext context)
     {
         _ = context;

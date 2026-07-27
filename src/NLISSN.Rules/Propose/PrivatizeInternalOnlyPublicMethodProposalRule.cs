@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
+using NLCPG.Contracts;
+using NLCPG.Model;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -10,6 +10,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 仅在所有调用点都位于当前程序集内部时，将公开方法的可见性改为 private。
 public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefinitionPropose
 {
   public override string CapabilityId { get; } = "propose.privatize-internal-only-public-method";
@@ -26,6 +27,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
   public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
     Array.Empty<SyntaxKind>();
 
+  // 把仅内部使用的 public 方法改写为 private，并保留原有签名主体不变。
   public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
   {
     _ = context;
@@ -88,7 +90,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
         DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
         DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
         DecisionCpgFactory.CreateRelation(
-          RoslynCpgDecisionRelationKind.AccessibilityToPrivate,
+          NLCPGDecisionRelationKind.AccessibilityToPrivate,
           anchorFragment,
           replacementFragment)
       },
@@ -100,7 +102,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
       reason: reason);
   }
 
-  private static RoslynCpgNode CreateFragment(SyntaxNode node, string role, DecisionActionKind action)
+  private static NLCPGNode CreateFragment(SyntaxNode node, string role, DecisionActionKind action)
   {
     return DecisionCpgFactory.CreateFragment(
       $"frag:{DecisionCpgFactory.BuildNodeKey(node)}",

@@ -28,8 +28,8 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Builder/CpgShardBuildSession.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 修改：`src/NLCPG/Builder/CpgShardBuildSession.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
 
 1. 新增回归：人为阻塞低 sequence shard、让高 sequence shard 先完成；断言 catalog stage 顺序仍为 `0..N-1`，最终恢复图与串行基线相同。
 2. 运行 focused 测试，确认当前实现按 worker 完成顺序直接入 catalog，无法满足新断言。
@@ -41,9 +41,9 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
-- 修改：`src/MinimalRoslynCpg/Builder/RoslynCpgBuilderOptions.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/CpgCatalogBatchWriter.cs`
+- 修改：`src/NLCPG/Builder/NLCPGBuilderOptions.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
 
 1. 新增回归：一个大 `.cpgbin` 但 catalog 行数很少的 publication 可与后续 publication 合并；一个小 shard 但 node/span/symbol 行数很多时会按行数提前切批。
 2. 将 `MaxCatalogBatchRows` 改为预估的 catalog SQL 行数，不再比较 `List<CpgCatalogPublication>.Count`。
@@ -55,8 +55,8 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
 
 1. 新增大 shard 回归，记录每 transaction 的 statement 数；覆盖 node、span、symbol、boundary endpoint、重复位置和 SQLite 参数上限附近的切分。
 2. 将同一 publication 的 `session_node_locations`、`session_span_locations`、`session_symbol_locations` 和 `session_boundary_node_locations` 改为多行 `INSERT` 分块，分块参数数严格小于 SQLite 上限。
@@ -68,10 +68,10 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Builder/CpgShardBuildSession.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/CpgShardContracts.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 修改：`src/NLCPG/Builder/CpgShardBuildSession.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 修改：`src/NLCPG/Persistence/CpgShardContracts.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
 
 1. 新增 changed-later-method 回归：命中一个 completed operation fragment 后，新的 session 复用其物理 shard 和完整 catalog 索引；断言不会调用 `CpgShardStore.ReadAsync` 或构造 `CpgFrozenShard`。
 2. catalog lookup 返回候选的 source build、source shard 与 reusable key。对物理 shard 执行流式 hash/结构校验，验证成功后由 catalog 在单事务内 `INSERT … SELECT` 克隆 fragment owner、node/span/symbol/boundary/reusable 元数据到新 build。
@@ -83,8 +83,8 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Builder/Streaming/SkeletonShardPublisher.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
+- 修改：`src/NLCPG/Builder/Streaming/SkeletonShardPublisher.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/CpgShardBuildCoordinatorTests.cs`
 
 1. 新增多方法 fixture，记录 descriptor owner 查找次数和 fragment 内容；基线证明当前 `PublishInitialAsync` 为每个 fragment 过滤完整 descriptor 集。
 2. 单次遍历 descriptors，将其加入 skeleton bucket 或 fragment bucket；单次遍历 candidates 后按 owner 路由。禁止逐 fragment `Where` 扫描完整集合。
@@ -96,9 +96,9 @@
 
 **文件：**
 
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardSchema.cs`
-- 修改：`src/MinimalRoslynCpg/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
-- 测试：`tests/RoslynDeletionPrototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardSchema.cs`
+- 修改：`src/NLCPG/Persistence/Sqlite/SqliteCpgShardCatalog.cs`
+- 测试：`tests/Roslyn Prototype.ContractTests/Cpg/SqliteCpgShardCatalogTests.cs`
 
 1. 新增 session 链式复用测试：新 session 复用旧 shard 后，清理旧 session 不得删除仍被引用的物理 shard 或索引。
 2. 引入 completed-session manifest、物理 shard reference/liveness 表和显式 retention policy；只回收不可达、超过保留窗口且未被任何 completed session 引用的 session/shard。
@@ -110,10 +110,10 @@
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet build .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShard|FullyQualifiedName~SqliteCpgShardCatalog|FullyQualifiedName~RoslynCpgSliceQuery|FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~RoslynCpgNodeIdContractTests"
-dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-build -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-build -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~CpgShard|FullyQualifiedName~SqliteCpgShardCatalog|FullyQualifiedName~NLCPGSliceQuery|FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~NLCPGNodeIdContractTests"
+dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-build -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-build -p:UseSharedCompilation=false
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```

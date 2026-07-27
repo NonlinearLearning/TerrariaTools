@@ -7,6 +7,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 把赋值右侧的原子命中迁移到左值，供后续符号引用和声明宿主规则继续沿“被写入的位置”扩散。
 public sealed class SObjectAssignmentLeftValuePropagationRule : SObjectPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.target.assignment-left-value";
@@ -15,6 +16,7 @@ public sealed class SObjectAssignmentLeftValuePropagationRule : SObjectPropagati
 
     public override string Name { get; } = "Propagate s-object marks from assignment right values to left values";
 
+    // 把右值上的命中提升到赋值左值，后续规则只沿被写入的位置继续传播。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         _ = context;
@@ -45,6 +47,7 @@ public sealed class SObjectAssignmentLeftValuePropagationRule : SObjectPropagati
     }
 }
 
+/// 把初始化表达式上的命中收束到变量声明点，避免后续规则直接依赖易碎的子表达式位置。
 public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.target.definition-initializer";
@@ -53,6 +56,7 @@ public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropaga
 
     public override string Name { get; } = "Propagate s-object marks from definition initializers to declarators";
 
+    // 把初始化表达式上的命中收束到变量 declarator，稳定后续局部定义传播入口。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         _ = context;
@@ -84,6 +88,7 @@ public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropaga
     }
 }
 
+/// 为逻辑条件保留旧的宿主提升入口；一旦能构造结构化 payload，就交给更专门的操作数组传播规则处理。
 public sealed class SObjectLogicalConditionPropagationRule : SObjectPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.target.logical-condition";
@@ -92,6 +97,7 @@ public sealed class SObjectLogicalConditionPropagationRule : SObjectPropagationR
 
     public override string Name { get; } = "Propagate s-object marks into logical condition hosts";
 
+    // 在没有更强结构化 payload 可用时，把多个逻辑条件命中折叠到旧的逻辑宿主入口。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var targetNames = ParseTargetNames(context);
@@ -127,6 +133,8 @@ public sealed class SObjectLogicalConditionPropagationRule : SObjectPropagationR
             if (analysis.PreferredMarkedNode is BinaryExpressionSyntax logicalHost &&
                 (logicalHost.IsKind(SyntaxKind.LogicalAndExpression) ||
                  logicalHost.IsKind(SyntaxKind.LogicalOrExpression)) &&
+                // 结构化 payload 能明确区分可删与保留操作数时，
+                // 由 payload 规则接管，避免这里再产出一个语义更弱的通用宿主标记。
                 DeleteSObjectPropagationHelpers.TryBuildLogicalHostPayload(
                   context,
                   logicalHost,
@@ -169,6 +177,8 @@ public sealed class SObjectLogicalConditionPropagationRule : SObjectPropagationR
     }
 }
 
+/// 为逻辑与/或宿主补齐“哪些操作数可删、哪些必须保留”的 payload，
+/// 让 Propose 阶段直接做短路语义安全的 Replace 决策。
 public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.target.logical-operand-group";
@@ -177,6 +187,7 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
 
     public override string Name { get; } = "Propagate s-object logical operand groups as structured payloads";
 
+    // 为逻辑宿主补齐可删与保留操作数集合，让提案阶段直接生成语义安全的 Replace 决策。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var targetNames = DeleteSObjectPropagationHelpers.ParseTargetNames(context);
@@ -237,6 +248,8 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
     }
 }
 
+/// 把零散命中折叠成完整 if / else if / else 结构的完成态 payload，
+/// 后续只需要按结构决策，不再重复扫描控制流外壳。
 public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.target.if-structure-completion";
@@ -245,6 +258,7 @@ public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropaga
 
     public override string Name { get; } = "Propagate s-object if/elseif/else completion state as structured payloads";
 
+    // 把分散在 if 结构里的命中折叠成完整完成态 payload，避免提案阶段重复扫描控制结构。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         return DeleteSObjectPropagationHelpers.EnumerateIfStructureCompletionPropagations(
@@ -254,6 +268,8 @@ public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropaga
     }
 }
 
+/// 仅从已收束到局部定义点的标记继续传播到同一可执行作用域内的引用，
+/// 避免把 s-object 的局部事实泛化成跨作用域删除结论。
 public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.target.symbol-reference";
@@ -262,6 +278,7 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
 
     public override string Name { get; } = "Propagate s-object marks from marked definitions to symbol references";
 
+    // 仅把已收束到定义点的局部事实继续传播到同一作用域内的符号引用。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var markedSymbols = BuildMarkedLocalDefinitions(context, seedMarks);
@@ -296,6 +313,7 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
         }
     }
 
+    /// 只接受前序“初始化器 -> 定义点”传播产物，确保符号引用传播从稳定的局部定义出发。
     private static Dictionary<ISymbol, MarkRecord> BuildMarkedLocalDefinitions(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var symbols = new Dictionary<ISymbol, MarkRecord>(SymbolEqualityComparer.Default);

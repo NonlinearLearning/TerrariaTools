@@ -33,6 +33,6 @@
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
 dotnet build .\src\RoslynPrototype\RoslynPrototype.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~DiffModelTests|FullyQualifiedName~RewritePlanPersistenceTests|FullyQualifiedName~TextLogSystemTests|FullyQualifiedName~PipelineComponentTests"
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~DiffModelTests|FullyQualifiedName~RewritePlanPersistenceTests|FullyQualifiedName~TextLogSystemTests|FullyQualifiedName~PipelineComponentTests"
 pwsh -File .\scripts\check-harness-consistency.ps1
 ```

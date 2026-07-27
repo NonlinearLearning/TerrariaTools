@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 把已收束到局部 declarator 的 delete-class 事实继续传播到同一作用域内、且出现在定义之后的引用点。
 public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagate
 {
     public override string CapabilityId { get; } = "propagate.type.symbol-reference";
@@ -22,6 +23,7 @@ public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagat
         SyntaxKind.IdentifierName
       };
 
+    // 只把局部 declarator 之后、且处在同一作用域内的引用点继续传播为删除类事实。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var markedSymbols = BuildMarkedLocalDefinitions(context, seedMarks);
@@ -56,6 +58,8 @@ public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagat
         }
     }
 
+    /// 只认“对象创建 -> 局部定义点”这类前序传播产物，
+    /// 防止任意 TypeSyntax 命中直接扩散成局部引用删除事实。
     private static Dictionary<ISymbol, MarkRecord> BuildMarkedLocalDefinitions(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var symbols = new Dictionary<ISymbol, MarkRecord>(SymbolEqualityComparer.Default);

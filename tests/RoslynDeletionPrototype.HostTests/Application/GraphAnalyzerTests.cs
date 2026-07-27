@@ -721,7 +721,7 @@ public sealed class GraphAnalyzerTests
     [Fact]
     public void Analyze_WhenRuleEmitsUnsupportedNodeKind_ThrowsInvalidOperationException()
     {
-        var application = new DeletionApplicationService(
+        var application = new  ApplicationService(
           new RuleDefinitionMark[] { new InvalidNodeKindRule() },
           Array.Empty<RuleDefinitionPropagate>(),
           Array.Empty<RuleDefinitionLift>(),
@@ -735,14 +735,14 @@ public sealed class GraphAnalyzerTests
         Assert.Contains("MethodDeclaration", exception.Message);
     }
 
-    private static DeletionApplicationService CreateApplication()
+    private static  ApplicationService CreateApplication()
     {
-        return new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        return new  ApplicationService(RuleRegistry.CreateDefaultRules());
     }
 
-    private static DeletionCommandHost CreateCommandHost()
+    private static  CommandHost CreateCommandHost()
     {
-        return new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+        return new  CommandHost(RuleRegistry.CreateDefaultRules());
     }
 
     private static Dictionary<string, string> CreateOptions(string? targetName = null, string? unreachableMethods = null)

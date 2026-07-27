@@ -15,19 +15,11 @@ public sealed class ArchitectureBoundaryTests
   }
 
   [Fact]
-  public void LoggingProject_HasNoDependencies()
-  {
-    var projectText = File.ReadAllText(ProjectPath("src", "NLISSN.Logging", "NLISSN.Logging.csproj"));
-    Assert.DoesNotContain("<ProjectReference", projectText, StringComparison.Ordinal);
-    Assert.DoesNotContain("<PackageReference", projectText, StringComparison.Ordinal);
-  }
-
-  [Fact]
   public void CoreRuleContext_DoesNotExposeTheFullGraph()
   {
     var contextText = File.ReadAllText(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleContext.cs"));
     Assert.DoesNotContain("public CpgAnalysisContext AnalysisContext", contextText, StringComparison.Ordinal);
-    Assert.DoesNotContain("public RoslynCpgGraph Graph", contextText, StringComparison.Ordinal);
+    Assert.DoesNotContain("public NLCPGGraph Graph", contextText, StringComparison.Ordinal);
   }
 
   [Fact]
@@ -57,8 +49,7 @@ public sealed class ArchitectureBoundaryTests
         "NLISSN.Core",
         "NLISSN.Rules",
         "NLISSN.Application",
-        "NLISSN",
-        "NLISSN.Logging"
+        "NLISSN"
       }
       .SelectMany(project => Directory.EnumerateFiles(
         ProjectPath("src", project),
@@ -69,7 +60,7 @@ public sealed class ArchitectureBoundaryTests
     {
       var source = File.ReadAllText(sourcePath);
       Assert.DoesNotContain("namespace RoslynPrototype", source, StringComparison.Ordinal);
-      Assert.DoesNotContain("namespace Deletion", source, StringComparison.Ordinal);
+      Assert.DoesNotContain("namespace ", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Application", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Rules", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Host", source, StringComparison.Ordinal);

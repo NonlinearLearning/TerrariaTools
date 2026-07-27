@@ -35,20 +35,20 @@ projects may reference production projects and the asset library, but never
 another test project.
 
 ```text
-RoslynDeletionPrototype.Testing
+Roslyn Prototype.Testing
   - TestCodeSet: C# inputs, multi-file fixtures, rule input and fixture metadata
   - TestInfrastructure: isolated workspace, artifact root, canonical comparers
 
-RoslynDeletionPrototype.UnitTests
+Roslyn Prototype.UnitTests
   - deterministic helpers, graph model, rules, decision conflict collapse
 
-RoslynDeletionPrototype.ContractTests
+Roslyn Prototype.ContractTests
   - graph build, slice query, DOP equivalence, shard/catalog persistence
 
-RoslynDeletionPrototype.HostTests
+Roslyn Prototype.HostTests
   - CLI options, directory traversal, logging, rewrite-plan replay, file output
 
-RoslynDeletionPrototype.PerformanceTests
+Roslyn Prototype.PerformanceTests
   - functional behavior across performance options; diagnostic timing only
 
 tools/CpgPersistenceBenchmark and scripts/Run-PerformanceSuite.ps1

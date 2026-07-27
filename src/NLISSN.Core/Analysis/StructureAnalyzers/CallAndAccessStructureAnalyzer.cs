@@ -3,23 +3,17 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 调用、对象创建、成员访问和索引访问结构分析结果。
-/// </summary>
 public sealed record CallAndAccessStructureAnalysis(IReadOnlyList<SyntaxNode> AffectedSyntaxTree);
 
-/// <summary>
 /// 分析最常见的调用和访问结构，保留调用目标、接收者、参数列表和访问名。
-/// </summary>
 public sealed class CallAndAccessStructureAnalyzer
 {
     private sealed record CallAndAccessStructure(
         SyntaxNode Root,
         IReadOnlyList<SyntaxNode> Components);
 
-    /// <summary>
-    /// 根据表达式实际 Roslyn 节点类型，返回该调用或访问结构的关键语法节点。
-    /// </summary>
+    // 按表达式实际形态提取调用或访问结构的关键组成节点。
     public CallAndAccessStructureAnalysis Analyze(ExpressionSyntax root, CpgAnalysisContext context)
     {
         _ = context;

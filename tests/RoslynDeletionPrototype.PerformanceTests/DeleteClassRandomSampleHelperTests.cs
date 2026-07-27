@@ -8,8 +8,8 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
 {
     private readonly string _sourceDirectory;
     private const string DeleteClassTargetName = "PlayerInput";
-    private const int TerrariaTimingReferenceFileLimit = 99;
-    private const int TerrariaTimingMaxDegreeOfParallelism = 64;
+    private const int TerrariaSampleFileLimit = 99;
+    private const int TerrariaSampleMaxDegreeOfParallelism = 64;
     private const string TerrariaExternalCodeSetPath =
       @"D:\lodes\TR\Backup\New1.27\1.45 2\TR";
 
@@ -97,7 +97,7 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
     }
 
     [Fact]
-    public void Execute_TerrariaCodeSet_ReportsPhaseTimingsWithoutApplyingFinalWriteBack()
+    public void Execute_TerrariaCodeSet_ProducesDiffWithoutApplyingFinalWriteBack()
     {
         var stagedSourceDirectory = CreateTargetedTerrariaSourceDirectory();
         var sampleCount = CountCandidateFiles(stagedSourceDirectory);
@@ -109,24 +109,11 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
           DeleteClassRandomSampleMode.FixedSeed,
           SampleCount: sampleCount,
           WriteBackCopiedSource: false,
-          MaxDegreeOfParallelism: TerrariaTimingMaxDegreeOfParallelism));
-        var phaseTimings = Assert.IsType<DeleteClassRandomSampleAnalysisPhaseTimings>(
-          result.Timings.AnalysisPhases);
-
+          MaxDegreeOfParallelism: TerrariaSampleMaxDegreeOfParallelism));
         Assert.Equal(sampleCount, result.SelectedRelativePaths.Count);
         Assert.False(result.WriteBackApplied);
         Assert.NotEmpty(result.AnalysisResult.Diff.Files);
         Assert.True(result.AnalysisResult.Edits.Count > 0);
-        Assert.True(result.Timings.CopyMilliseconds >= 0);
-        Assert.True(result.Timings.AnalysisMilliseconds >= 0);
-        Assert.True(result.Timings.DiffMaterializationMilliseconds >= 0);
-        Assert.True(result.Timings.ManifestMilliseconds >= 0);
-        Assert.Equal(0, result.Timings.WriteBackMilliseconds);
-        Assert.True(phaseTimings.MarkMilliseconds >= 0);
-        Assert.True(phaseTimings.PropagateMilliseconds >= 0);
-        Assert.True(phaseTimings.LiftMilliseconds >= 0);
-        Assert.True(phaseTimings.DecideMilliseconds >= 0);
-        Assert.True(phaseTimings.RewriteMilliseconds >= 0);
         Assert.All(result.FileResults, file =>
         {
             Assert.True(File.Exists(file.CopiedPath));
@@ -205,7 +192,7 @@ public sealed class DeleteClassRandomSampleHelperTests : IDisposable
             .Select(path => new FileInfo(path))
             .OrderBy(file => file.Length)
             .ThenBy(file => file.FullName, StringComparer.OrdinalIgnoreCase)
-            .Take(TerrariaTimingReferenceFileLimit)
+            .Take(TerrariaSampleFileLimit)
             .Select(file => file.FullName));
 
         foreach (var sourcePath in sourcePaths)

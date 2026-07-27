@@ -3,9 +3,7 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace NLISSN.Core.Rewrite;
 
-/// <summary>
-/// A portable, text-only rewrite operation. It intentionally contains no Roslyn objects.
-/// </summary>
+/// 一项可移植的纯文本改写操作。其中刻意不包含 Roslyn 对象。
 public sealed record RewritePlanEdit(
   int Start,
   int Length,
@@ -16,17 +14,13 @@ public sealed record RewritePlanEdit(
   public TextSpan Span => new(Start, Length);
 }
 
-/// <summary>
-/// The rewrite operations for one source file, relative to an artifact input root.
-/// </summary>
+/// 一个源文件相对于工件输入根目录的改写操作。
 public sealed record RewritePlanFile(
   string RelativePath,
   string SourceSha256,
   IReadOnlyList<RewritePlanEdit> Edits);
 
-/// <summary>
-/// The versioned project-level metadata for a rewrite-plan artifact.
-/// </summary>
+/// 改写计划工件的带版本项目级元数据。
 public sealed record RewritePlanManifest(
   int SchemaVersion,
   string Operation,

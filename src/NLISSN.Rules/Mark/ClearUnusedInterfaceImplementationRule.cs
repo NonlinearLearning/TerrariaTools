@@ -6,9 +6,7 @@ using NLISSN.Core.Marking;
 
 namespace NLISSN.Rules;
 
-/// <summary>
 /// 命中未被调用的接口成员对应的源码实现方法。
-/// </summary>
 public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
 {
   public override string CapabilityId { get; } = "mark.clear-unused-interface-implementation";
@@ -22,6 +20,7 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
   public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
     new[] { SyntaxKind.MethodDeclaration };
 
+  // 找出既实现接口成员、又没有任何接口侧或实现侧引用的方法声明。
   public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
   {
     if (!IsEnabled(context))

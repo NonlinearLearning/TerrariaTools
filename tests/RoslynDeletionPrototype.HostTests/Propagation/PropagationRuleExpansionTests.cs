@@ -125,7 +125,7 @@ public sealed class PropagationRuleExpansionTests
 
     private static PrototypeAnalysisResult Analyze(string source, string filePath, string targetName)
     {
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
         return application.Analyze(
           source,
           filePath,
@@ -142,7 +142,7 @@ public sealed class PropagationRuleExpansionTests
 
     private static PrototypeAnalysisResult AnalyzeWithSeeds(string source, string filePath, params (SyntaxKind Kind, string Text)[] seeds)
     {
-        var application = new DeletionApplicationService(
+        var application = new  ApplicationService(
           new RuleDefinitionMark[] { new ExactSyntaxSeedRule(seeds) },
           RuleRegistry.CreateDefaultRules().Propagators
             .Where(rule => string.Equals(rule.GroupKey, "DEL-SOBJ", StringComparison.Ordinal))

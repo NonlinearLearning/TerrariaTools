@@ -15,9 +15,7 @@ public sealed class PrototypeRewriter
   private readonly TextDiffRenderer _textDiffRenderer = new();
   private readonly record struct RewritePlanEntry(RewritePlanEdit Operation, RewriteEdit Edit);
 
-  /// <summary>
-  /// 根据决策列表对语法树执行删除或替换，并产出最终源码与编辑记录。
-  /// </summary>
+  // 把规则决策直接转换成改写计划并执行，返回源码、编辑和 diff。
   public PrototypeRewriteResult Rewrite(SyntaxNode root, SemanticModel semanticModel, IEnumerable<RuleDecision> decisions)
   {
     var plan = BuildPlan(root, semanticModel, decisions);
@@ -25,9 +23,7 @@ public sealed class PrototypeRewriter
     return ExecutePlan(root.ToFullString(), root.SyntaxTree.FilePath, plan);
   }
 
-  /// <summary>
-  /// Converts Roslyn rule decisions into a portable text-only rewrite plan.
-  /// </summary>
+  // 根据规则决策生成可移植文本操作和显示用编辑列表，但不立即应用到源码。
   public PrototypeRewritePlan BuildPlan(SyntaxNode root, SemanticModel semanticModel, IEnumerable<RuleDecision> decisions)
   {
     var rewritePlan = new List<RewritePlanEntry>();
@@ -140,9 +136,7 @@ public sealed class PrototypeRewriter
       effectivePlan.Select(entry => entry.Edit).ToList());
   }
 
-  /// <summary>
-  /// Applies an in-memory plan without accessing Roslyn semantic data.
-  /// </summary>
+  // 按既定改写计划改写源码文本，并生成与之对应的结构化 diff。
   public PrototypeRewriteResult ExecutePlan(string source, string filePath, PrototypeRewritePlan plan)
   {
     ArgumentNullException.ThrowIfNull(source);
@@ -161,9 +155,7 @@ public sealed class PrototypeRewriter
       plan.Operations);
   }
 
-  /// <summary>
-  /// Applies a persisted file plan without accepting Roslyn syntax or semantic objects.
-  /// </summary>
+  // 执行从制品回放读取出的改写计划文件，并补齐展示层编辑信息。
   public PrototypeRewriteResult ExecutePlan(string source, string filePath, RewritePlanFile plan)
   {
     ArgumentNullException.ThrowIfNull(plan);
@@ -179,9 +171,6 @@ public sealed class PrototypeRewriter
     return ExecutePlan(source, filePath, new PrototypeRewritePlan(plan.Edits, displayEdits));
   }
 
-  /// <summary>
-  /// 为表达式删除场景构造一个类型兼容的占位替换表达式。
-  /// </summary>
   private static ExpressionSyntax CreateReplacementExpression(ExpressionSyntax expression, SemanticModel semanticModel)
   {
     var typeInfo = semanticModel.GetTypeInfo(expression);
@@ -247,9 +236,6 @@ public sealed class PrototypeRewriter
       .TrimEnd('?');
   }
 
-  /// <summary>
-  /// 为替换型改写生成一条可追踪的编辑记录。
-  /// </summary>
   private static RewriteEdit CreateEdit(SyntaxNode originalNode, SyntaxNode replacementNode)
   {
     return new RewriteEdit(
@@ -280,9 +266,6 @@ public sealed class PrototypeRewriter
     return CreateEdit(originalStatement, replacementStatement);
   }
 
-  /// <summary>
-  /// 为删除型改写生成一条可追踪的编辑记录。
-  /// </summary>
   private static RewriteEdit CreateDeleteEdit(SyntaxNode originalNode)
   {
     return new RewriteEdit(
@@ -330,6 +313,7 @@ public sealed class PrototypeRewriter
       return rewritePlan;
     }
 
+    // 从右向左应用文本编辑，前一次替换不会改变尚未处理的左侧 Span。
     var orderedPlan = rewritePlan
       .OrderByDescending(entry => entry.Operation.Start)
       .ThenByDescending(entry => entry.Operation.Length)
@@ -350,12 +334,14 @@ public sealed class PrototypeRewriter
       if (overlappingEntries.Any(overlappingEntry =>
             GetTextSpan(overlappingEntry.Operation).Contains(GetTextSpan(entry.Operation))))
       {
+        // 外层编辑已覆盖当前编辑，保留外层结果即可。
         continue;
       }
 
       if (overlappingEntries.All(overlappingEntry =>
             GetTextSpan(entry.Operation).Contains(GetTextSpan(overlappingEntry.Operation))))
       {
+        // 更大的编辑替代已收集的子编辑，避免同一源片段被重复处理。
         foreach (var overlappingEntry in overlappingEntries)
         {
           effectivePlan.Remove(overlappingEntry);

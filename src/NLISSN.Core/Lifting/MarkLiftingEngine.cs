@@ -9,8 +9,10 @@ namespace NLISSN.Core.Lifting;
 
 public sealed class MarkLiftingEngine
 {
+    // 基于种子标记和非 payload 传播标记执行父级提升，并按组和语法位置去重。
     public IReadOnlyList<LiftedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<RuleDefinitionLift> rules)
     {
+        // 结构化 payload 仅供后续决策消费；它不代表可向父级语法节点提升的标记。
         var liftEligiblePropagatedMarks = propagatedMarks
           .Where(mark => mark.Payload is null)
           .ToList();
@@ -26,6 +28,7 @@ public sealed class MarkLiftingEngine
             group => group.Key,
             group => (IReadOnlyList<PropagatedMarkRecord>)group.ToList(),
             StringComparer.Ordinal);
+        // 与传播阶段一致，GroupKey 保证同组提升规则串行、不同组可安全并行。
         var groupedRules = rules
           .GroupBy(rule => rule.GroupKey, StringComparer.Ordinal)
           .Select(group => new LiftRuleGroup(group.Key, group.ToList()))

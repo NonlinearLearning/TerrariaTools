@@ -2,7 +2,7 @@ using Xunit;
 
 namespace NLISSN.Tests.Architecture;
 
-public sealed class DeletionLayoutArchitectureTests
+public sealed class  LayoutArchitectureTests
 {
   [Fact]
   public void ProductionProjects_UseTheNlissnProjectLayout()
@@ -11,7 +11,6 @@ public sealed class DeletionLayoutArchitectureTests
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Rules", "NLISSN.Rules.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Application", "NLISSN.Application.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN", "NLISSN.csproj")));
-    Assert.True(File.Exists(ProjectPath("src", "NLISSN.Logging", "NLISSN.Logging.csproj")));
   }
 
   [Fact]
@@ -32,20 +31,20 @@ public sealed class DeletionLayoutArchitectureTests
   public void ProductionProjectReferences_MatchTheTargetDependencyGraph()
   {
     AssertProjectReferences(
-      new[] { "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj" },
+      new[] { "..\\NLCPG\\NLCPG.csproj" },
       "src", "NLISSN.Core", "NLISSN.Core.csproj");
     AssertProjectReferences(
       new[]
       {
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
-        "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
+        "..\\NLCPG\\NLCPG.csproj"
       },
       "src", "NLISSN.Rules", "NLISSN.Rules.csproj");
     AssertProjectReferences(
       new[]
       {
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
-        "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
+        "..\\NLCPG\\NLCPG.csproj"
       },
       "src", "NLISSN.Application", "NLISSN.Application.csproj");
     AssertProjectReferences(
@@ -54,11 +53,9 @@ public sealed class DeletionLayoutArchitectureTests
         "..\\NLISSN.Application\\NLISSN.Application.csproj",
         "..\\NLISSN.Rules\\NLISSN.Rules.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
-        "..\\NLISSN.Logging\\NLISSN.Logging.csproj",
-        "..\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj"
+        "..\\NLCPG\\NLCPG.csproj"
       },
       "src", "NLISSN", "NLISSN.csproj");
-    AssertProjectReferences(Array.Empty<string>(), "src", "NLISSN.Logging", "NLISSN.Logging.csproj");
   }
 
   private static void AssertProjectReferences(IReadOnlyList<string> expected, params string[] projectParts)

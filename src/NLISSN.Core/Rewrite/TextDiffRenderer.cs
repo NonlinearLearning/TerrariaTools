@@ -4,6 +4,7 @@ namespace NLISSN.Core.Rewrite;
 
 public sealed class TextDiffRenderer
 {
+  // 按调用方指定的视图名称渲染整个文档级 diff。
   public string Render(DiffDocument document, string view)
   {
     return string.Equals(view, "readable", StringComparison.OrdinalIgnoreCase)
@@ -11,6 +12,7 @@ public sealed class TextDiffRenderer
       : RenderLegacy(document);
   }
 
+  // 按调用方指定的视图名称渲染单文件 diff。
   public string Render(DiffFile file, string view)
   {
     return string.Equals(view, "readable", StringComparison.OrdinalIgnoreCase)
@@ -18,6 +20,7 @@ public sealed class TextDiffRenderer
       : RenderLegacy(file);
   }
 
+  // 输出兼容旧 CLI 行为的文档级文本 diff。
   public string RenderLegacy(DiffDocument document)
   {
     if (document.Files.Count == 0) {
@@ -42,6 +45,7 @@ public sealed class TextDiffRenderer
     return builder.ToString();
   }
 
+  // 输出兼容旧 CLI 行为的单文件文本 diff。
   public string RenderLegacy(DiffFile file)
   {
     if (file.Sections.Count == 0) {
@@ -66,6 +70,7 @@ public sealed class TextDiffRenderer
     return builder.ToString();
   }
 
+  // 输出带汇总头和可读标签的文档级 diff。
   public string RenderReadable(DiffDocument document)
   {
     if (document.Files.Count == 0) {
@@ -88,6 +93,7 @@ public sealed class TextDiffRenderer
     return builder.ToString();
   }
 
+  // 输出更适合人工阅读的单文件 diff 片段。
   public string RenderReadable(DiffFile file)
   {
     if (file.Sections.Count == 0) {

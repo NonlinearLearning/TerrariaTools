@@ -1,16 +1,17 @@
-using MinimalRoslynCpg.Contracts;
+using NLCPG.Contracts;
 using NLISSN.Rules;
 
 namespace NLISSN.Application;
 
-public sealed record DeletionRulePipeline(
+public sealed record  RulePipeline(
   IReadOnlyList<RuleDefinitionMark> Markers,
   IReadOnlyList<RuleDefinitionPropagate> Propagators,
   IReadOnlyList<RuleDefinitionLift> Lifters,
   IReadOnlyList<RuleDefinitionPropose> Proposers,
   bool EnableHelperReturnSlicePilot = false)
 {
-  public IReadOnlyList<RoslynCpgCapability> GetRequiredCapabilities()
+  // 汇总四个阶段所有规则声明的能力需求，并按试验开关补充额外查询能力。
+  public IReadOnlyList<NLCPGCapability> GetRequiredCapabilities()
   {
     var requiredCapabilities = Markers.SelectMany(rule => rule.RequiredCapabilities)
       .Concat(Propagators.SelectMany(rule => rule.RequiredCapabilities))
@@ -22,7 +23,7 @@ public sealed record DeletionRulePipeline(
           "ClassSymbolReferencePropagationRule",
           StringComparison.Ordinal)))
     {
-      requiredCapabilities.Add(RoslynCpgCapability.InterproceduralDataFlow);
+      requiredCapabilities.Add(NLCPGCapability.InterproceduralDataFlow);
     }
 
     return requiredCapabilities

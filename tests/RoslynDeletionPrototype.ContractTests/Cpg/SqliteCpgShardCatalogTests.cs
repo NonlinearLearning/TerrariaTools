@@ -1,7 +1,7 @@
 using Microsoft.Data.Sqlite;
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Persistence;
-using MinimalRoslynCpg.Persistence.Sqlite;
+using NLCPG.Builder;
+using NLCPG.Persistence;
+using NLCPG.Persistence.Sqlite;
 using System.Reflection;
 using Xunit;
 
@@ -24,14 +24,14 @@ public sealed class SqliteCpgShardCatalogTests
       var write = await store.WriteAsync(shard, CancellationToken.None);
       await catalog.StageAsync(
         buildId,
-        new CpgShardLease(lookup, write.Location),
+        new CpgShardLease(lookup, write),
         shard,
         CancellationToken.None);
       var routingPath = Path.Combine(root, "builds", buildId, "routing.cpgidx");
       var routingIndex = await new CpgBuildRoutingIndexWriter().WriteAsync(
         routingPath,
         buildId,
-        new[] { new CpgBuildRoutingShardEntry(shard, write.Location) },
+        new[] { new CpgBuildRoutingShardEntry(shard, write) },
         CancellationToken.None);
       await FinalizeRoutingBuildAsync(
         catalog,
@@ -42,13 +42,8 @@ public sealed class SqliteCpgShardCatalogTests
           routingIndex.ByteLength,
           routingIndex.PayloadHash));
 
-      Assert.Equal(new[] { write.Location }, await catalog.FindByNodeAsync(7, CancellationToken.None));
-      Assert.Equal(new[] { write.Location }, await catalog.FindByNodeAsync(7, CancellationToken.None));
-
-      var warmed = catalog.GetRoutingIndexCacheTelemetry();
-      Assert.Equal(1, warmed.ReadCount);
-      Assert.Equal(1, warmed.CacheMissCount);
-      Assert.Equal(1, warmed.CacheHitCount);
+      Assert.Equal(new[] { write }, await catalog.FindByNodeAsync(7, CancellationToken.None));
+      Assert.Equal(new[] { write }, await catalog.FindByNodeAsync(7, CancellationToken.None));
 
       await using (var connection = new SqliteConnection($"Data Source={catalogPath};Pooling=False"))
       {
@@ -60,7 +55,6 @@ public sealed class SqliteCpgShardCatalogTests
 
       await Assert.ThrowsAsync<InvalidDataException>(() =>
         catalog.FindByNodeAsync(7, CancellationToken.None));
-      Assert.Equal(2, catalog.GetRoutingIndexCacheTelemetry().ReadCount);
     }
     finally
     {
@@ -484,9 +478,19 @@ public sealed class SqliteCpgShardCatalogTests
       await catalog.CompleteBuildAsync(secondBuild, CancellationToken.None);
 
       Assert.Equal(secondLocation, (await catalog.TryAcquireReusableAsync(reusableKey, CancellationToken.None))!.Location);
-      Assert.Null(await catalog.TryAcquireReusableAsync(
-        reusableKey with { NodeIdFingerprint = "incompatible" },
-        CancellationToken.None));
+      var incompatibleKey = new CpgReusableFragmentKey
+      {
+        ProjectId = reusableKey.ProjectId,
+        RelativePath = reusableKey.RelativePath,
+        SchemaVersion = reusableKey.SchemaVersion,
+        ProfileHash = reusableKey.ProfileHash,
+        FragmentKind = reusableKey.FragmentKind,
+        SpanStart = reusableKey.SpanStart,
+        SpanLength = reusableKey.SpanLength,
+        FragmentHash = reusableKey.FragmentHash,
+        NodeIdFingerprint = "incompatible",
+      };
+      Assert.Null(await catalog.TryAcquireReusableAsync(incompatibleKey, CancellationToken.None));
     }
     finally
     {

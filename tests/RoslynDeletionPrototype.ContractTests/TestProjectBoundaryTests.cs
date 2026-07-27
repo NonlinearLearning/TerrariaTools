@@ -11,7 +11,7 @@ public sealed class TestProjectBoundaryTests
     var misplacedGuardPath = Path.Combine(
       ResolveRepositoryRoot(),
       "tests",
-      "RoslynDeletionPrototype.ContractTests",
+      "Roslyn Prototype.ContractTests",
       "TestInfrastructure",
       "TextAssertionUsageGuardTests.cs");
 
@@ -24,7 +24,7 @@ public sealed class TestProjectBoundaryTests
     var misplacedTestPath = Path.Combine(
       ResolveRepositoryRoot(),
       "tests",
-      "RoslynDeletionPrototype.UnitTests",
+      "Roslyn Prototype.UnitTests",
       "TestInfrastructure",
       "TestAssetCatalogTests.cs");
 
@@ -37,7 +37,7 @@ public sealed class TestProjectBoundaryTests
     var misplacedHelperPath = Path.Combine(
       ResolveRepositoryRoot(),
       "tests",
-      "RoslynDeletionPrototype.PerformanceTests",
+      "Roslyn Prototype.PerformanceTests",
       "TestInfrastructure",
       "DeleteClassRandomSampleHelper.cs");
 
@@ -48,13 +48,13 @@ public sealed class TestProjectBoundaryTests
   public void ProjectFiles_KeepSharedAssetsAndTestProjectsSeparated()
   {
     var projectRoot = ResolveRepositoryRoot();
-    var testingProject = ReadProject(projectRoot, "RoslynDeletionPrototype.Testing");
+    var testingProject = ReadProject(projectRoot, "Roslyn Prototype.Testing");
     var testProjects = new[]
     {
-      ReadProject(projectRoot, "RoslynDeletionPrototype.UnitTests"),
-      ReadProject(projectRoot, "RoslynDeletionPrototype.ContractTests"),
-      ReadProject(projectRoot, "RoslynDeletionPrototype.HostTests"),
-      ReadProject(projectRoot, "RoslynDeletionPrototype.PerformanceTests"),
+      ReadProject(projectRoot, "Roslyn Prototype.UnitTests"),
+      ReadProject(projectRoot, "Roslyn Prototype.ContractTests"),
+      ReadProject(projectRoot, "Roslyn Prototype.HostTests"),
+      ReadProject(projectRoot, "Roslyn Prototype.PerformanceTests"),
     };
 
     Assert.Empty(ProjectReferences(testingProject)
@@ -67,11 +67,11 @@ public sealed class TestProjectBoundaryTests
       Assert.Contains(
         ProjectReferences(project),
         reference => reference.EndsWith(
-          "RoslynDeletionPrototype.Testing.csproj",
+          "Roslyn Prototype.Testing.csproj",
           StringComparison.OrdinalIgnoreCase));
       Assert.Empty(ProjectReferences(project)
-        .Where(reference => reference.Contains("RoslynDeletionPrototype.", StringComparison.OrdinalIgnoreCase) &&
-          !reference.EndsWith("RoslynDeletionPrototype.Testing.csproj", StringComparison.OrdinalIgnoreCase)));
+        .Where(reference => reference.Contains("Roslyn Prototype.", StringComparison.OrdinalIgnoreCase) &&
+          !reference.EndsWith("Roslyn Prototype.Testing.csproj", StringComparison.OrdinalIgnoreCase)));
     }
 
     var unitProject = testProjects[0];

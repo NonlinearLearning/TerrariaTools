@@ -4,7 +4,7 @@
 
 **Goal:** Separate directory scheduling DOP from per-file CPG partition DOP so the DOP 12 regression can be measured without changing legacy CLI behavior.
 
-**Architecture:** `RoslynPrototypeExecutionOptions` receives an optional CPG DOP override. The runtime retains the global DOP for directory, helper, and group scheduling, while `DeletionApplicationService` gives the CPG builder the override when present. A missing override inherits the global effective DOP.
+**Architecture:** `RoslynPrototypeExecutionOptions` receives an optional CPG DOP override. The runtime retains the global DOP for directory, helper, and group scheduling, while ` ApplicationService` gives the CPG builder the override when present. A missing override inherits the global effective DOP.
 
 **Tech Stack:** .NET 10, Roslyn, xUnit, existing text runtime and analysis logs.
 
@@ -14,11 +14,11 @@
 
 **Files:**
 - Modify: `src/RoslynPrototype/RuleServices/ExecutionRuntime.cs`
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 
 **Step 1: Write failing tests**
 
-Add focused tests for `DeletionAnalysisRuntime.CreateFromOptions`:
+Add focused tests for ` AnalysisRuntime.CreateFromOptions`:
 
 ```csharp
 Assert.Equal(12, runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
@@ -31,14 +31,14 @@ Use options containing `max-degree-of-parallelism=12` and `cpg-max-degree-of-par
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --filter "FullyQualifiedName~PipelineComponentTests" -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --filter "FullyQualifiedName~PipelineComponentTests" -p:UseSharedCompilation=false
 ```
 
 Expected: the new tests fail because the execution options have no CPG-specific value.
 
 **Step 3: Implement the smallest option model**
 
-Add an optional `CpgMaxDegreeOfParallelism` field to `RoslynPrototypeExecutionOptions` and an `EffectiveCpgMaxDegreeOfParallelism` property that falls back to `EffectiveMaxDegreeOfParallelism`. In `DeletionAnalysisRuntime.CreateExecutionOptions`, parse only `cpg-max-degree-of-parallelism`; when present require a positive integer and throw an `ArgumentException` otherwise. Leave `ResolveMaxDegreeOfParallelism` unchanged so legacy global-option semantics do not drift.
+Add an optional `CpgMaxDegreeOfParallelism` field to `RoslynPrototypeExecutionOptions` and an `EffectiveCpgMaxDegreeOfParallelism` property that falls back to `EffectiveMaxDegreeOfParallelism`. In ` AnalysisRuntime.CreateExecutionOptions`, parse only `cpg-max-degree-of-parallelism`; when present require a positive integer and throw an `ArgumentException` otherwise. Leave `ResolveMaxDegreeOfParallelism` unchanged so legacy global-option semantics do not drift.
 
 **Step 4: Run the focused test and verify GREEN**
 
@@ -51,8 +51,8 @@ Stage only the two files. Use a Lore-format commit that records the legacy fallb
 ### Task 2: Route The Override Only To The CPG Builder
 
 **Files:**
-- Modify: `src/Application/DeletionApplicationService.cs`
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- Modify: `src/Application/ ApplicationService.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 
 **Step 1: Write the failing builder-routing test**
 
@@ -71,13 +71,13 @@ Run the command from Task 1, Step 2. Expected: the explicit CPG assertion fails 
 
 **Step 3: Implement the one-line routing change**
 
-In `DeletionApplicationService.BuildAnalysisContext`, replace the builder option assignment with `runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism`. Do not alter directory scheduling, helper scheduling, group scheduling, CPG pass algorithms, or defaults.
+In ` ApplicationService.BuildAnalysisContext`, replace the builder option assignment with `runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism`. Do not alter directory scheduling, helper scheduling, group scheduling, CPG pass algorithms, or defaults.
 
 **Step 4: Run focused equivalence tests and verify GREEN**
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --filter "FullyQualifiedName~PipelineComponentTests" -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --filter "FullyQualifiedName~PipelineComponentTests" -p:UseSharedCompilation=false
 ```
 
 Expected: builder routing and existing directory-DOP equivalence tests pass.
@@ -89,7 +89,7 @@ Stage only the application and test files. Use a Lore-format commit stating that
 ### Task 3: Expose The CLI Contract And Lock Directory Equivalence
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 - Modify: `docs/cli-reference.md`
 - Modify: `docs/quick-start.md`
 - Modify: `docs/developer-guide.md`
@@ -111,7 +111,7 @@ Document that `--max-degree-of-parallelism` continues to limit directory/rule wo
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
 dotnet build .\src\RoslynPrototype\RoslynPrototype.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-build --filter "FullyQualifiedName~PipelineComponentTests" -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-build --filter "FullyQualifiedName~PipelineComponentTests" -p:UseSharedCompilation=false
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```
@@ -157,8 +157,8 @@ Do not alter default DOP from this measurement alone. Require graph, rule, and r
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet build .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~PipelineComponentTests"
+dotnet build .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~PipelineComponentTests"
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```

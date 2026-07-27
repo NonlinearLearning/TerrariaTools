@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLISSN.Core.Analysis;
-using MinimalRoslynCpg.Builder;
+using NLCPG.Builder;
 using NLISSN.Application;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
@@ -492,7 +492,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new RoslynCpgBuilder().BuildFromSource(source, filePath);
+        var graph = new NLCPGBuilder().BuildFromSource(source, filePath);
         return (new CpgAnalysisContext(graph, semanticModel, root), root);
     }
 

@@ -7,8 +7,10 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Lifting;
 
+/// 判断 if / else if / else 树是否已具备完整删除条件，并构造保留分支所需的结构化事实。
 public static class DeleteSObjectIfStructureLiftingHelpers
 {
+    // 从已有 seed / propagated mark 推导完整的 if 结构标记，并避免重复提升同一宿主。
     public static IEnumerable<LiftedMarkRecord> BuildIfStructureLiftedMarks(RuleContext context, string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var ifStructureAnalyzer = new IfStructureAnalyzer();

@@ -2,6 +2,7 @@ namespace NLISSN.Core.Rewrite;
 
 public sealed class DiffBuilder
 {
+  // 把一组文本编辑归并成按文件分组的结构化 diff 文档。
   public DiffDocument Build(IReadOnlyList<RewriteEdit> edits)
   {
     if (edits.Count == 0) {
@@ -57,6 +58,7 @@ public sealed class DiffBuilder
         replaceBlockCount));
   }
 
+  // 合并多个文件级 diff 文档，并重新计算汇总统计。
   public DiffDocument Combine(IEnumerable<DiffDocument> documents)
   {
     var files = documents

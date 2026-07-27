@@ -39,9 +39,9 @@ pwsh -File .\init.ps1
 至少执行与改动匹配的命令：
 
 ```powershell
-dotnet build .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj
-dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore
+dotnet build .\src\NLCPG\NLCPG.csproj
+dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore
 ```
 
 当前 checkout 未包含 `scripts/check-harness-consistency.ps1` 或 `scripts/Run-TestTiers.ps1`；恢复这些 harness 脚本前，不要将其列为已执行的验证。

@@ -76,9 +76,9 @@ propose.class.parameter-shrink
 
 **文件：**
 
-- 修改：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Architecture/ArchitectureBoundaryTests.cs`
-- 新建：`tests/RoslynDeletionPrototype.UnitTests/Rules/RuleIdentityContractTests.cs`
+- 修改：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Architecture/ArchitectureBoundaryTests.cs`
+- 新建：`tests/Roslyn Prototype.UnitTests/Rules/RuleIdentityContractTests.cs`
 
 **动作：**
 
@@ -100,7 +100,7 @@ propose.class.parameter-shrink
 - 新建：`src/Rules/Identity/RuleDescriptor.cs`
 - 新建：`src/Rules/Identity/RuleStage.cs`
 - 修改：`src/RoslynPrototype/RuleServices/RuleDefinition.cs`
-- 测试：`tests/RoslynDeletionPrototype.UnitTests/Rules/RuleDescriptorTests.cs`
+- 测试：`tests/Roslyn Prototype.UnitTests/Rules/RuleDescriptorTests.cs`
 
 **动作：**
 
@@ -122,15 +122,15 @@ propose.class.parameter-shrink
 - 新建：`src/Rules/Identity/RuleCatalog.cs`
 - 修改：`src/Rules/RuleSet.cs`
 - 修改：`src/Host/RuleRegistry.cs`
-- 测试：`tests/RoslynDeletionPrototype.UnitTests/Rules/RuleCatalogTests.cs`
-- 测试：`tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- 测试：`tests/Roslyn Prototype.UnitTests/Rules/RuleCatalogTests.cs`
+- 测试：`tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 
 **动作：**
 
 1. `RuleCatalog.Create(IEnumerable<IRuleSet>)` 只枚举传入 RuleSet 的成员，不读取程序集类型。
 2. 生成 `RuleBinding`，记录 RuleSet、descriptor 和实现类型。
 3. 在构建时拒绝以下情况：重复 `CapabilityId`、重复 `LegacyRuleId`、同一实例被多个 RuleSet 注册、RuleSet Id 重复、descriptor stage 与实际阶段不一致。
-4. `RuleRegistry.CreateRules(...)` 先构建 catalog，再由 catalog 生成 `DeletionRulePipeline`。
+4. `RuleRegistry.CreateRules(...)` 先构建 catalog，再由 catalog 生成 ` RulePipeline`。
 5. 错误消息必须包括 capability、两个 RuleSet Id、两个实现类型与阶段。
 
 **验收门：**
@@ -200,13 +200,13 @@ propose.class.parameter-shrink
 
 **文件：**
 
-- 修改：`src/Host/DeletionApplicationOptions.cs`
-- 修改：`src/Host/DeletionCommandHost.cs`
+- 修改：`src/Host/ ApplicationOptions.cs`
+- 修改：`src/Host/ CommandHost.cs`
 - 修改：`docs/quick-start.md`
 - 修改：`docs/cli-reference.md`
 - 修改：`docs/developer-guide.md`
-- 修改：`tests/RoslynDeletionPrototype.ContractTests/Architecture/ArchitectureBoundaryTests.cs`
-- 新建：`tests/RoslynDeletionPrototype.ContractTests/Rules/RuleCatalogContractTests.cs`
+- 修改：`tests/Roslyn Prototype.ContractTests/Architecture/ArchitectureBoundaryTests.cs`
+- 新建：`tests/Roslyn Prototype.ContractTests/Rules/RuleCatalogContractTests.cs`
 
 **动作：**
 
@@ -228,9 +228,9 @@ propose.class.parameter-shrink
 ```powershell
 $env:DOTNET_CLI_HOME=(Resolve-Path '.').Path
 dotnet build .\src\Host\Host.csproj --no-restore -m:1 -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore --filter "FullyQualifiedName~RuleDescriptor|FullyQualifiedName~RuleCatalog"
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore --filter "FullyQualifiedName~PipelineComponentTests|FullyQualifiedName~LogicalConditionMarkAnalyzerTests|FullyQualifiedName~PropagationRuleExpansionTests|FullyQualifiedName~DecisionStructureValidationTests"
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore --filter "FullyQualifiedName~ArchitectureBoundaryTests|FullyQualifiedName~RuleCatalogContractTests"
+dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore --filter "FullyQualifiedName~RuleDescriptor|FullyQualifiedName~RuleCatalog"
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore --filter "FullyQualifiedName~PipelineComponentTests|FullyQualifiedName~LogicalConditionMarkAnalyzerTests|FullyQualifiedName~PropagationRuleExpansionTests|FullyQualifiedName~DecisionStructureValidationTests"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore --filter "FullyQualifiedName~ArchitectureBoundaryTests|FullyQualifiedName~RuleCatalogContractTests"
 pwsh -File .\scripts\check-harness-consistency.ps1
 ```
 

@@ -1,0 +1,145 @@
+namespace NLCPG.Persistence;
+
+public sealed record CpgBuildRoutingPrimaryNodeRoute(uint NodeId, string ShardId, int LocalOffset);
+
+public sealed record CpgBuildRoutingBoundaryNodeRoute(uint NodeId, string ShardId);
+
+public sealed record CpgBuildRoutingSpanRoute(CpgFileKey File, int SpanStart, int SpanLength, string ShardId);
+
+public sealed record CpgBuildRoutingSymbolRoute(string SymbolKey, string ShardId, int LocalOffset);
+
+public sealed record CpgBuildRoutingShardEntry(CpgFrozenShard Shard, CpgShardLocation Location);
+
+public sealed record CpgBuildRoutingIndexWriteResult(string IndexPath, int FormatVersion, long ByteLength, string PayloadHash);
+
+public sealed class CpgBuildRoutingIndex
+{
+    private readonly IReadOnlyList<CpgBuildRoutingPrimaryNodeRoute> _primaryNodes;
+    private readonly IReadOnlyList<CpgBuildRoutingBoundaryNodeRoute> _boundaryNodes;
+    private readonly IReadOnlyList<CpgBuildRoutingSpanRoute> _spans;
+    private readonly IReadOnlyList<CpgBuildRoutingSymbolRoute> _symbols;
+
+    internal CpgBuildRoutingIndex(string buildId, int schemaVersion, string profileHash, string payloadHash, IReadOnlyList<CpgBuildRoutingPrimaryNodeRoute> primaryNodes, IReadOnlyList<CpgBuildRoutingBoundaryNodeRoute> boundaryNodes, IReadOnlyList<CpgBuildRoutingSpanRoute> spans, IReadOnlyList<CpgBuildRoutingSymbolRoute> symbols)
+    {
+        BuildId = buildId;
+        SchemaVersion = schemaVersion;
+        ProfileHash = profileHash;
+        PayloadHash = payloadHash;
+        _primaryNodes = primaryNodes;
+        _boundaryNodes = boundaryNodes;
+        _spans = spans;
+        _symbols = symbols;
+    }
+
+    public string BuildId { get; }
+
+    public int SchemaVersion { get; }
+
+    public string ProfileHash { get; }
+
+    public string PayloadHash { get; }
+
+    // 返回主节点路由表中命中的全部记录。
+    public IReadOnlyList<CpgBuildRoutingPrimaryNodeRoute> FindPrimaryNode(uint nodeId)
+    {
+        return FindRange(_primaryNodes, nodeId, static route => route.NodeId);
+    }
+
+    // 返回边界节点路由表中命中的全部记录。
+    public IReadOnlyList<CpgBuildRoutingBoundaryNodeRoute> FindBoundaryNode(uint nodeId)
+    {
+        return FindRange(_boundaryNodes, nodeId, static route => route.NodeId);
+    }
+
+    // 按文件跨度在排序后的路由表中检索对应分片。
+    public IReadOnlyList<CpgBuildRoutingSpanRoute> FindBySpan(CpgSpanLookup lookup)
+    {
+        ArgumentNullException.ThrowIfNull(lookup);
+        return FindRange(_spans,route => CompareSpan(route, lookup));
+    }
+
+    // 按符号键在排序后的路由表中检索对应分片。
+    public IReadOnlyList<CpgBuildRoutingSymbolRoute> FindBySymbol(CpgSymbolLookup lookup)
+    {
+        ArgumentNullException.ThrowIfNull(lookup);
+        return FindRange(_symbols,route => string.CompareOrdinal(route.SymbolKey, lookup.SymbolKey));
+    }
+
+    private static IReadOnlyList<T> FindRange<T>(IReadOnlyList<T> routes, uint nodeId, Func<T, uint> getNodeId)
+    {
+        var first = 0;
+        var last = routes.Count - 1;
+        while (first <= last)
+        {
+            var middle = first + ((last - first) / 2);
+            if (getNodeId(routes[middle]) < nodeId)
+            {
+                first = middle + 1;
+            }
+            else
+            {
+                last = middle - 1;
+            }
+        }
+
+        var results = new List<T>();
+        while (first < routes.Count && getNodeId(routes[first]) == nodeId)
+        {
+            results.Add(routes[first]);
+            first += 1;
+        }
+
+        return results;
+    }
+
+    private static IReadOnlyList<T> FindRange<T>(IReadOnlyList<T> routes, Func<T, int> compareToLookup)
+    {
+        var first = 0;
+        var last = routes.Count - 1;
+        while (first <= last)
+        {
+            var middle = first + ((last - first) / 2);
+            if (compareToLookup(routes[middle]) < 0)
+            {
+                first = middle + 1;
+            }
+            else
+            {
+                last = middle - 1;
+            }
+        }
+
+        var results = new List<T>();
+        while (first < routes.Count && compareToLookup(routes[first]) == 0)
+        {
+            results.Add(routes[first]);
+            first += 1;
+        }
+
+        return results;
+    }
+
+    private static int CompareSpan(CpgBuildRoutingSpanRoute route, CpgSpanLookup lookup)
+    {
+        var comparison = string.CompareOrdinal(route.File.ProjectId, lookup.File.ProjectId);
+        if (comparison != 0)
+        {
+            return comparison;
+        }
+
+        comparison = string.CompareOrdinal(route.File.RelativePath, lookup.File.RelativePath);
+        if (comparison != 0)
+        {
+            return comparison;
+        }
+
+        comparison = string.CompareOrdinal(route.File.SourceHash, lookup.File.SourceHash);
+        if (comparison != 0)
+        {
+            return comparison;
+        }
+
+        comparison = route.SpanStart.CompareTo(lookup.SpanStart);
+        return comparison != 0 ? comparison : route.SpanLength.CompareTo(lookup.SpanLength);
+    }
+}

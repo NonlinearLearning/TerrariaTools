@@ -6,6 +6,8 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 为扩展方法的非接收者参数收集声明与映射调用点，
+/// 保持 receiver 绑定不变，只把可安全收缩的槽位继续传给提案阶段。
 public sealed class ClassExtensionMethodMappedCallsitePropagationRule : RuleDefinitionPropagate
 {
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
@@ -25,6 +27,7 @@ public sealed class ClassExtensionMethodMappedCallsitePropagationRule : RuleDefi
         SyntaxKind.InvocationExpression
       };
 
+    // 把可安全收缩的扩展方法参数传播到方法声明和映射调用点，同时保持接收者绑定不变。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -68,6 +71,7 @@ public sealed class ClassExtensionMethodMappedCallsitePropagationRule : RuleDefi
         }
     }
 
+    /// 这里只接受 analyzer 已证明“接收者不变、非首参可收缩”的情况，
     private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out ExtensionMethodMappedCallsitePayload payload)
     {
         payload = null!;

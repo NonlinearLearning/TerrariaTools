@@ -2,8 +2,8 @@ using FsCheck;
 using FsCheck.Fluent;
 using FsCheck.Xunit;
 using Microsoft.CodeAnalysis.CSharp;
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Model;
+using NLCPG.Builder;
+using NLCPG.Model;
 using NLISSN.Application;
 using RoslynPrototype.Testing.TestCodeSet.Cpg;
 using RoslynPrototype.Testing.TestInfrastructure;
@@ -60,7 +60,7 @@ public sealed class CpgPropertyEquivalenceTests
     }
   }
 
-  private static RoslynCpgGraph Build(GeneratedCSharpFixture fixture, int maxDegreeOfParallelism, CpgPersistenceOptions? persistence)
+  private static NLCPGGraph Build(GeneratedCSharpFixture fixture, int maxDegreeOfParallelism, CpgPersistenceOptions? persistence)
   {
     var trees = fixture.Files
       .OrderBy(file => file.Key, StringComparer.Ordinal)
@@ -69,7 +69,7 @@ public sealed class CpgPropertyEquivalenceTests
     var primaryTree = trees.Single(tree =>
       string.Equals(tree.FilePath, fixture.PrimaryFileName, StringComparison.Ordinal));
     var semanticModel = RoslynCompilationFactory.CreateCompilation(trees).GetSemanticModel(primaryTree);
-    return new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+    return new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
     {
       MaxDegreeOfParallelism = maxDegreeOfParallelism,
       Persistence = persistence,
@@ -80,7 +80,7 @@ public sealed class CpgPropertyEquivalenceTests
       fixture.PrimaryFileName);
   }
 
-  private static CpgExecutionSnapshot CreateSnapshot(RoslynCpgGraph graph)
+  private static CpgExecutionSnapshot CreateSnapshot(NLCPGGraph graph)
   {
     return new CpgExecutionSnapshot(
       graph.GraphSnapshotVersion,

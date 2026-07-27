@@ -9,24 +9,24 @@ public sealed class TestAssetCatalogTests
   [Fact]
   public void Constructor_WhenAssetIdsDuplicate_ThrowsArgumentException()
   {
-    // Arrange
+        // 准备
     var asset = new TestAsset(
       "duplicate",
       "test",
       new Dictionary<string, string> { ["input.cs"] = "class C { }" },
       []);
 
-    // Act
+        // 执行
     var exception = Assert.Throws<ArgumentException>(() => new TestAssetCatalog([asset, asset]));
 
-    // Assert
+        // 断言
     Assert.Contains("duplicate", exception.Message, StringComparison.Ordinal);
   }
 
   [Fact]
   public void Write_WhenAssetIsWrittenTwice_CreatesDistinctRootsWithStableFiles()
   {
-    // Arrange
+        // 准备
     var asset = new TestAsset(
       "multi-file",
       "test",
@@ -38,11 +38,11 @@ public sealed class TestAssetCatalogTests
       ["shared"]);
     var writer = new TestWorkspaceWriter();
 
-    // Act
+        // 执行
     using var first = writer.Write(asset);
     using var second = writer.Write(asset);
 
-    // Assert
+        // 断言
     Assert.NotEqual(first.RootPath, second.RootPath);
     Assert.Equal("class One { }", File.ReadAllText(Path.Combine(first.RootPath, "one.cs")));
     Assert.Equal(
@@ -53,7 +53,7 @@ public sealed class TestAssetCatalogTests
   [Fact]
   public void Dispose_WhenWorkspaceIsDisposed_DeletesTheTemporaryRoot()
   {
-    // Arrange
+        // 准备
     var asset = new TestAsset(
       "temporary",
       "test",
@@ -62,14 +62,14 @@ public sealed class TestAssetCatalogTests
     var writer = new TestWorkspaceWriter();
     string rootPath;
 
-    // Act
+        // 执行
     using (var workspace = writer.Write(asset))
     {
       rootPath = workspace.RootPath;
       Assert.True(Directory.Exists(rootPath));
     }
 
-    // Assert
+        // 断言
     Assert.False(Directory.Exists(rootPath));
   }
 
@@ -79,7 +79,7 @@ public sealed class TestAssetCatalogTests
   [InlineData("nested/../escape.cs")]
   public void Write_WhenAssetContainsUnsafePath_ThrowsArgumentException(string filePath)
   {
-    // Arrange
+        // 准备
     var asset = new TestAsset(
       "unsafe",
       "test",
@@ -87,10 +87,10 @@ public sealed class TestAssetCatalogTests
       []);
     var writer = new TestWorkspaceWriter();
 
-    // Act
+        // 执行
     var exception = Assert.Throws<ArgumentException>(() => writer.Write(asset));
 
-    // Assert
+        // 断言
     Assert.Contains("path", exception.Message, StringComparison.OrdinalIgnoreCase);
   }
 }

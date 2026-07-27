@@ -3,23 +3,17 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace NLISSN.Core.Analysis;
 
-/// <summary>
 /// 定义结构分析结果。
-/// </summary>
 public sealed record DefinitionStructureAnalysis(IReadOnlyList<SyntaxNode> AffectedSyntaxTree);
 
-/// <summary>
 /// 分析常见定义结构，包括变量、参数、字段、属性、方法、构造函数和类型定义。
-/// </summary>
 public sealed class DefinitionStructureAnalyzer
 {
     private sealed record DefinitionStructure(
         SyntaxNode Root,
         IReadOnlyList<SyntaxNode> Members);
 
-    /// <summary>
-    /// 返回定义节点及其关键组成部分，例如类型、参数列表、继承列表、成员和初始化器。
-    /// </summary>
+    // 针对不同声明语法抽取定义结构节点，统一供规则阶段消费。
     public DefinitionStructureAnalysis Analyze(SyntaxNode root, CpgAnalysisContext context)
     {
         _ = context;

@@ -1,16 +1,14 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Model;
+using NLCPG.Contracts;
+using NLCPG.Model;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
 
 namespace NLISSN.Rules;
 
-/// <summary>
 /// 在项目级 Compilation 内查找没有外部引用的普通私有方法声明。
-/// </summary>
 public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
 {
     public override string CapabilityId { get; } = "mark.unreferenced-method";
@@ -24,6 +22,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
       new[] { SyntaxKind.MethodDeclaration };
 
+    // 迭代剔除仍被外部或保留候选引用的方法，只保留真正无引用的私有方法声明。
     public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
     {
         if (!IsEnabled(context))
@@ -66,7 +65,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
         var compilation = context.SemanticModel.Compilation;
         var candidates = BuildCandidateMethodMap(compilation);
         var references = BuildMethodReferenceIndex(compilation, candidates);
-        return FindUnreferencedMethodsByDeletionIteration(candidates, references);
+        return FindUnreferencedMethodsBy Iteration(candidates, references);
     }
 
     private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildCandidateMethodMap(Compilation compilation)
@@ -80,7 +79,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
             foreach (var method in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (model.GetDeclaredSymbol(method, CancellationToken.None) is not IMethodSymbol symbol ||
-                    !IsDeletionCandidate(symbol))
+                    !Is Candidate(symbol))
                 {
                     continue;
                 }
@@ -132,7 +131,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
           externallyReferencedMethods);
     }
 
-    private static HashSet<IMethodSymbol> FindUnreferencedMethodsByDeletionIteration(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
+    private static HashSet<IMethodSymbol> FindUnreferencedMethodsBy Iteration(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
     {
         var deletedMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
         var pendingScan = new HashSet<IMethodSymbol>(
@@ -260,7 +259,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
         };
     }
 
-    private static bool IsDeletionCandidate(IMethodSymbol method)
+    private static bool Is Candidate(IMethodSymbol method)
     {
         return method.MethodKind == MethodKind.Ordinary &&
           method.DeclaredAccessibility == Accessibility.Private &&
@@ -280,11 +279,11 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
         return method.ReducedFrom?.OriginalDefinition ?? method.OriginalDefinition;
     }
 
-    private static RoslynCpgNode CreateMethodGraphNode(IMethodSymbol methodSymbol, MethodDeclarationSyntax method)
+    private static NLCPGNode CreateMethodGraphNode(IMethodSymbol methodSymbol, MethodDeclarationSyntax method)
     {
-        return new RoslynCpgNode(
-          Kind: RoslynCpgNodeKind.Method,
-          DisplayKind: nameof(RoslynCpgNodeKind.Method),
+        return new NLCPGNode(
+          Kind: NLCPGNodeKind.Method,
+          DisplayKind: nameof(NLCPGNodeKind.Method),
           Name: methodSymbol.Name,
           FullName: methodSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
           Signature: methodSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),

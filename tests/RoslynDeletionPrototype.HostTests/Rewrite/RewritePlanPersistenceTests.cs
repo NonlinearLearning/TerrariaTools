@@ -138,7 +138,7 @@ public sealed class RewritePlanPersistenceTests : IDisposable
             }
             """);
         var artifactRoot = Path.Combine(_tempDirectory, "artifact");
-        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+        var host = new  CommandHost(RuleRegistry.CreateDefaultRules());
 
         var captured = await host.AnalyzeFromArgsAsync(new[]
         {
@@ -167,7 +167,7 @@ public sealed class RewritePlanPersistenceTests : IDisposable
         WriteSource("PlayerInput.cs", "namespace Demo; public sealed class PlayerInput { }");
         WriteSource("Independent.cs", "namespace Demo; public static class Independent { public static int Run() => 42; }");
         var artifactRoot = Path.Combine(_tempDirectory, "artifact");
-        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+        var host = new  CommandHost(RuleRegistry.CreateDefaultRules());
 
         var captured = await host.AnalyzeFromArgsAsync(new[]
         {
@@ -220,7 +220,7 @@ public sealed class RewritePlanPersistenceTests : IDisposable
         var targetPath = WriteSource("Target.cs", "namespace Demo; public sealed class Target { }");
         var samplePath = WriteSource("Sample.cs", "namespace Demo; public sealed class Sample { public int Run(int target) { return target; } }");
         var artifactRoot = Path.Combine(_tempDirectory, "artifact");
-        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+        var host = new  CommandHost(RuleRegistry.CreateDefaultRules());
 
         var captured = await host.AnalyzeFromArgsAsync(new[]
         {

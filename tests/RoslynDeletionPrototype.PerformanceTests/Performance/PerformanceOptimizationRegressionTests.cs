@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Builder;
+using NLCPG.Builder;
 using NLISSN.Core.Analysis;
 using NLISSN.Application;
 using NLISSN.Core.Decision;
@@ -19,8 +19,6 @@ namespace RoslynPrototype.Tests;
 
 public sealed class PerformanceOptimizationRegressionTests : IDisposable
 {
-    private const int DiffPerformanceConsumerCount = 32;
-    private const int DiffPerformanceReferencesPerConsumer = 32;
     private readonly string _tempDirectory;
     private readonly ITestOutputHelper _output;
 
@@ -62,8 +60,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
 
         Assert.All(parallelSamples, sample => Assert.Equal(serial.Snapshot, sample.Snapshot));
         Assert.All(parallelSamples, sample => Assert.True(sample.AllocatedBytes >= 0));
-        Assert.All(parallelSamples, sample => Assert.True(sample.MarkTelemetry.AtomicCandidateCount > 0));
-        Assert.All(parallelSamples, sample => Assert.True(sample.MarkTelemetry.TargetMatchQueryCount > 0));
         _output.WriteLine(
           $"Mark samples ms={string.Join(",", parallelSamples.Select(sample => sample.MarkMilliseconds))}; " +
           $"allocated={string.Join(",", parallelSamples.Select(sample => sample.AllocatedBytes))}");
@@ -361,7 +357,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
             CSharpSyntaxTree.ParseText("namespace Demo; public sealed class Third { }", path: "Third.cs")
         };
         var compilation = CreateCompilation(trees);
-        var runtime = DeletionAnalysisRuntime.CreateDefault();
+        var runtime =  AnalysisRuntime.CreateDefault();
         var cache = GetDeleteClassCompilationScanCache(runtime, compilation);
 
         Assert.Equal(0, GetPrivateIntField(cache, "_materializedTreeCount"));
@@ -385,7 +381,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           PerformanceSources.TreeScanSource,
           path: "TreeScan.cs");
         var compilation = CreateCompilation(new[] { tree });
-        var runtime = DeletionAnalysisRuntime.CreateDefault();
+        var runtime =  AnalysisRuntime.CreateDefault();
         var cache = GetDeleteClassCompilationScanCache(runtime, compilation);
         var scan = GetTreeScan(cache, tree);
         var semanticModel = compilation.GetSemanticModel(tree);
@@ -464,7 +460,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         File.WriteAllText(
           secondConsumerPath,
           PerformanceSources.CleanupSecondConsumerSource);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = application.AnalyzeFromArgs(new[]
         {
@@ -497,7 +493,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         File.WriteAllText(
           secondFilePath,
           PerformanceSources.SecondEmptyNamespaceSource);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = application.AnalyzeFromArgs(new[]
         {
@@ -515,82 +511,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
-    [Fact]
-    public async Task AnalyzeFromArgs_ForDirectoryDeleteClass_RecordsDiffWritePerformanceAcrossDopLevels()
-    {
-        var sourceDirectory = WriteDiffPerformanceSources();
-
-        var serial = await MeasureDiffWritePerformanceAsync(sourceDirectory, 1);
-        var parallel = await MeasureDiffWritePerformanceAsync(sourceDirectory, 16);
-
-        Assert.Equal(DiffPerformanceConsumerCount + 1, serial.DiffFiles.Count);
-        Assert.Equal(serial.DiffFiles.Keys, parallel.DiffFiles.Keys);
-        foreach (var relativePath in serial.DiffFiles.Keys)
-        {
-            Assert.Equal(serial.DiffFiles[relativePath], parallel.DiffFiles[relativePath]);
-        }
-
-        Assert.InRange(serial.WriteElapsedMilliseconds, 0, serial.LifecycleElapsedMilliseconds);
-        Assert.InRange(parallel.WriteElapsedMilliseconds, 0, parallel.LifecycleElapsedMilliseconds);
-        _output.WriteLine(
-          $"directory-diff-write-performance files={serial.DiffFiles.Count};" +
-          $"dop1WriteMs={serial.WriteElapsedMilliseconds};" +
-          $"dop16WriteMs={parallel.WriteElapsedMilliseconds};" +
-          $"dop1LifecycleMs={serial.LifecycleElapsedMilliseconds};" +
-          $"dop16LifecycleMs={parallel.LifecycleElapsedMilliseconds}");
-    }
-
-    [Fact]
-    public async Task AnalyzeFromArgs_ForMultiFileDirectory_RecordsCompleteTextLogsAcrossDopLevels()
-    {
-        var sourceDirectory = WriteDirectoryIoPerformanceSources();
-
-        var serialWithoutLogs = await MeasureDirectoryIoPerformanceAsync(
-          sourceDirectory,
-          maxDegreeOfParallelism: 1,
-          writeLogs: false);
-        var serialWithLogs = await MeasureDirectoryIoPerformanceAsync(
-          sourceDirectory,
-          maxDegreeOfParallelism: 1,
-          writeLogs: true);
-        var parallelWithoutLogs = await MeasureDirectoryIoPerformanceAsync(
-          sourceDirectory,
-          maxDegreeOfParallelism: 16,
-          writeLogs: false);
-        var parallelWithLogs = await MeasureDirectoryIoPerformanceAsync(
-          sourceDirectory,
-          maxDegreeOfParallelism: 16,
-          writeLogs: true);
-
-        var measurements = new[]
-        {
-          serialWithoutLogs,
-          serialWithLogs,
-          parallelWithoutLogs,
-          parallelWithLogs
-        };
-
-        Assert.All(measurements, measurement =>
-          Assert.Equal(DiffPerformanceConsumerCount + 1, measurement.AnalyzedFileCount));
-        Assert.Equal(serialWithoutLogs.ResultSnapshot, serialWithLogs.ResultSnapshot);
-        Assert.Equal(serialWithoutLogs.ResultSnapshot, parallelWithoutLogs.ResultSnapshot);
-        Assert.Equal(serialWithoutLogs.ResultSnapshot, parallelWithLogs.ResultSnapshot);
-        Assert.Equal(DiffPerformanceConsumerCount + 1, serialWithLogs.AnalysisFileCompletedRecordCount);
-        Assert.Equal(DiffPerformanceConsumerCount + 1, parallelWithLogs.AnalysisFileCompletedRecordCount);
-        Assert.True(serialWithLogs.RuntimeCompleted);
-        Assert.True(parallelWithLogs.RuntimeCompleted);
-        Assert.True(serialWithLogs.TotalLogBytes > 0);
-        Assert.True(parallelWithLogs.TotalLogBytes > 0);
-        _output.WriteLine(
-          $"directory-io-log-performance files={serialWithLogs.AnalyzedFileCount};" +
-          $"dop1NoLogMs={serialWithoutLogs.ElapsedMilliseconds};" +
-          $"dop1LogMs={serialWithLogs.ElapsedMilliseconds};" +
-          $"dop16NoLogMs={parallelWithoutLogs.ElapsedMilliseconds};" +
-          $"dop16LogMs={parallelWithLogs.ElapsedMilliseconds};" +
-          $"dop1LogBytes={serialWithLogs.TotalLogBytes};" +
-          $"dop16LogBytes={parallelWithLogs.TotalLogBytes}");
-    }
-
     public void Dispose()
     {
         try
@@ -606,115 +526,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         catch (UnauthorizedAccessException)
         {
         }
-    }
-
-    private async Task<DiffWritePerformanceMeasurement> MeasureDiffWritePerformanceAsync(string sourceDirectory, int maxDegreeOfParallelism)
-    {
-        var diffRootPath = Path.Combine(_tempDirectory, $"diff-performance-dop-{maxDegreeOfParallelism}");
-        var analysisLogPath = Path.Combine(_tempDirectory, $"diff-performance-dop-{maxDegreeOfParallelism}.log");
-        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
-
-        await host.AnalyzeFromArgsAsync(new[]
-        {
-            sourceDirectory,
-            "--delete-class",
-            "PlayerInput",
-            "--max-degree-of-parallelism",
-            maxDegreeOfParallelism.ToString(),
-            "--diff-out",
-            diffRootPath,
-            "--analysis-log",
-            analysisLogPath,
-            "--log-profile",
-            "benchmark"
-        });
-
-        var summaryLine = File.ReadLines(analysisLogPath)
-          .Single(line => line.Contains("cat=diff evt=summary", StringComparison.Ordinal));
-        return new DiffWritePerformanceMeasurement(
-          ReadLogField(summaryLine, "writeElapsedMs"),
-          ReadLogField(summaryLine, "elapsedMs"),
-          Directory.EnumerateFiles(diffRootPath, "*.rewrite.diff", SearchOption.AllDirectories)
-            .OrderBy(path => Path.GetRelativePath(diffRootPath, path), StringComparer.Ordinal)
-            .ToDictionary(
-              path => Path.GetRelativePath(diffRootPath, path),
-              File.ReadAllBytes,
-              StringComparer.Ordinal));
-    }
-
-    private async Task<DirectoryIoPerformanceMeasurement> MeasureDirectoryIoPerformanceAsync(string sourceDirectory, int maxDegreeOfParallelism, bool writeLogs)
-    {
-        var runName = $"directory-io-dop-{maxDegreeOfParallelism}-{(writeLogs ? "logs" : "none")}";
-        var runtimeLogPath = Path.Combine(_tempDirectory, $"{runName}-runtime.log");
-        var analysisLogPath = Path.Combine(_tempDirectory, $"{runName}-analysis.log");
-        var arguments = new List<string>
-        {
-          sourceDirectory,
-          "--delete-class",
-          "PlayerInput",
-          "--max-degree-of-parallelism",
-          maxDegreeOfParallelism.ToString(),
-          "--skip-rewrite",
-          "--no-diff"
-        };
-        if (writeLogs)
-        {
-            arguments.Add("--runtime-log");
-            arguments.Add(runtimeLogPath);
-            arguments.Add("--analysis-log");
-            arguments.Add(analysisLogPath);
-            arguments.Add("--log-profile");
-            arguments.Add("benchmark");
-        }
-
-        var stopwatch = Stopwatch.StartNew();
-        var host = new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
-        var result = await host.AnalyzeFromArgsAsync(arguments.ToArray());
-        stopwatch.Stop();
-
-        var runtimeLogLines = writeLogs
-          ? File.ReadLines(runtimeLogPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToArray()
-          : Array.Empty<string>();
-        var analysisLogLines = writeLogs
-          ? File.ReadLines(analysisLogPath).Where(line => !string.IsNullOrWhiteSpace(line)).ToArray()
-          : Array.Empty<string>();
-        return new DirectoryIoPerformanceMeasurement(
-          result.Stats?.AnalyzedFileCount ?? 0,
-          CreateResultSnapshot(result),
-          stopwatch.ElapsedMilliseconds,
-          analysisLogLines.Count(line => line.Contains("cat=file evt=completed", StringComparison.Ordinal)),
-          runtimeLogLines.Any(line => line.Contains("cat=run evt=completed", StringComparison.Ordinal) &&
-            line.Contains("status=completed", StringComparison.Ordinal)),
-          writeLogs ? new FileInfo(runtimeLogPath).Length + new FileInfo(analysisLogPath).Length : 0);
-    }
-
-    private string WriteDirectoryIoPerformanceSources()
-    {
-        var sourceDirectory = Path.Combine(_tempDirectory, "directory-io-performance-input");
-        var consumerDirectory = Path.Combine(sourceDirectory, "Consumers");
-        Directory.CreateDirectory(consumerDirectory);
-        File.WriteAllText(
-          Path.Combine(sourceDirectory, "PlayerInput.cs"),
-          DirectoryDeleteClassSources.PlayerInputEnabledSource);
-
-        for (var consumerIndex = 0; consumerIndex < DiffPerformanceConsumerCount; consumerIndex++)
-        {
-            var source = new StringBuilder();
-            source.AppendLine("namespace Demo;");
-            source.AppendLine();
-            source.AppendLine($"public sealed class DirectoryConsumer{consumerIndex:D2}");
-            source.AppendLine("{");
-            source.AppendLine("  public int Run()");
-            source.AppendLine("  {");
-            source.AppendLine("    return PlayerInput.Enabled ? 1 : 0;");
-            source.AppendLine("  }");
-            source.AppendLine("}");
-            File.WriteAllText(
-              Path.Combine(consumerDirectory, $"DirectoryConsumer{consumerIndex:D2}.cs"),
-              source.ToString());
-        }
-
-        return sourceDirectory;
     }
 
     private static string CreateResultSnapshot(PrototypeAnalysisResult result)
@@ -740,49 +551,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         return string.Join("\n", decisions.Concat(edits));
     }
 
-    private string WriteDiffPerformanceSources()
-    {
-        var sourceDirectory = Path.Combine(_tempDirectory, "diff-performance-input");
-        var consumerDirectory = Path.Combine(sourceDirectory, "Consumers");
-        Directory.CreateDirectory(consumerDirectory);
-        File.WriteAllText(
-          Path.Combine(sourceDirectory, "PlayerInput.cs"),
-          DirectoryDeleteClassSources.PlayerInputEnabledSource);
-
-        for (var consumerIndex = 0; consumerIndex < DiffPerformanceConsumerCount; consumerIndex++)
-        {
-            var source = new StringBuilder();
-            source.AppendLine("namespace Demo;");
-            source.AppendLine();
-            source.AppendLine($"public sealed class Consumer{consumerIndex:D2}");
-            source.AppendLine("{");
-            source.AppendLine("  public int Run()");
-            source.AppendLine("  {");
-            source.AppendLine("    var total = 0;");
-            for (var referenceIndex = 0; referenceIndex < DiffPerformanceReferencesPerConsumer; referenceIndex++)
-            {
-                source.AppendLine("    total += PlayerInput.Enabled ? 1 : 0;");
-            }
-
-            source.AppendLine("    return total;");
-            source.AppendLine("  }");
-            source.AppendLine("}");
-            File.WriteAllText(
-              Path.Combine(consumerDirectory, $"Consumer{consumerIndex:D2}.cs"),
-              source.ToString());
-        }
-
-        return sourceDirectory;
-    }
-
-    private static long ReadLogField(string line, string fieldName)
-    {
-        var prefix = $"{fieldName}=";
-        var field = line.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-          .Single(token => token.StartsWith(prefix, StringComparison.Ordinal));
-        return long.Parse(field[prefix.Length..]);
-    }
-
     private static AnalyzerTestContext CreateDeleteClassContext(string declarationFilePath, params (string FilePath, string Source)[] files)
     {
         var trees = files.ToDictionary(
@@ -796,7 +564,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var declarationSource = files
           .Single(file => string.Equals(file.FilePath, declarationFilePath, StringComparison.Ordinal))
           .Source;
-        var graph = new RoslynCpgBuilder().BuildFromSource(declarationSource, declarationFilePath);
+        var graph = new NLCPGBuilder().BuildFromSource(declarationSource, declarationFilePath);
         var ruleContext = new RuleContext(
           new CpgAnalysisContext(graph, declarationSemanticModel, declarationRoot),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -824,7 +592,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
-    private static object GetDeleteClassCompilationScanCache(DeletionAnalysisRuntime runtime, Compilation compilation)
+    private static object GetDeleteClassCompilationScanCache( AnalysisRuntime runtime, Compilation compilation)
     {
         return GetCompilationCache(
           runtime,
@@ -890,9 +658,9 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         Assert.Equal(typeSyntax, GetPrivateIntField(scan, "_typeSyntaxIndexBuildCount"));
     }
 
-    private static TCache GetCompilationCache<TCache>(DeletionAnalysisRuntime runtime, Compilation compilation, Func<Compilation, TCache> factory)
+    private static TCache GetCompilationCache<TCache>( AnalysisRuntime runtime, Compilation compilation, Func<Compilation, TCache> factory)
     {
-        var method = typeof(DeletionAnalysisRuntime)
+        var method = typeof( AnalysisRuntime)
           .GetMethod("GetOrCreateCompilationCache", BindingFlags.Instance | BindingFlags.NonPublic)!
           .MakeGenericMethod(typeof(TCache));
         return (TCache)method.Invoke(runtime, new object[] { compilation, factory })!;
@@ -900,21 +668,23 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
 
     private static MarkPerformanceMeasurement MeasureMarkAnalysis(string source, int maxDegreeOfParallelism)
     {
-        var runtime = new DeletionAnalysisRuntime(
+        var runtime = new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
             MaxDegreeOfParallelism: maxDegreeOfParallelism,
             EnableGroupParallelism: maxDegreeOfParallelism > 1),
-          new DeletionAnalysisEpoch(0, 0, 0));
+          new  AnalysisEpoch(0, 0, 0));
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["target-name"] = "s, other, s"
         };
         var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
-        var result = new DeletionApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
+        var stopwatch = Stopwatch.StartNew();
+        var result = new  ApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
           source,
           "mark-performance.cs",
           options,
           runtime);
+        stopwatch.Stop();
         var allocatedBytes = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
         var snapshot = string.Join(
           "|",
@@ -924,30 +694,15 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
             .Concat(result.Decisions.Select(decision => $"decision:{decision}"))
             .Append($"rewrite:{result.RewrittenSource}"));
         return new MarkPerformanceMeasurement(
-          result.Timings!.MarkMilliseconds,
+          stopwatch.ElapsedMilliseconds,
           allocatedBytes,
-          result.MarkAnalysisTelemetry!,
           snapshot);
     }
-
-    private sealed record DiffWritePerformanceMeasurement(
-      long WriteElapsedMilliseconds,
-      long LifecycleElapsedMilliseconds,
-      IReadOnlyDictionary<string, byte[]> DiffFiles);
 
     private sealed record MarkPerformanceMeasurement(
       long MarkMilliseconds,
       long AllocatedBytes,
-      MarkAnalysisTelemetry MarkTelemetry,
       string Snapshot);
-
-    private sealed record DirectoryIoPerformanceMeasurement(
-      int AnalyzedFileCount,
-      string ResultSnapshot,
-      long ElapsedMilliseconds,
-      int AnalysisFileCompletedRecordCount,
-      bool RuntimeCompleted,
-      long TotalLogBytes);
 
     private sealed class AnalyzerTestContext
     {

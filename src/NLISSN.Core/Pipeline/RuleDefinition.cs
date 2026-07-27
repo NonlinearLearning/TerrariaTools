@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using MinimalRoslynCpg.Contracts;
+using NLCPG.Contracts;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -17,8 +17,8 @@ public interface IRuleDefinition
 
 public abstract class RuleDefinitionMark : IRuleDefinition
 {
-    public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
-        new[] { RoslynCpgCapability.Default };
+    public virtual IReadOnlyCollection<NLCPGCapability> RequiredCapabilities =>
+        new[] { NLCPGCapability.Default };
 
     public virtual string CapabilityId => RuleId;
 
@@ -30,13 +30,14 @@ public abstract class RuleDefinitionMark : IRuleDefinition
 
     public abstract IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; }
 
+    // 在当前 mark 区域内产出规则直接命中的原子种子标记。
     public abstract IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root);
 }
 
 public abstract class RuleDefinitionPropagate : IRuleDefinition
 {
-    public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
-        new[] { RoslynCpgCapability.Default };
+    public virtual IReadOnlyCollection<NLCPGCapability> RequiredCapabilities =>
+        new[] { NLCPGCapability.Default };
 
     public virtual string CapabilityId => RuleId;
 
@@ -48,13 +49,14 @@ public abstract class RuleDefinitionPropagate : IRuleDefinition
 
     public abstract IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; }
 
+    // 基于当前规则的种子标记执行语义传播，并返回新的传播标记。
     public abstract IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks);
 }
 
 public abstract class RuleDefinitionPropose : IRuleDefinition
 {
-    public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
-        new[] { RoslynCpgCapability.Default };
+    public virtual IReadOnlyCollection<NLCPGCapability> RequiredCapabilities =>
+        new[] { NLCPGCapability.Default };
 
     public virtual string CapabilityId => RuleId;
 
@@ -68,13 +70,14 @@ public abstract class RuleDefinitionPropose : IRuleDefinition
 
     public abstract IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; }
 
+    // 消费种子、传播和提升结果，提出供决策引擎收口的候选决策单元。
     public abstract IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks);
 }
 
 public abstract class RuleDefinitionLift : IRuleDefinition
 {
-    public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
-        new[] { RoslynCpgCapability.Default };
+    public virtual IReadOnlyCollection<NLCPGCapability> RequiredCapabilities =>
+        new[] { NLCPGCapability.Default };
 
     public virtual string CapabilityId => RuleId;
 
@@ -86,5 +89,6 @@ public abstract class RuleDefinitionLift : IRuleDefinition
 
     public abstract IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; }
 
+    // 把已有标记提升到更高层的表达式或结构宿主，生成后续决策可消费的提升结果。
     public abstract IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks);
 }

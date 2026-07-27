@@ -5,6 +5,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 把已传播的原子命中提升到可单独改写的表达式宿主，避免 Proposal 重复向上遍历语法树。
 public sealed class SObjectExpressionHostLiftingRule : RuleDefinitionLift
 {
     public override string CapabilityId { get; } = "lift.target.expression-host";
@@ -18,6 +19,7 @@ public sealed class SObjectExpressionHostLiftingRule : RuleDefinitionLift
     public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
       DeleteSObjectLiftingCommon.AllowedLiftNodeKinds;
 
+    // 把 s-object 原子命中提升到最小可改写宿主，避免提案阶段直接操作脆弱的子表达式。
     public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         return DeleteSObjectHostLiftingHelpers.BuildHostLiftedMarks(

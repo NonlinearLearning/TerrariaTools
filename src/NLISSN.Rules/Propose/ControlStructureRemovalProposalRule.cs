@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 将传播后的完整控制结构标记转换为删除决策；只接收声明的冲突节点种类。
 public sealed class ControlStructureRemovalProposalRule : RuleDefinitionPropose
 {
     public override string CapabilityId { get; } = "propose.control-structure-removal";
@@ -22,6 +23,7 @@ public sealed class ControlStructureRemovalProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    // 把已收束到控制结构宿主的派生 mark 转成直接删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;

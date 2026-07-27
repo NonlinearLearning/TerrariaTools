@@ -4,6 +4,8 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 为 delete-class 规则复用统一的 if 结构完成态传播，
+/// 把散落在条件、语句块和尾分支上的命中收束成单个结构 payload。
 public sealed class ClassIfStructureCompletionPropagationRule : RuleDefinitionPropagate
 {
     public override string CapabilityId { get; } = "propagate.type.if-structure-completion";
@@ -47,6 +49,7 @@ public sealed class ClassIfStructureCompletionPropagationRule : RuleDefinitionPr
         SyntaxKind.ReturnStatement
       };
 
+    // 复用统一的 if 完成态传播逻辑，把删除类命中折叠成单个结构 payload。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         return DeleteSObjectPropagationHelpers.EnumerateIfStructureCompletionPropagations(

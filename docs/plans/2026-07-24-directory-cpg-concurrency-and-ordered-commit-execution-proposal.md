@@ -21,7 +21,7 @@ The evidence supports nested-concurrency and ordering hypotheses. It does not at
 In scope:
 
 - Runtime telemetry for CPG budget wait, ordered result buffering, source-order publication wait, and freeze substeps.
-- A shared CPG budget owned by `DeletionAnalysisRuntime` and passed to each builder invocation.
+- A shared CPG budget owned by ` AnalysisRuntime` and passed to each builder invocation.
 - A bounded CPG ordered-analysis window that retains serial deterministic materialization.
 - Directory result-backlog measurement and an optional bounded publication window.
 - Focused contract/host/performance regression coverage and controlled real-source runs.
@@ -30,7 +30,7 @@ Out of scope:
 
 - Changing the default directory or CPG DOP.
 - Relaxing graph, Mark, Decision, Rewrite, diff, or source-order contracts.
-- Replacing `RoslynCpgGraphIndex` sorting or removing indexes before telemetry establishes their share of the tail.
+- Replacing `NLCPGGraphIndex` sorting or removing indexes before telemetry establishes their share of the tail.
 - Persisted-shard throughput changes, SQLite tuning, or a full 1,503-file matrix before the medium gate passes.
 
 ## Invariants
@@ -47,19 +47,19 @@ Out of scope:
 
 **Files:**
 
-- Modify: `src/MinimalRoslynCpg/Builder/BoundedPartitionWorkWindow.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/RoslynCpgBuilderOptions.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/RoslynCpgBuilder.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/Passes/PartitionedOperationPass.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/Passes/DataFlowPass.cs`
+- Modify: `src/NLCPG/Builder/BoundedPartitionWorkWindow.cs`
+- Modify: `src/NLCPG/Builder/NLCPGBuilderOptions.cs`
+- Modify: `src/NLCPG/Builder/NLCPGBuilder.cs`
+- Modify: `src/NLCPG/Builder/Passes/PartitionedOperationPass.cs`
+- Modify: `src/NLCPG/Builder/Passes/DataFlowPass.cs`
 - Modify: `src/Host/Logging/RunTextLogWriter.cs`
-- Test: `tests/RoslynDeletionPrototype.ContractTests/Cpg/MinimalRoslynCpgPartitionedBuilderTests.cs`
-- Test: `tests/RoslynDeletionPrototype.HostTests/Logging/TextLogSystemTests.cs`
+- Test: `tests/Roslyn Prototype.ContractTests/Cpg/NLCPGPartitionedBuilderTests.cs`
+- Test: `tests/Roslyn Prototype.HostTests/Logging/TextLogSystemTests.cs`
 
 1. Write failing contract tests that force lower-order work to wait while later work completes. Assert the telemetry reports nonzero `CommitWaitMilliseconds`, `WindowBlockedMilliseconds`, and a bounded out-of-order count without changing the committed result order.
 2. Add an immutable ordered-window telemetry record to the builder telemetry. Record active worker peak, completed-but-uncommitted peak, completed record-count peak, wait-to-commit time, and time during which a full reorder window prevented new analysis scheduling.
 3. Preserve the current `RunOrdered` behavior in this task. Its first change is observability only; worker count, source order, cancellation, and exception propagation remain unchanged.
-4. Add the existing `RoslynCpgFreezeTelemetry` substeps to the CPG summary: deterministic NodeId assignment, edge ordering, node ordering, snapshot hash, edge bucket population, adjacency, kind adjacency, edge-kind index, node-kind index, and file-path index. Retain aggregate `freezeMs` for compatibility.
+4. Add the existing `NLCPGFreezeTelemetry` substeps to the CPG summary: deterministic NodeId assignment, edge ordering, node ordering, snapshot hash, edge bucket population, adjacency, kind adjacency, edge-kind index, node-kind index, and file-path index. Retain aggregate `freezeMs` for compatibility.
 5. Add log tests for the old aggregate fields and new diagnostic fields. The benchmark profile must include them; lower profiles remain filtered according to the existing filter contract.
 6. Run the focused tests and commit only these telemetry files.
 
@@ -87,19 +87,19 @@ Out of scope:
 
 **Files:**
 
-- Create: `src/MinimalRoslynCpg/Builder/CpgBuildAdmissionBudget.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/RoslynCpgBuilderOptions.cs`
+- Create: `src/NLCPG/Builder/CpgBuildAdmissionBudget.cs`
+- Modify: `src/NLCPG/Builder/NLCPGBuilderOptions.cs`
 - Modify: `src/RoslynPrototype/RuleServices/ExecutionRuntime.cs`
-- Modify: `src/Application/DeletionApplicationService.cs`
-- Modify: `src/Host/DeletionDirectoryAnalysisService.cs`
-- Test: `tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
-- Test: `tests/RoslynDeletionPrototype.PerformanceTests/Concurrency/BoundedRuleStageSchedulerConcurrencyTests.cs`
+- Modify: `src/Application/ ApplicationService.cs`
+- Modify: `src/Host/ DirectoryAnalysisService.cs`
+- Test: `tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
+- Test: `tests/Roslyn Prototype.PerformanceTests/Concurrency/BoundedRuleStageSchedulerConcurrencyTests.cs`
 
 1. Write a failing concurrency test with multiple directory files that block inside a test CPG build. Assert that the sum of granted CPG degrees never exceeds the configured total budget and that cancellation releases every lease.
-2. Add an internal `CpgBuildAdmissionBudget` in `MinimalRoslynCpg.Builder`. It owns the total CPU budget and returns a disposable lease whose `GrantedDegree` is the only DOP supplied to one CPG builder invocation.
-3. Store one shared budget in `DeletionAnalysisRuntime`, preserving the same instance through `InvalidateCaches()` and `NextEpoch()`. The budget is an internal seam for this phase; do not introduce a new CLI default.
+2. Add an internal `CpgBuildAdmissionBudget` in `NLCPG.Builder`. It owns the total CPU budget and returns a disposable lease whose `GrantedDegree` is the only DOP supplied to one CPG builder invocation.
+3. Store one shared budget in ` AnalysisRuntime`, preserving the same instance through `InvalidateCaches()` and `NextEpoch()`. The budget is an internal seam for this phase; do not introduce a new CLI default.
 4. Make directory scheduling await admission before entering the synchronous builder call. Waiting for admission must not occupy a worker executing CPG work. Remove the redundant nested `Task.Run` only when the focused scheduler tests prove the same cancellation and source-order behavior.
-5. Pass the lease degree to `RoslynCpgBuilderOptions.MaxDegreeOfParallelism`; release the lease in `finally`, including builder failure and cancellation paths.
+5. Pass the lease degree to `NLCPGBuilderOptions.MaxDegreeOfParallelism`; release the lease in `finally`, including builder failure and cancellation paths.
 6. Emit `requestedCpgDop`, `grantedCpgDop`, `cpgAdmissionWaitMs`, active lease count, and granted-degree high-water mark in the CPG summary.
 7. Run host option-flow, directory-equivalence, cancellation, and graph-equality tests. Commit the admission budget separately from later fairness work.
 
@@ -109,10 +109,10 @@ Out of scope:
 
 **Files:**
 
-- Modify: `src/MinimalRoslynCpg/Builder/CpgBuildAdmissionBudget.cs`
+- Modify: `src/NLCPG/Builder/CpgBuildAdmissionBudget.cs`
 - Modify: `src/RoslynPrototype/RuleServices/ExecutionRuntime.cs`
-- Test: `tests/RoslynDeletionPrototype.PerformanceTests/Concurrency/BoundedRuleStageSchedulerConcurrencyTests.cs`
-- Test: `tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
+- Test: `tests/Roslyn Prototype.PerformanceTests/Concurrency/BoundedRuleStageSchedulerConcurrencyTests.cs`
+- Test: `tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
 
 1. Add deterministic policy tests for a total budget of 12 with simultaneous requests of 12, 6, 2, and 1. Assert fairness, boundedness, and no starvation of later files.
 2. Evaluate two internal policies using the Phase 0 medium report: whole-build leases and a capped-per-file fair lease. Select only one policy for the runtime default; leave the other in test-only comparison code or remove it.
@@ -127,11 +127,11 @@ Out of scope:
 
 **Files:**
 
-- Modify: `src/MinimalRoslynCpg/Builder/BoundedPartitionWorkWindow.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/RoslynCpgBuilderOptions.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/Passes/PartitionedOperationPass.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/Passes/DataFlowPass.cs`
-- Test: `tests/RoslynDeletionPrototype.ContractTests/Cpg/MinimalRoslynCpgPartitionedBuilderTests.cs`
+- Modify: `src/NLCPG/Builder/BoundedPartitionWorkWindow.cs`
+- Modify: `src/NLCPG/Builder/NLCPGBuilderOptions.cs`
+- Modify: `src/NLCPG/Builder/Passes/PartitionedOperationPass.cs`
+- Modify: `src/NLCPG/Builder/Passes/DataFlowPass.cs`
+- Test: `tests/Roslyn Prototype.ContractTests/Cpg/NLCPGPartitionedBuilderTests.cs`
 
 1. Write a failing deterministic test with a delayed first partition and multiple fast later partitions. Assert that a reorder allowance starts additional analysis, while `commit` still occurs strictly in ascending partition order.
 2. Split the old condition `activeWorkers.Count + completedResults.Count < workerCount` into two limits: active analysis workers remain at CPG DOP, and completed-but-uncommitted results remain below an explicit reorder allowance.
@@ -146,10 +146,10 @@ Out of scope:
 
 **Files:**
 
-- Modify: `src/Host/DeletionDirectoryAnalysisService.cs`
+- Modify: `src/Host/ DirectoryAnalysisService.cs`
 - Modify: `src/Host/Logging/AnalysisTextLogWriter.cs`
-- Test: `tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`
-- Test: `tests/RoslynDeletionPrototype.HostTests/Logging/TextLogSystemTests.cs`
+- Test: `tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`
+- Test: `tests/Roslyn Prototype.HostTests/Logging/TextLogSystemTests.cs`
 
 1. Write a host test that blocks the lowest-index file while later files complete. Assert separate timestamps/telemetry for file analysis completion and source-order publication.
 2. Add directory telemetry for unpublished-result count, wait-to-publish milliseconds, and the oldest unpublished index. Capture memory at analysis completion as well as publication only when the benchmark filter permits it.
@@ -165,17 +165,17 @@ Out of scope:
 
 **Files:**
 
-- Create: `src/MinimalRoslynCpg/Builder/CpgPartitionWorkScheduler.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/BoundedPartitionWorkWindow.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/Passes/PartitionedOperationPass.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/Passes/PartitionedSyntaxPass.cs`
-- Modify: `src/MinimalRoslynCpg/Builder/Passes/DataFlowPass.cs`
-- Test: `tests/RoslynDeletionPrototype.PerformanceTests/Concurrency/BoundedRuleStageSchedulerConcurrencyTests.cs`
-- Test: `tests/RoslynDeletionPrototype.ContractTests/Cpg/MinimalRoslynCpgPartitionedBuilderTests.cs`
+- Create: `src/NLCPG/Builder/CpgPartitionWorkScheduler.cs`
+- Modify: `src/NLCPG/Builder/BoundedPartitionWorkWindow.cs`
+- Modify: `src/NLCPG/Builder/Passes/PartitionedOperationPass.cs`
+- Modify: `src/NLCPG/Builder/Passes/PartitionedSyntaxPass.cs`
+- Modify: `src/NLCPG/Builder/Passes/DataFlowPass.cs`
+- Test: `tests/Roslyn Prototype.PerformanceTests/Concurrency/BoundedRuleStageSchedulerConcurrencyTests.cs`
+- Test: `tests/Roslyn Prototype.ContractTests/Cpg/NLCPGPartitionedBuilderTests.cs`
 
 1. Enter this task only when Phase 1 records significant CPG admission wait or starvation after a bounded policy, and medium variance remains above the agreed gate.
 2. Write a failing fairness test with two files whose local DOPs both exceed the global budget. Assert round-robin or otherwise documented fair grant behavior, bounded active partitions, cancellation, and no blocked ThreadPool worker waiting only for a permit.
-3. Add an asynchronous scheduler abstraction owned by the builder layer. It accepts per-file requested degree and globally schedules individual partition work; it must not make `MinimalRoslynCpg` depend on Host or Rules.
+3. Add an asynchronous scheduler abstraction owned by the builder layer. It accepts per-file requested degree and globally schedules individual partition work; it must not make `NLCPG` depend on Host or Rules.
 4. Convert only partition-window scheduling to await the shared scheduler. Keep Roslyn fact collection in workers and graph mutation in the stable ordered commit path.
 5. Preserve a local per-file degree cap, global total budget, and the Phase 2 reorder-record limit. Report local queue wait, global budget wait, and fairness queue length separately.
 6. Remove whole-build admission only after the partition scheduler satisfies all boundedness, cancellation, graph, and tail tests.
@@ -188,11 +188,11 @@ After each task, run its owning focused tests. Before a real-source run, execute
 
 ```powershell
 $env:DOTNET_CLI_HOME = (Resolve-Path '.').Path
-dotnet build .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet build .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-build --filter "FullyQualifiedName~MinimalRoslynCpgPartitionedBuilderTests|FullyQualifiedName~CpgShardBuildCoordinatorTests" -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-build --filter "FullyQualifiedName~PipelineComponentTests|FullyQualifiedName~TextLogSystemTests" -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.PerformanceTests\RoslynDeletionPrototype.PerformanceTests.csproj --no-build --filter "FullyQualifiedName~BoundedRuleStageSchedulerConcurrencyTests" -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-build --filter "FullyQualifiedName~NLCPGPartitionedBuilderTests|FullyQualifiedName~CpgShardBuildCoordinatorTests" -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-build --filter "FullyQualifiedName~PipelineComponentTests|FullyQualifiedName~TextLogSystemTests" -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.PerformanceTests\Roslyn Prototype.PerformanceTests.csproj --no-build --filter "FullyQualifiedName~BoundedRuleStageSchedulerConcurrencyTests" -p:UseSharedCompilation=false
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```

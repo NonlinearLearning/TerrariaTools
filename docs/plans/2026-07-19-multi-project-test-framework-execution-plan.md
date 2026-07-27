@@ -4,7 +4,7 @@
 
 **Goal:** Split the existing test project into Unit, Contract, Host, and Performance projects while preserving one shared, deterministic test-asset library and existing test behavior.
 
-**Architecture:** `RoslynDeletionPrototype.Testing` is a non-test class library that owns reusable C# inputs, temporary-workspace materialization, text assertions, and failure-artifact helpers. The four test projects each reference it but never reference each other. Fast correctness checks run as normal `dotnet test` projects; full Terraria measurements remain an isolated PowerShell workflow outside the normal test runner.
+**Architecture:** `Roslyn Prototype.Testing` is a non-test class library that owns reusable C# inputs, temporary-workspace materialization, text assertions, and failure-artifact helpers. The four test projects each reference it but never reference each other. Fast correctness checks run as normal `dotnet test` projects; full Terraria measurements remain an isolated PowerShell workflow outside the normal test runner.
 
 **Tech Stack:** .NET 10, C# 13, xUnit 2.9.3, Microsoft.NET.Test.Sdk 17.13.0, PowerShell 7, existing Roslyn/CPG projects.
 
@@ -24,18 +24,18 @@
 ```text
 tests/
   AGENTS.md
-  RoslynDeletionPrototype.Testing/
-    RoslynDeletionPrototype.Testing.csproj
+  Roslyn Prototype.Testing/
+    Roslyn Prototype.Testing.csproj
     TestCodeSet/
     TestInfrastructure/
-  RoslynDeletionPrototype.UnitTests/
-    RoslynDeletionPrototype.UnitTests.csproj
-  RoslynDeletionPrototype.ContractTests/
-    RoslynDeletionPrototype.ContractTests.csproj
-  RoslynDeletionPrototype.HostTests/
-    RoslynDeletionPrototype.HostTests.csproj
-  RoslynDeletionPrototype.PerformanceTests/
-    RoslynDeletionPrototype.PerformanceTests.csproj
+  Roslyn Prototype.UnitTests/
+    Roslyn Prototype.UnitTests.csproj
+  Roslyn Prototype.ContractTests/
+    Roslyn Prototype.ContractTests.csproj
+  Roslyn Prototype.HostTests/
+    Roslyn Prototype.HostTests.csproj
+  Roslyn Prototype.PerformanceTests/
+    Roslyn Prototype.PerformanceTests.csproj
 ```
 
 Dependency direction:
@@ -63,7 +63,7 @@ Test projects -X-> another test project
 ## Task 1: Freeze the current baseline and finish active prerequisites
 
 **Files:**
-- Test: `tests/RoslynDeletionPrototype.Tests/RoslynDeletionPrototype.Tests.csproj`
+- Test: `tests/Roslyn Prototype.Tests/Roslyn Prototype.Tests.csproj`
 
 **Step 1: Complete classification and asset extraction before changing project boundaries.**
 
@@ -72,8 +72,8 @@ Test projects -X-> another test project
 **Step 2: Build and run the old test project to capture the migration baseline.**
 
 ```powershell
-dotnet build .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-build -p:UseSharedCompilation=false --logger "trx;LogFileName=pre-split-baseline.trx"
+dotnet build .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-build -p:UseSharedCompilation=false --logger "trx;LogFileName=pre-split-baseline.trx"
 ```
 
 Expected: zero new build errors; record the exact test count, failures, warnings, duration, SDK, and commit SHA. Stop if the baseline has unexpected failures.
@@ -85,18 +85,18 @@ Use a Lore message that states the move-only or asset-only scope and records the
 ## Task 2: Create the shared test-asset project
 
 **Files:**
-- Create: `tests/RoslynDeletionPrototype.Testing/RoslynDeletionPrototype.Testing.csproj`
-- Move: `tests/RoslynDeletionPrototype.Tests/TestCodeSet/` -> `tests/RoslynDeletionPrototype.Testing/TestCodeSet/`
-- Move: `tests/RoslynDeletionPrototype.Tests/TestInfrastructure/TextDiffAssert.cs` -> `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/TextDiffAssert.cs`
-- Move: `tests/RoslynDeletionPrototype.Tests/TestInfrastructure/BuildDiffArtifactWriter.cs` -> `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/BuildDiffArtifactWriter.cs`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/TestWorkspace.cs`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/TestWorkspaceWriter.cs`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestCodeSet/TestAsset.cs`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestCodeSet/TestAssetCatalog.cs`
+- Create: `tests/Roslyn Prototype.Testing/Roslyn Prototype.Testing.csproj`
+- Move: `tests/Roslyn Prototype.Tests/TestCodeSet/` -> `tests/Roslyn Prototype.Testing/TestCodeSet/`
+- Move: `tests/Roslyn Prototype.Tests/TestInfrastructure/TextDiffAssert.cs` -> `tests/Roslyn Prototype.Testing/TestInfrastructure/TextDiffAssert.cs`
+- Move: `tests/Roslyn Prototype.Tests/TestInfrastructure/BuildDiffArtifactWriter.cs` -> `tests/Roslyn Prototype.Testing/TestInfrastructure/BuildDiffArtifactWriter.cs`
+- Create: `tests/Roslyn Prototype.Testing/TestInfrastructure/TestWorkspace.cs`
+- Create: `tests/Roslyn Prototype.Testing/TestInfrastructure/TestWorkspaceWriter.cs`
+- Create: `tests/Roslyn Prototype.Testing/TestCodeSet/TestAsset.cs`
+- Create: `tests/Roslyn Prototype.Testing/TestCodeSet/TestAssetCatalog.cs`
 
 **Step 1: Add a non-test library project.**
 
-`RoslynDeletionPrototype.Testing.csproj` targets `net10.0`, enables implicit usings and nullable, and has `IsPackable=false`. It must not reference `Microsoft.NET.Test.Sdk`, `xunit`, or a test runner. Add only the production reference needed by the moved `TextDiffAssert` overloads; retain the existing `DiffDocument` behavior rather than changing assertions during this task.
+`Roslyn Prototype.Testing.csproj` targets `net10.0`, enables implicit usings and nullable, and has `IsPackable=false`. It must not reference `Microsoft.NET.Test.Sdk`, `xunit`, or a test runner. Add only the production reference needed by the moved `TextDiffAssert` overloads; retain the existing `DiffDocument` behavior rather than changing assertions during this task.
 
 **Step 2: Write failing catalog and workspace tests in the temporary old test project.**
 
@@ -128,8 +128,8 @@ Preserve existing `*Sources` namespaces and public constant names. Convert exist
 **Step 5: Verify the asset project and its existing coverage guard.**
 
 ```powershell
-dotnet build .\tests\RoslynDeletionPrototype.Testing\RoslynDeletionPrototype.Testing.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.Tests\RoslynDeletionPrototype.Tests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~TestCodeSetCoverageTests|FullyQualifiedName~TextAssertionUsageGuardTests"
+dotnet build .\tests\Roslyn Prototype.Testing\Roslyn Prototype.Testing.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.Tests\Roslyn Prototype.Tests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~TestCodeSetCoverageTests|FullyQualifiedName~TextAssertionUsageGuardTests"
 ```
 
 Expected: the shared library builds and all catalog/coverage checks pass.
@@ -141,24 +141,24 @@ The Lore trailers must state that inputs moved without changing expected outputs
 ## Task 3: Add the four thin test projects and project-boundary checks
 
 **Files:**
-- Create: `tests/RoslynDeletionPrototype.UnitTests/RoslynDeletionPrototype.UnitTests.csproj`
-- Create: `tests/RoslynDeletionPrototype.ContractTests/RoslynDeletionPrototype.ContractTests.csproj`
-- Create: `tests/RoslynDeletionPrototype.HostTests/RoslynDeletionPrototype.HostTests.csproj`
-- Create: `tests/RoslynDeletionPrototype.PerformanceTests/RoslynDeletionPrototype.PerformanceTests.csproj`
-- Create: `tests/RoslynDeletionPrototype.ContractTests/TestProjectBoundaryTests.cs`
+- Create: `tests/Roslyn Prototype.UnitTests/Roslyn Prototype.UnitTests.csproj`
+- Create: `tests/Roslyn Prototype.ContractTests/Roslyn Prototype.ContractTests.csproj`
+- Create: `tests/Roslyn Prototype.HostTests/Roslyn Prototype.HostTests.csproj`
+- Create: `tests/Roslyn Prototype.PerformanceTests/Roslyn Prototype.PerformanceTests.csproj`
+- Create: `tests/Roslyn Prototype.ContractTests/TestProjectBoundaryTests.cs`
 
 **Step 1: Create the four test project files with the current test package versions.**
 
-Every test project keeps the existing `net10.0`, `ImplicitUsings`, `Nullable`, `LangVersion`, and xUnit package versions. Each references `RoslynDeletionPrototype.Testing.csproj`.
+Every test project keeps the existing `net10.0`, `ImplicitUsings`, `Nullable`, `LangVersion`, and xUnit package versions. Each references `Roslyn Prototype.Testing.csproj`.
 
 **Step 2: Give each project only the production references it needs.**
 
 | Project | Allowed production references |
 |---|---|
-| UnitTests | `Application`, `Rules`, `MinimalRoslynCpg` |
-| ContractTests | `Application`, `Rules`, `MinimalRoslynCpg`, `RoslynPrototype.Core` where required |
-| HostTests | `Host`, `Application`, `Rules`, `MinimalRoslynCpg` |
-| PerformanceTests | `Host`, `Application`, `Rules`, `MinimalRoslynCpg` |
+| UnitTests | `Application`, `Rules`, `NLCPG` |
+| ContractTests | `Application`, `Rules`, `NLCPG`, `RoslynPrototype.Core` where required |
+| HostTests | `Host`, `Application`, `Rules`, `NLCPG` |
+| PerformanceTests | `Host`, `Application`, `Rules`, `NLCPG` |
 
 `UnitTests` must not reference `Host.csproj`. No project references another project under `tests/`.
 
@@ -174,28 +174,28 @@ Every test project keeps the existing `net10.0`, `ImplicitUsings`, `Nullable`, `
 **Step 4: Build the empty projects and verify the architecture test turns green.**
 
 ```powershell
-dotnet build .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet build .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet build .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet build .\tests\RoslynDeletionPrototype.PerformanceTests\RoslynDeletionPrototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-build -p:UseSharedCompilation=false --filter FullyQualifiedName~TestProjectBoundaryTests
+dotnet build .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.PerformanceTests\Roslyn Prototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-build -p:UseSharedCompilation=false --filter FullyQualifiedName~TestProjectBoundaryTests
 ```
 
 ## Task 4: Move unit and contract tests one domain at a time
 
 **Files:**
-- Move from `tests/RoslynDeletionPrototype.Tests/Mark/` to `tests/RoslynDeletionPrototype.UnitTests/Mark/` where the test needs no host, directory, or persistence setup.
-- Move from `tests/RoslynDeletionPrototype.Tests/Propagation/` to `tests/RoslynDeletionPrototype.UnitTests/Propagation/` where the test needs no host, directory, or persistence setup.
-- Move from `tests/RoslynDeletionPrototype.Tests/Decision/` to `tests/RoslynDeletionPrototype.UnitTests/Decision/` where the test is rule-local.
-- Move `tests/RoslynDeletionPrototype.Tests/Cpg/` to `tests/RoslynDeletionPrototype.ContractTests/Cpg/`.
-- Move `tests/RoslynDeletionPrototype.Tests/Application/GraphAnalyzerTests.cs` to `tests/RoslynDeletionPrototype.ContractTests/Application/GraphAnalyzerTests.cs`.
-- Move `tests/RoslynDeletionPrototype.Tests/Application/StructureViewBuilderTests.cs` to `tests/RoslynDeletionPrototype.ContractTests/Application/StructureViewBuilderTests.cs`.
-- Move `tests/RoslynDeletionPrototype.Tests/TestCodeSetCoverageTests.cs` to `tests/RoslynDeletionPrototype.ContractTests/TestCodeSetCoverageTests.cs`.
-- Move `tests/RoslynDeletionPrototype.Tests/Architecture/ArchitectureBoundaryTests.cs` to `tests/RoslynDeletionPrototype.ContractTests/Architecture/ArchitectureBoundaryTests.cs`.
+- Move from `tests/Roslyn Prototype.Tests/Mark/` to `tests/Roslyn Prototype.UnitTests/Mark/` where the test needs no host, directory, or persistence setup.
+- Move from `tests/Roslyn Prototype.Tests/Propagation/` to `tests/Roslyn Prototype.UnitTests/Propagation/` where the test needs no host, directory, or persistence setup.
+- Move from `tests/Roslyn Prototype.Tests/Decision/` to `tests/Roslyn Prototype.UnitTests/Decision/` where the test is rule-local.
+- Move `tests/Roslyn Prototype.Tests/Cpg/` to `tests/Roslyn Prototype.ContractTests/Cpg/`.
+- Move `tests/Roslyn Prototype.Tests/Application/GraphAnalyzerTests.cs` to `tests/Roslyn Prototype.ContractTests/Application/GraphAnalyzerTests.cs`.
+- Move `tests/Roslyn Prototype.Tests/Application/StructureViewBuilderTests.cs` to `tests/Roslyn Prototype.ContractTests/Application/StructureViewBuilderTests.cs`.
+- Move `tests/Roslyn Prototype.Tests/TestCodeSetCoverageTests.cs` to `tests/Roslyn Prototype.ContractTests/TestCodeSetCoverageTests.cs`.
+- Move `tests/Roslyn Prototype.Tests/Architecture/ArchitectureBoundaryTests.cs` to `tests/Roslyn Prototype.ContractTests/Architecture/ArchitectureBoundaryTests.cs`.
 
 **Step 1: Classify one test class by its actual dependencies before moving it.**
 
-If a nominally unit-level test creates a `DeletionCommandHost`, writes a directory, opens a SQLite catalog, or persists shards, classify it as Host or Contract rather than forcing it into Unit.
+If a nominally unit-level test creates a ` CommandHost`, writes a directory, opens a SQLite catalog, or persists shards, classify it as Host or Contract rather than forcing it into Unit.
 
 **Step 2: Move one class and replace local source strings only with equivalent shared assets.**
 
@@ -204,8 +204,8 @@ Do not alter test names, options, or assertions in the same commit as the move.
 **Step 3: Run the moved class in its new project.**
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~<MovedTestClass>
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~<MovedTestClass>
+dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~<MovedTestClass>
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~<MovedTestClass>
 ```
 
 Expected: the moved class has the same test count and result as the baseline.
@@ -217,13 +217,13 @@ Keep CPG persistence, DOP graph-equivalence, and slice-query tests together beca
 ## Task 5: Move host and performance tests while preserving external boundaries
 
 **Files:**
-- Move `tests/RoslynDeletionPrototype.Tests/Application/PipelineComponentTests.cs` to `tests/RoslynDeletionPrototype.HostTests/Application/PipelineComponentTests.cs`.
-- Move `tests/RoslynDeletionPrototype.Tests/Application/DeletionApplicationServiceFlowTests.cs` to `tests/RoslynDeletionPrototype.HostTests/Application/DeletionApplicationServiceFlowTests.cs`.
-- Move `tests/RoslynDeletionPrototype.Tests/Logging/` to `tests/RoslynDeletionPrototype.HostTests/Logging/`.
-- Move `tests/RoslynDeletionPrototype.Tests/Rewrite/RewritePlanPersistenceTests.cs` to `tests/RoslynDeletionPrototype.HostTests/Rewrite/RewritePlanPersistenceTests.cs`.
-- Move host-dependent SQLite shard tests to `tests/RoslynDeletionPrototype.HostTests/Cpg/`.
-- Move `tests/RoslynDeletionPrototype.Tests/TestInfrastructure/DeleteClassRandomSampleHelper.cs` and its tests to `tests/RoslynDeletionPrototype.HostTests/TestInfrastructure/`.
-- Move `tests/RoslynDeletionPrototype.Tests/Performance/PerformanceOptimizationRegressionTests.cs` to `tests/RoslynDeletionPrototype.PerformanceTests/Performance/PerformanceOptimizationRegressionTests.cs`.
+- Move `tests/Roslyn Prototype.Tests/Application/PipelineComponentTests.cs` to `tests/Roslyn Prototype.HostTests/Application/PipelineComponentTests.cs`.
+- Move `tests/Roslyn Prototype.Tests/Application/ ApplicationServiceFlowTests.cs` to `tests/Roslyn Prototype.HostTests/Application/ ApplicationServiceFlowTests.cs`.
+- Move `tests/Roslyn Prototype.Tests/Logging/` to `tests/Roslyn Prototype.HostTests/Logging/`.
+- Move `tests/Roslyn Prototype.Tests/Rewrite/RewritePlanPersistenceTests.cs` to `tests/Roslyn Prototype.HostTests/Rewrite/RewritePlanPersistenceTests.cs`.
+- Move host-dependent SQLite shard tests to `tests/Roslyn Prototype.HostTests/Cpg/`.
+- Move `tests/Roslyn Prototype.Tests/TestInfrastructure/DeleteClassRandomSampleHelper.cs` and its tests to `tests/Roslyn Prototype.HostTests/TestInfrastructure/`.
+- Move `tests/Roslyn Prototype.Tests/Performance/PerformanceOptimizationRegressionTests.cs` to `tests/Roslyn Prototype.PerformanceTests/Performance/PerformanceOptimizationRegressionTests.cs`.
 
 **Step 1: Write a host test proving every materialized input root is isolated.**
 
@@ -240,17 +240,17 @@ The `PerformanceTests` project continues to assert output and log consistency ac
 **Step 4: Run host and performance project suites.**
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.PerformanceTests\RoslynDeletionPrototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.PerformanceTests\Roslyn Prototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false
 ```
 
 ## Task 6: Introduce tiered execution and per-run test evidence
 
 **Files:**
 - Create: `scripts/Run-TestTiers.ps1`
-- Modify: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/BuildDiffArtifactWriter.cs`
-- Create: `tests/RoslynDeletionPrototype.Testing/TestInfrastructure/TestRunArtifactContext.cs`
-- Create: `tests/RoslynDeletionPrototype.ContractTests/TestInfrastructure/TestRunArtifactContextTests.cs`
+- Modify: `tests/Roslyn Prototype.Testing/TestInfrastructure/BuildDiffArtifactWriter.cs`
+- Create: `tests/Roslyn Prototype.Testing/TestInfrastructure/TestRunArtifactContext.cs`
+- Create: `tests/Roslyn Prototype.ContractTests/TestInfrastructure/TestRunArtifactContextTests.cs`
 
 **Step 1: Write failing artifact-context tests.**
 
@@ -308,8 +308,8 @@ Expected: synthetic logs yield deterministic summaries. Do not run Terraria as p
 ## Task 8: Retire the monolithic project and update repository surfaces
 
 **Files:**
-- Delete: `tests/RoslynDeletionPrototype.Tests/RoslynDeletionPrototype.Tests.csproj`
-- Delete or move: remaining files under `tests/RoslynDeletionPrototype.Tests/`
+- Delete: `tests/Roslyn Prototype.Tests/Roslyn Prototype.Tests.csproj`
+- Delete or move: remaining files under `tests/Roslyn Prototype.Tests/`
 - Create: `tests/AGENTS.md`
 - Modify: `AGENTS.md`
 - Modify: `scripts/check-harness-consistency.ps1`
@@ -340,10 +340,10 @@ The initial workflow runs `-Fast` for pull requests and `-Host` on the default b
 **Step 5: Run final verification.**
 
 ```powershell
-dotnet build .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet build .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet build .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet build .\tests\RoslynDeletionPrototype.PerformanceTests\RoslynDeletionPrototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet build .\tests\Roslyn Prototype.PerformanceTests\Roslyn Prototype.PerformanceTests.csproj --no-restore -p:UseSharedCompilation=false
 pwsh -File .\scripts\Run-TestTiers.ps1 -All
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check

@@ -1,8 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using MinimalRoslynCpg.Contracts;
-using MinimalRoslynCpg.Analysis.FlowSummaries;
+using NLCPG.Contracts;
+using NLCPG.Analysis.FlowSummaries;
 using System.Text;
 using NLISSN.Core.Analysis;
 using NLISSN.Application;
@@ -37,27 +37,27 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void FlowSummaryRegistry_ProjectOverride_TakesPrecedenceOverFrameworkAndUnknown()
     {
-        var framework = new RoslynCpgFlowSummary(
+        var framework = new NLCPGFlowSummary(
           "framework",
           "Demo.Helpers",
           "Map",
           0,
-          new[] { RoslynCpgFlowSummaryEndpoint.Parameter(0) },
-          RoslynCpgFlowSummaryEndpoint.Return);
-        var project = framework with { Sources = new[] { RoslynCpgFlowSummaryEndpoint.Receiver } };
-        var registry = new RoslynCpgFlowSummaryRegistry(new[] { project }, new[] { framework });
+          new[] { NLCPGFlowSummaryEndpoint.Parameter(0) },
+          NLCPGFlowSummaryEndpoint.Return);
+        var project = framework with { Sources = new[] { NLCPGFlowSummaryEndpoint.Receiver } };
+        var registry = new NLCPGFlowSummaryRegistry(new[] { project }, new[] { framework });
 
         var resolved = registry.Resolve(project.StableKey);
 
-        Assert.Equal(RoslynCpgFlowSummaryResolution.Project, resolved.Resolution);
+        Assert.Equal(NLCPGFlowSummaryResolution.Project, resolved.Resolution);
         Assert.Same(project, resolved.Summary);
-        Assert.Equal(RoslynCpgFlowSummaryResolution.Unknown, registry.Resolve("missing").Resolution);
+        Assert.Equal(NLCPGFlowSummaryResolution.Unknown, registry.Resolve("missing").Resolution);
     }
 
     [Fact]
-    public void DeletionRulePipeline_HelperReturnSlicePilot_IsOptInAndDoesNotChangeRuleResults()
+    public void  RulePipeline_HelperReturnSlicePilot_IsOptInAndDoesNotChangeRuleResults()
     {
-        var pipeline = new DeletionRulePipeline(
+        var pipeline = new  RulePipeline(
           Array.Empty<RuleDefinitionMark>(),
           new RuleDefinitionPropagate[] { new ClassSymbolReferencePropagationRule() },
           Array.Empty<RuleDefinitionLift>(),
@@ -66,32 +66,14 @@ public sealed class PipelineComponentTests : IDisposable
         var disabled = pipeline.GetRequiredCapabilities();
         var enabled = (pipeline with { EnableHelperReturnSlicePilot = true }).GetRequiredCapabilities();
 
-        Assert.DoesNotContain(RoslynCpgCapability.InterproceduralDataFlow, disabled);
-        Assert.Contains(RoslynCpgCapability.InterproceduralDataFlow, enabled);
-    }
-
-    [Fact]
-    public void Analyze_SyntaxSemanticRule_SkipsDataFlowOverlay()
-    {
-        var application = new DeletionApplicationService(
-          new RuleDefinitionMark[] { new SyntaxSemanticOnlyMarkRule() },
-          Array.Empty<RuleDefinitionPropagate>(),
-          Array.Empty<RuleDefinitionLift>(),
-          Array.Empty<RuleDefinitionPropose>());
-
-        var result = application.Analyze(
-          "namespace Demo; public sealed class Sample { public int Run(int value) => value + 1; }",
-          "syntax-semantic-rule.cs",
-          new Dictionary<string, string>());
-
-        Assert.Contains(RoslynCpgCapability.SyntaxSemantic, result.CpgBuildTelemetry!.ResolvedCapabilities!);
-        Assert.Contains("DataFlowPass", result.CpgBuildTelemetry.SkippedPassNames!);
+        Assert.DoesNotContain(NLCPGCapability.InterproceduralDataFlow, disabled);
+        Assert.Contains(NLCPGCapability.InterproceduralDataFlow, enabled);
     }
 
     [Fact]
     public void AnalyzeFromArgs_WithSkipRewrite_DoesNotRetainRewrittenSource()
     {
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -108,57 +90,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void Analyze_RuntimeConfiguredDop_ReportsConfiguredCpgDop()
-    {
-        var source = PipelineSources.RuntimeConfiguredDopSource;
-        var runtime = new DeletionAnalysisRuntime(
-          new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 3),
-          new DeletionAnalysisEpoch(0, 0, 0));
-        var application = new DeletionApplicationService(
-          Array.Empty<RuleDefinitionMark>(),
-          Array.Empty<RuleDefinitionPropagate>(),
-          Array.Empty<RuleDefinitionLift>(),
-          Array.Empty<RuleDefinitionPropose>());
-
-        var result = application.Analyze(
-          source,
-          "runtime-cpg-dop.cs",
-          new Dictionary<string, string>(),
-          runtime);
-
-        Assert.NotNull(result.CpgBuildTelemetry);
-        Assert.Equal(3, result.CpgBuildTelemetry!.MaxDegreeOfParallelism);
-    }
-
-    [Fact]
-    public void Analyze_RuntimeConfiguredCpgDop_ReportsCpgOverride()
-    {
-        var source = PipelineSources.RuntimeConfiguredDopSource;
-        var runtime = new DeletionAnalysisRuntime(
-          new RoslynPrototypeExecutionOptions(
-            MaxDegreeOfParallelism: 12,
-            CpgMaxDegreeOfParallelism: 1),
-          new DeletionAnalysisEpoch(0, 0, 0));
-        var application = new DeletionApplicationService(
-          Array.Empty<RuleDefinitionMark>(),
-          Array.Empty<RuleDefinitionPropagate>(),
-          Array.Empty<RuleDefinitionLift>(),
-          Array.Empty<RuleDefinitionPropose>());
-
-        var result = application.Analyze(
-          source,
-          "runtime-cpg-override.cs",
-          new Dictionary<string, string>(),
-          runtime);
-
-        Assert.Equal(12, runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        Assert.Equal(1, result.CpgBuildTelemetry!.MaxDegreeOfParallelism);
-    }
-
-    [Fact]
     public void CreateFromOptions_WithCpgDopOverride_UsesExplicitCpgValue()
     {
-        var runtime = DeletionAnalysisRuntime.CreateFromOptions(
+        var runtime =  AnalysisRuntime.CreateFromOptions(
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
             ["max-degree-of-parallelism"] = "12",
@@ -172,7 +106,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void CreateFromOptions_WithoutCpgDopOverride_InheritsGlobalValue()
     {
-        var runtime = DeletionAnalysisRuntime.CreateFromOptions(
+        var runtime =  AnalysisRuntime.CreateFromOptions(
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
             ["max-degree-of-parallelism"] = "12"
@@ -184,9 +118,9 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void RuntimeLifecycle_PreservesCpgBuildAdmissionBudget()
     {
-        var runtime = new DeletionAnalysisRuntime(
+        var runtime = new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 4, CpgMaxDegreeOfParallelism: 3),
-          new DeletionAnalysisEpoch(0, 0, 0));
+          new  AnalysisEpoch(0, 0, 0));
 
         Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.InvalidateCaches().CpgBuildAdmissionBudget);
         Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.NextEpoch().CpgBuildAdmissionBudget);
@@ -200,7 +134,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void CreateFromOptions_WithInvalidCpgDopOverride_ThrowsArgumentException(string value)
     {
         var exception = Assert.Throws<ArgumentException>(() =>
-          DeletionAnalysisRuntime.CreateFromOptions(
+           AnalysisRuntime.CreateFromOptions(
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
               ["cpg-max-degree-of-parallelism"] = value
@@ -213,11 +147,11 @@ public sealed class PipelineComponentTests : IDisposable
     public void MarkingEngine_Run_WithGroupParallelism_RunsIndependentRulesConcurrently()
     {
         var source = PipelineSources.ConcurrentMarkingSource;
-        var runtime = new DeletionAnalysisRuntime(
+        var runtime = new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
             MaxDegreeOfParallelism: 2,
             EnableGroupParallelism: true),
-          new DeletionAnalysisEpoch(0, 0, 0));
+          new  AnalysisEpoch(0, 0, 0));
         var (context, root) = CreateContext(source, runtime: runtime);
         var probe = new ConcurrentRuleProbe(expectedConcurrentRules: 2);
         var rules = new RuleDefinitionMark[]
@@ -250,44 +184,15 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void MarkingEngine_Run_RecordsPerRuleLedgerBeforeFinalDeduplication()
-    {
-        var source = SObjectExpressionSources.MarkingDedupSource;
-        var (context, root) = CreateContext(source, "s");
-        var engine = new MarkingEngine();
-
-        var marks = engine.Run(
-          context,
-          root,
-          new RuleDefinitionMark[]
-          {
-            new DuplicateSeedRule(),
-            new EmptyMarkRule()
-          });
-
-        var ledger = context.MarkAnalysisTelemetry.RuleTelemetry;
-        var duplicateRule = Assert.Single(ledger, item => item.RuleId == "TEST-DUP-SEED");
-        var emptyRule = Assert.Single(ledger, item => item.RuleId == "TEST-EMPTY-MARK");
-
-        Assert.Single(marks);
-        Assert.Equal(2, duplicateRule.CandidateMarkCount);
-        Assert.Equal(2, duplicateRule.AcceptedMarkCount);
-        Assert.Equal(2, duplicateRule.GraphBindingFallbackCount);
-        Assert.Equal(2, duplicateRule.GraphBindingIndexHitCount);
-        Assert.Equal(0, emptyRule.CandidateMarkCount);
-        Assert.Equal(0, emptyRule.AcceptedMarkCount);
-    }
-
-    [Fact]
-    public void MarkingEngine_Run_SObjectRules_PreservesSeedMarksAcrossGroupParallelismAndUsesSnapshotCaches()
+    public void MarkingEngine_Run_SObjectRules_PreservesSeedMarksAcrossGroupParallelismAndReusesCachedOperation()
     {
         var source = PipelineSources.SnapshotCacheSource;
         var (serialContext, serialRoot) = CreateContext(source, "s");
-        var parallelRuntime = new DeletionAnalysisRuntime(
+        var parallelRuntime = new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
             MaxDegreeOfParallelism: 4,
             EnableGroupParallelism: true),
-          new DeletionAnalysisEpoch(0, 0, 0));
+          new  AnalysisEpoch(0, 0, 0));
         var (parallelContext, parallelRoot) = CreateContext(source, "s", parallelRuntime);
         var engine = new MarkingEngine();
 
@@ -297,20 +202,13 @@ public sealed class PipelineComponentTests : IDisposable
           .OfType<IdentifierNameSyntax>()
           .First(identifier => identifier.Identifier.ValueText == "s");
 
-        _ = parallelContext.GetCachedOperation(targetIdentifier);
-        _ = parallelContext.GetCachedOperation(targetIdentifier);
+        var firstOperation = parallelContext.GetCachedOperation(targetIdentifier);
+        var secondOperation = parallelContext.GetCachedOperation(targetIdentifier);
 
         Assert.Equal(BuildMarkKeys(serialMarks), BuildMarkKeys(parallelMarks));
         Assert.All(serialMarks, mark => Assert.NotNull(mark.PrimaryGraphNode));
         Assert.All(parallelMarks, mark => Assert.NotNull(mark.PrimaryGraphNode));
-        Assert.True(parallelContext.MarkAnalysisTelemetry.AtomicCandidateIndexMissCount > 0);
-        Assert.True(parallelContext.MarkAnalysisTelemetry.OperationLookupCacheHitCount > 0);
-        Assert.True(parallelContext.MarkAnalysisTelemetry.GraphBindingIndexHitCount > 0);
-        Assert.Equal(
-          GetDeleteSObjectMarkRules().Select(rule => rule.RuleId),
-          parallelContext.MarkAnalysisTelemetry.RuleTelemetry.Select(item => item.RuleId));
-        Assert.True(parallelContext.MarkAnalysisTelemetry.RuleTelemetry.Sum(
-          item => item.AtomicCandidateIndexHitCount + item.AtomicCandidateIndexMissCount) > 0);
+        Assert.Same(firstOperation, secondOperation);
     }
 
     [Fact]
@@ -338,17 +236,15 @@ public sealed class PipelineComponentTests : IDisposable
 
         var first = context.AnalyzeMarkRegion(anchors[0]);
         var second = context.AnalyzeMarkRegion(anchors[1]);
-        var telemetry = context.MarkAnalysisTelemetry;
 
         Assert.Same(anchors[0], first.AnchorNode);
         Assert.Same(anchors[1], second.AnchorNode);
         Assert.Same(first.RegionNode, second.RegionNode);
-        Assert.Equal(1, telemetry.RegionFactsCreatedCount);
-        Assert.Equal(1, telemetry.RegionFactsReusedCount);
+        Assert.Equal(first.Span, second.Span);
     }
 
     [Fact]
-    public void MarkAnalysisSnapshot_UsesSingleKindBucketAndReusesTargetDescriptorKey()
+    public void MarkAnalysisSnapshot_FiltersMemberAccessesAndReusesTargetDescriptorKey()
     {
         var (context, root) = CreateContext("""
           public sealed class Sample
@@ -369,15 +265,18 @@ public sealed class PipelineComponentTests : IDisposable
         var memberAccesses = context.EnumerateAllowedExpressions(
           root,
           new[] { SyntaxKind.SimpleMemberAccessExpression }).ToArray();
+        var repeatedMemberAccesses = context.EnumerateAllowedExpressions(
+          root,
+          new[] { SyntaxKind.SimpleMemberAccessExpression }).ToArray();
         var descriptor = context.GetTargetNameDescriptor();
         var repeatedDescriptor = context.GetTargetNameDescriptor();
 
         Assert.Equal(new[] { "s", "other" }, descriptor.DisplayNames);
         Assert.Same(descriptor, repeatedDescriptor);
-        Assert.Equal(
-          memberAccesses.Length,
-          context.MarkAnalysisTelemetry.AtomicCandidatesReturnedCount);
-        Assert.Equal(1, context.MarkAnalysisTelemetry.TargetMatchKeyCreatedCount);
+        Assert.Equal(memberAccesses, repeatedMemberAccesses);
+        Assert.All(
+          memberAccesses,
+          expression => Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, expression.Kind()));
     }
 
     [Fact]
@@ -447,7 +346,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void Analyze_DirectCall_UsesRuntimeDerivedFromOptions()
     {
         var source = PipelineSources.RuntimeAwareSource;
-        var application = new DeletionApplicationService(
+        var application = new  ApplicationService(
           new RuleDefinitionMark[] { new RuntimeAwareMarkRule() },
           Array.Empty<RuleDefinitionPropagate>(),
           Array.Empty<RuleDefinitionLift>(),
@@ -470,11 +369,11 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void DeletionAnalysisRuntime_GetOrCreateCompilationCache_AllowsMultipleCacheTypesPerCompilation()
+    public void  AnalysisRuntime_GetOrCreateCompilationCache_AllowsMultipleCacheTypesPerCompilation()
     {
         var tree = CSharpSyntaxTree.ParseText("namespace Demo; public sealed class Sample { }", path: "runtime-cache.cs");
         var compilation = CreateCompilation(tree);
-        var runtime = DeletionAnalysisRuntime.CreateDefault();
+        var runtime =  AnalysisRuntime.CreateDefault();
 
         var firstCache = GetCompilationCache(
           runtime,
@@ -635,7 +534,7 @@ public sealed class PipelineComponentTests : IDisposable
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-method-propagation.cs");
         var context = new RuleContext(
@@ -675,7 +574,7 @@ public sealed class PipelineComponentTests : IDisposable
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-local-function-propagation.cs");
         var context = new RuleContext(
@@ -715,7 +614,7 @@ public sealed class PipelineComponentTests : IDisposable
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-indexer-propagation.cs");
         var context = new RuleContext(
@@ -754,7 +653,7 @@ public sealed class PipelineComponentTests : IDisposable
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-delegate-propagation.cs");
         var context = new RuleContext(
@@ -797,7 +696,7 @@ public sealed class PipelineComponentTests : IDisposable
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-extension-propagation.cs");
         var context = new RuleContext(
@@ -836,7 +735,7 @@ public sealed class PipelineComponentTests : IDisposable
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-declaration-host-propagation.cs");
         var context = new RuleContext(
@@ -980,7 +879,7 @@ public sealed class PipelineComponentTests : IDisposable
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-if-structure-propagation.cs");
         var context = new RuleContext(
@@ -1133,7 +1032,7 @@ public sealed class PipelineComponentTests : IDisposable
             "Cli");
         BuildDiffArtifactWriter.InitializeDiffFile(aggregateDiffPath);
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1165,7 +1064,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "delete-s-object-readable.cs");
         var rawDiffPath = Path.Combine(_tempDirectory, "delete-s-object-readable.diff");
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1194,7 +1093,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_UsesDefaultSourceWhenInputPathIsMissing()
     {
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[] { "--target-name", "s" });
 
@@ -1211,7 +1110,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "no-edits-sample.cs");
         File.WriteAllText(filePath, MinimalSources.EmptyMainSource);
         var explicitDiffPath = Path.Combine(_tempDirectory, "no-edits.diff");
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1235,7 +1134,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "single-file-no-diff.cs");
         var expectedDiffPath = Path.Combine(_tempDirectory, "single-file-no-diff.rewrite.diff");
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1295,7 +1194,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1372,7 +1271,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var serialResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1413,13 +1312,12 @@ public sealed class PipelineComponentTests : IDisposable
             var expectedGrantedCpgDop = configuration.DisableDirectoryParallelism
               ? configuration.CpgDop
               : Math.Min(configuration.CpgDop, Math.Max(1, configuration.CpgDop / 2));
-            Assert.Equal(expectedGrantedCpgDop, parallelResult.CpgBuildTelemetry!.MaxDegreeOfParallelism);
             AssertEquivalentAnalysisResults(serialResult, parallelResult);
         }
     }
 
     [Fact]
-    public async Task AnalyzeDirectoryAsync_SourceOrderPublicationBacklog_RecordsAnalysisLogTelemetry()
+    public async Task AnalyzeDirectoryAsync_SourceOrderPublicationBacklog_PreservesFileAnalysis()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "directory-publication-backlog-project");
         Directory.CreateDirectory(projectDirectory);
@@ -1431,9 +1329,8 @@ public sealed class PipelineComponentTests : IDisposable
           Path.Combine(projectDirectory, "B.Fast.cs"),
           "namespace Demo; public sealed class FastFileOne { public int Run() => 2; }",
           Encoding.UTF8);
-        var analysisLogPath = Path.Combine(_tempDirectory, "directory-publication-backlog.log");
         var delayRule = new FileDelayMarkRule();
-        var host = new DeletionCommandHost(new DeletionRulePipeline(
+        var host = new  CommandHost(new  RulePipeline(
           new RuleDefinitionMark[] { delayRule },
           Array.Empty<RuleDefinitionPropagate>(),
           Array.Empty<RuleDefinitionLift>(),
@@ -1446,28 +1343,16 @@ public sealed class PipelineComponentTests : IDisposable
             "2",
             "--cpg-max-degree-of-parallelism",
             "2",
-            "--analysis-log",
-            analysisLogPath,
-            "--log-profile",
-            "benchmark",
             "--no-diff"
         });
 
-        var summaryLine = File.ReadAllLines(analysisLogPath)
-          .Single(line =>
-            line.Contains("cat=file evt=summary", StringComparison.Ordinal) &&
-            line.Contains("msg=\"directory source-order publication summary\"", StringComparison.Ordinal));
-
-        Assert.True(ExtractNamedLongField(summaryLine, "unpublishedCountPeak") >= 1);
-        Assert.True(ExtractNamedLongField(summaryLine, "oldestUnpublishedIndex") >= 0);
-        Assert.True(ExtractNamedLongField(summaryLine, "waitToPublishMs") > 0);
         Assert.True(delayRule.FastFileEntered.IsCompletedSuccessfully);
     }
 
     [Fact]
     public void AnalyzeFromArgs_WithInvalidCpgDopOverride_ThrowsArgumentException()
     {
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var exception = Assert.Throws<ArgumentException>(() => CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1510,7 +1395,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var defaultResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1580,7 +1465,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1633,7 +1518,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1672,7 +1557,7 @@ public sealed class PipelineComponentTests : IDisposable
         File.WriteAllText(
           Path.Combine(systemsDirectory, "Renderer.cs"),
           DirectoryDeleteClassSources.RendererWithBlockBodyUsingPlayerInputSource);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
         var diffRootPath = Path.Combine(_tempDirectory, "concurrent-diff-output");
         var resultsByDegree = new Dictionary<int, PrototypeAnalysisResult>();
         var diffBytesByDegree = new Dictionary<int, IReadOnlyDictionary<string, byte[]>>();
@@ -1720,7 +1605,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-large-asset-project");
         DeleteClassLargeSources.WriteLargeProject(projectDirectory);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1782,7 +1667,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1836,7 +1721,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1884,7 +1769,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1931,7 +1816,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1979,7 +1864,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2035,7 +1920,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2097,7 +1982,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2164,7 +2049,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2225,7 +2110,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2280,7 +2165,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2344,7 +2229,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2405,7 +2290,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2471,7 +2356,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2531,7 +2416,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2594,7 +2479,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2658,7 +2543,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2717,7 +2602,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2780,7 +2665,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2835,7 +2720,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2888,7 +2773,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2941,7 +2826,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2982,7 +2867,7 @@ public sealed class PipelineComponentTests : IDisposable
 
           public delegate int Keep(int frame);
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3035,7 +2920,7 @@ public sealed class PipelineComponentTests : IDisposable
             int Keep();
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3095,7 +2980,7 @@ public sealed class PipelineComponentTests : IDisposable
             int Keep { get; }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3148,7 +3033,7 @@ public sealed class PipelineComponentTests : IDisposable
             event System.Action KeepAlive;
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3204,7 +3089,7 @@ public sealed class PipelineComponentTests : IDisposable
             int this[string key] { get; }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3249,7 +3134,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3307,7 +3192,7 @@ public sealed class PipelineComponentTests : IDisposable
           {
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3367,7 +3252,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3415,7 +3300,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3456,7 +3341,7 @@ public sealed class PipelineComponentTests : IDisposable
 
           public delegate void Keep(int frame);
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3521,7 +3406,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3602,7 +3487,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3648,7 +3533,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3686,7 +3571,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3744,7 +3629,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3803,7 +3688,7 @@ public sealed class PipelineComponentTests : IDisposable
             public int Count() => 42;
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3856,7 +3741,7 @@ public sealed class PipelineComponentTests : IDisposable
             public int Count() => 42;
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3945,7 +3830,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3969,7 +3854,6 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Equal(2, result.Stats!.ScannedFileCount);
         Assert.Equal(8, result.Stats.CandidateMethodCount);
         Assert.Equal(6, result.Stats.DeletedMethodCount);
-        Assert.True(result.Stats.ElapsedMilliseconds >= 0);
 
         var rewrittenTrees = new[]
         {
@@ -4007,7 +3891,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4064,7 +3948,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4143,7 +4027,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4207,7 +4091,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4274,7 +4158,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4311,7 +4195,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4376,7 +4260,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4579,7 +4463,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_WhenDisabledRuleTypeProvided_DisablesOnlyMatchingClass()
     {
-        var host = new DeletionCommandHost(
+        var host = new  CommandHost(
           RuleRegistry.CreateDefaultRules(new[] { "SObjectMemberAccessMarkRule" }));
 
         var result = host.AnalyzeFromArgs(new[]
@@ -4627,18 +4511,18 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private static DeletionCommandHost CreateCommandHost()
+    private static  CommandHost CreateCommandHost()
     {
-        return new DeletionCommandHost(RuleRegistry.CreateDefaultRules());
+        return new  CommandHost(RuleRegistry.CreateDefaultRules());
     }
 
-    private static (RuleContext Context, SyntaxNode Root) CreateContext(string source, string? targetName = null, DeletionAnalysisRuntime? runtime = null)
+    private static (RuleContext Context, SyntaxNode Root) CreateContext(string source, string? targetName = null,  AnalysisRuntime? runtime = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "component-test.cs");
         var root = tree.GetRoot();
         var compilation = CreateCompilation(tree);
         var semanticModel = compilation.GetSemanticModel(tree);
-        var graph = new MinimalRoslynCpg.Builder.RoslynCpgBuilder().BuildFromSource(source, "component-test.cs");
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(source, "component-test.cs");
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(targetName))
         {
@@ -4648,20 +4532,20 @@ public sealed class PipelineComponentTests : IDisposable
         return (new RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options, runtime: runtime), root);
     }
 
-    private static DeletionAnalysisRuntime CreateParallelRuntime(RecordingScheduler scheduler)
+    private static  AnalysisRuntime CreateParallelRuntime(RecordingScheduler scheduler)
     {
-        return new DeletionAnalysisRuntime(
+        return new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
             4,
             EnableGroupParallelism: true),
-          new DeletionAnalysisEpoch(0, 0, 0),
+          new  AnalysisEpoch(0, 0, 0),
           scheduler);
     }
 
-    private static TCache GetCompilationCache<TCache>(DeletionAnalysisRuntime runtime, Compilation compilation, Func<Compilation, TCache> factory)
+    private static TCache GetCompilationCache<TCache>( AnalysisRuntime runtime, Compilation compilation, Func<Compilation, TCache> factory)
       where TCache : class
     {
-        var method = typeof(DeletionAnalysisRuntime)
+        var method = typeof( AnalysisRuntime)
           .GetMethod("GetOrCreateCompilationCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
         Assert.NotNull(method);
 
@@ -4720,7 +4604,7 @@ public sealed class PipelineComponentTests : IDisposable
         return builder.ToString();
     }
 
-    private static IReadOnlyList<RuleDefinitionMark> GetDeleteSObjectMarkRules(DeletionRulePipeline? rules = null)
+    private static IReadOnlyList<RuleDefinitionMark> GetDeleteSObjectMarkRules( RulePipeline? rules = null)
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
@@ -4728,7 +4612,7 @@ public sealed class PipelineComponentTests : IDisposable
           .ToList();
     }
 
-    private static IReadOnlyList<RuleDefinitionMark> GetDeleteClassMarkRules(DeletionRulePipeline? rules = null)
+    private static IReadOnlyList<RuleDefinitionMark> GetDeleteClassMarkRules( RulePipeline? rules = null)
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
@@ -4768,23 +4652,6 @@ public sealed class PipelineComponentTests : IDisposable
             _ = context;
             _ = root;
             yield break;
-        }
-    }
-
-    private sealed class SyntaxSemanticOnlyMarkRule : RuleDefinitionMark
-    {
-        public override string RuleId => "syntax-semantic-only";
-
-        public override string Name => "Syntax semantic only";
-
-        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => Array.Empty<SyntaxKind>();
-
-        public override IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
-          new[] { RoslynCpgCapability.SyntaxSemantic };
-
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
-        {
-            return Array.Empty<MarkRecord>();
         }
     }
 

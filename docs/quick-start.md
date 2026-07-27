@@ -15,20 +15,20 @@
 pwsh -File .\init.ps1
 ```
 
-成功时会报告仓库根、SDK 版本，并通过 `src/MinimalRoslynCpg/MinimalRoslynCpg.csproj` 的构建健康检查。
+成功时会报告仓库根、SDK 版本，并通过 `src/NLCPG/NLCPG.csproj` 的构建健康检查。
 
 ## 2. 运行最小 CPG
 
 先查看支持的 CLI 选项：
 
 ```powershell
-dotnet run --project .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj -- --help
+dotnet run --project .\src\NLCPG\NLCPG.csproj -- --help
 ```
 
 再构建仓库自带样例：
 
 ```powershell
-dotnet run --project .\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj -- .\src\MinimalRoslynCpg\samples\analysis-sample.cs
+dotnet run --project .\src\NLCPG\NLCPG.csproj -- .\src\NLCPG\samples\analysis-sample.cs
 ```
 
 成功时标准输出包含 `Nodes:` 和 `Edges:`，后续行按节点类型列出统计值。
@@ -58,8 +58,8 @@ dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> --target-name <n
 ## 4. 运行回归测试
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore
+dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore
 ```
 
 测试输出以通过/失败计数结束。当前 checkout 未包含 `Run-TestTiers.ps1`；更窄的验证选择见 [Harness 验证矩阵](harness-verification-matrix.md)。

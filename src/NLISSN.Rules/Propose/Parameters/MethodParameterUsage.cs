@@ -6,8 +6,10 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Decision;
 
+/// 从传播结果提取唯一的方法参数使用事实，并把语义操作还原为调用点改写。
 public static class DeleteClassMethodParameterUsageProposalHelpers
 {
+    // 提取指定方法参数使用模式下的唯一 payload，供方法签名收缩提案消费。
     public static IEnumerable<MethodParameterUsagePayload> EnumerateMethodPayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks, MethodParameterUsageMode mode)
     {
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -30,6 +32,7 @@ public static class DeleteClassMethodParameterUsageProposalHelpers
         }
     }
 
+    // 尝试生成删除目标参数后的方法声明替换节点。
     public static bool TryBuildReplacementMethod(MethodParameterUsagePayload payload, out MethodDeclarationSyntax replacementMethod)
     {
         return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementMethod(
@@ -38,6 +41,7 @@ public static class DeleteClassMethodParameterUsageProposalHelpers
           out replacementMethod);
     }
 
+    // 按 payload 的调用模式生成所有受影响调用点的替换决策。
     public static IEnumerable<DecisionUnit> CreateInvocationReplaceDecisions(string ruleId, Compilation compilation, MethodParameterUsagePayload payload, string reason)
     {
         if (!TryResolveMethodParameterSymbol(compilation, payload, out var parameterSymbol))

@@ -64,9 +64,9 @@ public sealed class DecisionComplexTests
         TextDiffAssert.Contains("return 0;", result.RewrittenSource, result.Diff);
     }
 
-    private static DeletionApplicationService CreateApplication()
+    private static  ApplicationService CreateApplication()
     {
-        return new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+        return new  ApplicationService(RuleRegistry.CreateDefaultRules());
     }
 
     private static Dictionary<string, string> CreateOptions(string targetName)

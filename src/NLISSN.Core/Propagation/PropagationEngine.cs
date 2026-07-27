@@ -6,18 +6,13 @@ namespace NLISSN.Core.Propagation;
 
 public sealed class PropagationEngine
 {
-    /// <summary>
-    /// 按规则分别执行传播，只允许规则扩展自己产出的种子标记。
-    /// </summary>
-    /// <param name="context">当前规则执行所需的分析上下文。</param>
-    /// <param name="seedMarks">标记阶段直接命中的种子标记集合。</param>
-    /// <param name="rules">参与当前分析的删除规则集合。</param>
-    /// <returns>去重后的传播标记集合。</returns>
+    // 按 GroupKey 组织传播规则，并把同组链式传播收束成去重后的传播标记集合。
     public IReadOnlyList<PropagatedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<RuleDefinitionPropagate> rules)
     {
         var seedMarksByGroupKey = seedMarks
           .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
           .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
+        // 组是传播隔离边界：同组规则可消费前序规则新增的标记，不同组之间互不影响。
         var groupedRules = rules
           .GroupBy(rule => rule.GroupKey, StringComparer.Ordinal)
           .Select(group => new PropagationRuleGroup(group.Key, group.ToList()))
@@ -77,6 +72,7 @@ public sealed class PropagationEngine
     private static List<PropagatedMarkRecord> RunGroup(RuleContext context, PropagationRuleGroup ruleGroup, IReadOnlyList<MarkRecord> groupSeedMarks)
     {
         var propagatedMarks = new List<PropagatedMarkRecord>();
+        // 依次扩充同组工作集，使链式传播在本组内闭合，同时保持规则声明顺序。
         var groupMarks = new List<MarkRecord>(groupSeedMarks);
         foreach (var rule in ruleGroup.Rules)
         {

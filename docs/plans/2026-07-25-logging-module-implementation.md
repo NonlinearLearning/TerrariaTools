@@ -13,8 +13,8 @@
 ### Task 1: 锁定可独立引用的模块边界
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.HostTests/RoslynDeletionPrototype.HostTests.csproj`
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Logging/TextLogSystemTests.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Roslyn Prototype.HostTests.csproj`
+- Modify: `tests/Roslyn Prototype.HostTests/Logging/TextLogSystemTests.cs`
 - Create: `src/Logging/Logging.csproj`
 
 **Step 1: Write the failing test**
@@ -26,7 +26,7 @@
 
 **Step 2: Run test to verify it fails**
 
-Run: `dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~LoggingModule_ExportsPublicTextLogContract`
+Run: `dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~LoggingModule_ExportsPublicTextLogContract`
 
 Expected: 编译失败，报缺少 `Logging.csproj` 或 `RoslynPrototype.Logging` 命名空间；失败原因必须是模块尚不存在。
 
@@ -63,7 +63,7 @@ preview language version。项目不含 `PackageReference` 或 `ProjectReference
 
 **Step 2: Verify the red test is now green**
 
-Run: `dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~LoggingModule_ExportsPublicTextLogContract`
+Run: `dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~LoggingModule_ExportsPublicTextLogContract`
 
 Expected: PASS；测试使用新程序集的公开 API。
 
@@ -77,12 +77,12 @@ Expected: 成功，且构建输出不需要 Application、Rules、Host 或 Rosly
 
 **Files:**
 - Modify: `src/Host/Host.csproj`
-- Modify: `src/Host/DeletionApplicationOptions.cs`
-- Modify: `src/Host/DeletionCommandHost.cs`
-- Modify: `src/Host/DeletionDirectoryAnalysisService.cs`
+- Modify: `src/Host/ ApplicationOptions.cs`
+- Modify: `src/Host/ CommandHost.cs`
+- Modify: `src/Host/ DirectoryAnalysisService.cs`
 - Modify: `src/Host/Logging/RunTextLogWriter.cs`
 - Modify: `src/Host/Logging/AnalysisTextLogWriter.cs`
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Logging/TextLogSystemTests.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Logging/TextLogSystemTests.cs`
 
 **Step 1: Update Host dependencies**
 
@@ -93,12 +93,12 @@ Expected: 成功，且构建输出不需要 Application、Rules、Host 或 Rosly
 **Step 2: Preserve the existing writer seam**
 
 将反射测试改为从 `typeof(TextLogFilter).Assembly` 获取 filter/enum 类型，从
-`typeof(DeletionCommandHost).Assembly` 获取 `AnalysisTextLogWriter`。这样测试同时锁定
+`typeof( CommandHost).Assembly` 获取 `AnalysisTextLogWriter`。这样测试同时锁定
 日志底座与 Host 适配器位于不同程序集。
 
 **Step 3: Run focused Host regression**
 
-Run: `dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~TextLogSystemTests`
+Run: `dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~TextLogSystemTests`
 
 Expected: PASS；原有 CLI alias、profile、filter、batch、runtime/analysis sink 和 diff lifecycle
 断言均不变。
@@ -106,7 +106,7 @@ Expected: PASS；原有 CLI alias、profile、filter、batch、runtime/analysis 
 ### Task 4: 验证项目边界和交付质量
 
 **Files:**
-- Modify: `tests/RoslynDeletionPrototype.ContractTests/Architecture/ArchitectureBoundaryTests.cs`（仅当现有边界测试适合加入 Logging 无项目依赖断言）
+- Modify: `tests/Roslyn Prototype.ContractTests/Architecture/ArchitectureBoundaryTests.cs`（仅当现有边界测试适合加入 Logging 无项目依赖断言）
 - Modify: `progress.md`（仅在需要人工交接时）
 
 **Step 1: Add a structural regression if the existing architecture suite owns project boundaries**
@@ -120,7 +120,7 @@ Run: `dotnet build .\src\Host\Host.csproj --no-restore -p:UseSharedCompilation=f
 
 Expected: PASS。
 
-Run: `dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~ArchitectureBoundaryTests`
+Run: `dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter FullyQualifiedName~ArchitectureBoundaryTests`
 
 Expected: PASS。
 

@@ -9,7 +9,7 @@ public sealed class DirectoryAnalysisUseCaseTests
   [Fact]
   public void Analyze_DeleteUnreferencedMethods_UsesOnlyInMemorySources()
   {
-    var useCase = new DirectoryAnalysisUseCase(new DeletionRulePipeline(
+    var useCase = new DirectoryAnalysisUseCase(new  RulePipeline(
       Array.Empty<RuleDefinitionMark>(),
       Array.Empty<RuleDefinitionPropagate>(),
       Array.Empty<RuleDefinitionLift>(),
@@ -35,7 +35,7 @@ public sealed class DirectoryAnalysisUseCaseTests
       {
         ["delete-unreferenced-methods"] = "true"
       },
-      DeletionAnalysisRuntime.CreateDefault());
+       AnalysisRuntime.CreateDefault());
 
     var mark = Assert.Single(outcome.Result.SeedMarks);
     Assert.Equal("DEL-UNREF-METHOD-MARK-001", mark.RuleId);

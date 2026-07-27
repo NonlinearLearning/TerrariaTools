@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 为方法参数删除汇总声明宿主与调用点，并把不同调用约束编码成 mode，供后续收缩提案选择正确改写策略。
 public sealed class ClassMethodParameterUsagePropagationRule : RuleDefinitionPropagate
 {
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
@@ -25,6 +26,7 @@ public sealed class ClassMethodParameterUsagePropagationRule : RuleDefinitionPro
         SyntaxKind.InvocationExpression
       };
 
+    // 把方法参数删除需要的声明与调用点事实编码成 payload，并区分不同调用约束模式。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -68,6 +70,7 @@ public sealed class ClassMethodParameterUsagePropagationRule : RuleDefinitionPro
         }
     }
 
+    /// 解析顺序体现保守性：先处理命名参数、默认值和 params 等高约束形状，
     private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out MethodParameterUsagePayload payload)
     {
         payload = null!;

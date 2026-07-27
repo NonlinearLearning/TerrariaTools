@@ -9,8 +9,11 @@ using System.Threading;
 
 namespace NLISSN.Core.Decision;
 
+/// 先证明声明与所有受影响调用点可同步改写，再生成参数收缩计划。
+/// 无法覆盖的调用形状、重载冲突或语义绑定不稳定时必须返回 false。
 public sealed class DeleteClassParameterShrinkAnalyzer
 {
+    // 在所有命名参数调用都可安全删除目标实参时，生成私有方法的命名参数收缩计划。
     public bool TryBuildNamedArgumentMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
     {
         plan = null!;
@@ -40,6 +43,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 在可选参数既能删声明又不破坏省略调用语义时，生成方法收缩计划。
     public bool TryBuildOptionalParameterMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
     {
         plan = null!;
@@ -71,6 +75,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 仅在 params 槽位始终被省略且不存在重载冲突时，生成方法收缩计划。
     public bool TryBuildParamsMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
     {
         plan = null!;
@@ -102,6 +107,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 为普通私有方法生成参数收缩计划；调用点可为空，因为私有删除链路允许只改声明。
     public bool TryBuildPrivateMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
     {
         return TryBuildMethodPlan(
@@ -112,6 +118,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           out plan);
     }
 
+    // 为非私有方法生成参数收缩计划，并要求调用点必须被完整覆盖。
     public bool TryBuildPublicMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PublicMethodParameterShrinkPlan plan)
     {
         var succeeded = TryBuildMethodPlan(
@@ -129,6 +136,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return succeeded;
     }
 
+    // 为普通位置参数局部函数生成声明与调用点同步收缩计划。
     public bool TryBuildLocalFunctionPlan(RuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
     {
         plan = null!;
@@ -157,6 +165,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 为命名参数局部函数调用生成声明与调用点同步收缩计划。
     public bool TryBuildNamedArgumentLocalFunctionPlan(RuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
     {
         plan = null!;
@@ -183,6 +192,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 为带默认值的局部函数参数生成可保守执行的收缩计划。
     public bool TryBuildOptionalParameterLocalFunctionPlan(RuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
     {
         plan = null!;
@@ -211,6 +221,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 为普通位置索引器参数生成声明与访问点同步收缩计划。
     public bool TryBuildIndexerPlan(RuleContext context, TypeSyntax typeSyntax, out IndexerParameterShrinkPlan plan)
     {
         plan = null!;
@@ -236,6 +247,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 为命名索引参数访问生成声明与访问点同步收缩计划。
     public bool TryBuildNamedArgumentIndexerPlan(RuleContext context, TypeSyntax typeSyntax, out IndexerParameterShrinkPlan plan)
     {
         plan = null!;
@@ -259,6 +271,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 仅在委托没有额外外部绑定时，生成只改签名的简单委托收缩计划。
     public bool TryBuildDelegatePlan(RuleContext context, TypeSyntax typeSyntax, out DelegateParameterShrinkPlan plan)
     {
         plan = null!;
@@ -279,6 +292,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 当委托只通过 method group 绑定传播时，生成声明与绑定同步收缩计划。
     public bool TryBuildDelegateMethodGroupPlan(RuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
     {
         plan = null!;
@@ -313,6 +327,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 当委托只通过 lambda 绑定传播时，生成声明与绑定同步收缩计划。
     public bool TryBuildDelegateLambdaPlan(RuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
     {
         plan = null!;
@@ -347,6 +362,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 当委托只影响直接调用链时，生成声明与调用链同步收缩计划。
     public bool TryBuildDelegateInvocationChainPlan(RuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
     {
         plan = null!;
@@ -382,6 +398,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 仅在扩展方法接收者不变且非首参可安全删除时，生成方法与映射调用点收缩计划。
     public bool TryBuildExtensionReceiverNonFirstParameterPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
     {
         plan = null!;
@@ -496,6 +513,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 把 TypeSyntax 解析回所属局部函数参数及其索引，供局部函数收缩链路复用。
     public static bool TryResolveLocalFunctionParameter(TypeSyntax typeSyntax, out LocalFunctionStatementSyntax localFunction, out ParameterSyntax parameter, out int parameterIndex)
     {
         localFunction = null!;
@@ -515,6 +533,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return parameterIndex >= 0;
     }
 
+    // 把 TypeSyntax 解析回所属索引器参数及其索引，并排除接口索引器。
     public static bool TryResolveIndexerParameter(TypeSyntax typeSyntax, out IndexerDeclarationSyntax indexer, out ParameterSyntax parameter, out int parameterIndex)
     {
         indexer = null!;
@@ -536,6 +555,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return parameterIndex >= 0;
     }
 
+    // 把 TypeSyntax 解析回所属委托参数及其索引，供委托收缩链路复用。
     public static bool TryResolveDelegateParameter(TypeSyntax typeSyntax, out DelegateDeclarationSyntax delegateDeclaration, out ParameterSyntax parameter, out int parameterIndex)
     {
         delegateDeclaration = null!;
@@ -555,6 +575,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return parameterIndex >= 0;
     }
 
+    // 汇总委托参数删除需要同步改写的方法组、局部函数、lambda 与直接调用链事实。
     public static bool TryCollectDelegateUsageSummary(RuleContext context, INamedTypeSymbol delegateSymbol, IParameterSymbol parameterSymbol, int parameterIndex, out DelegateUsageSummary usageSummary)
     {
         var methodRewrites = new ConcurrentBag<MethodRewrite>();
@@ -699,6 +720,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return parameter.Modifiers.Any(token => token.IsKind(SyntaxKind.ParamsKeyword)) || parameterSymbol.IsParams;
     }
 
+    // 从方法声明中删除目标参数，并验证参数列表长度确实减少一位。
     public static bool TryBuildReplacementMethod(MethodDeclarationSyntax method, ParameterSyntax parameter, out MethodDeclarationSyntax replacementMethod)
     {
         var replacementParameters = method.ParameterList.Parameters.Remove(parameter);
@@ -706,6 +728,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return replacementParameters.Count + 1 == method.ParameterList.Parameters.Count;
     }
 
+    // 从局部函数声明中删除目标参数，并验证参数列表长度确实减少一位。
     public static bool TryBuildReplacementLocalFunction(LocalFunctionStatementSyntax localFunction, ParameterSyntax parameter, out LocalFunctionStatementSyntax replacementLocalFunction)
     {
         var replacementParameters = localFunction.ParameterList.Parameters.Remove(parameter);
@@ -714,6 +737,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return replacementParameters.Count + 1 == localFunction.ParameterList.Parameters.Count;
     }
 
+    // 从索引器声明中删除目标参数，并验证参数列表长度确实减少一位。
     public static bool TryBuildReplacementIndexer(IndexerDeclarationSyntax indexer, ParameterSyntax parameter, out IndexerDeclarationSyntax replacementIndexer)
     {
         var replacementParameters = indexer.ParameterList.Parameters.Remove(parameter);
@@ -721,6 +745,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return replacementParameters.Count + 1 == indexer.ParameterList.Parameters.Count;
     }
 
+    // 从委托声明中删除目标参数，并验证参数列表长度确实减少一位。
     public static bool TryBuildReplacementDelegate(DelegateDeclarationSyntax delegateDeclaration, ParameterSyntax parameter, out DelegateDeclarationSyntax replacementDelegate)
     {
         var replacementParameters = delegateDeclaration.ParameterList.Parameters.Remove(parameter);
@@ -729,7 +754,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return replacementParameters.Count + 1 == delegateDeclaration.ParameterList.Parameters.Count;
     }
 
-    private static bool TryCollectInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         var rewrites = new ConcurrentBag<InvocationRewrite>();
         var matchedCallsites = 0;
@@ -772,7 +797,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
     }
 
-    private static bool TryCollectNamedArgumentInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectNamedArgumentInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, out List<InvocationRewrite> invocationRewrites)
     {
         var rewrites = new ConcurrentBag<InvocationRewrite>();
         var matchedCallsites = 0;
@@ -816,7 +841,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           Volatile.Read(ref matchedCallsites) > 0;
     }
 
-    private static bool TryCollectOptionalInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectOptionalInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         var matchedCallsites = 0;
         var rewrites = new ConcurrentBag<InvocationRewrite>();
@@ -864,7 +889,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
     }
 
-    private static bool TryCollectParamsInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectParamsInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         invocationRewrites = new List<InvocationRewrite>();
         var matchedCallsites = 0;
@@ -901,7 +926,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
     }
 
-    private static bool TryCollectElementAccessRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IPropertySymbol indexerSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<ElementAccessRewrite> accessRewrites)
+    private static bool TryCollectElementAccessRewrites( AnalysisRuntime runtime, Compilation compilation, IPropertySymbol indexerSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<ElementAccessRewrite> accessRewrites)
     {
         var rewrites = new ConcurrentBag<ElementAccessRewrite>();
         var matchedCallsites = 0;
@@ -944,7 +969,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
     }
 
-    private static bool TryCollectNamedElementAccessRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IPropertySymbol indexerSymbol, IParameterSymbol parameterSymbol, out List<ElementAccessRewrite> accessRewrites)
+    private static bool TryCollectNamedElementAccessRewrites( AnalysisRuntime runtime, Compilation compilation, IPropertySymbol indexerSymbol, IParameterSymbol parameterSymbol, out List<ElementAccessRewrite> accessRewrites)
     {
         var rewrites = new ConcurrentBag<ElementAccessRewrite>();
         var matchedCallsites = 0;
@@ -988,7 +1013,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           Volatile.Read(ref matchedCallsites) > 0;
     }
 
-    private static bool TryCollectMappedInvocationRewrites(DeletionAnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
+    private static bool TryCollectMappedInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         var rewrites = new ConcurrentBag<InvocationRewrite>();
         var matchedCallsites = 0;
@@ -1060,6 +1085,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
            SymbolEqualityComparer.Default.Equals(declaredMethod.OriginalDefinition, targetMethod.ReducedFrom.OriginalDefinition));
     }
 
+    // 删除位置参数调用中的目标实参，并要求实参数量与声明参数数量完全对齐。
     public static bool TryBuildReplacementInvocation(InvocationExpressionSyntax invocation, int parameterIndex, int expectedParameterCount, out InvocationExpressionSyntax replacementInvocation)
     {
         replacementInvocation = null!;
@@ -1077,6 +1103,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 删除命名参数调用中的目标实参，并保持其他命名参数顺序不变。
     public static bool TryBuildNamedArgumentReplacementInvocation(InvocationExpressionSyntax invocation, IInvocationOperation invocationOperation, IParameterSymbol parameterSymbol, out InvocationExpressionSyntax replacementInvocation)
     {
         replacementInvocation = null!;
@@ -1105,6 +1132,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 在可选参数调用中删除显式传入的目标实参；若本来就省略则保持原调用不变。
     public static bool TryBuildOptionalReplacementInvocation(InvocationExpressionSyntax invocation, IInvocationOperation invocationOperation, IParameterSymbol parameterSymbol, out InvocationExpressionSyntax replacementInvocation, out bool changed)
     {
         replacementInvocation = invocation;
@@ -1140,6 +1168,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 删除映射到扩展方法目标参数的调用实参，供扩展方法收缩链路复用。
     public static bool TryBuildMappedInvocationReplacement(InvocationExpressionSyntax invocation, IInvocationOperation? invocationOperation, IParameterSymbol parameterSymbol, out InvocationExpressionSyntax replacementInvocation)
     {
         replacementInvocation = null!;
@@ -1171,6 +1200,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
+    // 删除命名索引实参中的目标槽位，并保持其余命名实参顺序不变。
     public static bool TryBuildNamedArgumentReplacementElementAccess(ElementAccessExpressionSyntax elementAccess, IPropertyReferenceOperation propertyReference, IParameterSymbol parameterSymbol, out ElementAccessExpressionSyntax replacementElementAccess)
     {
         replacementElementAccess = null!;
@@ -1250,6 +1280,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return false;
     }
 
+    // 为 lambda 绑定生成删除目标参数后的替换表达式，同时保持委托签名兼容。
     public static bool TryBuildLambdaRewrite(RuleContext context, SemanticModel semanticModel, ExpressionSyntax expression, IAnonymousFunctionOperation anonymousFunction, int parameterIndex, out ExpressionRewrite lambdaRewrite)
     {
         lambdaRewrite = null!;
@@ -1369,6 +1400,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return $"{node.SyntaxTree.FilePath}:{node.SpanStart}:{node.Span.Length}:{node.RawKind}";
     }
 
+    // 删除位置索引访问中的目标实参，并要求实参数量与声明参数数量完全对齐。
     public static bool TryBuildReplacementElementAccess(ElementAccessExpressionSyntax elementAccess, int parameterIndex, int expectedParameterCount, out ElementAccessExpressionSyntax replacementElementAccess)
     {
         replacementElementAccess = null!;
@@ -1386,7 +1418,8 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
-    public static bool HasDelegateReferences(DeletionAnalysisRuntime runtime, Compilation compilation, INamedTypeSymbol delegateSymbol)
+    // 判断委托类型是否仍有无法一并改写的剩余引用，用来阻止不完整的签名收缩。
+    public static bool HasDelegateReferences( AnalysisRuntime runtime, Compilation compilation, INamedTypeSymbol delegateSymbol)
     {
         foreach (var tree in compilation.SyntaxTrees)
         {
@@ -1403,7 +1436,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return false;
     }
 
-    private static IReadOnlyList<TreeScan> GetTreeScans(Compilation compilation, DeletionAnalysisRuntime runtime)
+    private static IReadOnlyList<TreeScan> GetTreeScans(Compilation compilation,  AnalysisRuntime runtime)
     {
         var cache = runtime.GetOrCreateCompilationCache(
           compilation,
@@ -1413,14 +1446,14 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           .ToList();
     }
 
-    private static TreeScan GetTreeScan(Compilation compilation, SyntaxTree tree, DeletionAnalysisRuntime runtime)
+    private static TreeScan GetTreeScan(Compilation compilation, SyntaxTree tree,  AnalysisRuntime runtime)
     {
         return runtime.GetOrCreateCompilationCache(
           compilation,
           static key => new CompilationScanCache(key)).GetTreeScan(tree);
     }
 
-    private static void ForEachScan(IReadOnlyList<TreeScan> scans, DeletionAnalysisRuntime runtime, Action<TreeScan, Action> visit)
+    private static void ForEachScan(IReadOnlyList<TreeScan> scans,  AnalysisRuntime runtime, Action<TreeScan, Action> visit)
     {
         var shouldStop = 0;
         void Stop()
@@ -1470,6 +1503,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
           });
     }
 
+    // 判断删除指定参数后，是否会与同名现有重载发生签名冲突。
     public static bool HasConflictingReplacementOverload(IMethodSymbol methodSymbol, int parameterIndex)
     {
         var replacementParameters = methodSymbol.Parameters
@@ -1513,12 +1547,14 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         private readonly ConcurrentDictionary<SyntaxTree, Lazy<TreeScan>> _treeScans;
         private int _materializedTreeCount;
 
+        // 绑定到一次 Compilation，并按 SyntaxTree 延迟缓存扫描结果。
         public CompilationScanCache(Compilation compilation)
         {
             _compilation = compilation;
             _treeScans = new ConcurrentDictionary<SyntaxTree, Lazy<TreeScan>>(ReferenceEqualityComparer.Instance);
         }
 
+        // 返回指定语法树的延迟扫描结果；首次命中时才真正物化索引。
         public TreeScan GetTreeScan(SyntaxTree tree)
         {
             return _treeScans.GetOrAdd(
@@ -1606,6 +1642,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         private int _expressionIndexBuildCount;
         private int _typeSyntaxIndexBuildCount;
 
+        // 绑定单棵语法树并初始化所有延迟索引，供参数收缩扫描重复复用。
         public TreeScan(Compilation compilation, SyntaxTree syntaxTree)
         {
             _compilation = compilation;
@@ -1646,6 +1683,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
         public SemanticModel SemanticModel => _semanticModel.Value;
 
+        // 返回解析到指定方法符号的直接调用绑定列表。
         public IReadOnlyList<InvocationBinding> GetInvocationBindings(IMethodSymbol methodSymbol)
         {
             return _invocationsByMethodSymbol.Value.TryGetValue(methodSymbol, out var bindings)
@@ -1653,6 +1691,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
               : Array.Empty<InvocationBinding>();
         }
 
+        // 返回解析到指定方法符号的映射扩展调用绑定，并按语法位置去重。
         public IReadOnlyList<InvocationBinding> GetMappedInvocationBindings(IMethodSymbol methodSymbol)
         {
             var results = new Dictionary<string, InvocationBinding>(StringComparer.Ordinal);
@@ -1672,6 +1711,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return results.Values.ToList();
         }
 
+        // 返回解析到指定索引器属性的元素访问绑定，并按语法位置去重。
         public IReadOnlyList<ElementAccessBinding> GetElementAccessBindings(IPropertySymbol propertySymbol)
         {
             var results = new Dictionary<string, ElementAccessBinding>(StringComparer.Ordinal);
@@ -1691,6 +1731,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return results.Values.ToList();
         }
 
+        // 返回转换到指定委托类型的表达式绑定列表。
         public IReadOnlyList<ExpressionBinding> GetExpressionBindings(INamedTypeSymbol delegateSymbol)
         {
             return _expressionsByConvertedType.Value.TryGetValue(delegateSymbol, out var bindings)
@@ -1698,6 +1739,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
               : Array.Empty<ExpressionBinding>();
         }
 
+        // 返回解析到指定目标类型符号的 TypeSyntax 绑定列表。
         public IReadOnlyList<TypeSyntaxBinding> GetTypeSyntaxBindings(INamedTypeSymbol targetSymbol)
         {
             return _typeSyntaxesByResolvedSymbol.Value.TryGetValue(targetSymbol, out var bindings)

@@ -22,8 +22,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
-    <ProjectReference Include="..\..\src\MinimalRoslynCpg\MinimalRoslynCpg.csproj" />
+    <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Core\NLISSN.Core.csproj" />
-    <ProjectReference Include="..\RoslynDeletionPrototype.Testing\RoslynDeletionPrototype.Testing.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Rules\NLISSN.Rules.csproj" />
+    <ProjectReference Include="..\Roslyn Prototype.Testing\Roslyn Prototype.Testing.csproj" />
   </ItemGroup>
 </Project>

@@ -2,7 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
-using MinimalRoslynCpg.Builder;
+using NLCPG.Builder;
 using NLISSN.Application;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
@@ -178,7 +178,7 @@ public sealed class MarkRuleRegistryCoverageTests
         }
       }
       """;
-    var result = new DeletionApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
+    var result = new  ApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
       source,
       "ReturnReplacement.cs",
       Options(("target-name", "target")));
@@ -472,7 +472,7 @@ public sealed class MarkRuleRegistryCoverageTests
   {
     const string filePath = "Scenario.cs";
     var sourceWithUnrelatedDeclaration = source + "\npublic sealed class Unrelated { }";
-    var application = new DeletionApplicationService(RuleRegistry.CreateDefaultRules());
+    var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
     var result = application.Analyze(sourceWithUnrelatedDeclaration, filePath, options);
     var directSource = result.RewrittenSource ?? sourceWithUnrelatedDeclaration;
     var rewritePlans = result.RewritePlans ?? Array.Empty<PrototypeFileRewritePlan>();
@@ -581,7 +581,7 @@ public sealed class MarkRuleRegistryCoverageTests
         MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
       });
     var semanticModel = compilation.GetSemanticModel(tree);
-    var graph = new RoslynCpgBuilder().BuildFromSource(source, filePath);
+    var graph = new NLCPGBuilder().BuildFromSource(source, filePath);
     return (new RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options), root);
   }
 }

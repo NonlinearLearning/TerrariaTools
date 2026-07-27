@@ -6,7 +6,7 @@
 
 **Architecture:** 测试通过 `RuleRegistry.CreateDefaultRules().Markers` 发现运行时实际启用的规则；显式场景注册表按 `RuleId` 提供正例、近似反例、期望 mark 节点和最终产物断言。注册规则集合与场景集合必须完全相等，新增规则没有测试场景时测试失败。每个正例复用同一份输入，依次验证 Mark 局部契约、全管线结果、直接重写/内存计划回放/持久化计划回放等价和 Roslyn 编译。
 
-**Tech Stack:** .NET 10、xUnit、Microsoft.CodeAnalysis.CSharp、现有 `RuleRegistry`、`DeletionApplicationService`、`PrototypeRewriter` 与 rewrite-plan artifact 服务。
+**Tech Stack:** .NET 10、xUnit、Microsoft.CodeAnalysis.CSharp、现有 `RuleRegistry`、` ApplicationService`、`PrototypeRewriter` 与 rewrite-plan artifact 服务。
 
 ---
 
@@ -21,16 +21,16 @@
 
 ## 建议文件边界
 
-- Create: `tests/RoslynDeletionPrototype.HostTests/Mark/MarkRuleRegistryCoverageTests.cs`
-- Modify: `tests/RoslynDeletionPrototype.Testing/TestCodeSet/...` 下与 Mark 场景对应的输入资产；优先扩展现有 `SObjectExpressionSources`、DeleteClass 和方法规则资产，避免把长源码嵌入断言类。
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Mark/MarkRuleEffectTests.cs`，仅保留其现有真实行为/diff 回归职责，删除与新注册表测试重复的局部断言。
-- Optional Create: `tests/RoslynDeletionPrototype.Testing/Mark/MarkRuleScenarioCatalog.cs`，只有当 HostTests 无法以内部可见性共享场景模型时创建；不要将测试框架代码放入生产项目。
+- Create: `tests/Roslyn Prototype.HostTests/Mark/MarkRuleRegistryCoverageTests.cs`
+- Modify: `tests/Roslyn Prototype.Testing/TestCodeSet/...` 下与 Mark 场景对应的输入资产；优先扩展现有 `SObjectExpressionSources`、DeleteClass 和方法规则资产，避免把长源码嵌入断言类。
+- Modify: `tests/Roslyn Prototype.HostTests/Mark/MarkRuleEffectTests.cs`，仅保留其现有真实行为/diff 回归职责，删除与新注册表测试重复的局部断言。
+- Optional Create: `tests/Roslyn Prototype.Testing/Mark/MarkRuleScenarioCatalog.cs`，只有当 HostTests 无法以内部可见性共享场景模型时创建；不要将测试框架代码放入生产项目。
 
 ## Task 1：建立规则发现和场景模型
 
 **Files:**
 
-- Create: `tests/RoslynDeletionPrototype.HostTests/Mark/MarkRuleRegistryCoverageTests.cs`
+- Create: `tests/Roslyn Prototype.HostTests/Mark/MarkRuleRegistryCoverageTests.cs`
 
 1. 建立不可变 `MarkRuleScenario`：`RuleId`、正例源码、反例源码、CLI/规则选项、期望 mark 集合、最终产物断言。
 2. 从 `RuleRegistry.CreateDefaultRules().Markers` 获取规则，以 `RuleId` 建立集合。
@@ -39,7 +39,7 @@
 5. 先运行：
 
    ```powershell
-   dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~MarkRuleRegistryCoverageTests"
+   dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~MarkRuleRegistryCoverageTests"
    ```
 
    预期：场景未补齐时失败，并显示 RuleId 差集。
@@ -48,7 +48,7 @@
 
 **Files:**
 
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Mark/MarkRuleRegistryCoverageTests.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Mark/MarkRuleRegistryCoverageTests.cs`
 - Modify: 对应 `TestCodeSet` 输入资产
 
 1. 对每个场景只实例化其 `RuleId` 对应的规则，调用 `Mark(context, root)`。
@@ -64,7 +64,7 @@
 
 **Files:**
 
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Mark/MarkRuleRegistryCoverageTests.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Mark/MarkRuleRegistryCoverageTests.cs`
 
 1. 对每个正例使用默认完整管线运行：`Mark -> Propagate -> Lift -> Decide -> Rewrite`。
 2. 捕获直接重写结果，同时捕获 plan 并执行内存回放；将 plan 写为 `RewritePlanFile` JSON、读回后执行持久化计划回放。
@@ -78,8 +78,8 @@
 
 **Files:**
 
-- Modify: `tests/RoslynDeletionPrototype.ContractTests/Rewrite/DiffModelTests.cs`
-- Modify: `tests/RoslynDeletionPrototype.HostTests/Rewrite/RewritePlanPersistenceTests.cs`
+- Modify: `tests/Roslyn Prototype.ContractTests/Rewrite/DiffModelTests.cs`
+- Modify: `tests/Roslyn Prototype.HostTests/Rewrite/RewritePlanPersistenceTests.cs`
 
 1. 保持现有重叠、失效文本、越界 span、重复操作测试；增加与 Mark 场景目录计划兼容的断言，不将同一错误重复在每个 Mark 规则 case 中。
 2. 选择至少一个覆盖多规则/多文件的场景目录，捕获目录计划、回放并 Roslyn 编译全部回放后的文件。
@@ -91,10 +91,10 @@
 按顺序运行，避免共享输出目录的并发竞争：
 
 ```powershell
-dotnet build .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~MarkRuleRegistryCoverageTests|FullyQualifiedName~MarkRuleEffectTests|FullyQualifiedName~LogicalConditionMarkAnalyzerTests"
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~DiffModelTests"
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~RewritePlanPersistenceTests"
+dotnet build .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~MarkRuleRegistryCoverageTests|FullyQualifiedName~MarkRuleEffectTests|FullyQualifiedName~LogicalConditionMarkAnalyzerTests"
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~DiffModelTests"
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-build -p:UseSharedCompilation=false --filter "FullyQualifiedName~RewritePlanPersistenceTests"
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
 ```

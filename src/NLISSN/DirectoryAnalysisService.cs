@@ -1,75 +1,50 @@
 using NLISSN.Application;
-using System.Diagnostics;
 using System.Text;
-using NLISSN.Telemetry;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Rewrite;
 using NLISSN.Rules;
 
 namespace NLISSN;
 
-internal sealed class DeletionDirectoryAnalysisService
+/// 读取源目录、调用应用用例，并物化保持顺序的文件输出。
+internal sealed class DirectoryAnalysisService
 {
-    private readonly DeletionRulePipeline _pipeline;
+    private readonly RulePipeline _pipeline;
 
-    internal DeletionDirectoryAnalysisService(DeletionRulePipeline pipeline)
+    internal DirectoryAnalysisService(RulePipeline pipeline)
     {
         _pipeline = pipeline;
     }
 
-    internal PrototypeAnalysisResult AnalyzeDirectory(string directoryPath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime)
+    internal PrototypeAnalysisResult AnalyzeDirectory(string directoryPath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
     {
         return AnalyzeDirectoryAsync(directoryPath, options, runtime).GetAwaiter().GetResult();
     }
 
-    internal async Task<PrototypeAnalysisResult> AnalyzeDirectoryAsync(string directoryPath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime, AnalysisTextLogWriter? analysisWriter = null)
+    internal async Task<PrototypeAnalysisResult> AnalyzeDirectoryAsync(string directoryPath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
     {
         var filePaths = EnumerateSourceFiles(directoryPath).ToList();
         var sourcesByPath = await ReadSourcesAsync(filePaths, runtime.ExecutionOptions.CancellationToken);
-        var directoryStopwatch = Stopwatch.StartNew();
         var outcome = new DirectoryAnalysisUseCase(_pipeline).Analyze(
           filePaths.Select((filePath, index) => new DirectorySourceFile(index, filePath, sourcesByPath[filePath])).ToArray(),
           options,
           runtime);
-        directoryStopwatch.Stop();
-        return MaterializeOutcome(
-          directoryPath,
-          options,
-          runtime,
-          analysisWriter,
-          outcome,
-          directoryStopwatch.ElapsedMilliseconds);
+        return MaterializeOutcome(directoryPath, options, outcome);
     }
 
-    private static PrototypeAnalysisResult MaterializeOutcome(string directoryPath, IReadOnlyDictionary<string, string> options, DeletionAnalysisRuntime runtime, AnalysisTextLogWriter? analysisWriter, DirectoryAnalysisOutcome outcome, long directoryAnalysisMilliseconds)
+    private static PrototypeAnalysisResult MaterializeOutcome(string directoryPath, IReadOnlyDictionary<string, string> options, DirectoryAnalysisOutcome outcome)
     {
-        var shouldWriteDiff = DeletionApplicationOptions.ShouldWriteDiff(options);
-        var shouldWriteBack = DeletionApplicationOptions.ShouldWriteBack(options);
+        var shouldWriteDiff = ApplicationOptions.ShouldWriteDiff(options);
+        var shouldWriteBack = ApplicationOptions.ShouldWriteBack(options);
         var diffRootPath = shouldWriteDiff
-          ? DeletionDiffPathResolver.ResolveDirectoryDiffRoot(directoryPath, options)
+          ? DiffPathResolver.ResolveDirectoryDiffRoot(directoryPath, options)
           : null;
         var renderer = new TextDiffRenderer();
-        var diffWriteStopwatch = Stopwatch.StartNew();
         var writtenDiffCount = 0;
-        var deferredDiffResults = DeletionApplicationOptions.ShouldUseDeleteClassUsingCleanup(options)
-          ? outcome.FileResults.Where(result => result.Result.Edits.Count > 0).OrderBy(result => result.Index).ToArray()
-          : Array.Empty<DirectoryFileAnalysisResult>();
-
-        foreach (var fileResult in deferredDiffResults)
-        {
-            analysisWriter?.WriteDiffPending(fileResult.FilePath, fileResult.Result.Edits.Count);
-        }
-
-        if (deferredDiffResults.Length > 0)
-        {
-            analysisWriter?.WriteDiffCleanupStarted(deferredDiffResults.Length);
-            analysisWriter?.WriteDiffCleanupCompleted(deferredDiffResults.Length, 0);
-        }
 
         foreach (var fileResult in outcome.FileResults.OrderBy(result => result.Index))
         {
             var result = fileResult.Result;
-            analysisWriter?.WriteResult(fileResult.FilePath, result);
             if (result.Edits.Count == 0)
             {
                 continue;
@@ -82,42 +57,22 @@ internal sealed class DeletionDirectoryAnalysisService
 
             if (diffRootPath is not null && result.Diff.Files.Count > 0)
             {
-                var diffPath = DeletionDiffPathResolver.ResolveFileDiffPath(
+                var diffPath = DiffPathResolver.ResolveFileDiffPath(
                   directoryPath,
                   fileResult.FilePath,
                   diffRootPath);
                 Directory.CreateDirectory(Path.GetDirectoryName(diffPath)!);
                 File.WriteAllText(
                   diffPath,
-                  renderer.Render(result.Diff.Files.Single(), DeletionApplicationOptions.ResolveDiffView(options)),
+                  renderer.Render(result.Diff.Files.Single(), ApplicationOptions.ResolveDiffView(options)),
                   Encoding.UTF8);
                 writtenDiffCount++;
-                analysisWriter?.WriteDiffWritten(fileResult.FilePath, diffPath, result.Edits.Count);
             }
-        }
-
-        diffWriteStopwatch.Stop();
-        analysisWriter?.WriteDirectoryPublicationSummary(
-          outcome.PublicationTelemetry.FileCount,
-          outcome.PublicationTelemetry.UnpublishedCountPeak,
-          outcome.PublicationTelemetry.WaitToPublishMilliseconds,
-          outcome.PublicationTelemetry.OldestUnpublishedIndex);
-        if (deferredDiffResults.Length > 0)
-        {
-            analysisWriter?.WriteDiffSummary(
-              deferredDiffResults.Length,
-              writtenDiffCount,
-              diffWriteStopwatch.ElapsedMilliseconds,
-              diffWriteStopwatch.ElapsedMilliseconds);
         }
 
         return outcome.Result with
         {
-          DiffFilePath = writtenDiffCount > 0 ? diffRootPath : null,
-          Stats = outcome.Result.Stats! with
-          {
-            DirectoryAnalysisMilliseconds = directoryAnalysisMilliseconds,
-          },
+            DiffFilePath = writtenDiffCount > 0 ? diffRootPath : null,
         };
     }
 

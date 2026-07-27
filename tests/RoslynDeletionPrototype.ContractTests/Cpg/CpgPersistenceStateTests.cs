@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using MinimalRoslynCpg.Persistence;
-using MinimalRoslynCpg.Persistence.Sqlite;
-using MinimalRoslynCpg.Builder;
-using MinimalRoslynCpg.Model;
+using NLCPG.Persistence;
+using NLCPG.Persistence.Sqlite;
+using NLCPG.Builder;
+using NLCPG.Model;
 using RoslynPrototype.Testing.TestInfrastructure;
 using Xunit;
 
@@ -29,7 +29,7 @@ public sealed class CpgPersistenceStateTests
           release.Task.GetAwaiter().GetResult();
         }
       });
-      var builder = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, profile, StreamingMode: true),
       });
@@ -130,7 +130,7 @@ public sealed class CpgPersistenceStateTests
     try
     {
       using var registration = CpgPersistenceTestKit.ObserveShardWrites(checkpoint => observed ??= checkpoint);
-      _ = new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+      _ = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
       {
         Persistence = new CpgPersistenceOptions(root, "typed-checkpoint", StreamingMode: true),
       }).BuildFromSource("class Example { int Run() => 1; }", "input.cs");
@@ -177,8 +177,8 @@ public sealed class CpgPersistenceStateTests
     var root = Path.Combine(Path.GetTempPath(), "cpg-persistence-state", Guid.NewGuid().ToString("N"));
     try
     {
-      var sessionType = typeof(RoslynCpgBuilder).Assembly.GetType(
-        "MinimalRoslynCpg.Builder.CpgShardBuildSession");
+      var sessionType = typeof(NLCPGBuilder).Assembly.GetType(
+        "NLCPG.Builder.CpgShardBuildSession");
       Assert.NotNull(sessionType);
       var beginAsync = sessionType!.GetMethod(
         "BeginAsync",
@@ -263,9 +263,9 @@ public sealed class CpgPersistenceStateTests
     }
   }
 
-  private static RoslynCpgBuilder CreatePersistedBuilder(string root, string profile)
+  private static NLCPGBuilder CreatePersistedBuilder(string root, string profile)
   {
-    return new RoslynCpgBuilder(RoslynCpgBuilderOptions.CreateDefault() with
+    return new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
     {
       Persistence = new CpgPersistenceOptions(root, profile, StreamingMode: true),
     });

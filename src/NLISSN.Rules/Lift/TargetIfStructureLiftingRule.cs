@@ -5,6 +5,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 将 if 结构的完成态传播事实转换为结构化 Lift 记录。
 public sealed class SObjectIfStructureLiftingRule : RuleDefinitionLift
 {
     public override string CapabilityId { get; } = "lift.target.if-structure";
@@ -18,6 +19,7 @@ public sealed class SObjectIfStructureLiftingRule : RuleDefinitionLift
     public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
       DeleteSObjectLiftingCommon.AllowedLiftNodeKinds;
 
+    // 在 if / else if / else 已具备完整删除条件时，产出结构级 lifted mark。
     public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         return DeleteSObjectIfStructureLiftingHelpers.BuildIfStructureLiftedMarks(

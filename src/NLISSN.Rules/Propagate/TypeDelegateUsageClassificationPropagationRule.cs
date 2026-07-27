@@ -7,6 +7,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+/// 先把 delegate 参数删除影响分类成单一改写通道，再把同一份 payload 发给声明、method group、lambda 或调用链。
 public sealed class ClassDelegateUsageClassificationPropagationRule : RuleDefinitionPropagate
 {
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
@@ -31,6 +32,7 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : RuleDefini
         SyntaxKind.InvocationExpression
       };
 
+    // 先把委托参数删除归类成单一使用模式，再把统一 payload 发给声明和受影响绑定。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         var knownKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -128,6 +130,7 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : RuleDefini
         }
     }
 
+    /// 混合 method group / lambda / 调用链会引入不同重绑定风险，
     private bool TryBuildPayload(RuleContext context, MarkRecord seedMark, out DelegateUsagePayload payload)
     {
         payload = null!;

@@ -6,8 +6,10 @@ using NLISSN.Rules;
 
 namespace NLISSN.Core.Decision;
 
+/// 提取局部函数参数使用事实，并生成与声明同步的调用点改写。
 public static class DeleteClassLocalFunctionUsageProposalHelpers
 {
+    // 提取指定局部函数参数使用模式下的唯一 payload，供局部函数收缩提案消费。
     public static IEnumerable<LocalFunctionParameterUsagePayload> EnumeratePayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks, LocalFunctionParameterUsageMode mode)
     {
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -30,6 +32,7 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
         }
     }
 
+    // 尝试生成删除目标参数后的局部函数声明替换节点。
     public static bool TryBuildReplacement(LocalFunctionParameterUsagePayload payload, out LocalFunctionStatementSyntax replacementLocalFunction)
     {
         return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementLocalFunction(
@@ -38,6 +41,7 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
           out replacementLocalFunction);
     }
 
+    // 按 payload 的调用模式生成局部函数调用点替换决策。
     public static IEnumerable<DecisionUnit> CreateInvocationReplaceDecisions(string ruleId, Compilation compilation, LocalFunctionParameterUsagePayload payload, string reason)
     {
         if (!TryResolveParameterSymbol(compilation, payload, out var parameterSymbol))
@@ -128,8 +132,10 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
     }
 }
 
+/// 提取索引器参数使用事实，并生成与声明同步的元素访问改写。
 public static class DeleteClassIndexerUsageProposalHelpers
 {
+    // 提取指定索引器参数使用模式下的唯一 payload，供索引器收缩提案消费。
     public static IEnumerable<IndexerParameterUsagePayload> EnumeratePayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IndexerParameterUsageMode mode)
     {
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -152,6 +158,7 @@ public static class DeleteClassIndexerUsageProposalHelpers
         }
     }
 
+    // 尝试生成删除目标参数后的索引器声明替换节点。
     public static bool TryBuildReplacement(IndexerParameterUsagePayload payload, out IndexerDeclarationSyntax replacementIndexer)
     {
         return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementIndexer(
@@ -160,6 +167,7 @@ public static class DeleteClassIndexerUsageProposalHelpers
           out replacementIndexer);
     }
 
+    // 为每个受影响的元素访问生成与索引器声明一致的替换决策。
     public static IEnumerable<DecisionUnit> CreateAccessReplaceDecisions(string ruleId, Compilation compilation, IndexerParameterUsagePayload payload, string reason)
     {
         if (!TryResolveParameterSymbol(compilation, payload, out var parameterSymbol))

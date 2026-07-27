@@ -14,7 +14,7 @@
 
 ### Task 1: Contract and logic coverage
 
-**Files:** Modify `tests/RoslynDeletionPrototype.ContractTests/Rewrite/DiffModelTests.cs`.
+**Files:** Modify `tests/Roslyn Prototype.ContractTests/Rewrite/DiffModelTests.cs`.
 
 1. Write public-API tests for multi-edit direct/plan/persisted-plan equivalence and invalid text plans.
 2. Run the focused ContractTests filter.
@@ -22,7 +22,7 @@
 
 ### Task 2: Directory compilation coverage
 
-**Files:** Modify `tests/RoslynDeletionPrototype.HostTests/Rewrite/RewritePlanPersistenceTests.cs`.
+**Files:** Modify `tests/Roslyn Prototype.HostTests/Rewrite/RewritePlanPersistenceTests.cs`.
 
 1. Capture and replay a directory plan.
 2. Compile the replayed directory sources with Roslyn and assert no error diagnostics.
@@ -30,7 +30,7 @@
 
 ### Task 3: Diagnostic rewrite performance coverage
 
-**Files:** Create `tests/RoslynDeletionPrototype.PerformanceTests/Rewrite/RewritePerformanceRegressionTests.cs`.
+**Files:** Create `tests/Roslyn Prototype.PerformanceTests/Rewrite/RewritePerformanceRegressionTests.cs`.
 
 1. Use one fixed source fixture, warm once, then collect three plan-build and replay samples.
 2. Assert equivalent source, edits, diff, and compilation before logging metrics.

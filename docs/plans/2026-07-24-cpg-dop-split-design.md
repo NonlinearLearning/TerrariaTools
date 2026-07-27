@@ -12,7 +12,7 @@ When the override is absent, the builder continues to receive the resolved globa
 
 ## Execution Model
 
-`DeletionDirectoryAnalysisService` continues to schedule files with the runtime directory DOP. `DeletionApplicationService` resolves the CPG DOP once per analysis and passes it only to `RoslynCpgBuilderOptions.MaxDegreeOfParallelism`. The runtime rule scheduler, group parallelism, and helper parallelism retain their current behavior.
+` DirectoryAnalysisService` continues to schedule files with the runtime directory DOP. ` ApplicationService` resolves the CPG DOP once per analysis and passes it only to `NLCPGBuilderOptions.MaxDegreeOfParallelism`. The runtime rule scheduler, group parallelism, and helper parallelism retain their current behavior.
 
 The benchmark matrix uses the same input, rule options, logging profile, SDK, and process setup:
 

@@ -14,20 +14,20 @@ pwsh -File .\init.ps1
 
 `feature_list.json` 定义完成条件；`progress.md` 只记录当前事实与验证边界。
 
-## 修改 MinimalRoslynCpg
+## 修改 NLCPG
 
 入口和主要区域：
 
-- CLI：`src/MinimalRoslynCpg/Program.cs`
-- 构建器：`src/MinimalRoslynCpg/Builder/RoslynCpgBuilder.cs`
-- 分片 passes：`src/MinimalRoslynCpg/Builder/Passes/`
-- 图模型：`src/MinimalRoslynCpg/Model/`
+- CLI：`src/NLCPG/Program.cs`
+- 构建器：`src/NLCPG/Builder/NLCPGBuilder.cs`
+- 分片 passes：`src/NLCPG/Builder/Passes/`
+- 图模型：`src/NLCPG/Model/`
 
 并行 worker 只能读取 Roslyn semantic facts；稳定调用线程物化图节点、边、去重和顺序。修改分片、持久化或运行时后，要验证不同 DOP 下的图等价性和查询结果。
 
 ### Streaming CPG shard store
 
-构建器可在 `RoslynCpgBuilderOptions.Persistence` 中传入 `CpgPersistenceOptions`，并将 `StreamingMode` 设为 `true`。该模式发布 `file-skeleton`、方法 shard 与 `cross-shard-edges`，不发布 `file-graph`。catalog 保存 node、symbol 与 span 位置；同一 source/profile/schema 的第二次构建会从这些 shard 重建 frozen graph。
+构建器可在 `NLCPGBuilderOptions.Persistence` 中传入 `CpgPersistenceOptions`，并将 `StreamingMode` 设为 `true`。该模式发布 `file-skeleton`、方法 shard 与 `cross-shard-edges`，不发布 `file-graph`。catalog 保存 node、symbol 与 span 位置；同一 source/profile/schema 的第二次构建会从这些 shard 重建 frozen graph。
 
 store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 store 时会删除遗留 `.tmp` 文件；丢失 catalog 时会从有效 `.cpgbin` header 重建，损坏 shard 会跳过。一个 store 同时只允许一个 writer。调用方需为 profile 的 builder 选项和 schema 变化提供不同的 `ProfileHash` 或版本号。
 
@@ -51,9 +51,9 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 测试工程位于 `tests/` 下的 Unit、Contract、Host 和 Performance 项目。先选择拥有该行为的最小项目，再扩大到分层执行：
 
 ```powershell
-dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore --filter "FullyQualifiedName~<TestName>" -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore --filter "FullyQualifiedName~<TestName>" -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
 ```
 
 真实源码性能测量独立于 `dotnet test`。它要求显式输入目录，默认对 DOP
