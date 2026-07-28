@@ -219,13 +219,22 @@ public sealed class MarkAnalysisSnapshot
     {
         public static MarkRegionFacts FromRegionNode(SyntaxNode regionNode)
         {
-            var nodes = regionNode.DescendantNodesAndSelf().ToList();
+            var nodeCount = 0;
+            var expressionCount = 0;
+            var statementCount = 0;
+            foreach (var node in regionNode.DescendantNodesAndSelf())
+            {
+                nodeCount++;
+                expressionCount += node is ExpressionSyntax ? 1 : 0;
+                statementCount += node is StatementSyntax ? 1 : 0;
+            }
+
             return new MarkRegionFacts(
               regionNode,
               regionNode.Span,
-              nodes.Count,
-              nodes.OfType<ExpressionSyntax>().Count(),
-              nodes.OfType<Microsoft.CodeAnalysis.CSharp.Syntax.StatementSyntax>().Count());
+              nodeCount,
+              expressionCount,
+              statementCount);
         }
 
         public MarkCodeRegion Create(SyntaxNode anchorNode)
