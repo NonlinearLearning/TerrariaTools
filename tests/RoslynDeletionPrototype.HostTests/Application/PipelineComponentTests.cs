@@ -91,6 +91,36 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void AnalyzeFromArgs_WithRuntimeLog_WritesProcessAndPoolMetrics()
+    {
+        var runtimeLogPath = Path.Combine(_tempDirectory, "runtime.log");
+
+        CreateCommandHost().AnalyzeFromArgs(new[]
+        {
+          "--target-name",
+          "s",
+          "--skip-rewrite",
+          "--no-diff",
+          "--runtime-log",
+          runtimeLogPath,
+          "--log-profile",
+          "benchmark"
+        });
+
+        var lines = File.ReadAllLines(runtimeLogPath);
+
+        Assert.Contains(lines, line => line.Contains("cat=run evt=started", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.Contains("cat=run evt=sampled", StringComparison.Ordinal) &&
+          line.Contains("allocBytes=", StringComparison.Ordinal) &&
+          line.Contains("tpPending=", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.Contains("cat=run evt=completed", StringComparison.Ordinal) &&
+          line.Contains("status=completed", StringComparison.Ordinal) &&
+          line.Contains("poolOperations=", StringComparison.Ordinal) &&
+          line.Contains("nodes=", StringComparison.Ordinal) &&
+          line.Contains("edges=", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void CreateFromOptions_WithCpgDopOverride_UsesExplicitCpgValue()
     {
         var runtime =  AnalysisRuntime.CreateFromOptions(
@@ -125,6 +155,24 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.InvalidateCaches().CpgBuildAdmissionBudget);
         Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.NextEpoch().CpgBuildAdmissionBudget);
+    }
+
+    [Fact]
+    public async Task RuntimeConcurrencyPool_RecordsOperationsInRuntimeOwnedTelemetry()
+    {
+        var runtime = new AnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 2),
+          new AnalysisEpoch(0, 0, 0));
+
+        var results = await runtime.ConcurrencyPool.SelectCpuBoundOrdered(
+          new[] { 1, 2 },
+          maxDegreeOfParallelism: 2,
+          (source, _, _) => source * 2);
+
+        var telemetry = Assert.Single(runtime.ConcurrencyTelemetry.Operations);
+        Assert.Equal(ConcurrencyOperationKind.CpuBoundOrderedSelection, telemetry.OperationKind);
+        Assert.Equal(new[] { 2, 4 }, results);
+        Assert.Same(runtime.ConcurrencyTelemetry, runtime.NextEpoch().ConcurrencyTelemetry);
     }
 
     [Theory]
@@ -4917,6 +4965,11 @@ public sealed class PipelineComponentTests : IDisposable
         public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TSource, TResult>(IReadOnlyList<TSource> sources, int maxDegreeOfParallelism, Func<TSource, int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken = default)
         {
             return _inner.SelectOrderedAsync(sources, maxDegreeOfParallelism, workItem, cancellationToken);
+        }
+
+        public Task<IReadOnlyList<TResult>> SelectCpuBoundOrdered<TSource, TResult>(IReadOnlyList<TSource> sources, int maxDegreeOfParallelism, Func<TSource, int, CancellationToken, TResult> workItem, CancellationToken cancellationToken = default)
+        {
+            return _inner.SelectCpuBoundOrdered(sources, maxDegreeOfParallelism, workItem, cancellationToken);
         }
 
         public void CommitOrdered<TSource, TResult>(IReadOnlyList<TSource> sources, ConcurrencyWindowOptions options, Func<TSource, int, TResult> workItem, Action<TResult, int> commit, Func<TResult, int>? retainedRecordCount = null, CancellationToken cancellationToken = default)

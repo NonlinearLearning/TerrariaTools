@@ -157,7 +157,10 @@ public sealed class ApplicationService
             ? new[] { new PrototypeFileRewritePlan(analysisContext.Root.SyntaxTree.FilePath, rewriteResult.Operations) }
             : Array.Empty<PrototypeFileRewritePlan>(),
           RuleGraphTelemetry: ruleGraphTelemetry,
-          RuleGraphMetrics: ruleGraphMetrics);
+          RuleGraphMetrics: ruleGraphMetrics,
+          GraphMetrics: new CpgGraphMetrics(
+            analysisContext.CpgAnalysisContext.Graph.Nodes.Count,
+            analysisContext.CpgAnalysisContext.Graph.Edges.Count));
     }
 
     private AnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
@@ -225,7 +228,8 @@ public sealed class ApplicationService
         return new AnalysisContext(
           root,
           semanticModel,
-          ruleContext);
+          ruleContext,
+          cpgAnalysisContext);
     }
 
     private static IReadOnlyList<RuleDecision> FilterNestedDeleteDecisions(IReadOnlyList<RuleDecision> decisions)
@@ -278,5 +282,6 @@ public sealed class ApplicationService
     private sealed record AnalysisContext(
       SyntaxNode Root,
       SemanticModel SemanticModel,
-      RuleContext RuleContext);
+      RuleContext RuleContext,
+      CpgAnalysisContext CpgAnalysisContext);
 }

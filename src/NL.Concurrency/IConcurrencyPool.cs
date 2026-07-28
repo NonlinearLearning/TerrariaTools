@@ -14,6 +14,12 @@ public interface IConcurrencyPool
         Func<TSource, int, CancellationToken, Task<TResult>> workItem,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<TResult>> SelectCpuBoundOrdered<TSource, TResult>(
+        IReadOnlyList<TSource> sources,
+        int maxDegreeOfParallelism,
+        Func<TSource, int, CancellationToken, TResult> workItem,
+        CancellationToken cancellationToken = default);
+
     void CommitOrdered<TSource, TResult>(
         IReadOnlyList<TSource> sources,
         ConcurrencyWindowOptions options,

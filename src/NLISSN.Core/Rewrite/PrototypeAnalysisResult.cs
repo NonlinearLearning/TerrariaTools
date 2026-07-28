@@ -34,7 +34,9 @@ public sealed record PrototypeAnalysisResult(
   /// 规则图每个节点的输入、输出和耗时；非图执行路径为空。
   IReadOnlyList<RuleGraphNodeTelemetry>? RuleGraphTelemetry = null,
   /// 规则图的 ready queue 与并发节点峰值；非图执行路径为空。
-  RuleGraphExecutionMetrics? RuleGraphMetrics = null)
+  RuleGraphExecutionMetrics? RuleGraphMetrics = null,
+  /// 本次单文件分析构建的完整 CPG 规模；目录聚合结果为空。
+  CpgGraphMetrics? GraphMetrics = null)
 {
   public DiffSummary DiffSummary => Diff.Summary;
 }
@@ -59,3 +61,8 @@ public sealed record AnalysisDiagnostic(
   string FilePath,
   int Start,
   int End);
+
+/// <summary>
+/// Captures the stable graph-size facts needed to compare DOP measurement samples.
+/// </summary>
+public sealed record CpgGraphMetrics(int NodeCount, int EdgeCount);

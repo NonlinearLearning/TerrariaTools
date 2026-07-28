@@ -53,13 +53,12 @@ public sealed partial class NLCPGBuilder
     }
 
     // 并发跑每个语法分区的语义采集；返回值只包含只读事实，不直接触碰图状态。
-    private async Task<IReadOnlyList<IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts>>> RunSyntaxPartitionsAsync(IReadOnlyList<SyntaxNode[]> partitions, SemanticModel semanticModel)
+    private Task<IReadOnlyList<IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts>>> RunSyntaxPartitionsAsync(IReadOnlyList<SyntaxNode[]> partitions, SemanticModel semanticModel)
     {
-        return await _concurrencyPool.SelectOrderedAsync(
+        return _concurrencyPool.SelectCpuBoundOrdered(
           partitions,
           _options.EffectiveMaxDegreeOfParallelism,
-          (partition, _, _) => Task.FromResult<IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts>>(
-            AnalyzeSyntaxPartition(partition, semanticModel)));
+          (partition, _, _) => AnalyzeSyntaxPartition(partition, semanticModel));
     }
 
     // 对单个语法分区逐节点采集声明、引用和类型事实，供后续提交阶段复用。
