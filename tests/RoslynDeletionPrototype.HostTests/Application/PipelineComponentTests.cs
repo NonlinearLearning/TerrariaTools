@@ -244,6 +244,108 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void EnumerateAllowedExpressions_AllAtomicKinds_ReturnsRequestedKindsInSourceOrder()
+    {
+        var (context, root) = CreateContext("""
+          public sealed class Sample
+          {
+            public void Run(Box s, int[] values)
+            {
+              var literal = 1;
+              var member = s.Value;
+              var invocation = s.GetValue();
+              var element = values[0];
+              var conditional = s?.Value;
+              var created = new Box();
+            }
+          }
+
+          public sealed class Box
+          {
+            public int Value { get; }
+            public int GetValue() => Value;
+          }
+          """, "s");
+        var allowedKinds = new[]
+        {
+            SyntaxKind.IdentifierName,
+            SyntaxKind.NumericLiteralExpression,
+            SyntaxKind.SimpleMemberAccessExpression,
+            SyntaxKind.InvocationExpression,
+            SyntaxKind.ElementAccessExpression,
+            SyntaxKind.ConditionalAccessExpression,
+            SyntaxKind.ObjectCreationExpression
+        };
+
+        var expressions = context.EnumerateAllowedExpressions(root, allowedKinds).ToArray();
+
+        var expected = new AtomicExpressionAnalyzer().Analyze(root)
+          .Where(expression => allowedKinds.Contains(expression.Kind()))
+          .Select(expression => (expression.Kind(), expression.Span))
+          .ToArray();
+        Assert.Equal(expected, expressions.Select(expression => (expression.Kind(), expression.Span)));
+        Assert.Equal(
+          expressions.OrderBy(expression => expression.SpanStart).Select(expression => expression.Span),
+          expressions.Select(expression => expression.Span));
+    }
+
+    [Fact]
+    public void EnumerateMethodDeclarations_WithBlockAndExpressionBodies_ReturnsAllMethodsInSourceOrder()
+    {
+        var (context, root) = CreateContext("""
+          public sealed class Sample
+          {
+            public void Block()
+            {
+            }
+
+            public int Expression() => 1;
+          }
+          """);
+
+        var methods = context.EnumerateMethodDeclarations(root).ToArray();
+
+        Assert.Equal(new[] { "Block", "Expression" }, methods.Select(method => method.Identifier.ValueText));
+    }
+
+    [Fact]
+    public void AnalyzeMarkRegion_ForDistinctAnchors_PreservesAnchorAndExactCounts()
+    {
+        var (context, root) = CreateContext("""
+          public sealed class Sample
+          {
+            public void Run(Box s)
+            {
+              var value = s.Left + s.Right;
+            }
+          }
+
+          public sealed class Box
+          {
+            public int Left { get; }
+            public int Right { get; }
+          }
+          """, "s");
+        var anchors = root.DescendantNodes()
+          .OfType<IdentifierNameSyntax>()
+          .Where(identifier => identifier.Identifier.ValueText == "s")
+          .ToArray();
+
+        var first = context.AnalyzeMarkRegion(anchors[0]);
+        var second = context.AnalyzeMarkRegion(anchors[1]);
+
+        Assert.Same(anchors[0], first.AnchorNode);
+        Assert.Same(anchors[1], second.AnchorNode);
+        Assert.Same(first.RegionNode, second.RegionNode);
+        Assert.Equal(12, first.NodeCount);
+        Assert.Equal(8, first.ExpressionCount);
+        Assert.Equal(1, first.StatementCount);
+        Assert.Equal(first.NodeCount, second.NodeCount);
+        Assert.Equal(first.ExpressionCount, second.ExpressionCount);
+        Assert.Equal(first.StatementCount, second.StatementCount);
+    }
+
+    [Fact]
     public void MarkAnalysisSnapshot_FiltersMemberAccessesAndReusesTargetDescriptorKey()
     {
         var (context, root) = CreateContext("""

@@ -5,6 +5,7 @@ using NLISSN.Core.Analysis;
 using NLCPG.Builder;
 using NLCPG.Contracts;
 using NLCPG.Model;
+using NLISSN.Core.Pipeline;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
 using NLISSN.Rules;
 using Xunit;
@@ -53,6 +54,23 @@ public sealed class StructureViewBuilderTests
         Assert.Equal(
             graph.GetNodes(NLCPGNodeKind.Operation).OrderBy(node => node.NodeId).Select(node => node.Name),
             graph.GetNodes(NLCPGNodeKind.Operation).Select(node => node.Name));
+    }
+
+    [Fact]
+    public void GetGraphNodesByKind_AfterFreeze_MatchesGraphNodeIndexOrder()
+    {
+        var (context, _) = CreateAnalysisContext(
+            "public sealed class Sample { public int Run(int value) => value + 1; }",
+            "rule-context-nodes-by-kind.cs");
+        var ruleContext = new RuleContext(
+            context,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        var nodes = ruleContext.GetGraphNodesByKind(NLCPGNodeKind.Operation);
+
+        Assert.Equal(
+            context.Graph.GetNodes(NLCPGNodeKind.Operation).Select(node => node.NodeId),
+            nodes.Select(node => node.NodeId));
     }
 
     [Fact]
