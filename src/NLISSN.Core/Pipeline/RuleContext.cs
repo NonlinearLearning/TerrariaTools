@@ -185,7 +185,7 @@ public sealed class RuleContext :
     // 返回主图里某一节点种类的全部节点列表，供规则做图级过滤。
     public IReadOnlyList<NLCPGNode> GetGraphNodesByKind(NLCPGNodeKind kind)
     {
-        return _analysisContext.Graph.NodesByKind(kind).ToList();
+        return _analysisContext.Graph.GetNodes(kind);
     }
 
     // 返回某个图节点沿指定边类型发出的所有出边。
