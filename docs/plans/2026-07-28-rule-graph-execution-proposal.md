@@ -1,6 +1,6 @@
 # 全局规则 DAG 执行提案
 
-> **状态：已实现，验证有已知环境阻塞。** 删除规则已迁移到以单条规则为原子的全局依赖图执行模型；完整 Performance、Contract 和 Unit 套件仍受既有性能超时、重命名路径和测试项目引用问题影响。
+> **状态：框架已落地，默认规则的原子输入映射尚未完成。** 图编译器、ready queue 和部分 typed 边已实现；但当前 `RuleGraphDependencyCatalog` 仍含 family barrier，且若干默认传播规则尚未声明其 seed 输入。因此不能将当前默认管道视为已完成的原子级 DAG 迁移。
 
 ## 目标
 
@@ -31,17 +31,17 @@ Propagate1.DependsOn = new[] { Mark1 };
 - 跨规则类别的依赖，例如 `Mark <- Propagate` 或 `Lift <- Propose`；
 - 一个消费者只读取指定生产者输出，而不是增长中的全组 mark 集合。
 
-当前还存在两个隐式依赖：`SObjectSymbolReferencePropagationRule` 用 reason 文本识别 `SObjectDefinitionInitializerPropagationRule` 的产物；`ClassSymbolReferencePropagationRule` 用 reason 文本识别 `ClassObjectCreationDeclarationPropagationRule` 的产物。它们应迁移为显式边和 typed output。
+历史上的两条隐式 symbol-reference 依赖已迁移：`SObjectSymbolReferencePropagationRule` 消费 initializer definition typed output，`ClassSymbolReferencePropagationRule` 消费 object-creation definition typed output。其余默认规则的输入边仍须逐条确认，不能从这两条链的完成情况推导全图已原子化。
 
-## 实施结果与验证
+## 已落地部分与验证
 
 - `RuleGraph`、编译器和执行器位于 `src/NLISSN.Core/Pipeline/`；编译器拒绝重复节点、未知 producer、不兼容 output、重复 producer 依赖和环，并按声明顺序稳定物化结果。
-- `ApplicationService` 在默认 `RulePipeline` 中只编译一次全局图，并通过 `RuleGraphAnalysisExecutor` 一次执行 Mark、Propagate、Lift、Propose。四类规则不再形成阶段屏障。
-- 四个 Engine 的兼容 `Run` / `Decide` 入口也委托给 `RuleGraphExecutor`；`GroupKey` 只保留为记录兼容字段和去重投影，不参与 ready queue 或依赖推导。
+- `ApplicationService` 可通过 `EnableRuleGraphExecution` 选择全局图路径，并由 `RuleGraphAnalysisExecutor` 一次调度 Mark、Propagate、Lift、Propose。图契约允许跨类别边，不要求固定阶段屏障。
+- 四个 Engine 的兼容 `Run` / `Decide` 入口可委托给 `RuleGraphExecutor`；`GroupKey` 不参与 ready queue 或依赖推导，但仍保留为记录兼容字段和去重投影。
 - 两条 symbol-reference 链使用 `LocalDefinitionFromInitializer` / `LocalDefinitionFromObjectCreation` typed producer output；switch 只依赖 host、if lift 事实，并从这些事实继承 source provenance。
-- Proposal 规则按实际消费的 declaration、parameter-usage、logical 或 if producer 依赖执行。仅 Default/Control 这类必须判断“哪些事实已被专门规则接管”的规则保留全 family 的显式汇聚边。
+- 一部分 Proposal 规则已按 declaration、parameter-usage、logical 或 if producer 声明单一依赖；Default/Control 仍显式汇聚整个 family。该汇聚目前是语义保守措施，不是原子并发的完成状态。
 
-已验证：`dotnet build .\src\NLISSN\NLISSN.csproj --no-restore -p:UseSharedCompilation=false` 为 0 errors；Host Tests 为 `445/445`；规则图 DOP 1/16 快照测试和三次预热性能夹具通过，最新样本为 `38/35/34 ms`、`83` 个 rule nodes。
+已验证：规则图聚焦测试 `13/13` 通过，包括 DOP 1/16 快照、跨 GroupKey 依赖、稳定顺序、空 producer 输出、未知 producer、output 类型不匹配和环。此前记录的 Host 全量与三次预热夹具结果可作为回归参考，但不证明默认规则的依赖清单已经完整。
 
 未作为 DAG 缺陷处理的验证边界：完整 Performance 在 304 秒边界超时；Contract Tests 为 `217/220`，失败于旧测试项目路径和架构基线；Unit Tests 因 `StructureViewBuilderTests.cs` 对 `NLISSN.Core.Pipeline` 的项目引用不可见而无法编译；harness 仍引用已迁移的 `src/RoslynPrototype/Program.cs`。
 
@@ -141,9 +141,34 @@ DEL-CLASS-LIFT-IF-001
   <- DEL-CLASS-LIFT-SWITCH-001
 ```
 
-Switch lift 目前自行重算 host 和 if 中间结果。迁移后 host/if 规则先发布内部 lift fact，switch rule 消费它们；对外输出的 switch `RuleId`、span、reason 和 rewrite 结果不变。
+兼容 lift 入口仍可自行重算 host 和 if 中间结果；图入口则把 host/if 规则发布的 typed lift fact 传给 switch rule。对外输出的 switch `RuleId`、span、reason 和 rewrite 结果不变。
 
-if、logical 与全部 Proposal 规则的输入依赖先通过回归夹具和输出追踪确认，再加入图。禁止把当前 `groupMarks` 的隐式可见性直接翻译为“依赖全部前序规则”，否则图会退化为原来的串行组。
+其余 if、logical 与 Proposal 规则的输入依赖必须通过回归夹具和输出追踪逐条确认。禁止把当前 `groupMarks` 的隐式可见性直接翻译为“依赖全部前序规则”，否则图会退化为原来的串行组。
+
+## 默认图依赖审计
+
+下表描述的是当前源码已声明的图边，而不是目标状态。`family` 表示消费者等待同一删除家族的所有列举节点；它保留了旧阶段可见性，必须继续拆分。
+
+| 节点集合 | 当前输入 | 判定 |
+| --- | --- | --- |
+| 所有 Mark | 无图输入，独立扫描 root | 原子，可并发。 |
+| `DEL-SOBJ-PROP-SYMBOL-001` | `DEL-SOBJ-PROP-DECL-INIT-001:LocalDefinitionFromInitializer` | 已精确。 |
+| `DEL-CLASS-PROP-LOCAL-REF-001` | `DEL-CLASS-PROP-NEW-DECL-001:LocalDefinitionFromObjectCreation` | 已精确。 |
+| 其余 SObject / Class Propagate | 当前没有声明 seed producer | 未完成。旧引擎把同 family 的全部 seed marks 传给每条规则；图路径不能把空依赖解释为“读取全部 seed”。 |
+| SObject host / if lift | 16 个 SObject Mark + 6 个 SObject Propagate | `family` barrier，未原子化。 |
+| Class host / if lift | 3 个 Class Mark + 9 个 Class Propagate | `family` barrier，未原子化。 |
+| 两条 switch lift | 各自的 host `ExpressionHost` 和 if `IfStructure` | 边本身精确；但仍间接受上游 host/if 的 family barrier 限制。 |
+| logical / if Proposal 与各 parameter-shrink Proposal | 一个对应 Propagate producer | 已精确，但当前输出适配仍须保证只交付该 output kind。 |
+| SObject / Class Default、Control Proposal | 分别汇聚 `16 + 6 + 3`、`3 + 9 + 3` 个节点 | 有意保守的 terminal barrier；必须拆成“专门规则已接管”的显式索引后才能缩小。 |
+| 独立提案 `DEL-DEAD-001`、未引用方法、未使用接口实现、内部 public 私有化 | 一个对应 Mark producer | 已精确。 |
+
+当前实现还存在三个必须在删除旧阶段路径前解决的契约缺口：
+
+1. `RulePipeline.CompileRuleGraph()` 会过滤掉不在当前 pipeline 内的 dependency。图编译器本身能拒绝未知 producer，但默认入口先删除了该证据；应改为显式 external-input node，或让编译器报出缺失依赖。
+2. `RuleGraphAnalysisExecutor.CreateResult(...)` 将同一记录列表复制到节点声明的每个 `RuleOutputKind`。这只是兼容投影，不是 typed port；必须按记录的 `OutputKind` 分桶，或将 typed payload 建模为独立结果。
+3. `RuleGraphAnalysisExecutor` 只向节点传入声明依赖的输出。为保持旧语义，每条消费 seed / propagated / lifted 集合的规则都必须声明完整且最小的 producer 集合，或改为显式、可审计的 selector / aggregator 节点；禁止以空 dependency 作为隐式全量输入。
+
+因此，本提案的“每条默认规则有显式依赖输入”完成条件目前**未满足**。后续实现应先用逐规则输入快照确定最小 producer 集合，再删除这些 family barrier；不得以将所有默认规则同时置零依赖来换取表面的并发。
 
 ## 不变条件
 
