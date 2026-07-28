@@ -56,6 +56,23 @@ public sealed class StructureViewBuilderTests
     }
 
     [Fact]
+    public void GetGraphNodesByKind_AfterFreeze_MatchesGraphNodeIndexOrder()
+    {
+        var (context, _) = CreateAnalysisContext(
+            "public sealed class Sample { public int Run(int value) => value + 1; }",
+            "rule-context-nodes-by-kind.cs");
+        var ruleContext = new RuleContext(
+            context,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        var nodes = ruleContext.GetGraphNodesByKind(NLCPGNodeKind.Operation);
+
+        Assert.Equal(
+            context.Graph.GetNodes(NLCPGNodeKind.Operation).Select(node => node.NodeId),
+            nodes.Select(node => node.NodeId));
+    }
+
+    [Fact]
     public void QueryIndex_AfterFreeze_ResolvesSymbolReferencesCallsitesAndHalfOpenFileSpan()
     {
         var graph = new NLCPG.Model.NLCPGGraph();
