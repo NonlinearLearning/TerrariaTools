@@ -284,129 +284,154 @@ public sealed class RuleDecisionEngine
         _policy = policy ?? new DefaultDecisionPolicy();
     }
 
-    // 让提案规则按组消费三类标记，并在每个冲突域内收口成最终 rewrite 决策。
+    // 兼容入口也按规则图执行；GroupKey 不参与 Proposal 调度。
     public IReadOnlyList<RuleDecision> Decide(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks, IReadOnlyList<RuleDefinitionPropose> rules)
     {
-        // 先按 group 分桶，避免同组规则各自重复扫描全量 marks。
-        var seedMarksByGroupKey = seedMarks
-          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
-          .ToDictionary(group => group.Key, group => (IReadOnlyList<MarkRecord>)group.ToList(), StringComparer.Ordinal);
-        var propagatedMarksByGroupKey = propagatedMarks
-          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
-          .ToDictionary(group => group.Key, group => (IReadOnlyList<PropagatedMarkRecord>)group.ToList(), StringComparer.Ordinal);
-        var liftedMarksByGroupKey = liftedMarks
-          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
-          .ToDictionary(group => group.Key, group => (IReadOnlyList<LiftedMarkRecord>)group.ToList(), StringComparer.Ordinal);
-        var groupedRules = rules
-          .GroupBy(rule => rule.GroupKey, StringComparer.Ordinal)
-          .Select(group => new ProposalRuleGroup(group.Key, group.ToList()))
-          .Where(group =>
-            seedMarksByGroupKey.ContainsKey(group.GroupKey) ||
-            propagatedMarksByGroupKey.ContainsKey(group.GroupKey) ||
-            liftedMarksByGroupKey.ContainsKey(group.GroupKey))
+        var sourceNodes = CreateSourceNodes(seedMarks, propagatedMarks, liftedMarks);
+        var sourceNodeIds = sourceNodes.Select(node => node.NodeId).ToHashSet();
+        var proposalNodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Propose, rule.RuleId)).ToHashSet();
+        var ruleNodes = rules.Select(rule => new RuleGraphNode(
+          RuleNodeId.For(RuleKind.Propose, rule.RuleId),
+          RuleKind.Propose,
+          rule.ProducedOutputs,
+          ResolveDependencies(rule, sourceNodes, sourceNodeIds, proposalNodeIds))).ToList();
+        var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
+        var executionNodes = sourceNodes
+          .Select(node => new RuleGraphExecutionNode(
+            node,
+            (_, _) => Task.FromResult(CreateSourceResult(node, seedMarks, propagatedMarks, liftedMarks))))
+          .Concat(rules.Select(rule =>
+          {
+              var node = graph.Nodes.Single(candidate => candidate.NodeId == RuleNodeId.For(RuleKind.Propose, rule.RuleId));
+              return new RuleGraphExecutionNode(
+                node,
+                (inputs, _) =>
+                {
+                    var values = GetValues(node, inputs);
+                    var units = rule.Propose(
+                        context,
+                        values.OfType<MarkRecord>().ToList(),
+                        values.OfType<PropagatedMarkRecord>().ToList(),
+                        values.OfType<LiftedMarkRecord>().ToList())
+                      .Select(unit => unit.GroupKey is null ? unit with { GroupKey = rule.GroupKey } : unit)
+                      .ToList();
+                    return Task.FromResult(CreateResult(rule.ProducedOutputs, units));
+                });
+          }))
           .ToList();
-        var units = ShouldRunGroupsInParallel(context, groupedRules.Count)
-          ? RunGroupsInParallel(
-            context,
-            groupedRules,
-            seedMarksByGroupKey,
-            propagatedMarksByGroupKey,
-            liftedMarksByGroupKey)
-          : RunGroupsSerial(
-            context,
-            groupedRules,
-            seedMarksByGroupKey,
-            propagatedMarksByGroupKey,
-            liftedMarksByGroupKey);
-
-        var decisions = new List<RuleDecision>();
-        // 同一冲突域内只保留一个最终决策，避免 seed mark、传播 mark、结构宿主重复下刀。
-        foreach (var unitGroup in units.GroupBy(unit => BuildConflictGroupKey(unit, rules), StringComparer.Ordinal))
-        {
-            decisions.Add(_policy.Resolve(context, FilterCompetingAncestors(unitGroup.ToList())));
-        }
-
-        return decisions;
-    }
-
-    private static List<DecisionUnit> RunGroupsSerial(RuleContext context, IReadOnlyList<ProposalRuleGroup> groupedRules, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
-    {
-        var units = new List<DecisionUnit>();
-        foreach (var ruleGroup in groupedRules)
-        {
-            units.AddRange(RunGroup(
-              context,
-              ruleGroup,
-              seedMarksByGroupKey,
-              propagatedMarksByGroupKey,
-              liftedMarksByGroupKey));
-        }
-
-        return units;
-    }
-
-    private static List<DecisionUnit> RunGroupsInParallel(RuleContext context, IReadOnlyList<ProposalRuleGroup> groupedRules, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
-    {
-        var orderedUnits = context.Runtime.Scheduler.RunOrderedAsync(
-            groupedRules.Count,
+        var execution = new RuleGraphExecutor().ExecuteAsync(
+            graph,
+            executionNodes,
             context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-            (index, cancellationToken) =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return Task.Run(
-                  () => (IReadOnlyList<DecisionUnit>)RunGroup(
-                    context,
-                    groupedRules[index],
-                    seedMarksByGroupKey,
-                    propagatedMarksByGroupKey,
-                    liftedMarksByGroupKey),
-                  cancellationToken);
-            },
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
+        var units = execution.Nodes
+          .Where(node => node.NodeId.Value.StartsWith("Propose:", StringComparison.Ordinal))
+          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.DecisionUnit))
+          .OfType<DecisionUnit>()
+          .ToList();
 
-        return orderedUnits.SelectMany(units => units).ToList();
+        return ResolveUnits(context, units, rules);
     }
 
-    private static List<DecisionUnit> RunGroup(RuleContext context, ProposalRuleGroup ruleGroup, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
+    // 在所有相关 Proposal 节点完成后按冲突域收口，供规则图终端节点复用。
+    public IReadOnlyList<RuleDecision> ResolveUnits(
+      RuleContext context,
+      IReadOnlyList<DecisionUnit> units,
+      IReadOnlyList<RuleDefinitionPropose> rules)
     {
-        var units = new List<DecisionUnit>();
-        foreach (var rule in ruleGroup.Rules)
+        var conflictDomains = units
+          .GroupBy(unit => BuildConflictGroupKey(unit, rules), StringComparer.Ordinal)
+          .Select(group => (IReadOnlyList<DecisionUnit>)group.ToList())
+          .ToList();
+        if (conflictDomains.Count == 0)
         {
-            units.AddRange(RunRule(
-              context,
-              rule,
-              seedMarksByGroupKey,
-              propagatedMarksByGroupKey,
-              liftedMarksByGroupKey));
+            return Array.Empty<RuleDecision>();
         }
 
-        return units;
+        var resolved = context.Runtime.Scheduler.RunOrderedAsync(
+            conflictDomains.Count,
+            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            (index, cancellationToken) => Task.Run(
+              () =>
+              {
+                  cancellationToken.ThrowIfCancellationRequested();
+                  return _policy.Resolve(context, FilterCompetingAncestors(conflictDomains[index]));
+              },
+              cancellationToken),
+            context.Runtime.ExecutionOptions.CancellationToken)
+          .GetAwaiter()
+          .GetResult();
+        return resolved.ToList();
     }
 
-    private static List<DecisionUnit> RunRule(RuleContext context, RuleDefinitionPropose rule, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<LiftedMarkRecord>> liftedMarksByGroupKey)
+    private static IReadOnlyList<RuleGraphNode> CreateSourceNodes(
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
-        seedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleSeedMarks);
-        propagatedMarksByGroupKey.TryGetValue(rule.GroupKey, out var rulePropagatedMarks);
-        liftedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleLiftedMarks);
-
-        return rule.Propose(
-            context,
-            ruleSeedMarks ?? Array.Empty<MarkRecord>(),
-            rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>(),
-            ruleLiftedMarks ?? Array.Empty<LiftedMarkRecord>())
-          .Select(unit => unit.GroupKey is null
-            ? unit with { GroupKey = rule.GroupKey }
-            : unit)
+        return seedMarks
+          .GroupBy(mark => RuleNodeId.For(RuleKind.Mark, mark.RuleId))
+          .Select(group => new RuleGraphNode(group.Key, RuleKind.Mark, new[] { RuleOutputKind.SeedMark }, Array.Empty<RuleDependency>()))
+          .Concat(propagatedMarks
+            .GroupBy(mark => RuleNodeId.For(RuleKind.Propagate, mark.RuleId))
+            .Select(group => new RuleGraphNode(group.Key, RuleKind.Propagate, new[] { RuleOutputKind.PropagatedMark }, Array.Empty<RuleDependency>())))
+          .Concat(liftedMarks
+            .GroupBy(mark => RuleNodeId.For(RuleKind.Lift, mark.RuleId))
+            .Select(group => new RuleGraphNode(group.Key, RuleKind.Lift, new[] { RuleOutputKind.LiftedMark }, Array.Empty<RuleDependency>())))
           .ToList();
     }
 
-    private static bool ShouldRunGroupsInParallel(RuleContext context, int groupCount)
+    private static IReadOnlyList<RuleDependency> ResolveDependencies(
+      RuleDefinitionPropose rule,
+      IReadOnlyList<RuleGraphNode> sourceNodes,
+      IReadOnlySet<RuleNodeId> sourceNodeIds,
+      IReadOnlySet<RuleNodeId> proposalNodeIds)
     {
-        return context.Runtime.ExecutionOptions.EnableGroupParallelism &&
-          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism > 1 &&
-          groupCount > 1;
+        var declared = RuleGraphDependencyCatalog.GetDependencies(rule, RuleKind.Propose, rule.Dependencies);
+        if (declared.Count == 0)
+        {
+            return sourceNodes
+              .Select(node => new RuleDependency(node.NodeId, node.ProducedOutputs.Single()))
+              .ToList();
+        }
+
+        return declared
+          .Where(dependency => sourceNodeIds.Contains(dependency.Producer) || proposalNodeIds.Contains(dependency.Producer))
+          .GroupBy(dependency => dependency.Producer)
+          .Select(group => group.First())
+          .ToList();
+    }
+
+    private static RuleNodeResult CreateSourceResult(
+      RuleGraphNode node,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    {
+        var ruleId = node.NodeId.Value[(node.NodeId.Value.IndexOf(':') + 1)..];
+        var values = node.Kind switch
+        {
+            RuleKind.Mark => seedMarks.Where(mark => string.Equals(mark.RuleId, ruleId, StringComparison.Ordinal)).Cast<object>(),
+            RuleKind.Propagate => propagatedMarks.Where(mark => string.Equals(mark.RuleId, ruleId, StringComparison.Ordinal)).Cast<object>(),
+            RuleKind.Lift => liftedMarks.Where(mark => string.Equals(mark.RuleId, ruleId, StringComparison.Ordinal)).Cast<object>(),
+            _ => Array.Empty<object>()
+        };
+        return RuleNodeResult.From(node.ProducedOutputs.Single(), values.ToArray());
+    }
+
+    private static RuleNodeResult CreateResult<T>(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<T> values)
+    {
+        var boxed = values.Cast<object>().ToList();
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed);
+    }
+
+    private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
+    {
+        return node.Dependencies
+          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+          .ToList();
     }
 
     private static IReadOnlyList<DecisionUnit> FilterCompetingAncestors(IReadOnlyList<DecisionUnit> units)
@@ -508,10 +533,6 @@ public sealed class RuleDecisionEngine
           ? node
           : null;
     }
-
-    private sealed record ProposalRuleGroup(
-      string GroupKey,
-      IReadOnlyList<RuleDefinitionPropose> Rules);
 }
 
 public static class DecisionCpgFactory

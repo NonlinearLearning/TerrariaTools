@@ -6,108 +6,92 @@ namespace NLISSN.Core.Propagation;
 
 public sealed class PropagationEngine
 {
+    // 为规则图执行器执行一个已准备好显式输入的传播节点；不读取 GroupKey。
+    public static IReadOnlyList<PropagatedMarkRecord> ExecuteRule(
+      RuleContext context,
+      RuleDefinitionPropagate rule,
+      IReadOnlyList<MarkRecord> inputMarks)
+    {
+        var ruleContext = BuildRuleContext(context, inputMarks);
+        return rule.Propagate(ruleContext, inputMarks)
+          .Select(candidate =>
+          {
+              MarkingEngine.ValidatePropagateNode(rule, candidate.Mark.SyntaxNode);
+              return BindPropagatedMarkRecord(ruleContext, candidate, rule.GroupKey);
+          })
+          .ToList();
+    }
+
     // 按 GroupKey 组织传播规则，并把同组链式传播收束成去重后的传播标记集合。
     public IReadOnlyList<PropagatedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<RuleDefinitionPropagate> rules)
     {
-        var seedMarksByGroupKey = seedMarks
-          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
-          .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.Ordinal);
-        // 组是传播隔离边界：同组规则可消费前序规则新增的标记，不同组之间互不影响。
-        var groupedRules = rules
-          .GroupBy(rule => rule.GroupKey, StringComparer.Ordinal)
-          .Select(group => new PropagationRuleGroup(group.Key, group.ToList()))
-          .Where(group =>
-            seedMarksByGroupKey.TryGetValue(group.GroupKey, out var groupSeedMarks) &&
-            groupSeedMarks.Count > 0)
+        var sourceNodes = seedMarks
+          .GroupBy(mark => mark.RuleId, StringComparer.Ordinal)
+          .Select(group => new RuleGraphNode(
+            RuleNodeId.For(RuleKind.Mark, group.Key),
+            RuleKind.Mark,
+            new[] { RuleOutputKind.SeedMark },
+            Array.Empty<RuleDependency>()))
           .ToList();
-        var propagatedMarks = ShouldRunGroupsInParallel(context, groupedRules.Count)
-          ? RunGroupsInParallel(context, groupedRules, seedMarksByGroupKey)
-          : RunGroupsSerial(context, groupedRules, seedMarksByGroupKey);
-
-        // 不同传播路径可能命中同一个语法节点，这里按规则和语法位置收口去重。
-        return propagatedMarks
-        .DistinctBy(mark => (
-          RuleStageGroupKey.Get(mark),
-          mark.RuleId,
-          mark.Mark.SyntaxNode.SpanStart,
-          mark.Mark.SyntaxNode.Span.Length,
-          mark.Mark.SyntaxNode.RawKind))
-        .ToList();
-    }
-
-    private static List<PropagatedMarkRecord> RunGroupsSerial(RuleContext context, IReadOnlyList<PropagationRuleGroup> groupedRules, IReadOnlyDictionary<string, List<MarkRecord>> seedMarksByGroupKey)
-    {
-        var propagatedMarks = new List<PropagatedMarkRecord>();
-        foreach (var ruleGroup in groupedRules)
+        var sourceById = sourceNodes.ToDictionary(node => node.NodeId);
+        var virtualNodes = new Dictionary<RuleNodeId, RuleGraphNode>();
+        var propagationNodeIds = rules
+          .Select(rule => RuleNodeId.For(RuleKind.Propagate, rule.RuleId))
+          .ToHashSet();
+        var ruleNodes = rules.Select(rule =>
         {
-            propagatedMarks.AddRange(RunGroup(context, ruleGroup, seedMarksByGroupKey[ruleGroup.GroupKey]));
-        }
-
-        return propagatedMarks;
-    }
-
-    private static List<PropagatedMarkRecord> RunGroupsInParallel(RuleContext context, IReadOnlyList<PropagationRuleGroup> groupedRules, IReadOnlyDictionary<string, List<MarkRecord>> seedMarksByGroupKey)
-    {
-        var orderedGroupMarks = context.Runtime.Scheduler.RunOrderedAsync(
-            groupedRules.Count,
+            var declaredDependencies = RuleGraphDependencyCatalog.GetDependencies(
+              rule,
+              RuleKind.Propagate,
+              rule.Dependencies);
+            var dependencies = ResolveDependencies(
+              declaredDependencies,
+              sourceNodes,
+              sourceById,
+              propagationNodeIds,
+              virtualNodes,
+              seedMarks);
+            return new RuleGraphNode(
+              RuleNodeId.For(RuleKind.Propagate, rule.RuleId),
+              RuleKind.Propagate,
+              rule.ProducedOutputs,
+              dependencies);
+        }).ToList();
+        var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(virtualNodes.Values).Concat(ruleNodes).ToList());
+        var executionNodes = sourceNodes
+          .Concat(virtualNodes.Values)
+          .Select(node => new RuleGraphExecutionNode(
+            node,
+            (_, _) => Task.FromResult(CreateSourceResult(node, seedMarks))))
+          .Concat(rules.Select(rule =>
+          {
+              var node = graph.Nodes.Single(candidate => candidate.NodeId == RuleNodeId.For(RuleKind.Propagate, rule.RuleId));
+              return new RuleGraphExecutionNode(
+                node,
+                (inputs, _) => Task.FromResult(CreateResult(
+                  rule.ProducedOutputs,
+                  ExecuteRule(context, rule, GetInputMarks(node, inputs)))));
+          }))
+          .ToList();
+        var execution = new RuleGraphExecutor().ExecuteAsync(
+            graph,
+            executionNodes,
             context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-            (index, cancellationToken) =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                var ruleGroup = groupedRules[index];
-                return Task.Run(
-                  () => (IReadOnlyList<PropagatedMarkRecord>)RunGroup(
-                    context,
-                    ruleGroup,
-                    seedMarksByGroupKey[ruleGroup.GroupKey]),
-                  cancellationToken);
-            },
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
 
-        return orderedGroupMarks.SelectMany(marks => marks).ToList();
-    }
-
-    private static List<PropagatedMarkRecord> RunGroup(RuleContext context, PropagationRuleGroup ruleGroup, IReadOnlyList<MarkRecord> groupSeedMarks)
-    {
-        var propagatedMarks = new List<PropagatedMarkRecord>();
-        // 依次扩充同组工作集，使链式传播在本组内闭合，同时保持规则声明顺序。
-        var groupMarks = new List<MarkRecord>(groupSeedMarks);
-        foreach (var rule in ruleGroup.Rules)
-        {
-            var ruleContext = BuildRuleContext(context, groupMarks);
-            var producedMarks = new List<PropagatedMarkRecord>();
-            foreach (var propagatedMark in rule.Propagate(ruleContext, groupMarks))
-            {
-                MarkingEngine.ValidatePropagateNode(rule, propagatedMark.Mark.SyntaxNode);
-                var boundMark = BindPropagatedMarkRecord(ruleContext, propagatedMark, rule.GroupKey);
-                producedMarks.Add(boundMark);
-                propagatedMarks.Add(boundMark);
-            }
-
-            foreach (var producedMark in producedMarks)
-            {
-                if (groupMarks.Any(existing =>
-                      existing.SyntaxNode.SpanStart == producedMark.Mark.SyntaxNode.SpanStart &&
-                      existing.SyntaxNode.Span.Length == producedMark.Mark.SyntaxNode.Span.Length &&
-                      existing.SyntaxNode.RawKind == producedMark.Mark.SyntaxNode.RawKind))
-                {
-                    continue;
-                }
-
-                groupMarks.Add(producedMark.Mark);
-            }
-        }
-
-        return propagatedMarks;
-    }
-
-    private static bool ShouldRunGroupsInParallel(RuleContext context, int groupCount)
-    {
-        return context.Runtime.ExecutionOptions.EnableGroupParallelism &&
-          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism > 1 &&
-          groupCount > 1;
+        return execution.Nodes
+          .Where(node => node.NodeId.Value.StartsWith("Propagate:", StringComparison.Ordinal))
+          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.PropagatedMark))
+          .OfType<PropagatedMarkRecord>()
+          .DistinctBy(mark => (
+            mark.GroupKey ?? mark.RuleId,
+            mark.RuleId,
+            mark.Mark.SyntaxNode.SpanStart,
+            mark.Mark.SyntaxNode.Span.Length,
+            mark.Mark.SyntaxNode.RawKind))
+          .ToList();
     }
 
     private static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate, string? groupKey = null)
@@ -134,7 +118,91 @@ public sealed class PropagationEngine
         return context.StructureViews.WithStructureView(structureView);
     }
 
-    private sealed record PropagationRuleGroup(
-      string GroupKey,
-      IReadOnlyList<RuleDefinitionPropagate> Rules);
+    private static IReadOnlyList<RuleDependency> ResolveDependencies(
+      IReadOnlyList<RuleDependency> declaredDependencies,
+      IReadOnlyList<RuleGraphNode> sourceNodes,
+      IReadOnlyDictionary<RuleNodeId, RuleGraphNode> sourceById,
+      IReadOnlySet<RuleNodeId> propagationNodeIds,
+      IDictionary<RuleNodeId, RuleGraphNode> virtualNodes,
+      IReadOnlyList<MarkRecord> seedMarks)
+    {
+        if (declaredDependencies.Count == 0)
+        {
+            return sourceNodes
+              .Select(node => new RuleDependency(node.NodeId, RuleOutputKind.SeedMark))
+              .ToList();
+        }
+
+        var dependencies = new List<RuleDependency>();
+        foreach (var dependency in declaredDependencies)
+        {
+            if (sourceById.ContainsKey(dependency.Producer) ||
+                propagationNodeIds.Contains(dependency.Producer) ||
+                virtualNodes.ContainsKey(dependency.Producer))
+            {
+                dependencies.Add(dependency);
+                continue;
+            }
+
+            if (dependency.RequiredOutput == RuleOutputKind.SeedMark)
+            {
+                dependencies.AddRange(sourceNodes.Select(node => new RuleDependency(node.NodeId, RuleOutputKind.SeedMark)));
+                continue;
+            }
+
+            if (seedMarks.Any(mark => mark.OutputKind == dependency.RequiredOutput))
+            {
+                virtualNodes[dependency.Producer] = new RuleGraphNode(
+                  dependency.Producer,
+                  ParseKind(dependency.Producer),
+                  new[] { dependency.RequiredOutput },
+                  Array.Empty<RuleDependency>());
+                dependencies.Add(dependency);
+            }
+        }
+
+        return dependencies
+          .GroupBy(dependency => dependency.Producer)
+          .Select(group => group.First())
+          .ToList();
+    }
+
+    private static RuleNodeResult CreateSourceResult(RuleGraphNode node, IReadOnlyList<MarkRecord> seedMarks)
+    {
+        var outputKind = node.ProducedOutputs.Single();
+        var marks = outputKind == RuleOutputKind.SeedMark
+          ? seedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Mark:".Length..], StringComparison.Ordinal))
+          : seedMarks.Where(mark => mark.OutputKind == outputKind);
+        return RuleNodeResult.From(outputKind, marks.Cast<object>().ToArray());
+    }
+
+    private static RuleNodeResult CreateResult<T>(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<T> values)
+    {
+        var boxed = values.Cast<object>().ToList();
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed);
+    }
+
+    private static IReadOnlyList<MarkRecord> GetInputMarks(RuleGraphNode node, RuleNodeInputs inputs)
+    {
+        return node.Dependencies
+          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+          .Select(value => value switch
+          {
+              MarkRecord mark => mark,
+              PropagatedMarkRecord propagated => propagated.Mark,
+              _ => null
+          })
+          .Where(mark => mark is not null)
+          .Cast<MarkRecord>()
+          .DistinctBy(mark => (
+            mark.SyntaxNode.SpanStart,
+            mark.SyntaxNode.Span.Length,
+            mark.SyntaxNode.RawKind))
+          .ToList();
+    }
+
+    private static RuleKind ParseKind(RuleNodeId nodeId)
+    {
+        return Enum.Parse<RuleKind>(nodeId.Value.Split(':', 2)[0], ignoreCase: false);
+    }
 }

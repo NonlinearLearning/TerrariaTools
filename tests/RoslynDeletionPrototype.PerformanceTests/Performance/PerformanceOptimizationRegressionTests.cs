@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLCPG.Builder;
+using NLISSN;
 using NLISSN.Core.Analysis;
 using NLISSN.Application;
 using NLISSN.Core.Decision;
@@ -60,9 +61,11 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
 
         Assert.All(parallelSamples, sample => Assert.Equal(serial.Snapshot, sample.Snapshot));
         Assert.All(parallelSamples, sample => Assert.True(sample.AllocatedBytes >= 0));
+        Assert.All(parallelSamples, sample => Assert.True(sample.RuleNodeCount > 0));
         _output.WriteLine(
           $"Mark samples ms={string.Join(",", parallelSamples.Select(sample => sample.MarkMilliseconds))}; " +
-          $"allocated={string.Join(",", parallelSamples.Select(sample => sample.AllocatedBytes))}");
+          $"allocated={string.Join(",", parallelSamples.Select(sample => sample.AllocatedBytes))}; " +
+          $"rule-nodes={string.Join(",", parallelSamples.Select(sample => sample.RuleNodeCount))}");
     }
 
     [Fact]
@@ -460,9 +463,9 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         File.WriteAllText(
           secondConsumerPath,
           PerformanceSources.CleanupSecondConsumerSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var commandHost = new CommandHost(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = commandHost.AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -493,9 +496,9 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         File.WriteAllText(
           secondFilePath,
           PerformanceSources.SecondEmptyNamespaceSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var commandHost = new CommandHost(RuleRegistry.CreateDefaultRules());
 
-        var result = application.AnalyzeFromArgs(new[]
+        var result = commandHost.AnalyzeFromArgs(new[]
         {
           projectDirectory,
           "--delete-class",
@@ -661,7 +664,9 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     private static TCache GetCompilationCache<TCache>( AnalysisRuntime runtime, Compilation compilation, Func<Compilation, TCache> factory)
     {
         var method = typeof( AnalysisRuntime)
-          .GetMethod("GetOrCreateCompilationCache", BindingFlags.Instance | BindingFlags.NonPublic)!
+          .GetMethod(
+            "GetOrCreateCompilationCache",
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
           .MakeGenericMethod(typeof(TCache));
         return (TCache)method.Invoke(runtime, new object[] { compilation, factory })!;
     }
@@ -686,6 +691,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           runtime);
         stopwatch.Stop();
         var allocatedBytes = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
+        var ruleGraphTelemetry = Assert.IsAssignableFrom<IReadOnlyList<RuleGraphNodeTelemetry>>(result.RuleGraphTelemetry);
         var snapshot = string.Join(
           "|",
           result.SeedMarks.Select(mark => $"seed:{mark.RuleId}:{mark.SyntaxNode.Span}")
@@ -696,13 +702,15 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         return new MarkPerformanceMeasurement(
           stopwatch.ElapsedMilliseconds,
           allocatedBytes,
-          snapshot);
+          snapshot,
+          ruleGraphTelemetry.Count);
     }
 
     private sealed record MarkPerformanceMeasurement(
       long MarkMilliseconds,
       long AllocatedBytes,
-      string Snapshot);
+      string Snapshot,
+      int RuleNodeCount);
 
     private sealed class AnalyzerTestContext
     {

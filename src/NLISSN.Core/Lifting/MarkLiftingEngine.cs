@@ -9,38 +9,74 @@ namespace NLISSN.Core.Lifting;
 
 public sealed class MarkLiftingEngine
 {
-    // 基于种子标记和非 payload 传播标记执行父级提升，并按组和语法位置去重。
+    // 为规则图执行器执行一个已准备好显式输入的提升节点；不读取 GroupKey。
+    public static IReadOnlyList<LiftedMarkRecord> ExecuteRule(
+      RuleContext context,
+      RuleDefinitionLift rule,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
+    {
+        var ruleContext = BuildRuleContext(context, seedMarks, propagatedMarks);
+        return rule.Lift(ruleContext, seedMarks, propagatedMarks, existingLiftedMarks)
+          .Select(candidate =>
+          {
+              ValidateLiftNode(rule, candidate.Mark.SyntaxNode);
+              return BindLiftedMarkRecord(ruleContext, candidate, rule.GroupKey);
+          })
+          .ToList();
+    }
+
+    // 兼容入口也按规则图执行；GroupKey 只保留在输出投影中。
     public IReadOnlyList<LiftedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<RuleDefinitionLift> rules)
     {
-        // 结构化 payload 仅供后续决策消费；它不代表可向父级语法节点提升的标记。
         var liftEligiblePropagatedMarks = propagatedMarks
           .Where(mark => mark.Payload is null)
           .ToList();
-        var seedMarksByGroupKey = seedMarks
-          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
-          .ToDictionary(
-            group => group.Key,
-            group => (IReadOnlyList<MarkRecord>)group.ToList(),
-            StringComparer.Ordinal);
-        var propagatedMarksByGroupKey = liftEligiblePropagatedMarks
-          .GroupBy(RuleStageGroupKey.Get, StringComparer.Ordinal)
-          .ToDictionary(
-            group => group.Key,
-            group => (IReadOnlyList<PropagatedMarkRecord>)group.ToList(),
-            StringComparer.Ordinal);
-        // 与传播阶段一致，GroupKey 保证同组提升规则串行、不同组可安全并行。
-        var groupedRules = rules
-          .GroupBy(rule => rule.GroupKey, StringComparer.Ordinal)
-          .Select(group => new LiftRuleGroup(group.Key, group.ToList()))
-          .Where(group =>
-            seedMarksByGroupKey.ContainsKey(group.GroupKey) ||
-            propagatedMarksByGroupKey.ContainsKey(group.GroupKey))
+        var sourceNodes = CreateSourceNodes(seedMarks, liftEligiblePropagatedMarks);
+        var sourceNodeIds = sourceNodes.Select(node => node.NodeId).ToHashSet();
+        var liftNodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Lift, rule.RuleId)).ToHashSet();
+        var ruleNodes = rules.Select(rule => new RuleGraphNode(
+          RuleNodeId.For(RuleKind.Lift, rule.RuleId),
+          RuleKind.Lift,
+          rule.ProducedOutputs,
+          ResolveDependencies(rule, sourceNodes, sourceNodeIds, liftNodeIds))).ToList();
+        var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
+        var executionNodes = sourceNodes
+          .Select(node => new RuleGraphExecutionNode(
+            node,
+            (_, _) => Task.FromResult(CreateSourceResult(node, seedMarks, liftEligiblePropagatedMarks))))
+          .Concat(rules.Select(rule =>
+          {
+              var node = graph.Nodes.Single(candidate => candidate.NodeId == RuleNodeId.For(RuleKind.Lift, rule.RuleId));
+              return new RuleGraphExecutionNode(
+                node,
+                (inputs, _) =>
+                {
+                    var values = GetValues(node, inputs);
+                    return Task.FromResult(CreateResult(
+                      rule.ProducedOutputs,
+                      ExecuteRule(
+                        context,
+                        rule,
+                        values.OfType<MarkRecord>().ToList(),
+                        values.OfType<PropagatedMarkRecord>().ToList(),
+                        values.OfType<LiftedMarkRecord>().ToList())));
+                });
+          }))
           .ToList();
-        var liftedMarks = ShouldRunGroupsInParallel(context, groupedRules.Count)
-          ? RunGroupsInParallel(context, groupedRules, seedMarksByGroupKey, propagatedMarksByGroupKey)
-          : RunGroupsSerial(context, groupedRules, seedMarksByGroupKey, propagatedMarksByGroupKey);
+        var execution = new RuleGraphExecutor().ExecuteAsync(
+            graph,
+            executionNodes,
+            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            context.Runtime.ExecutionOptions.CancellationToken)
+          .GetAwaiter()
+          .GetResult();
 
-        return liftedMarks
+        return execution.Nodes
+          .Where(node => node.NodeId.Value.StartsWith("Lift:", StringComparison.Ordinal))
+          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.LiftedMark))
+          .OfType<LiftedMarkRecord>()
           .DistinctBy(mark => (
             RuleStageGroupKey.Get(mark),
             mark.Mark.SyntaxNode.SpanStart,
@@ -49,87 +85,62 @@ public sealed class MarkLiftingEngine
           .ToList();
     }
 
-    private static List<LiftedMarkRecord> RunGroupsSerial(RuleContext context, IReadOnlyList<LiftRuleGroup> groupedRules, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    private static IReadOnlyList<RuleGraphNode> CreateSourceNodes(
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
-        var liftedMarks = new List<LiftedMarkRecord>();
-        foreach (var ruleGroup in groupedRules)
-        {
-            liftedMarks.AddRange(RunRule(
-              context,
-              ruleGroup,
-              seedMarksByGroupKey,
-              propagatedMarksByGroupKey));
-        }
-
-        return liftedMarks;
+        return seedMarks
+          .GroupBy(mark => RuleNodeId.For(RuleKind.Mark, mark.RuleId))
+          .Select(group => new RuleGraphNode(group.Key, RuleKind.Mark, new[] { RuleOutputKind.SeedMark }, Array.Empty<RuleDependency>()))
+          .Concat(propagatedMarks
+            .GroupBy(mark => RuleNodeId.For(RuleKind.Propagate, mark.RuleId))
+            .Select(group => new RuleGraphNode(group.Key, RuleKind.Propagate, new[] { RuleOutputKind.PropagatedMark }, Array.Empty<RuleDependency>())))
+          .ToList();
     }
 
-    private static List<LiftedMarkRecord> RunGroupsInParallel(RuleContext context, IReadOnlyList<LiftRuleGroup> groupedRules, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    private static IReadOnlyList<RuleDependency> ResolveDependencies(
+      RuleDefinitionLift rule,
+      IReadOnlyList<RuleGraphNode> sourceNodes,
+      IReadOnlySet<RuleNodeId> sourceNodeIds,
+      IReadOnlySet<RuleNodeId> liftNodeIds)
     {
-        var orderedLiftedMarks = context.Runtime.Scheduler.RunOrderedAsync(
-            groupedRules.Count,
-            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-            (index, cancellationToken) =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return Task.Run(
-                  () => (IReadOnlyList<LiftedMarkRecord>)RunRule(
-                    context,
-                    groupedRules[index],
-                    seedMarksByGroupKey,
-                    propagatedMarksByGroupKey),
-                  cancellationToken);
-            },
-            context.Runtime.ExecutionOptions.CancellationToken)
-          .GetAwaiter()
-          .GetResult();
-
-        return orderedLiftedMarks.SelectMany(marks => marks).ToList();
-    }
-
-    private static List<LiftedMarkRecord> RunRule(RuleContext context, LiftRuleGroup ruleGroup, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
-    {
-        var liftedMarks = new List<LiftedMarkRecord>();
-        foreach (var rule in ruleGroup.Rules)
+        var declared = RuleGraphDependencyCatalog.GetDependencies(rule, RuleKind.Lift, rule.Dependencies);
+        if (declared.Count == 0)
         {
-            liftedMarks.AddRange(RunRule(context, rule, seedMarksByGroupKey, propagatedMarksByGroupKey));
+            return sourceNodes
+              .Select(node => new RuleDependency(node.NodeId, node.ProducedOutputs.Single()))
+              .ToList();
         }
 
-        return liftedMarks;
+        return declared
+          .Where(dependency => sourceNodeIds.Contains(dependency.Producer) || liftNodeIds.Contains(dependency.Producer))
+          .GroupBy(dependency => dependency.Producer)
+          .Select(group => group.First())
+          .ToList();
     }
 
-    private static List<LiftedMarkRecord> RunRule(RuleContext context, RuleDefinitionLift rule, IReadOnlyDictionary<string, IReadOnlyList<MarkRecord>> seedMarksByGroupKey, IReadOnlyDictionary<string, IReadOnlyList<PropagatedMarkRecord>> propagatedMarksByGroupKey)
+    private static RuleNodeResult CreateSourceResult(
+      RuleGraphNode node,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
-        seedMarksByGroupKey.TryGetValue(rule.GroupKey, out var ruleSeedMarks);
-        propagatedMarksByGroupKey.TryGetValue(rule.GroupKey, out var rulePropagatedMarks);
-        if ((ruleSeedMarks is null || ruleSeedMarks.Count == 0) &&
-            (rulePropagatedMarks is null || rulePropagatedMarks.Count == 0))
-        {
-            return new List<LiftedMarkRecord>();
-        }
-
-        var producedMarks = new List<LiftedMarkRecord>();
-        var ruleContext = BuildRuleContext(
-          context,
-          ruleSeedMarks ?? Array.Empty<MarkRecord>(),
-          rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>());
-        foreach (var liftedMark in rule.Lift(
-                   ruleContext,
-                   ruleSeedMarks ?? Array.Empty<MarkRecord>(),
-                   rulePropagatedMarks ?? Array.Empty<PropagatedMarkRecord>()))
-        {
-            ValidateLiftNode(rule, liftedMark.Mark.SyntaxNode);
-            producedMarks.Add(BindLiftedMarkRecord(ruleContext, liftedMark, rule.GroupKey));
-        }
-
-        return producedMarks;
+        var values = node.Kind == RuleKind.Mark
+          ? seedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Mark:".Length..], StringComparison.Ordinal)).Cast<object>()
+          : propagatedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Propagate:".Length..], StringComparison.Ordinal)).Cast<object>();
+        return RuleNodeResult.From(node.ProducedOutputs.Single(), values.ToArray());
     }
 
-    private static bool ShouldRunGroupsInParallel(RuleContext context, int groupCount)
+    private static RuleNodeResult CreateResult<T>(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<T> values)
     {
-        return context.Runtime.ExecutionOptions.EnableGroupParallelism &&
-          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism > 1 &&
-          groupCount > 1;
+        var boxed = values.Cast<object>().ToList();
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed);
+    }
+
+    private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
+    {
+        return node.Dependencies
+          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+          .ToList();
     }
 
     private static RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
@@ -170,8 +181,4 @@ public sealed class MarkLiftingEngine
             GroupKey = candidate.GroupKey ?? groupKey
         };
     }
-
-    private sealed record LiftRuleGroup(
-      string GroupKey,
-      IReadOnlyList<RuleDefinitionLift> Rules);
 }

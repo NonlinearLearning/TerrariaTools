@@ -30,7 +30,11 @@ public sealed record PrototypeAnalysisResult(
   /// 改写后重新编译得到的诊断。目前只收集 error 级别诊断。
   IReadOnlyList<AnalysisDiagnostic>? Diagnostics = null,
   /// 按文件保留的可回放文本操作，不等同于展示用 diff 编辑。
-  IReadOnlyList<PrototypeFileRewritePlan>? RewritePlans = null)
+  IReadOnlyList<PrototypeFileRewritePlan>? RewritePlans = null,
+  /// 规则图每个节点的输入、输出和耗时；非图执行路径为空。
+  IReadOnlyList<RuleGraphNodeTelemetry>? RuleGraphTelemetry = null,
+  /// 规则图的 ready queue 与并发节点峰值；非图执行路径为空。
+  RuleGraphExecutionMetrics? RuleGraphMetrics = null)
 {
   public DiffSummary DiffSummary => Diff.Summary;
 }

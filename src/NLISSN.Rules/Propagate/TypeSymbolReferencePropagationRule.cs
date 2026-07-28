@@ -7,11 +7,22 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 把已收束到局部 declarator 的 delete-class 事实继续传播到同一作用域内、且出现在定义之后的引用点。
-public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagate
+public sealed class ClassSymbolReferencePropagationRule : ClassPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.type.symbol-reference";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-LOCAL-REF-001";
+
+    public override IReadOnlyList<RuleDependency> Dependencies =>
+      new[]
+      {
+        new RuleDependency(
+          RuleNodeId.For(RuleKind.Propagate, "DEL-CLASS-PROP-NEW-DECL-001"),
+          RuleOutputKind.LocalDefinitionFromObjectCreation)
+      };
+
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalReference };
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -39,9 +50,10 @@ public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagat
         {
             var referencedSymbol = ResolveReferencedSymbol(context, reference);
             if (referencedSymbol is null ||
-                !markedSymbols.TryGetValue(referencedSymbol, out var sourceMark) ||
-                !IsSameScope(sourceMark.SyntaxNode, reference) ||
-                reference.SpanStart <= sourceMark.SyntaxNode.SpanStart ||
+                !markedSymbols.TryGetValue(referencedSymbol, out var markedDefinition) ||
+                markedDefinition.ExecutableScope is null ||
+                !ReferenceEquals(markedDefinition.ExecutableScope, FindContainingExecutableScope(reference)) ||
+                reference.SpanStart <= markedDefinition.SourceMark.SyntaxNode.SpanStart ||
                 !knownKeys.Add(BuildNodeKey(reference)))
             {
                 continue;
@@ -53,16 +65,16 @@ public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagat
                 RuleId,
                 reference,
                 $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked delete-class local definition."),
-              sourceMark,
+              markedDefinition.SourceMark,
               1);
         }
     }
 
     /// 只认“对象创建 -> 局部定义点”这类前序传播产物，
     /// 防止任意 TypeSyntax 命中直接扩散成局部引用删除事实。
-    private static Dictionary<ISymbol, MarkRecord> BuildMarkedLocalDefinitions(RuleContext context, IReadOnlyList<MarkRecord> marks)
+    private static Dictionary<ISymbol, MarkedLocalDefinition> BuildMarkedLocalDefinitions(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
-        var symbols = new Dictionary<ISymbol, MarkRecord>(SymbolEqualityComparer.Default);
+        var symbols = new Dictionary<ISymbol, MarkedLocalDefinition>(SymbolEqualityComparer.Default);
         foreach (var mark in marks)
         {
             if (!IsObjectCreationDefinitionMark(mark))
@@ -76,7 +88,7 @@ public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagat
                 continue;
             }
 
-            symbols.Add(symbol, mark);
+            symbols.Add(symbol, new MarkedLocalDefinition(mark, FindContainingExecutableScope(mark.SyntaxNode)));
         }
 
         return symbols;
@@ -85,9 +97,7 @@ public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagat
     private static bool IsObjectCreationDefinitionMark(MarkRecord mark)
     {
         return mark.SyntaxNode is VariableDeclaratorSyntax &&
-          mark.Reason.Contains(
-            "Object creation initializer is marked",
-            StringComparison.Ordinal);
+          mark.OutputKind == RuleOutputKind.LocalDefinitionFromObjectCreation;
     }
 
     private static ISymbol? ResolveDeclaredLocalSymbol(RuleContext context, SyntaxNode node)
@@ -105,15 +115,6 @@ public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagat
         return symbol is ILocalSymbol ? symbol : null;
     }
 
-    private static bool IsSameScope(SyntaxNode sourceNode, SyntaxNode referenceNode)
-    {
-        var sourceScope = FindContainingExecutableScope(sourceNode);
-        var referenceScope = FindContainingExecutableScope(referenceNode);
-        return sourceScope is not null &&
-          referenceScope is not null &&
-          ReferenceEquals(sourceScope, referenceScope);
-    }
-
     private static SyntaxNode? FindContainingExecutableScope(SyntaxNode node)
     {
         return node.AncestorsAndSelf().FirstOrDefault(ancestor =>
@@ -126,6 +127,8 @@ public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagat
             AnonymousFunctionExpressionSyntax or
             LocalFunctionStatementSyntax);
     }
+
+    private sealed record MarkedLocalDefinition(MarkRecord SourceMark, SyntaxNode? ExecutableScope);
 
     private static (int Start, int Length, int RawKind) BuildNodeKey(SyntaxNode syntaxNode)
     {

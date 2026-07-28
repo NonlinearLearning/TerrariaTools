@@ -205,7 +205,7 @@ public sealed class PropagationRuleExpansionTests
             _seeds = seeds;
         }
 
-        public override string RuleId { get; } = "DEL-SOBJ-TEST-MARK-001";
+        public override string RuleId { get; } = "DEL-SOBJ-MARK-MEMBER-001";
 
         public override string GroupKey { get; } = "DEL-SOBJ";
 

@@ -65,7 +65,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
         var compilation = context.SemanticModel.Compilation;
         var candidates = BuildCandidateMethodMap(compilation);
         var references = BuildMethodReferenceIndex(compilation, candidates);
-        return FindUnreferencedMethodsBy Iteration(candidates, references);
+        return FindUnreferencedMethodsByIteration(candidates, references);
     }
 
     private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildCandidateMethodMap(Compilation compilation)
@@ -79,7 +79,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
             foreach (var method in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
             {
                 if (model.GetDeclaredSymbol(method, CancellationToken.None) is not IMethodSymbol symbol ||
-                    !Is Candidate(symbol))
+                    !IsCandidate(symbol))
                 {
                     continue;
                 }
@@ -131,7 +131,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
           externallyReferencedMethods);
     }
 
-    private static HashSet<IMethodSymbol> FindUnreferencedMethodsBy Iteration(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
+    private static HashSet<IMethodSymbol> FindUnreferencedMethodsByIteration(IReadOnlyDictionary<IMethodSymbol, MethodDeclarationSyntax> candidates, MethodReferenceIndex references)
     {
         var deletedMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
         var pendingScan = new HashSet<IMethodSymbol>(
@@ -259,7 +259,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
         };
     }
 
-    private static bool Is Candidate(IMethodSymbol method)
+    private static bool IsCandidate(IMethodSymbol method)
     {
         return method.MethodKind == MethodKind.Ordinary &&
           method.DeclaredAccessibility == Accessibility.Private &&

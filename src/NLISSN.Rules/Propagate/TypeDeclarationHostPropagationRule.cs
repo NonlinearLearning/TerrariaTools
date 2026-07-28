@@ -9,7 +9,7 @@ namespace NLISSN.Rules;
 
 /// 把 delete-class 的 TypeSyntax 命中收束到稳定声明宿主，
 /// 让后续提案直接对字段、属性、方法、接口成员等可改写边界做决策。
-public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagate
+public sealed class ClassDeclarationHostPropagationRule : ClassPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.type.declaration-host";
 
@@ -145,9 +145,9 @@ public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagat
             return true;
         }
 
-        if (TryResolveBase Target(typeSyntax, out var base Target))
+        if (TryResolveBaseTarget(typeSyntax, out var baseTarget))
         {
-            payload = new DeclarationHostPayload(base Target, DeclarationHostKind.BaseType);
+            payload = new DeclarationHostPayload(baseTarget, DeclarationHostKind.BaseType);
             reason = "Base type references the delete-class target; propagate to the owning base-list deletion host.";
             return true;
         }
@@ -276,7 +276,7 @@ public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagat
         return DeleteClassMethodProposalSafety.IsSafeExtensionReceiverMethod(methodDeclaration);
     }
 
-    private static bool TryResolveBase Target(TypeSyntax typeSyntax, out SyntaxNode deletionTarget)
+    private static bool TryResolveBaseTarget(TypeSyntax typeSyntax, out SyntaxNode deletionTarget)
     {
         var simpleBaseType = typeSyntax.Ancestors()
           .OfType<SimpleBaseTypeSyntax>()

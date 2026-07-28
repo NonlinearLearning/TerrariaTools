@@ -6,12 +6,36 @@ namespace NLISSN.Core.Marking;
 
 public sealed class MarkingEngine
 {
-    // 执行所有标记规则，补齐图绑定后按规则组和语法位置去重返回种子标记。
+    // 执行所有标记规则，补齐图绑定后按规则节点和语法位置去重返回种子标记。
     public IReadOnlyList<MarkRecord> Run(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
     {
-        var seedMarks = ShouldRunRulesInParallel(context, rules.Count)
-          ? RunRulesInParallel(context, root, rules)
-          : RunRulesSerial(context, root, rules);
+        var nodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Mark, rule.RuleId)).ToHashSet();
+        var nodes = rules.Select(rule => new RuleGraphNode(
+          RuleNodeId.For(RuleKind.Mark, rule.RuleId),
+          RuleKind.Mark,
+          rule.ProducedOutputs,
+          RuleGraphDependencyCatalog.GetDependencies(rule, RuleKind.Mark, rule.Dependencies)
+            .Where(dependency => nodeIds.Contains(dependency.Producer))
+            .ToList())).ToList();
+        var graph = new RuleGraphCompiler().Compile(nodes);
+        var executionNodes = rules.Select(rule =>
+        {
+            var node = graph.Nodes.Single(candidate => candidate.NodeId == RuleNodeId.For(RuleKind.Mark, rule.RuleId));
+            return new RuleGraphExecutionNode(
+              node,
+              (_, _) => Task.FromResult(CreateResult(rule.ProducedOutputs, RunRule(context, root, rule))));
+        }).ToList();
+        var execution = new RuleGraphExecutor().ExecuteAsync(
+            graph,
+            executionNodes,
+            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            context.Runtime.ExecutionOptions.CancellationToken)
+          .GetAwaiter()
+          .GetResult();
+        var seedMarks = execution.Nodes
+          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.SeedMark))
+          .OfType<MarkRecord>()
+          .ToList();
 
         // 同一规则可能通过多条路径命中同一个语法节点，这里按规则和语法位置去重。
         return seedMarks
@@ -22,38 +46,7 @@ public sealed class MarkingEngine
         .ToList();
     }
 
-    private static List<MarkRecord> RunRulesSerial(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
-    {
-        var seedMarks = new List<MarkRecord>();
-        for (var ruleIndex = 0; ruleIndex < rules.Count; ruleIndex++)
-        {
-            seedMarks.AddRange(RunRule(context, root, rules[ruleIndex], ruleIndex));
-        }
-
-        return seedMarks;
-    }
-
-    private static List<MarkRecord> RunRulesInParallel(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
-    {
-        // 调度器保留规则声明顺序，避免并发完成顺序改变后续去重和可观测结果。
-        var orderedRuleMarks = context.Runtime.Scheduler.RunOrderedAsync(
-            rules.Count,
-            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-            (index, cancellationToken) =>
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                return Task.Run(
-                  () => (IReadOnlyList<MarkRecord>)RunRule(context, root, rules[index], index),
-                  cancellationToken);
-            },
-            context.Runtime.ExecutionOptions.CancellationToken)
-          .GetAwaiter()
-          .GetResult();
-
-        return orderedRuleMarks.SelectMany(marks => marks).ToList();
-    }
-
-    private static List<MarkRecord> RunRule(RuleContext context, SyntaxNode root, RuleDefinitionMark rule, int ruleOrder)
+    private static List<MarkRecord> RunRule(RuleContext context, SyntaxNode root, RuleDefinitionMark rule)
     {
         var producedMarks = new List<MarkRecord>();
         foreach (var mark in rule.Mark(context, root))
@@ -65,11 +58,10 @@ public sealed class MarkingEngine
         return producedMarks;
     }
 
-    private static bool ShouldRunRulesInParallel(RuleContext context, int ruleCount)
+    private static RuleNodeResult CreateResult<T>(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<T> values)
     {
-        return context.Runtime.ExecutionOptions.EnableGroupParallelism &&
-          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism > 1 &&
-          ruleCount > 1;
+        var boxed = values.Cast<object>().ToList();
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed);
     }
 
     internal static void ValidateMarkNode(RuleDefinitionMark rule, SyntaxNode syntaxNode)
