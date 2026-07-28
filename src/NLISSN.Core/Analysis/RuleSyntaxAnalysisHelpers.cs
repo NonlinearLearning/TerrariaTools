@@ -6,36 +6,25 @@ namespace NLISSN.Core.Analysis;
 //傻逼helper怎么还在
 public static class RuleSyntaxAnalysisHelpers
 {
-    // 枚举当前根节点里既是原子候选又能通过结构分析的允许表达式。
+    // 枚举当前根节点里属于允许种类的原子候选表达式。
     public static IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(SyntaxNode root, IReadOnlyCollection<SyntaxKind> allowedKinds, CpgAnalysisContext context, IReadOnlyList<ExpressionSyntax>? atomicCandidates = null)
     {
+        _ = context;
+
         foreach (var expression in atomicCandidates ?? new AtomicExpressionAnalyzer().Analyze(root))
         {
-            if (!allowedKinds.Contains(expression.Kind()))
+            if (allowedKinds.Contains(expression.Kind()))
             {
-                continue;
+                yield return expression;
             }
-
-            if (!TryAnalyzeExpression(expression, context, out _))
-            {
-                continue;
-            }
-
-            yield return expression;
         }
     }
 
-    // 枚举当前根节点下经定义结构分析确认的方法声明。
+    // 枚举当前根节点下的方法声明。
     public static IEnumerable<MethodDeclarationSyntax> EnumerateMethodDeclarations(SyntaxNode root, CpgAnalysisContext context)
     {
-        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
-        {
-            var analysis = new DefinitionStructureAnalyzer().Analyze(method, context);
-            if (analysis.AffectedSyntaxTree.Contains(method))
-            {
-                yield return method;
-            }
-        }
+        _ = context;
+        return root.DescendantNodes().OfType<MethodDeclarationSyntax>();
     }
 
     // 沿表达式父链查找同一逻辑链上的最外层逻辑宿主。
@@ -110,49 +99,6 @@ public static class RuleSyntaxAnalysisHelpers
         }
 
         return null;
-    }
-
-    private static bool TryAnalyzeExpression(ExpressionSyntax expression, CpgAnalysisContext context, out IReadOnlyList<SyntaxNode> affectedNodes)
-    {
-        affectedNodes = Array.Empty<SyntaxNode>();
-
-        switch (expression)
-        {
-            case BinaryExpressionSyntax binaryExpression:
-                affectedNodes = new BinaryExpressionAnalyzer()
-                  .Analyze(binaryExpression, binaryExpression.Left, context)
-                  .AffectedSyntaxTree;
-                return true;
-            case AssignmentExpressionSyntax assignmentExpression:
-                affectedNodes = new AssignmentExpressionAnalyzer()
-                  .Analyze(assignmentExpression, context)
-                  .AffectedSyntaxTree;
-                return true;
-            case PrefixUnaryExpressionSyntax prefixUnaryExpression:
-                affectedNodes = new UnaryExpressionAnalyzer()
-                  .Analyze(prefixUnaryExpression, context)
-                  .AffectedSyntaxTree;
-                return true;
-            case InvocationExpressionSyntax:
-            case ObjectCreationExpressionSyntax:
-            case ImplicitObjectCreationExpressionSyntax:
-            case MemberAccessExpressionSyntax:
-            case MemberBindingExpressionSyntax:
-            case ElementAccessExpressionSyntax:
-            case ConditionalAccessExpressionSyntax:
-                affectedNodes = new CallAndAccessStructureAnalyzer()
-                  .Analyze(expression, context)
-                  .AffectedSyntaxTree;
-                return true;
-            case IdentifierNameSyntax:
-            case ThisExpressionSyntax:
-            case BaseExpressionSyntax:
-            case LiteralExpressionSyntax:
-                affectedNodes = new[] { expression };
-                return true;
-            default:
-                return false;
-        }
     }
 
     private static bool TryResolveStructuralHost(SyntaxNode ancestor, ExpressionSyntax expression, CpgAnalysisContext context, out SyntaxNode? host)
