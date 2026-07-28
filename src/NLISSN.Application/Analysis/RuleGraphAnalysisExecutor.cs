@@ -30,7 +30,7 @@ internal sealed class RuleGraphAnalysisExecutor
           .Concat(pipeline.Proposers.Select(rule => CreateProposerNode(context, rule, graph)))
           .Concat(CreateDisabledNodes(graph, pipeline))
           .ToList();
-        var execution = new RuleGraphExecutor().ExecuteAsync(
+        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,

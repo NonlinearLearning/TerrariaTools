@@ -319,7 +319,7 @@ public sealed class RuleDecisionEngine
                 });
           }))
           .ToList();
-        var execution = new RuleGraphExecutor().ExecuteAsync(
+        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
@@ -350,16 +350,14 @@ public sealed class RuleDecisionEngine
             return Array.Empty<RuleDecision>();
         }
 
-        var resolved = context.Runtime.Scheduler.RunOrderedAsync(
+        var resolved = context.Runtime.ConcurrencyPool.SelectOrderedAsync(
             conflictDomains.Count,
             context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-            (index, cancellationToken) => Task.Run(
-              () =>
-              {
-                  cancellationToken.ThrowIfCancellationRequested();
-                  return _policy.Resolve(context, FilterCompetingAncestors(conflictDomains[index]));
-              },
-              cancellationToken),
+            (index, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return Task.FromResult(_policy.Resolve(context, FilterCompetingAncestors(conflictDomains[index])));
+            },
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();

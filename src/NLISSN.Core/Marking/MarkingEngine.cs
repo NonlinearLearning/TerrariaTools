@@ -25,7 +25,7 @@ public sealed class MarkingEngine
               node,
               (_, _) => Task.FromResult(CreateResult(rule.ProducedOutputs, RunRule(context, root, rule))));
         }).ToList();
-        var execution = new RuleGraphExecutor().ExecuteAsync(
+        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,

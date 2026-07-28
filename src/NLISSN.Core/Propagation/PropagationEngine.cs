@@ -73,7 +73,7 @@ public sealed class PropagationEngine
                   ExecuteRule(context, rule, GetInputMarks(node, inputs)))));
           }))
           .ToList();
-        var execution = new RuleGraphExecutor().ExecuteAsync(
+        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,

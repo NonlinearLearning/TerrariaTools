@@ -1,32 +1,33 @@
 using NLISSN.Rules;
+using NL.Concurrency;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace RoslynPrototype.Tests.Concurrency;
 
-public sealed class BoundedRuleStageSchedulerConcurrencyTests
+public sealed class BoundedConcurrencyPoolConcurrencyTests
 {
     private const int ConcurrentTrafficTestIterations = 10_000;
     private const string TerrariaExternalCodeSetPath =
       @"D:\lodes\TR\Backup\New1.27\1.45 2\TR";
     private readonly ITestOutputHelper _output;
 
-    public BoundedRuleStageSchedulerConcurrencyTests(ITestOutputHelper output)
+    public BoundedConcurrencyPoolConcurrencyTests(ITestOutputHelper output)
     {
         _output = output;
     }
 
     [Fact]
-    public async Task RunOrderedAsync_OnlyStartsTheFirstWorkerWindowBeforeAnyWorkCompletes()
+    public async Task SelectOrderedAsync_OnlyStartsTheFirstWorkerWindowBeforeAnyWorkCompletes()
     {
         const int itemCount = 100;
         const int maxDegreeOfParallelism = 4;
-        var scheduler = new BoundedRuleStageScheduler();
+        var scheduler = new BoundedConcurrencyPool();
         var firstWindowStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var startedCount = 0;
 
-        var runTask = scheduler.RunOrderedAsync(
+        var runTask = scheduler.SelectOrderedAsync(
           itemCount,
           maxDegreeOfParallelism,
           async (index, cancellationToken) =>
@@ -51,7 +52,7 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     }
 
     [Fact]
-    public async Task RunOrderedAsync_ComputesPeakConcurrentTraffic()
+    public async Task SelectOrderedAsync_ComputesPeakConcurrentTraffic()
     {
         var cases = new ConcurrentTrafficCase[]
         {
@@ -62,7 +63,7 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
             new("multi-wave", 7, 3, 3),
             new("invalid-capacity-normalized", 3, 0, 1)
         };
-        var scheduler = new BoundedRuleStageScheduler();
+        var scheduler = new BoundedConcurrencyPool();
         WriteConcurrentTrafficLine(
           $"start iterations={ConcurrentTrafficTestIterations};cases={cases.Length}");
 
@@ -74,7 +75,7 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
                   currentCase.ItemCount,
                   currentCase.MaxDegreeOfParallelism);
 
-                var results = await scheduler.RunOrderedAsync(
+                var results = await scheduler.SelectOrderedAsync(
                   currentCase.ItemCount,
                   currentCase.MaxDegreeOfParallelism,
                   probe.RunWorkItemAsync,
@@ -97,17 +98,17 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     }
 
     [Fact]
-    public async Task RunOrderedAsync_PreservesOrderWhenAsyncWorkCompletesOutOfOrder()
+    public async Task SelectOrderedAsync_PreservesOrderWhenAsyncWorkCompletesOutOfOrder()
     {
         const int itemCount = 5;
-        var scheduler = new BoundedRuleStageScheduler();
+        var scheduler = new BoundedConcurrencyPool();
         var releases = Enumerable.Range(0, itemCount)
           .Select(_ => new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously))
           .ToArray();
         var allStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var startedCount = 0;
 
-        var runTask = scheduler.RunOrderedAsync(
+        var runTask = scheduler.SelectOrderedAsync(
           itemCount,
           itemCount,
           async (index, cancellationToken) =>
@@ -133,14 +134,14 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     }
 
     [Fact]
-    public async Task RunOrderedAsync_CancelsAwaitingAsyncWorkItems()
+    public async Task SelectOrderedAsync_CancelsAwaitingAsyncWorkItems()
     {
-        var scheduler = new BoundedRuleStageScheduler();
+        var scheduler = new BoundedConcurrencyPool();
         using var cancellation = new CancellationTokenSource();
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var startedCount = 0;
 
-        var runTask = scheduler.RunOrderedAsync<int>(
+        var runTask = scheduler.SelectOrderedAsync<int>(
           4,
           2,
           async (_, cancellationToken) =>
@@ -160,14 +161,14 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     }
 
     [Fact]
-    public async Task RunOrderedAsync_TerrariaCodeSet_StressesAsyncAndConcurrentScheduling()
+    public async Task SelectOrderedAsync_TerrariaCodeSet_StressesAsyncAndConcurrentScheduling()
     {
         const int maxDegreeOfParallelism = 7;
         var files = LoadTerrariaCodeSetFiles();
         Assert.True(
           files.Count > maxDegreeOfParallelism * 100,
           $"Expected a large external code set at {TerrariaExternalCodeSetPath}.");
-        var scheduler = new BoundedRuleStageScheduler();
+        var scheduler = new BoundedConcurrencyPool();
         var releases = files
           .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
           .ToArray();
@@ -175,7 +176,7 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
         WriteConcurrentTrafficLine(
           $"terraria-start files={files.Count};mdop={maxDegreeOfParallelism};root={TerrariaExternalCodeSetPath}");
 
-        var runTask = scheduler.RunOrderedAsync(
+        var runTask = scheduler.SelectOrderedAsync(
           files.Count,
           maxDegreeOfParallelism,
           async (index, cancellationToken) =>
@@ -209,19 +210,19 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     }
 
     [Fact]
-    public async Task RunOrderedAsync_TerrariaCodeSet_MixesFastSlowAndAsyncIoWorkItems()
+    public async Task SelectOrderedAsync_TerrariaCodeSet_MixesFastSlowAndAsyncIoWorkItems()
     {
         const int itemCount = 257;
         const int maxDegreeOfParallelism = 9;
         var files = LoadTerrariaCodeSetFiles().Take(itemCount).ToArray();
         Assert.Equal(itemCount, files.Length);
-        var scheduler = new BoundedRuleStageScheduler();
+        var scheduler = new BoundedConcurrencyPool();
         var releases = files
           .Select(_ => new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
           .ToArray();
         var probe = new CodeSetAsyncConcurrencyProbe(files.Length, maxDegreeOfParallelism);
 
-        var runTask = scheduler.RunOrderedAsync(
+        var runTask = scheduler.SelectOrderedAsync(
           files.Length,
           maxDegreeOfParallelism,
           async (index, cancellationToken) =>
@@ -262,16 +263,16 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     }
 
     [Fact]
-    public async Task RunOrderedAsync_TerrariaCodeSet_PropagatesAsyncWorkItemFailure()
+    public async Task SelectOrderedAsync_TerrariaCodeSet_PropagatesAsyncWorkItemFailure()
     {
         const int itemCount = 64;
         const int maxDegreeOfParallelism = 8;
         const int failingIndex = 31;
         var files = LoadTerrariaCodeSetFiles().Take(itemCount).ToArray();
-        var scheduler = new BoundedRuleStageScheduler();
+        var scheduler = new BoundedConcurrencyPool();
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-          async () => await scheduler.RunOrderedAsync(
+          async () => await scheduler.SelectOrderedAsync(
             files.Length,
             maxDegreeOfParallelism,
             async (index, cancellationToken) =>
@@ -290,19 +291,19 @@ public sealed class BoundedRuleStageSchedulerConcurrencyTests
     }
 
     [Fact]
-    public async Task RunOrderedAsync_TerrariaCodeSet_CancelsQueuedAsyncWork()
+    public async Task SelectOrderedAsync_TerrariaCodeSet_CancelsQueuedAsyncWork()
     {
         const int maxDegreeOfParallelism = 7;
         var files = LoadTerrariaCodeSetFiles();
         Assert.True(
           files.Count > maxDegreeOfParallelism * 100,
           $"Expected a large external code set at {TerrariaExternalCodeSetPath}.");
-        var scheduler = new BoundedRuleStageScheduler();
+        var scheduler = new BoundedConcurrencyPool();
         using var cancellation = new CancellationTokenSource();
         var firstWaveStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var startedCount = 0;
 
-        var runTask = scheduler.RunOrderedAsync<int>(
+        var runTask = scheduler.SelectOrderedAsync<int>(
           files.Count,
           maxDegreeOfParallelism,
           async (_, cancellationToken) =>

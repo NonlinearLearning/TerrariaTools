@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\NL.Concurrency\NL.Concurrency.csproj" />
     <ProjectReference Include="..\..\src\NLISSN\NLISSN.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />

@@ -1,3 +1,4 @@
+using NL.Concurrency;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
@@ -6,44 +7,34 @@ namespace NLISSN.Rules;
 
 public sealed record RuleNodeResult(IReadOnlyDictionary<RuleOutputKind, IReadOnlyList<object>> Outputs)
 {
-    public static RuleNodeResult Empty { get; } = new(
-      new Dictionary<RuleOutputKind, IReadOnlyList<object>>());
+    public static RuleNodeResult Empty { get; } = new(new Dictionary<RuleOutputKind, IReadOnlyList<object>>());
 
     public static RuleNodeResult From(RuleOutputKind outputKind, params object[] values)
     {
-        return new RuleNodeResult(
-          new Dictionary<RuleOutputKind, IReadOnlyList<object>>
-          {
-              [outputKind] = values
-          });
+        return new RuleNodeResult(new Dictionary<RuleOutputKind, IReadOnlyList<object>>
+        {
+            [outputKind] = values
+        });
     }
 
-    public static RuleNodeResult FromProducedOutputs(
-      IReadOnlyList<RuleOutputKind> outputKinds,
-      IReadOnlyList<object> values)
+    public static RuleNodeResult FromProducedOutputs(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<object> values)
     {
         return new RuleNodeResult(outputKinds.ToDictionary(
           outputKind => outputKind,
           outputKind => IsStageOutput(outputKind)
             ? values
-            : (IReadOnlyList<object>)values
-              .Where(value => GetTypedOutputKind(value) == outputKind)
-              .ToList()));
+            : (IReadOnlyList<object>)values.Where(value => GetTypedOutputKind(value) == outputKind).ToList()));
     }
 
     public IReadOnlyList<object> GetOutputs(RuleOutputKind outputKind)
     {
-        return Outputs.TryGetValue(outputKind, out var values)
-          ? values
-          : Array.Empty<object>();
+        return Outputs.TryGetValue(outputKind, out var values) ? values : Array.Empty<object>();
     }
 
     private static bool IsStageOutput(RuleOutputKind outputKind)
     {
-        return outputKind is RuleOutputKind.SeedMark or
-          RuleOutputKind.PropagatedMark or
-          RuleOutputKind.LiftedMark or
-          RuleOutputKind.DecisionUnit;
+        return outputKind is RuleOutputKind.SeedMark or RuleOutputKind.PropagatedMark or
+            RuleOutputKind.LiftedMark or RuleOutputKind.DecisionUnit;
     }
 
     private static RuleOutputKind? GetTypedOutputKind(object value)
@@ -53,7 +44,7 @@ public sealed record RuleNodeResult(IReadOnlyDictionary<RuleOutputKind, IReadOnl
             MarkRecord mark => mark.OutputKind,
             PropagatedMarkRecord propagated => propagated.Mark.OutputKind,
             LiftedMarkRecord lifted => lifted.Mark.OutputKind,
-            _ => null
+            _ => null,
         };
     }
 }
@@ -88,27 +79,25 @@ public sealed record RuleGraphExecutionResult(
 {
     public IReadOnlyList<object> GetOutputs(RuleNodeId nodeId, RuleOutputKind outputKind)
     {
-        var node = Nodes.Single(node => node.NodeId == nodeId);
-        return node.Result.GetOutputs(outputKind);
+        return Nodes.Single(node => node.NodeId == nodeId).Result.GetOutputs(outputKind);
     }
 }
 
-public sealed record RuleGraphExecutionNodeResult(
-  RuleNodeId NodeId,
-  RuleNodeResult Result);
+public sealed record RuleGraphExecutionNodeResult(RuleNodeId NodeId, RuleNodeResult Result);
 
-public sealed record RuleGraphNodeTelemetry(
-  RuleNodeId NodeId,
-  int InputCount,
-  int OutputCount,
-  long ElapsedMilliseconds);
+public sealed record RuleGraphNodeTelemetry(RuleNodeId NodeId, int InputCount, int OutputCount, long ElapsedMilliseconds);
 
-public sealed record RuleGraphExecutionMetrics(
-  int PeakReadyNodeCount,
-  int PeakConcurrentNodeCount);
+public sealed record RuleGraphExecutionMetrics(int PeakReadyNodeCount, int PeakConcurrentNodeCount);
 
 public sealed class RuleGraphExecutor
 {
+    private readonly IConcurrencyPool _concurrencyPool;
+
+    public RuleGraphExecutor(IConcurrencyPool? concurrencyPool = null)
+    {
+        _concurrencyPool = concurrencyPool ?? new BoundedConcurrencyPool();
+    }
+
     public async Task<RuleGraphExecutionResult> ExecuteAsync(
       CompiledRuleGraph graph,
       IReadOnlyList<RuleGraphExecutionNode> executionNodes,
@@ -119,91 +108,53 @@ public sealed class RuleGraphExecutor
         ArgumentNullException.ThrowIfNull(executionNodes);
 
         var executors = executionNodes.ToDictionary(node => node.Node.NodeId);
-        if (executors.Count != graph.Nodes.Count ||
-            graph.Nodes.Any(node => !executors.ContainsKey(node.NodeId)))
+        if (executors.Count != graph.Nodes.Count || graph.Nodes.Any(node => !executors.ContainsKey(node.NodeId)))
         {
             throw new InvalidOperationException("Execution nodes must exactly match the compiled rule graph.");
         }
 
-        var remainingDependencies = graph.Nodes.ToDictionary(
-          node => node.NodeId,
-          node => node.Dependencies.Count);
-        var results = new Dictionary<RuleNodeId, RuleNodeResult>();
-        var telemetry = new Dictionary<RuleNodeId, RuleGraphNodeTelemetry>();
-        var ready = new SortedSet<RuleNodeId>(new GraphOrderComparer(graph.NodeIndexes));
-        var running = new Dictionary<Task<NodeExecutionCompletion>, RuleNodeId>();
+        var workItems = graph.Nodes.Select(node => new DependencyWorkItem<RuleNodeId, NodeExecutionCompletion>(
+          node.NodeId,
+          node.Dependencies.Select(dependency => dependency.Producer).Distinct().ToList(),
+          async (dependencyResults, token) =>
+          {
+              var inputs = BuildInputs(node, dependencyResults.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.Result));
+              var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+              var result = await executors[node.NodeId].ExecuteAsync(inputs, token);
+              stopwatch.Stop();
+              return new NodeExecutionCompletion(result, inputs.OutputCount, stopwatch.ElapsedMilliseconds);
+          })).ToList();
 
-        foreach (var node in graph.Nodes.Where(node => remainingDependencies[node.NodeId] == 0))
-        {
-            ready.Add(node.NodeId);
-        }
-
-        var degree = Math.Max(1, maxDegreeOfParallelism);
-        var peakReadyNodeCount = ready.Count;
-        var peakConcurrentNodeCount = 0;
-        while (ready.Count > 0 || running.Count > 0)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            while (ready.Count > 0 && running.Count < degree)
-            {
-                var nodeId = ready.Min!;
-                ready.Remove(nodeId);
-                var node = executors[nodeId];
-                var inputs = BuildInputs(node.Node, results);
-                var task = Task.Run(
-                  async () =>
-                  {
-                      var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-                      var result = await node.ExecuteAsync(inputs, cancellationToken);
-                      stopwatch.Stop();
-                      return new NodeExecutionCompletion(result, inputs.OutputCount, stopwatch.ElapsedMilliseconds);
-                  },
-                  cancellationToken);
-                running.Add(task, nodeId);
-                peakConcurrentNodeCount = Math.Max(peakConcurrentNodeCount, running.Count);
-            }
-
-            var completedTask = await Task.WhenAny(running.Keys);
-            var completedNodeId = running[completedTask];
-            running.Remove(completedTask);
-            var completed = await completedTask;
-            results.Add(completedNodeId, completed.Result);
-            telemetry.Add(
-              completedNodeId,
-              new RuleGraphNodeTelemetry(
-                completedNodeId,
-                completed.InputCount,
-                completed.Result.Outputs.Values.Sum(values => values.Count),
-                completed.ElapsedMilliseconds));
-
-            foreach (var downstreamNodeId in graph.DownstreamNodes[completedNodeId])
-            {
-                remainingDependencies[downstreamNodeId]--;
-                if (remainingDependencies[downstreamNodeId] == 0)
-                {
-                    ready.Add(downstreamNodeId);
-                    peakReadyNodeCount = Math.Max(peakReadyNodeCount, ready.Count);
-                }
-            }
-        }
+        var execution = await _concurrencyPool.RunDependencyGraphAsync(
+          workItems,
+          maxDegreeOfParallelism,
+          new GraphOrderComparer(graph.NodeIndexes),
+          cancellationToken);
 
         return new RuleGraphExecutionResult(
-          graph.Nodes
-            .Select(node => new RuleGraphExecutionNodeResult(node.NodeId, results[node.NodeId]))
-            .ToList(),
-          graph.Nodes.Select(node => telemetry[node.NodeId]).ToList(),
-          new RuleGraphExecutionMetrics(peakReadyNodeCount, peakConcurrentNodeCount));
+          graph.Nodes.Select(node => new RuleGraphExecutionNodeResult(node.NodeId, execution.Results[node.NodeId].Result)).ToList(),
+          graph.Nodes.Select(node =>
+          {
+              var completion = execution.Results[node.NodeId];
+              return new RuleGraphNodeTelemetry(
+                node.NodeId,
+                completion.InputCount,
+                completion.Result.Outputs.Values.Sum(values => values.Count),
+                completion.ElapsedMilliseconds);
+          }).ToList(),
+          new RuleGraphExecutionMetrics(execution.PeakReadyWorkItemCount, execution.PeakConcurrentWorkItemCount));
     }
 
     private static RuleNodeInputs BuildInputs(
       RuleGraphNode node,
       IReadOnlyDictionary<RuleNodeId, RuleNodeResult> results)
     {
-        var inputs = node.Dependencies
+        return new RuleNodeInputs(node.Dependencies
           .Select(dependency => dependency.Producer)
           .Distinct()
-          .ToDictionary(producer => producer, producer => results[producer]);
-        return new RuleNodeInputs(inputs);
+          .ToDictionary(producer => producer, producer => results[producer]));
     }
 
     private sealed class GraphOrderComparer : IComparer<RuleNodeId>
@@ -236,8 +187,5 @@ public sealed class RuleGraphExecutor
         }
     }
 
-    private sealed record NodeExecutionCompletion(
-      RuleNodeResult Result,
-      int InputCount,
-      long ElapsedMilliseconds);
+    private sealed record NodeExecutionCompletion(RuleNodeResult Result, int InputCount, long ElapsedMilliseconds);
 }

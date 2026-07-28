@@ -42,9 +42,12 @@ public sealed partial class NLCPGBuilder
         }
 
         // 并行部分只读取 SemanticModel 并收集记录；节点、边和分片由按源顺序的提交回调统一物化。
-        BoundedPartitionWorkWindow.RunOrdered(
+        _concurrencyPool.CommitOrdered(
           operationRoots,
-          _options.EffectiveMaxDegreeOfParallelism,
+          new NL.Concurrency.ConcurrencyWindowOptions(
+            _options.EffectiveMaxDegreeOfParallelism,
+            _options.EffectiveOrderedResultReorderAllowance,
+            _options.EffectiveMaxOrderedResultRecordCount),
           (rootPlan, _) => AnalyzeOperationPartition(rootPlan, context.SemanticModel),
           (partition, order) =>
           {
@@ -80,9 +83,7 @@ public sealed partial class NLCPGBuilder
                   facts?.Release();
               }
           },
-          retainedRecordCount: partition => partition.Records.Count,
-          reorderAllowance: _options.EffectiveOrderedResultReorderAllowance,
-          maxCompletedRecordCount: _options.EffectiveMaxOrderedResultRecordCount);
+          retainedRecordCount: partition => partition.Records.Count);
     }
 
     private OperationPartitionResult AnalyzeOperationPartition(OperationRootPlan rootPlan, SemanticModel semanticModel)

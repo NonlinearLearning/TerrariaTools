@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using NL.Concurrency;
 using NLCPG.Persistence;
 using NLCPG.Persistence.Sqlite;
 using NLCPG.Builder.Streaming;
@@ -15,10 +16,12 @@ internal sealed class CpgShardBuildCoordinator
 {
     private static Action<object>? _exportCheckpointObserver;
     private readonly CpgPersistenceOptions _options;
+    private readonly IConcurrencyPool _concurrencyPool;
 
-    internal CpgShardBuildCoordinator(CpgPersistenceOptions options)
+    internal CpgShardBuildCoordinator(CpgPersistenceOptions options, IConcurrencyPool concurrencyPool)
     {
         _options = options;
+        _concurrencyPool = concurrencyPool;
         _options.Validate();
     }
 
@@ -76,14 +79,10 @@ internal sealed class CpgShardBuildCoordinator
           skeletonNodeIds));
         sourceSequence += 1;
         var activeExports = 0;
-        await Parallel.ForEachAsync(
+        await _concurrencyPool.ForEachAsync(
           exportRequests,
-          new ParallelOptions
-          {
-              MaxDegreeOfParallelism = _options.MaxConcurrentShardExports,
-              CancellationToken = cancellationToken,
-          },
-          async (request, token) =>
+          _options.MaxConcurrentShardExports,
+          async (request, _, token) =>
           {
               var active = Interlocked.Increment(ref activeExports);
               session.ObserveShardExport(active);

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
+using NL.Concurrency;
 using NLCPG.Builder;
 
 namespace NLISSN.Rules;
@@ -30,79 +31,17 @@ public sealed record AnalysisEpoch(
   int SourceVersion,
   int CacheVersion);
 
-public interface IRuleStageScheduler
-{
-    // 在受控并发下执行一组工作项，并按输入顺序返回结果列表。
-    Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(int itemCount, int maxDegreeOfParallelism, Func<int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken);
-}
-
-public sealed class BoundedRuleStageScheduler : IRuleStageScheduler
-{
-    // 在限制并发度的前提下按输入索引回填结果，保证调用方可按声明顺序消费。
-    public async Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(int itemCount, int maxDegreeOfParallelism, Func<int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(workItem);
-        if (itemCount < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(itemCount));
-        }
-
-        if (itemCount == 0)
-        {
-            return Array.Empty<TResult>();
-        }
-
-        if (Math.Max(1, maxDegreeOfParallelism) == 1)
-        {
-            var serialResults = new TResult[itemCount];
-            for (var index = 0; index < itemCount; index++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                serialResults[index] = await workItem(index, cancellationToken);
-            }
-
-            return serialResults;
-        }
-
-        // 工作项可按任意顺序完成，但始终写回其输入索引，供调用方按声明顺序消费。
-        var results = new TResult[itemCount];
-        var nextIndex = -1;
-        var workerCount = Math.Min(itemCount, Math.Max(1, maxDegreeOfParallelism));
-        var workers = new Task[workerCount];
-        for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
-        {
-            workers[workerIndex] = Task.Run(async () =>
-            {
-                while (true)
-                {
-                    var index = Interlocked.Increment(ref nextIndex);
-                    if (index >= itemCount)
-                    {
-                        return;
-                    }
-
-                    cancellationToken.ThrowIfCancellationRequested();
-                    results[index] = await workItem(index, cancellationToken);
-                }
-            }, cancellationToken);
-        }
-
-        await Task.WhenAll(workers);
-        return results;
-    }
-}
-
 public sealed class AnalysisRuntime
 {
     private readonly RuntimeCacheRegistry _cacheRegistry;
     private readonly AsyncLocal<CpgBuildAdmissionBudget.CpgBuildAdmissionLease?> _currentCpgBuildAdmissionLease = new();
 
     // 用执行选项、epoch 和可选调度器创建一次分析运行时，并初始化配套缓存与 CPG 准入预算。
-    public AnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, AnalysisEpoch epoch, IRuleStageScheduler? scheduler = null)
+    public AnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, AnalysisEpoch epoch, IConcurrencyPool? concurrencyPool = null)
       : this(
         executionOptions,
         epoch,
-        scheduler,
+        concurrencyPool,
         new RuntimeCacheRegistry(),
         new CpgBuildAdmissionBudget(
           executionOptions.EffectiveCpgMaxDegreeOfParallelism,
@@ -110,11 +49,11 @@ public sealed class AnalysisRuntime
     {
     }
 
-    private AnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, AnalysisEpoch epoch, IRuleStageScheduler? scheduler, RuntimeCacheRegistry cacheRegistry, CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
+    private AnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, AnalysisEpoch epoch, IConcurrencyPool? concurrencyPool, RuntimeCacheRegistry cacheRegistry, CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
     {
         ExecutionOptions = executionOptions;
         Epoch = epoch;
-        Scheduler = scheduler ?? new BoundedRuleStageScheduler();
+        ConcurrencyPool = concurrencyPool ?? new BoundedConcurrencyPool();
         _cacheRegistry = cacheRegistry;
         CpgBuildAdmissionBudget = cpgBuildAdmissionBudget;
     }
@@ -123,7 +62,7 @@ public sealed class AnalysisRuntime
 
     public AnalysisEpoch Epoch { get; }
 
-    public IRuleStageScheduler Scheduler { get; }
+    public IConcurrencyPool ConcurrencyPool { get; }
 
     public CpgBuildAdmissionBudget CpgBuildAdmissionBudget { get; }
 
@@ -168,7 +107,7 @@ public sealed class AnalysisRuntime
         return new AnalysisRuntime(
           ExecutionOptions,
           Epoch with { CacheVersion = Epoch.CacheVersion + 1 },
-          Scheduler,
+          ConcurrencyPool,
           _cacheRegistry,
           CpgBuildAdmissionBudget);
     }
@@ -183,7 +122,7 @@ public sealed class AnalysisRuntime
             Epoch.EpochId + 1,
             Epoch.SourceVersion + 1,
             Epoch.CacheVersion + 1),
-          Scheduler,
+          ConcurrencyPool,
           _cacheRegistry,
           CpgBuildAdmissionBudget);
     }

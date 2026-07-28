@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
+using NL.Concurrency;
 using NLCPG.Builder.Preallocation;
 using NLCPG.Builder.Passes;
 using NLCPG.Builder.Streaming;
@@ -64,6 +65,7 @@ public sealed partial class NLCPGBuilder
     private readonly Dictionary<SyntaxNode, SyntaxSemanticFacts> _partitionedSyntaxFacts = new(ReferenceEqualityComparer.Instance);
     private readonly List<INamedTypeSymbol> _declaredTypes = new();
     private readonly NLCPGBuilderOptions _options;
+    private readonly IConcurrencyPool _concurrencyPool;
 
     private sealed record CapabilityBuildPlan(
         NLCPGCapability ResolvedCapabilities,
@@ -81,9 +83,10 @@ public sealed partial class NLCPGBuilder
         IReadOnlyDictionary<IOperation, NLCPGNode> NodesByOperation);
 
     // 以给定选项初始化构图器；未提供时使用默认配置。
-    public NLCPGBuilder(NLCPGBuilderOptions? options = null)
+    public NLCPGBuilder(NLCPGBuilderOptions? options = null, IConcurrencyPool? concurrencyPool = null)
     {
         _options = options ?? NLCPGBuilderOptions.CreateDefault();
+        _concurrencyPool = concurrencyPool ?? new BoundedConcurrencyPool();
     }
 
     // 从源码文本直接创建语义模型并构建冻结后的 CPG。
@@ -166,7 +169,7 @@ public sealed partial class NLCPGBuilder
         var persistenceHit = false;
         if (_options.Persistence is not null)
         {
-            var restoredBase = new CpgShardBuildCoordinator(_options.Persistence)
+            var restoredBase = new CpgShardBuildCoordinator(_options.Persistence, _concurrencyPool)
                 .TryRestoreBaseAsync(context, CancellationToken.None)
                 .GetAwaiter()
                 .GetResult();
@@ -236,7 +239,7 @@ public sealed partial class NLCPGBuilder
 
             if (_options.Persistence is not null && !streamingPersistenceCompleted && !persistenceHit)
             {
-                new CpgShardBuildCoordinator(_options.Persistence)
+                new CpgShardBuildCoordinator(_options.Persistence, _concurrencyPool)
                   .PersistAsync(context, CancellationToken.None)
                   .GetAwaiter()
                   .GetResult();

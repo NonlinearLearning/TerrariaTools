@@ -16,7 +16,7 @@ internal sealed class RewritePlanReplayService
     internal async Task<PrototypeAnalysisResult> ReplayAsync(string inputRoot, string artifactRoot, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
     {
         var (_, plans) = _artifactService.ReadAndValidate(artifactRoot, inputRoot);
-        var results = await runtime.Scheduler.RunOrderedAsync(
+        var results = await runtime.ConcurrencyPool.SelectOrderedAsync(
           plans.Count,
           runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
           (index, cancellationToken) => Task.FromResult(Execute(inputRoot, plans[index], cancellationToken)),

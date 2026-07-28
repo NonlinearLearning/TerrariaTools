@@ -1478,29 +1478,20 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return;
         }
 
-        Parallel.ForEach(
+        runtime.ConcurrencyPool.ForEachAsync(
           scans,
-          new ParallelOptions
+          runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+          (scan, _, cancellationToken) =>
           {
-              MaxDegreeOfParallelism = runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-              CancellationToken = runtime.ExecutionOptions.CancellationToken
-          },
-          (scan, state) =>
-          {
-              if (Volatile.Read(ref shouldStop) != 0)
+              cancellationToken.ThrowIfCancellationRequested();
+              if (Volatile.Read(ref shouldStop) == 0)
               {
-                  state.Stop();
-                  return;
+                  visit(scan, Stop);
               }
 
-              visit(
-                scan,
-                () =>
-                {
-                    Stop();
-                    state.Stop();
-                });
-          });
+              return Task.CompletedTask;
+          },
+          runtime.ExecutionOptions.CancellationToken).GetAwaiter().GetResult();
     }
 
     // 判断删除指定参数后，是否会与同名现有重载发生签名冲突。

@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NL.Concurrency;
 using NLCPG.Contracts;
 using NLCPG.Analysis.FlowSummaries;
 using System.Text;
@@ -619,7 +620,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void MarkingEngine_Run_DoesNotUseGroupScheduler()
     {
         var source = PipelineSources.ParallelMarkingSource;
-        var scheduler = new RecordingScheduler();
+        var scheduler = new RecordingConcurrencyPool();
         var runtime = CreateParallelRuntime(scheduler);
         var (context, root) = CreateContext(source, runtime: runtime);
         var engine = new MarkingEngine();
@@ -644,7 +645,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void PropagationEngine_Run_DoesNotScheduleByGroupKey()
     {
         var source = PipelineSources.ParallelPropagationSource;
-        var scheduler = new RecordingScheduler();
+        var scheduler = new RecordingConcurrencyPool();
         var runtime = CreateParallelRuntime(scheduler);
         var (context, root) = CreateContext(source, runtime: runtime);
         var seedMarks = new MarkingEngine().Run(
@@ -678,7 +679,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void MarkLiftingEngine_Run_DoesNotScheduleByGroupKey()
     {
         var source = PipelineSources.ParallelMarkingSource;
-        var scheduler = new RecordingScheduler();
+        var scheduler = new RecordingConcurrencyPool();
         var runtime = CreateParallelRuntime(scheduler);
         var (context, root) = CreateContext(source, runtime: runtime);
         var seedMarks = new MarkingEngine().Run(
@@ -714,7 +715,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void RuleDecisionEngine_Decide_SchedulesOnlyConflictResolution()
     {
         var source = PipelineSources.ParallelMarkingSource;
-        var scheduler = new RecordingScheduler();
+        var scheduler = new RecordingConcurrencyPool();
         var runtime = CreateParallelRuntime(scheduler);
         var (context, root) = CreateContext(source, runtime: runtime);
         var seedMarks = new MarkingEngine().Run(
@@ -4756,7 +4757,7 @@ public sealed class PipelineComponentTests : IDisposable
         return (new RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options, runtime: runtime), root);
     }
 
-    private static  AnalysisRuntime CreateParallelRuntime(RecordingScheduler scheduler)
+    private static  AnalysisRuntime CreateParallelRuntime(RecordingConcurrencyPool scheduler)
     {
         return new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
@@ -4883,8 +4884,10 @@ public sealed class PipelineComponentTests : IDisposable
 
     private sealed record TestCompilationCacheB((int TreeCount, int StableId) Value);
 
-    private sealed class RecordingScheduler : IRuleStageScheduler
+    private sealed class RecordingConcurrencyPool : IConcurrencyPool
     {
+        private readonly IConcurrencyPool _inner = new BoundedConcurrencyPool();
+
         public int InvocationCount { get; private set; }
 
         public List<int> ItemCounts { get; } = new();
@@ -4895,7 +4898,7 @@ public sealed class PipelineComponentTests : IDisposable
             ItemCounts.Clear();
         }
 
-        public async Task<IReadOnlyList<TResult>> RunOrderedAsync<TResult>(int itemCount, int maxDegreeOfParallelism, Func<int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
+        public async Task<IReadOnlyList<TResult>> SelectOrderedAsync<TResult>(int itemCount, int maxDegreeOfParallelism, Func<int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
         {
             _ = maxDegreeOfParallelism;
             InvocationCount++;
@@ -4909,6 +4912,32 @@ public sealed class PipelineComponentTests : IDisposable
             }
 
             return results;
+        }
+
+        public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TSource, TResult>(IReadOnlyList<TSource> sources, int maxDegreeOfParallelism, Func<TSource, int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken = default)
+        {
+            return _inner.SelectOrderedAsync(sources, maxDegreeOfParallelism, workItem, cancellationToken);
+        }
+
+        public void CommitOrdered<TSource, TResult>(IReadOnlyList<TSource> sources, ConcurrencyWindowOptions options, Func<TSource, int, TResult> workItem, Action<TResult, int> commit, Func<TResult, int>? retainedRecordCount = null, CancellationToken cancellationToken = default)
+        {
+            _inner.CommitOrdered(sources, options, workItem, commit, retainedRecordCount, cancellationToken);
+        }
+
+        public void CommitTwoStageOrdered<TSource, TCollected, TPrepared, TResult>(IReadOnlyList<TSource> sources, ConcurrencyWindowOptions options, Func<TSource, int, TCollected> collect, Func<TCollected, int, TPrepared> prepare, Func<TPrepared, int, TResult> solve, Action<TResult, int> commit, Func<TCollected, int>? collectedRetainedRecordCount = null, Func<TResult, int>? resultRetainedRecordCount = null, CancellationToken cancellationToken = default)
+        {
+            _inner.CommitTwoStageOrdered(sources, options, collect, prepare, solve, commit, collectedRetainedRecordCount, resultRetainedRecordCount, cancellationToken);
+        }
+
+        public Task ForEachAsync<TSource>(IReadOnlyList<TSource> sources, int maxDegreeOfParallelism, Func<TSource, int, CancellationToken, Task> workItem, CancellationToken cancellationToken = default)
+        {
+            return _inner.ForEachAsync(sources, maxDegreeOfParallelism, workItem, cancellationToken);
+        }
+
+        public Task<DependencyExecutionResult<TNode, TResult>> RunDependencyGraphAsync<TNode, TResult>(IReadOnlyList<DependencyWorkItem<TNode, TResult>> workItems, int maxDegreeOfParallelism, IComparer<TNode> readyOrder, CancellationToken cancellationToken = default)
+            where TNode : notnull
+        {
+            return _inner.RunDependencyGraphAsync(workItems, maxDegreeOfParallelism, readyOrder, cancellationToken);
         }
     }
 

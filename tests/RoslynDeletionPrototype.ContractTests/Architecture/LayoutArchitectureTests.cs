@@ -7,6 +7,7 @@ public sealed class  LayoutArchitectureTests
   [Fact]
   public void ProductionProjects_UseTheNlissnProjectLayout()
   {
+    Assert.True(File.Exists(ProjectPath("src", "NL.Concurrency", "NL.Concurrency.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Core", "NLISSN.Core.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Rules", "NLISSN.Rules.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Application", "NLISSN.Application.csproj")));
@@ -31,11 +32,19 @@ public sealed class  LayoutArchitectureTests
   public void ProductionProjectReferences_MatchTheTargetDependencyGraph()
   {
     AssertProjectReferences(
-      new[] { "..\\NLCPG\\NLCPG.csproj" },
+      Array.Empty<string>(),
+      "src", "NL.Concurrency", "NL.Concurrency.csproj");
+    AssertProjectReferences(
+      new[]
+      {
+        "..\\NL.Concurrency\\NL.Concurrency.csproj",
+        "..\\NLCPG\\NLCPG.csproj"
+      },
       "src", "NLISSN.Core", "NLISSN.Core.csproj");
     AssertProjectReferences(
       new[]
       {
+        "..\\NL.Concurrency\\NL.Concurrency.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj"
       },
@@ -43,6 +52,7 @@ public sealed class  LayoutArchitectureTests
     AssertProjectReferences(
       new[]
       {
+        "..\\NL.Concurrency\\NL.Concurrency.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj"
       },
@@ -50,7 +60,9 @@ public sealed class  LayoutArchitectureTests
     AssertProjectReferences(
       new[]
       {
+        "..\\NL.Concurrency\\NL.Concurrency.csproj",
         "..\\NLISSN.Application\\NLISSN.Application.csproj",
+        "..\\NLISSN.Logging\\NLISSN.Logging.csproj",
         "..\\NLISSN.Rules\\NLISSN.Rules.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj"

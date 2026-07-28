@@ -65,7 +65,7 @@ public sealed class MarkLiftingEngine
                 });
           }))
           .ToList();
-        var execution = new RuleGraphExecutor().ExecuteAsync(
+        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,

@@ -328,9 +328,12 @@ namespace NLCPG.Builder
 
         private void RunDataFlowPipeline(IReadOnlyList<DataFlowMethodPartition> methodPartitions, DataFlowOperationIndex operationIndex, NLCPGGraph graph)
         {
-            BoundedPartitionWorkWindow.RunTwoStageOrdered(
+            _concurrencyPool.CommitTwoStageOrdered(
               methodPartitions,
-              _options.EffectiveMaxDegreeOfParallelism,
+              new NL.Concurrency.ConcurrencyWindowOptions(
+                _options.EffectiveMaxDegreeOfParallelism,
+                _options.EffectiveOrderedResultReorderAllowance,
+                _options.EffectiveMaxOrderedResultRecordCount),
               AnalyzeUsedFactPartition,
               (usedFacts, order) => BuildCfgSensitivePartitionPlan(usedFacts, methodPartitions[order], operationIndex, graph),
               (plan, _) => new CfgSensitiveWorkResult(plan, AnalyzeCfgSensitivePartition(plan, _options.EffectiveDataFlowOptions)),
@@ -351,9 +354,7 @@ namespace NLCPG.Builder
                   }
               },
               collectedRetainedRecordCount: partition => partition.RetainedRecordCount,
-              resultRetainedRecordCount: result => result.Plan.FlowNodes.Length + result.Partition.Candidates.EdgeCandidates.Count,
-              reorderAllowance: _options.EffectiveOrderedResultReorderAllowance,
-              maxCompletedRecordCount: _options.EffectiveMaxOrderedResultRecordCount);
+              resultRetainedRecordCount: result => result.Plan.FlowNodes.Length + result.Partition.Candidates.EdgeCandidates.Count);
         }
 
         private MethodDataFlowPlan BuildCfgSensitivePartitionPlan(UsedFactPartition partition, DataFlowMethodPartition methodPartition, DataFlowOperationIndex operationIndex, NLCPGGraph graph)

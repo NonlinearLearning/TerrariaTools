@@ -2,11 +2,11 @@ using NLCPG.Builder;
 using NLCPG.Contracts;
 using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Model;
+using NL.Concurrency;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynPrototype.Tests.TestCodeSet.Cpg;
-using System.Reflection;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -16,14 +16,6 @@ public sealed class NLCPGPartitionedBuilderTests
   [Fact]
   public async Task OrderedPartitionWindow_CommitsInOrderEvenWhenHeadWorkBlocks()
   {
-    var windowType = typeof(NLCPGBuilder).Assembly.GetType(
-      "NLCPG.Builder.BoundedPartitionWorkWindow");
-    Assert.NotNull(windowType);
-    var runOrdered = windowType.GetMethod(
-      "RunOrdered",
-      BindingFlags.Public | BindingFlags.Static);
-    Assert.NotNull(runOrdered);
-
     using var firstWorkStarted = new ManualResetEventSlim();
     using var releaseFirstWork = new ManualResetEventSlim();
     using var lookAheadWorkStarted = new ManualResetEventSlim();
@@ -52,20 +44,15 @@ public sealed class NLCPGPartitionedBuilderTests
       }
     };
 
-    var completionTask = Task.Run(() =>
-      runOrdered.MakeGenericMethod(typeof(int), typeof(int)).Invoke(
-        null,
-        new object?[]
-        {
-          new[] { 10, 20, 30, 40 },
-          2,
-          work,
-          commit,
-          CancellationToken.None,
-          null,
-          2,
-          100,
-        }));
+    var pool = new BoundedConcurrencyPool();
+    var completionTask = Task.Run(() => pool.CommitOrdered(
+      new[] { 10, 20, 30, 40 },
+      new ConcurrencyWindowOptions(
+        MaxDegreeOfParallelism: 2,
+        ReorderAllowance: 2,
+        MaxCompletedRecordCount: 100),
+      work,
+      commit));
 
     Assert.True(firstWorkStarted.Wait(TimeSpan.FromSeconds(5)));
     Assert.True(lookAheadWorkStarted.Wait(TimeSpan.FromSeconds(5)));
@@ -79,14 +66,6 @@ public sealed class NLCPGPartitionedBuilderTests
   [Fact]
   public async Task TwoStagePartitionWindow_BoundsLookAheadAndCommitsInOrderWhenHeadCollectionBlocks()
   {
-    var windowType = typeof(NLCPGBuilder).Assembly.GetType(
-      "NLCPG.Builder.BoundedPartitionWorkWindow");
-    Assert.NotNull(windowType);
-    var runTwoStageOrdered = windowType.GetMethod(
-      "RunTwoStageOrdered",
-      BindingFlags.Public | BindingFlags.Static);
-    Assert.NotNull(runTwoStageOrdered);
-
     using var firstCollectionStarted = new ManualResetEventSlim();
     using var releaseFirstCollection = new ManualResetEventSlim();
     using var secondLookAheadStarted = new ManualResetEventSlim();
@@ -123,23 +102,17 @@ public sealed class NLCPGPartitionedBuilderTests
       }
     };
 
-    var completionTask = Task.Run(() =>
-      runTwoStageOrdered.MakeGenericMethod(typeof(int), typeof(int), typeof(int), typeof(int)).Invoke(
-        null,
-        new object?[]
-        {
-          new[] { 10, 20, 30, 40 },
-          2,
-          collect,
-          prepare,
-          solve,
-          commit,
-          CancellationToken.None,
-          null,
-          null,
-          2,
-          100,
-        }));
+    var pool = new BoundedConcurrencyPool();
+    var completionTask = Task.Run(() => pool.CommitTwoStageOrdered(
+      new[] { 10, 20, 30, 40 },
+      new ConcurrencyWindowOptions(
+        MaxDegreeOfParallelism: 2,
+        ReorderAllowance: 2,
+        MaxCompletedRecordCount: 100),
+      collect,
+      prepare,
+      solve,
+      commit));
 
     Assert.True(firstCollectionStarted.Wait(TimeSpan.FromSeconds(5)));
     Assert.True(secondLookAheadStarted.Wait(TimeSpan.FromSeconds(5)));

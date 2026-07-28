@@ -146,7 +146,7 @@ public sealed class DirectoryAnalysisUseCase
         var oldestUnpublishedIndex = -1;
         var waitToPublishMilliseconds = 0L;
 
-        runtime.Scheduler.RunOrderedAsync(
+        runtime.ConcurrencyPool.SelectOrderedAsync(
           sources.Count,
           runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
           async (index, cancellationToken) =>
@@ -157,50 +157,45 @@ public sealed class DirectoryAnalysisUseCase
             .ConfigureAwait(false);
               using var scope = runtime.PushCpgBuildAdmissionLease(lease);
               var source = sources[index];
-              return await Task.Run(
-            () =>
-            {
-                  var result = new DirectoryFileAnalysisResult(source.Index, source.FilePath, AnalyzeFile(source));
-                  var completedTimestamp = Stopwatch.GetTimestamp();
-                  lock (publicationLock)
+              var result = new DirectoryFileAnalysisResult(source.Index, source.FilePath, AnalyzeFile(source));
+              var completedTimestamp = Stopwatch.GetTimestamp();
+              lock (publicationLock)
+              {
+                  completed[index] = true;
+                  completedResults[index] = result;
+                  completedTimestamps[index] = completedTimestamp;
+                  var unpublishedCount = 0;
+                  var oldestUnpublished = -1;
+                  for (var candidate = nextPublishIndex; candidate < sources.Count; candidate++)
                   {
-                      completed[index] = true;
-                      completedResults[index] = result;
-                      completedTimestamps[index] = completedTimestamp;
-                      var unpublishedCount = 0;
-                      var oldestUnpublished = -1;
-                      for (var candidate = nextPublishIndex; candidate < sources.Count; candidate++)
+                      if (!completed[candidate])
                       {
-                          if (!completed[candidate])
-                          {
-                              continue;
-                          }
-
-                          unpublishedCount++;
-                          oldestUnpublished = oldestUnpublished < 0 ? candidate : oldestUnpublished;
+                          continue;
                       }
 
-                      if (unpublishedCount > unpublishedCountPeak)
-                      {
-                          unpublishedCountPeak = unpublishedCount;
-                          oldestUnpublishedIndex = oldestUnpublished;
-                      }
-
-                      while (nextPublishIndex < sources.Count && completed[nextPublishIndex])
-                      {
-                          var publishTimestamp = Stopwatch.GetTimestamp();
-                          waitToPublishMilliseconds += (long)Stopwatch
-                        .GetElapsedTime(completedTimestamps[nextPublishIndex], publishTimestamp)
-                        .TotalMilliseconds;
-                          published.Add(completedResults[nextPublishIndex]!);
-                          completedResults[nextPublishIndex] = null;
-                          nextPublishIndex++;
-                      }
+                      unpublishedCount++;
+                      oldestUnpublished = oldestUnpublished < 0 ? candidate : oldestUnpublished;
                   }
 
-                  return 0;
-              },
-            cancellationToken).ConfigureAwait(false);
+                  if (unpublishedCount > unpublishedCountPeak)
+                  {
+                      unpublishedCountPeak = unpublishedCount;
+                      oldestUnpublishedIndex = oldestUnpublished;
+                  }
+
+                  while (nextPublishIndex < sources.Count && completed[nextPublishIndex])
+                  {
+                      var publishTimestamp = Stopwatch.GetTimestamp();
+                      waitToPublishMilliseconds += (long)Stopwatch
+                        .GetElapsedTime(completedTimestamps[nextPublishIndex], publishTimestamp)
+                        .TotalMilliseconds;
+                      published.Add(completedResults[nextPublishIndex]!);
+                      completedResults[nextPublishIndex] = null;
+                      nextPublishIndex++;
+                  }
+              }
+
+              return 0;
           },
           runtime.ExecutionOptions.CancellationToken).GetAwaiter().GetResult();
 
@@ -263,7 +258,7 @@ public sealed class DirectoryAnalysisUseCase
             return sources.Select(AnalyzeFile).ToList();
         }
 
-        return runtime.Scheduler.RunOrderedAsync(
+        return runtime.ConcurrencyPool.SelectOrderedAsync(
           sources.Count,
           runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
           (index, cancellationToken) =>
