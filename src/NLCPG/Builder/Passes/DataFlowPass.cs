@@ -3,7 +3,6 @@ using Microsoft.CodeAnalysis.Operations;
 using NLCPG.Builder.Streaming;
 using NLCPG.Contracts;
 using NLCPG.Model;
-using System.Diagnostics;
 
 namespace NLCPG.Builder.Passes
 {
@@ -29,44 +28,6 @@ namespace NLCPG.Builder
 {
     public sealed partial class NLCPGBuilder
     {
-        private sealed class DataFlowPassMetrics
-        {
-            public long EnumerateMethodBlocksElapsedMilliseconds { get; set; }
-            public long EnumerateOrderedOperationsElapsedMilliseconds { get; set; }
-            public long CfgSensitiveElapsedMilliseconds { get; set; }
-            public long ValueSourceEdgeElapsedMilliseconds { get; set; }
-            public long ReturnFlowEdgeElapsedMilliseconds { get; set; }
-            public long TerminalFlowEdgeElapsedMilliseconds { get; set; }
-            public long CallArgumentAndReturnElapsedMilliseconds { get; set; }
-            public long BuildFlowNeighborsElapsedMilliseconds { get; set; }
-            public long FixpointElapsedMilliseconds { get; set; }
-            public long ReachingDefinitionEdgeElapsedMilliseconds { get; set; }
-            public long PrepareFlowNodesElapsedMilliseconds { get; set; }
-            public long CollectUsedFactsElapsedMilliseconds { get; set; }
-            public long CreateDefinitionFactsElapsedMilliseconds { get; set; }
-            public long InitializeCfgSensitiveStateElapsedMilliseconds { get; set; }
-            public long CfgSensitiveCandidateGenerationElapsedMilliseconds { get; set; }
-            public long CfgSensitiveCandidateCommitElapsedMilliseconds { get; set; }
-            public int MethodBlockCount { get; set; }
-            public int OrderedOperationCount { get; set; }
-            public int FlowNodeCount { get; set; }
-            public int UsedFactCount { get; set; }
-            public int DefinitionFactCount { get; set; }
-            public int UsedFactPartitionCount { get; set; }
-            public int UsedFactPartitionMaxDegreeOfParallelism { get; set; }
-            public int CfgSensitivePartitionCount { get; set; }
-            public int CfgSensitivePartitionMaxDegreeOfParallelism { get; set; }
-            public int PeakBufferedCandidateBatchCount { get; set; }
-            public int CandidateEdgeCount { get; set; }
-            public int FrozenOperationNodeCount { get; set; }
-            public int MethodOperationNodeProjectionCount { get; set; }
-            public int UsedFactRecordCount { get; set; }
-            public int SkippedMethodCount { get; set; }
-            public int ReleasedCfgSensitivePlanCount { get; set; }
-            public long PrepareFlowNodesElapsedTicks { get; set; }
-            public long CollectUsedFactsElapsedTicks { get; set; }
-        }
-
         private sealed record UsedFactRecord(
             IReadOnlyList<DefinitionFact> DirectFacts,
             IReadOnlyList<UsedFactRecord> ChildRecords,
@@ -94,10 +55,12 @@ namespace NLCPG.Builder
             int Order,
             IOperation[] OrderedOperations,
             Dictionary<IOperation, UsedFactRecord> UsedFactsByOperation,
-            long EnumerateOrderedOperationsMilliseconds,
-            long CollectUsedFactsMilliseconds,
-            long CollectUsedFactsTicks,
-            int UsedFactCount);
+            int RetainedRecordCount);
+
+        private sealed record DataFlowMethodPartition(
+            IBlockOperation MethodBlock,
+            IOperation[] OrderedOperations,
+            IMethodSymbol? OwningMethod);
 
         private sealed class MethodDataFlowPlan
         {
@@ -156,6 +119,118 @@ namespace NLCPG.Builder
               CallSiteContext: null);
         }
 
+        private sealed class DataFlowCandidateCollector
+        {
+            private readonly List<CpgEdgeCandidate> _uniqueCandidates = new();
+            private readonly HashSet<CpgEdgeCandidate> _seenCandidates = new();
+
+            internal int RawCandidateCount { get; private set; }
+
+            internal bool TryAdd(NLCPGNode sourceNode, NLCPGNode targetNode, int maxCandidateEdges)
+            {
+                RawCandidateCount += 1;
+                if (RawCandidateCount > maxCandidateEdges)
+                {
+                    return false;
+                }
+
+                var candidate = CreateDataFlowCandidate(sourceNode, targetNode);
+                if (_seenCandidates.Add(candidate))
+                {
+                    _uniqueCandidates.Add(candidate);
+                }
+
+                return true;
+            }
+
+            internal LocalFlowCandidateSet ToCandidateSet()
+            {
+                return new LocalFlowCandidateSet(_uniqueCandidates);
+            }
+        }
+
+        private sealed class DefinitionFactIndex
+        {
+            private readonly Dictionary<string, List<NLCPGNode>> _byLocation = new(StringComparer.Ordinal);
+            private readonly Dictionary<string, List<NLCPGNode>> _byRoot = new(StringComparer.Ordinal);
+            private readonly Dictionary<string, List<NLCPGNode>> _byBase = new(StringComparer.Ordinal);
+            private readonly Dictionary<string, List<NLCPGNode>> _byBaseAndPath = new(StringComparer.Ordinal);
+
+            internal DefinitionFactIndex(IReadOnlyDictionary<NLCPGNode, DefinitionFact> factsByNode)
+            {
+                foreach (var pair in factsByNode)
+                {
+                    var fact = pair.Value;
+                    Add(_byLocation, fact.LocationKey, pair.Key);
+                    Add(_byRoot, FactRootKey(fact), pair.Key);
+                    Add(_byBase, fact.BaseKey, pair.Key);
+                    if (!string.IsNullOrEmpty(fact.BaseKey) && !string.IsNullOrEmpty(fact.PathKey))
+                    {
+                        Add(_byBaseAndPath, ComposeBaseAndPathKey(fact.BaseKey, fact.PathKey), pair.Key);
+                    }
+                }
+            }
+
+            internal bool TryGetCandidates(DefinitionFact usedFact, IReadOnlySet<NLCPGNode> reachingDefinitions, out IReadOnlyList<NLCPGNode> candidates)
+            {
+                if (string.IsNullOrEmpty(usedFact.LocationKey))
+                {
+                    candidates = Array.Empty<NLCPGNode>();
+                    return false;
+                }
+
+                var matches = new List<NLCPGNode>();
+                var seen = new HashSet<NLCPGNode>();
+                AddReachable(_byLocation, usedFact.LocationKey, reachingDefinitions, seen, matches);
+                AddReachable(_byRoot, usedFact.BaseKey, reachingDefinitions, seen, matches);
+                AddReachable(_byBase, FactRootKey(usedFact), reachingDefinitions, seen, matches);
+                if (!string.IsNullOrEmpty(usedFact.BaseKey) && !string.IsNullOrEmpty(usedFact.PathKey))
+                {
+                    AddReachable(_byBaseAndPath, ComposeBaseAndPathKey(usedFact.BaseKey, usedFact.PathKey), reachingDefinitions, seen, matches);
+                }
+
+                candidates = matches;
+                return true;
+            }
+
+            private static void Add(Dictionary<string, List<NLCPGNode>> index, string? key, NLCPGNode node)
+            {
+                if (string.IsNullOrEmpty(key))
+                {
+                    return;
+                }
+
+                if (!index.TryGetValue(key, out var nodes))
+                {
+                    nodes = new List<NLCPGNode>();
+                    index[key] = nodes;
+                }
+
+                nodes.Add(node);
+            }
+
+            private static void AddReachable(IReadOnlyDictionary<string, List<NLCPGNode>> index, string? key, IReadOnlySet<NLCPGNode> reachingDefinitions, HashSet<NLCPGNode> seen, List<NLCPGNode> matches)
+            {
+                if (string.IsNullOrEmpty(key) || !index.TryGetValue(key, out var nodes))
+                {
+                    return;
+                }
+
+                foreach (var node in nodes)
+                {
+                    if (reachingDefinitions.Contains(node) && seen.Add(node))
+                    {
+                        matches.Add(node);
+                    }
+                }
+            }
+
+            private static string ComposeBaseAndPathKey(string baseKey, string pathKey)
+            {
+                return $"{baseKey}\u001F{pathKey}";
+            }
+        }
+
         private static NLCPGNode ResolveCandidateNode(NLCPGGraph graph, StableNodeAnchor anchor)
         {
             return graph.AddNode(new NLCPGNode(
@@ -167,104 +242,70 @@ namespace NLCPG.Builder
         private sealed record CfgSensitivePartition(
           int Order,
           LocalFlowCandidateSet Candidates,
-          long ElapsedMilliseconds,
-          long CreateDefinitionFactsMilliseconds,
-          long InitializeStateMilliseconds,
-          long FixpointMilliseconds,
-          long ReachingDefinitionEdgeMilliseconds,
-          long ValueSourceEdgeMilliseconds,
-          long ReturnFlowEdgeMilliseconds,
-          long TerminalFlowEdgeMilliseconds,
-          int FlowNodeCount,
-          int DefinitionFactCount,
-          int FixpointIterations,
-          int UnreachableNodeCount,
-          int GeneratedCandidateCount,
           NLCPGDataFlowOverflowReason OverflowReason);
+
+        private sealed record CfgSensitiveWorkResult(
+            MethodDataFlowPlan Plan,
+            CfgSensitivePartition Partition);
 
         internal void RunDataFlowPass(NLCPGBuildContext context)
         {
-            AddReachingDefinitionDataFlow(context, new DataFlowPassMetrics());
+            AddReachingDefinitionDataFlow(context);
         }
 
-        private void AddReachingDefinitionDataFlow(NLCPGBuildContext context, DataFlowPassMetrics metrics)
+        private void AddReachingDefinitionDataFlow(NLCPGBuildContext context)
         {
             var graph = context.Graph;
-            var enumerateMethodBlocksStopwatch = Stopwatch.StartNew();
-            var methodBlocks = new List<IBlockOperation>();
-            var owningMethods = new Dictionary<IOperation, IMethodSymbol>(ReferenceEqualityComparer.Instance);
+            var methodPartitions = CreateDataFlowMethodPartitions(context.OperationInventory);
+            var operationIndex = CreateDataFlowOperationIndex(
+              context.OperationInventory,
+              methodPartitions.Select(partition => (IOperation)partition.MethodBlock).ToArray());
+            RunDataFlowPipeline(methodPartitions, operationIndex, graph);
+            // 方法内数据流补完后，再单独处理跨调用/属性访问的摘要流。
+            AddCallArgumentAndReturnDataFlow(context);
+        }
+
+        private IReadOnlyList<DataFlowMethodPartition> CreateDataFlowMethodPartitions(IReadOnlyList<OperationInventoryEntry> operationInventory)
+        {
+            var entriesByMethodRoot = new Dictionary<IOperation, List<OperationInventoryEntry>>(
+              (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
+            foreach (var entry in operationInventory)
+            {
+                if (!entriesByMethodRoot.TryGetValue(entry.MethodRoot, out var entries))
+                {
+                    entries = new List<OperationInventoryEntry>();
+                    entriesByMethodRoot[entry.MethodRoot] = entries;
+                }
+
+                entries.Add(entry);
+            }
+
+            var partitions = new List<DataFlowMethodPartition>();
             // 只抽出真正的方法根 block，避免局部 block 被当成独立数据流单元。
-            foreach (var rootEntry in context.OperationInventory)
+            foreach (var rootEntry in operationInventory)
             {
                 if (!rootEntry.IsRoot || rootEntry.Operation is not IBlockOperation methodBlock || !IsMethodRootBlock(methodBlock))
                 {
                     continue;
                 }
 
-                methodBlocks.Add(methodBlock);
-                if (rootEntry.OwningMethod is IMethodSymbol methodSymbol)
-                {
-                    owningMethods[methodBlock] = methodSymbol;
-                }
-            }
-            enumerateMethodBlocksStopwatch.Stop();
-            metrics.EnumerateMethodBlocksElapsedMilliseconds = enumerateMethodBlocksStopwatch.ElapsedMilliseconds;
-            metrics.MethodBlockCount = methodBlocks.Count;
-
-            var prepareFlowNodesStopwatch = Stopwatch.StartNew();
-            var operationIndex = CreateDataFlowOperationIndex(methodBlocks, owningMethods, graph);
-            // use-fact 采集可以并行做；后续 CFG 敏感求解依赖它的冻结结果。
-            var usedFactPartitions = RunUsedFactPartitionsAsync(methodBlocks).GetAwaiter().GetResult();
-            metrics.UsedFactPartitionCount = usedFactPartitions.Count;
-            metrics.UsedFactPartitionMaxDegreeOfParallelism = _options.EffectiveMaxDegreeOfParallelism;
-            var cfgSensitivePlans = BuildCfgSensitivePartitionPlans(usedFactPartitions, methodBlocks, operationIndex, graph, metrics);
-            prepareFlowNodesStopwatch.Stop();
-            metrics.PrepareFlowNodesElapsedMilliseconds = prepareFlowNodesStopwatch.ElapsedMilliseconds;
-            metrics.PrepareFlowNodesElapsedTicks = prepareFlowNodesStopwatch.ElapsedTicks;
-            metrics.FrozenOperationNodeCount = operationIndex.NodesByOperation.Count;
-            // CFG-sensitive 分区按 order 提交，保持图提交顺序稳定。
-            RunCfgSensitivePartitionsInOrder(cfgSensitivePlans,graph,metrics);
-            metrics.CfgSensitivePartitionCount = cfgSensitivePlans.Count;
-            metrics.CfgSensitivePartitionMaxDegreeOfParallelism = _options.EffectiveMaxDegreeOfParallelism;
-
-            foreach (var partition in usedFactPartitions.OrderBy(partition => partition.Order))
-            {
-                var orderedOperations = partition.OrderedOperations;
-                metrics.EnumerateOrderedOperationsElapsedMilliseconds += partition.EnumerateOrderedOperationsMilliseconds;
-                metrics.OrderedOperationCount += orderedOperations.Length;
-                metrics.CollectUsedFactsElapsedMilliseconds += partition.CollectUsedFactsMilliseconds;
-                metrics.CollectUsedFactsElapsedTicks += partition.CollectUsedFactsTicks;
-                metrics.UsedFactCount += partition.UsedFactCount;
-                metrics.UsedFactRecordCount += partition.OrderedOperations.Length;
-                metrics.MethodOperationNodeProjectionCount += partition.OrderedOperations.Length;
-
+                partitions.Add(new DataFlowMethodPartition(
+                  methodBlock,
+                  entriesByMethodRoot[rootEntry.MethodRoot]
+                    .Select(entry => entry.Operation)
+                    .ToArray(),
+                  rootEntry.OwningMethod));
             }
 
-            var callArgumentAndReturnStopwatch = Stopwatch.StartNew();
-            // 方法内数据流补完后，再单独处理跨调用/属性访问的摘要流。
-            AddCallArgumentAndReturnDataFlow(context);
-            callArgumentAndReturnStopwatch.Stop();
-            metrics.CallArgumentAndReturnElapsedMilliseconds += callArgumentAndReturnStopwatch.ElapsedMilliseconds;
+            return partitions;
         }
 
-        private async Task<IReadOnlyList<UsedFactPartition>> RunUsedFactPartitionsAsync(IReadOnlyList<IBlockOperation> methodBlocks)
+        private static UsedFactPartition AnalyzeUsedFactPartition(DataFlowMethodPartition methodPartition, int order)
         {
-            return await BoundedPartitionWorkWindow.RunAsync(
-              methodBlocks,
-              _options.EffectiveMaxDegreeOfParallelism,
-              AnalyzeUsedFactPartition);
-        }
-
-        private static UsedFactPartition AnalyzeUsedFactPartition(IBlockOperation methodBlock, int order)
-        {
-            var orderedOperationsStopwatch = Stopwatch.StartNew();
-            var orderedOperations = methodBlock.DescendantsAndSelf().ToArray();
-            orderedOperationsStopwatch.Stop();
-
-            var usedFactsStopwatch = Stopwatch.StartNew();
+            var orderedOperations = methodPartition.OrderedOperations;
             var usedFactsByOperation = new Dictionary<IOperation, UsedFactRecord>(
               ReferenceEqualityComparer.Instance);
-            var usedFactCount = 0;
+            var retainedRecordCount = orderedOperations.Length;
             for (var operationIndex = orderedOperations.Length - 1; operationIndex >= 0; operationIndex -= 1)
             {
                 var operation = orderedOperations[operationIndex];
@@ -275,26 +316,48 @@ namespace NLCPG.Builder
                   .ToArray();
                 var factCount = directFacts.Length + childRecords.Sum(record => record.FactCount);
                 usedFactsByOperation[operation] = new UsedFactRecord(directFacts, childRecords, factCount);
-                usedFactCount += factCount;
+                retainedRecordCount += factCount;
             }
-            usedFactsStopwatch.Stop();
 
             return new UsedFactPartition(
               order,
               orderedOperations,
               usedFactsByOperation,
-              orderedOperationsStopwatch.ElapsedMilliseconds,
-              usedFactsStopwatch.ElapsedMilliseconds,
-              usedFactsStopwatch.ElapsedTicks,
-              usedFactCount);
+              retainedRecordCount);
         }
 
-        private IReadOnlyList<MethodDataFlowPlan> BuildCfgSensitivePartitionPlans(IReadOnlyList<UsedFactPartition> usedFactPartitions, IReadOnlyList<IBlockOperation> methodBlocks, DataFlowOperationIndex operationIndex, NLCPGGraph graph, DataFlowPassMetrics metrics)
+        private void RunDataFlowPipeline(IReadOnlyList<DataFlowMethodPartition> methodPartitions, DataFlowOperationIndex operationIndex, NLCPGGraph graph)
         {
-            var plans = new List<MethodDataFlowPlan>(usedFactPartitions.Count);
-            foreach (var partition in usedFactPartitions.OrderBy(partition => partition.Order))
-            {
-                var methodBlock = methodBlocks[partition.Order];
+            BoundedPartitionWorkWindow.RunTwoStageOrdered(
+              methodPartitions,
+              _options.EffectiveMaxDegreeOfParallelism,
+              AnalyzeUsedFactPartition,
+              (usedFacts, order) => BuildCfgSensitivePartitionPlan(usedFacts, methodPartitions[order], operationIndex, graph),
+              (plan, _) => new CfgSensitiveWorkResult(plan, AnalyzeCfgSensitivePartition(plan, _options.EffectiveDataFlowOptions)),
+              (result, order) =>
+              {
+                  if (result.Plan.Order != order)
+                  {
+                      throw new InvalidOperationException("Data-flow plan order does not match the ordered commit slot.");
+                  }
+
+                  try
+                  {
+                      CommitCfgSensitivePartition(result.Plan, result.Partition, graph);
+                  }
+                  finally
+                  {
+                      result.Plan.Release();
+                  }
+              },
+              collectedRetainedRecordCount: partition => partition.RetainedRecordCount,
+              resultRetainedRecordCount: result => result.Plan.FlowNodes.Length + result.Partition.Candidates.EdgeCandidates.Count,
+              reorderAllowance: _options.EffectiveOrderedResultReorderAllowance,
+              maxCompletedRecordCount: _options.EffectiveMaxOrderedResultRecordCount);
+        }
+
+        private MethodDataFlowPlan BuildCfgSensitivePartitionPlan(UsedFactPartition partition, DataFlowMethodPartition methodPartition, DataFlowOperationIndex operationIndex, NLCPGGraph graph)
+        {
                 var orderedOperations = partition.OrderedOperations;
                 var operationNodes = new NLCPGNode[orderedOperations.Length];
                 var operationNodesByOperation = new Dictionary<IOperation, NLCPGNode>(
@@ -312,7 +375,7 @@ namespace NLCPG.Builder
                 var parameterDefinitionFacts = new Dictionary<NLCPGNode, DefinitionFact>();
                 var flowNodes = new List<NLCPGNode>(operationNodes.Length + 4);
                 var flowNodeSet = new HashSet<NLCPGNode>();
-                if (operationIndex.OwningMethods.TryGetValue(methodBlock, out var methodSymbol))
+                if (methodPartition.OwningMethod is IMethodSymbol methodSymbol)
                 {
                     // 参数节点也参与 reaching-definition，因此提前放进 flow graph。
                     foreach (var parameter in methodSymbol.Parameters)
@@ -331,7 +394,7 @@ namespace NLCPG.Builder
                 NLCPGNode? returnNode = null;
                 NLCPGNode? exitNode = null;
                 var methodFullName = $"method-partition-{partition.Order}";
-                if (operationIndex.OwningMethods.TryGetValue(methodBlock, out var flowMethodSymbol))
+                if (methodPartition.OwningMethod is IMethodSymbol flowMethodSymbol)
                 {
                     methodFullName = flowMethodSymbol.ToDisplayString();
                     // return/exit 只在方法实际需要返回值或退出流时加入计划。
@@ -344,12 +407,9 @@ namespace NLCPG.Builder
                     }
                 }
 
-                var flowNeighborsStopwatch = Stopwatch.StartNew();
                 var predecessors = SnapshotNeighbors(BuildFlowNeighborsFromCache(flowNodeSet, incoming: true));
                 var successors = SnapshotNeighbors(BuildFlowNeighborsFromCache(flowNodeSet, incoming: false));
-                flowNeighborsStopwatch.Stop();
-                metrics.BuildFlowNeighborsElapsedMilliseconds += flowNeighborsStopwatch.ElapsedMilliseconds;
-                plans.Add(new MethodDataFlowPlan(
+                return new MethodDataFlowPlan(
                   partition.Order,
                   methodFullName,
                   orderedOperations,
@@ -361,63 +421,22 @@ namespace NLCPG.Builder
                   returnNode,
                   exitNode,
                   predecessors,
-                  successors));
-            }
-
-            return plans;
+                  successors);
         }
 
-        private void RunCfgSensitivePartitionsInOrder(IReadOnlyList<MethodDataFlowPlan> plans, NLCPGGraph graph, DataFlowPassMetrics metrics)
-        {
-            BoundedPartitionWorkWindow.RunOrdered(
-              plans,
-              _options.EffectiveMaxDegreeOfParallelism,
-              (plan, _) => AnalyzeCfgSensitivePartition(plan, _options.EffectiveDataFlowOptions),
-              (partition, order) =>
-              {
-                  try
-                  {
-                      CommitCfgSensitivePartition(plans[order], partition, graph, metrics);
-                  }
-                  finally
-                  {
-                      plans[order].Release();
-                      metrics.ReleasedCfgSensitivePlanCount += 1;
-                  }
-              },
-              retainedRecordCount: partition => partition.Candidates.EdgeCandidates.Count,
-              reorderAllowance: _options.EffectiveOrderedResultReorderAllowance,
-              maxCompletedRecordCount: _options.EffectiveMaxOrderedResultRecordCount);
-        }
-
-        private static void CommitCfgSensitivePartition(MethodDataFlowPlan plan, CfgSensitivePartition partition, NLCPGGraph graph, DataFlowPassMetrics metrics)
+        private static void CommitCfgSensitivePartition(MethodDataFlowPlan plan, CfgSensitivePartition partition, NLCPGGraph graph)
         {
             if (partition.Order != plan.Order)
             {
                 throw new InvalidOperationException("Candidate batch order does not match its frozen plan.");
             }
 
-            metrics.CfgSensitiveElapsedMilliseconds += partition.ElapsedMilliseconds;
-            metrics.CfgSensitiveCandidateGenerationElapsedMilliseconds += partition.ElapsedMilliseconds;
-            metrics.CreateDefinitionFactsElapsedMilliseconds += partition.CreateDefinitionFactsMilliseconds;
-            metrics.InitializeCfgSensitiveStateElapsedMilliseconds += partition.InitializeStateMilliseconds;
-            metrics.FixpointElapsedMilliseconds += partition.FixpointMilliseconds;
-            metrics.ReachingDefinitionEdgeElapsedMilliseconds += partition.ReachingDefinitionEdgeMilliseconds;
-            metrics.ValueSourceEdgeElapsedMilliseconds += partition.ValueSourceEdgeMilliseconds;
-            metrics.ReturnFlowEdgeElapsedMilliseconds += partition.ReturnFlowEdgeMilliseconds;
-            metrics.TerminalFlowEdgeElapsedMilliseconds += partition.TerminalFlowEdgeMilliseconds;
-            metrics.CandidateEdgeCount += partition.GeneratedCandidateCount;
-            metrics.FlowNodeCount += partition.FlowNodeCount;
-            metrics.DefinitionFactCount += partition.DefinitionFactCount;
-
             if (partition.OverflowReason != NLCPGDataFlowOverflowReason.None)
             {
-                metrics.SkippedMethodCount += 1;
                 return;
             }
 
             // 真正的图提交只发生在这里，保证并行求解阶段不修改共享图。
-            var commitStopwatch = Stopwatch.StartNew();
             foreach (var edge in partition.Candidates.EdgeCandidates)
             {
                 graph.AddEdge(
@@ -428,19 +447,14 @@ namespace NLCPG.Builder
                     edge.ContextId,
                     edge.CallSiteContext);
             }
-            commitStopwatch.Stop();
-
-            metrics.CfgSensitiveCandidateCommitElapsedMilliseconds += commitStopwatch.ElapsedMilliseconds;
         }
 
         private static CfgSensitivePartition AnalyzeCfgSensitivePartition(MethodDataFlowPlan plan, NLCPGDataFlowOptions options)
         {
-            var totalStopwatch = Stopwatch.StartNew();
             var definitionFactsByNode = new Dictionary<NLCPGNode, DefinitionFact>(
               plan.ParameterDefinitionFacts);
 
             // 第一阶段：把“哪些节点定义了什么”整理成节点索引。
-            var createDefinitionFactsStopwatch = Stopwatch.StartNew();
             foreach (var operationNodePair in plan.OrderedOperations.Zip(plan.OperationNodes))
             {
                 var definedFact = DefinedFact(operationNodePair.First);
@@ -449,9 +463,6 @@ namespace NLCPG.Builder
                     definitionFactsByNode[operationNodePair.Second] = definedFact;
                 }
             }
-            createDefinitionFactsStopwatch.Stop();
-
-            var unreachableNodeCount = CountUnreachableNodes(plan);
             // 预算先于 fixpoint 检查，超限时直接按策略跳过或失败。
             if (definitionFactsByNode.Count > options.MaxDefinitionsPerMethod)
             {
@@ -459,23 +470,9 @@ namespace NLCPG.Builder
                   options,
                   plan.MethodFullName,
                   NLCPGDataFlowOverflowReason.DefinitionLimitExceeded);
-                totalStopwatch.Stop();
                 return new CfgSensitivePartition(
                   plan.Order,
                   new LocalFlowCandidateSet(Array.Empty<CpgEdgeCandidate>()),
-                  totalStopwatch.ElapsedMilliseconds,
-                  createDefinitionFactsStopwatch.ElapsedMilliseconds,
-                  InitializeStateMilliseconds: 0,
-                  FixpointMilliseconds: 0,
-                  ReachingDefinitionEdgeMilliseconds: 0,
-                  ValueSourceEdgeMilliseconds: 0,
-                  ReturnFlowEdgeMilliseconds: 0,
-                  TerminalFlowEdgeMilliseconds: 0,
-                  plan.FlowNodes.Length,
-                  definitionFactsByNode.Count,
-                  FixpointIterations: 0,
-                  UnreachableNodeCount: unreachableNodeCount,
-                  GeneratedCandidateCount: 0,
                   OverflowReason: NLCPGDataFlowOverflowReason.DefinitionLimitExceeded);
             }
 
@@ -485,28 +482,13 @@ namespace NLCPG.Builder
                   options,
                   plan.MethodFullName,
                   NLCPGDataFlowOverflowReason.FlowNodeLimitExceeded);
-                totalStopwatch.Stop();
                 return new CfgSensitivePartition(
                   plan.Order,
                   new LocalFlowCandidateSet(Array.Empty<CpgEdgeCandidate>()),
-                  totalStopwatch.ElapsedMilliseconds,
-                  createDefinitionFactsStopwatch.ElapsedMilliseconds,
-                  InitializeStateMilliseconds: 0,
-                  FixpointMilliseconds: 0,
-                  ReachingDefinitionEdgeMilliseconds: 0,
-                  ValueSourceEdgeMilliseconds: 0,
-                  ReturnFlowEdgeMilliseconds: 0,
-                  TerminalFlowEdgeMilliseconds: 0,
-                  plan.FlowNodes.Length,
-                  definitionFactsByNode.Count,
-                  FixpointIterations: 0,
-                  UnreachableNodeCount: unreachableNodeCount,
-                  GeneratedCandidateCount: 0,
                   OverflowReason: NLCPGDataFlowOverflowReason.FlowNodeLimitExceeded);
             }
 
             // 第二阶段：初始化 in/out 集和工作队列，准备跑数据流不动点。
-            var initializeStateStopwatch = Stopwatch.StartNew();
             var flowNodes = plan.FlowNodes;
             var inSets = flowNodes.ToDictionary(
               node => node,
@@ -516,14 +498,9 @@ namespace NLCPG.Builder
               _ => new HashSet<NLCPGNode>());
             var worklist = new Queue<NLCPGNode>(flowNodes);
             var queued = new HashSet<NLCPGNode>(flowNodes);
-            initializeStateStopwatch.Stop();
-
             // 第三阶段：标准 worklist fixpoint，按 predecessor/out 集传播 reaching definitions。
-            var fixpointStopwatch = Stopwatch.StartNew();
-            var fixpointIterations = 0;
             while (worklist.Count > 0)
             {
-                fixpointIterations += 1;
                 var nodeId = worklist.Dequeue();
                 queued.Remove(nodeId);
                 var incomingDefinitions = new HashSet<NLCPGNode>();
@@ -548,28 +525,36 @@ namespace NLCPG.Builder
                     }
                 }
             }
-            fixpointStopwatch.Stop();
-
             // 第四阶段：把 reaching-definition 命中转换成 DataFlow 候选边。
-            var edgeStopwatch = Stopwatch.StartNew();
-            var edges = new List<CpgEdgeCandidate>();
+            var candidates = new DataFlowCandidateCollector();
+            var definitionFactIndex = new DefinitionFactIndex(definitionFactsByNode);
             foreach (var operationNodePair in plan.OrderedOperations.Zip(plan.OperationNodes))
             {
+                var reachingDefinitions = inSets[operationNodePair.Second];
+                if (reachingDefinitions.Count == 0)
+                {
+                    continue;
+                }
+
                 foreach (var usedFact in plan.UsedFactsByOperation[operationNodePair.First].EnumerateFacts())
                 {
-                    foreach (var reachingDefinitionNode in inSets[operationNodePair.Second])
+                    IEnumerable<NLCPGNode> candidateDefinitions = definitionFactIndex.TryGetCandidates(usedFact, reachingDefinitions, out var indexedCandidates)
+                      ? indexedCandidates
+                      : reachingDefinitions;
+                    foreach (var reachingDefinitionNode in candidateDefinitions)
                     {
                         if (definitionFactsByNode.TryGetValue(reachingDefinitionNode, out var reachingFact) &&
                             FactsMatch(reachingFact, usedFact))
                         {
-                            edges.Add(CreateDataFlowCandidate(reachingDefinitionNode, operationNodePair.Second));
+                            if (!candidates.TryAdd(reachingDefinitionNode, operationNodePair.Second, options.MaxCandidateEdgesPerMethod))
+                            {
+                                return CreateCandidateLimitExceededPartition(plan, options);
+                            }
                         }
                     }
                 }
             }
-            edgeStopwatch.Stop();
             // 第五阶段：补显式值源流，让赋值/调用/return 的值来源可以直接连通。
-            var valueSourceStopwatch = Stopwatch.StartNew();
             foreach (var operation in plan.OrderedOperations)
             {
                 foreach (var sourceOperation in ValueSourceOperations(operation))
@@ -578,13 +563,14 @@ namespace NLCPG.Builder
                         plan.OperationNodesByOperation.TryGetValue(sourceOperation, out var sourceNode) &&
                         plan.OperationNodesByOperation.TryGetValue(operation, out var targetNode))
                     {
-                        edges.Add(CreateDataFlowCandidate(sourceNode, targetNode));
+                        if (!candidates.TryAdd(sourceNode, targetNode, options.MaxCandidateEdgesPerMethod))
+                        {
+                            return CreateCandidateLimitExceededPartition(plan, options);
+                        }
                     }
                 }
             }
-            valueSourceStopwatch.Stop();
             // 第六阶段：把显式 return 的值流到 MethodReturn / MethodExit。
-            var returnFlowStopwatch = Stopwatch.StartNew();
             if (plan.ReturnNode is not null && plan.ExitNode is not null)
             {
                 foreach (var returnOperation in plan.OrderedOperations.OfType<IReturnOperation>().Where(operation => operation.ReturnedValue is not null))
@@ -592,71 +578,46 @@ namespace NLCPG.Builder
                     if (plan.OperationNodesByOperation.TryGetValue(returnOperation.ReturnedValue!, out var valueNode) &&
                         plan.OperationNodesByOperation.TryGetValue(returnOperation, out var returnOperationNode))
                     {
-                        edges.Add(CreateDataFlowCandidate(valueNode, plan.ReturnNode));
-                        edges.Add(CreateDataFlowCandidate(plan.ReturnNode, plan.ExitNode));
-                        edges.Add(CreateDataFlowCandidate(returnOperationNode, plan.ExitNode));
+                        if (!candidates.TryAdd(valueNode, plan.ReturnNode, options.MaxCandidateEdgesPerMethod) ||
+                            !candidates.TryAdd(plan.ReturnNode, plan.ExitNode, options.MaxCandidateEdgesPerMethod) ||
+                            !candidates.TryAdd(returnOperationNode, plan.ExitNode, options.MaxCandidateEdgesPerMethod))
+                        {
+                            return CreateCandidateLimitExceededPartition(plan, options);
+                        }
                     }
                 }
             }
-            returnFlowStopwatch.Stop();
             // 第七阶段：没有显式 return 时，为末尾可顺序流出的语句补隐式返回值路径。
-            var terminalFlowStopwatch = Stopwatch.StartNew();
             if (plan.ReturnNode is not null && plan.OrderedOperations.FirstOrDefault() is IBlockOperation methodBlock)
             {
                 var terminalOperation = methodBlock.Operations.LastOrDefault();
                 if (terminalOperation is not null && !ContainsExplicitReturn(methodBlock) && !StopsSequentialFlow(terminalOperation) &&
                     plan.OperationNodesByOperation.TryGetValue(terminalOperation, out var terminalNode))
                 {
-                    edges.Add(CreateDataFlowCandidate(terminalNode, plan.ReturnNode));
+                    if (!candidates.TryAdd(terminalNode, plan.ReturnNode, options.MaxCandidateEdgesPerMethod))
+                    {
+                        return CreateCandidateLimitExceededPartition(plan, options);
+                    }
                 }
             }
-            terminalFlowStopwatch.Stop();
-            if (edges.Count > options.MaxCandidateEdgesPerMethod)
-            {
-                ThrowIfBudgetFailure(
-                  options,
-                  plan.MethodFullName,
-                  NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded);
-
-                totalStopwatch.Stop();
-                return new CfgSensitivePartition(
-                  plan.Order,
-                  new LocalFlowCandidateSet(Array.Empty<CpgEdgeCandidate>()),
-                  totalStopwatch.ElapsedMilliseconds,
-                  createDefinitionFactsStopwatch.ElapsedMilliseconds,
-                  initializeStateStopwatch.ElapsedMilliseconds,
-                  fixpointStopwatch.ElapsedMilliseconds,
-                  edgeStopwatch.ElapsedMilliseconds,
-                  valueSourceStopwatch.ElapsedMilliseconds,
-                  returnFlowStopwatch.ElapsedMilliseconds,
-                  terminalFlowStopwatch.ElapsedMilliseconds,
-                  plan.FlowNodes.Length,
-                  definitionFactsByNode.Count,
-                  fixpointIterations,
-                  unreachableNodeCount,
-                  edges.Count,
-                  NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded);
-            }
-            totalStopwatch.Stop();
 
             // 正常路径返回完整候选集；真正写图留给 ordered commit 阶段处理。
             return new CfgSensitivePartition(
               plan.Order,
-              new LocalFlowCandidateSet(edges),
-              totalStopwatch.ElapsedMilliseconds,
-              createDefinitionFactsStopwatch.ElapsedMilliseconds,
-              initializeStateStopwatch.ElapsedMilliseconds,
-              fixpointStopwatch.ElapsedMilliseconds,
-              edgeStopwatch.ElapsedMilliseconds,
-              valueSourceStopwatch.ElapsedMilliseconds,
-              returnFlowStopwatch.ElapsedMilliseconds,
-              terminalFlowStopwatch.ElapsedMilliseconds,
-              plan.FlowNodes.Length,
-              definitionFactsByNode.Count,
-              fixpointIterations,
-              unreachableNodeCount,
-              edges.Count,
+              candidates.ToCandidateSet(),
               NLCPGDataFlowOverflowReason.None);
+        }
+
+        private static CfgSensitivePartition CreateCandidateLimitExceededPartition(MethodDataFlowPlan plan, NLCPGDataFlowOptions options)
+        {
+            ThrowIfBudgetFailure(
+              options,
+              plan.MethodFullName,
+              NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded);
+            return new CfgSensitivePartition(
+              plan.Order,
+              new LocalFlowCandidateSet(Array.Empty<CpgEdgeCandidate>()),
+              NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded);
         }
 
         private static void ThrowIfBudgetFailure(NLCPGDataFlowOptions options, string methodFullName, NLCPGDataFlowOverflowReason overflowReason)
@@ -668,31 +629,6 @@ namespace NLCPG.Builder
 
             throw new InvalidOperationException(
               $"Data-flow {overflowReason} budget exceeded for {methodFullName}.");
-        }
-
-        private static int CountUnreachableNodes(MethodDataFlowPlan plan)
-        {
-            var visited = new HashSet<NLCPGNode>();
-            var worklist = new Queue<NLCPGNode>(plan.FlowNodes
-              .Where(node => plan.Predecessors[node].Length == 0));
-            while (worklist.Count > 0)
-            {
-                var nodeId = worklist.Dequeue();
-                if (!visited.Add(nodeId))
-                {
-                    continue;
-                }
-
-                foreach (var successorNode in plan.Successors[nodeId])
-                {
-                    if (!visited.Contains(successorNode))
-                    {
-                        worklist.Enqueue(successorNode);
-                    }
-                }
-            }
-
-            return plan.FlowNodes.Length - visited.Count;
         }
 
         // 把可变邻接列表冻结成数组，避免求解阶段再暴露可写集合。
@@ -848,13 +784,9 @@ namespace NLCPG.Builder
                     continue;
                 }
 
-                // 先按现有调用解析/排序逻辑收窄目标，再只对内部方法补摘要边。
-                var candidateMethods = ResolveCallTargetCandidates(invocation, targetMethod).ToList();
-                var preferredCandidates = PreferCallTargets(candidateMethods, targetMethod, invocation.Instance?.Type).ToList();
-                var effectiveTargets = preferredCandidates.Count > 0 ? preferredCandidates : candidateMethods;
-                if (effectiveTargets.Count == 0)
+                if (!_resolvedCallTargetsByInvocation.TryGetValue(invocation, out var effectiveTargets))
                 {
-                    effectiveTargets.Add(targetMethod);
+                    throw new InvalidOperationException("Data-flow requires CallGraphPass to cache resolved call targets.");
                 }
 
                 foreach (var candidateMethod in effectiveTargets.Where(IsInternalMethod).Distinct<IMethodSymbol>(SymbolEqualityComparer.Default))

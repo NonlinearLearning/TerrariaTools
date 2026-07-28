@@ -77,6 +77,80 @@ public sealed class NLCPGPartitionedBuilderTests
   }
 
   [Fact]
+  public async Task TwoStagePartitionWindow_BoundsLookAheadAndCommitsInOrderWhenHeadCollectionBlocks()
+  {
+    var windowType = typeof(NLCPGBuilder).Assembly.GetType(
+      "NLCPG.Builder.BoundedPartitionWorkWindow");
+    Assert.NotNull(windowType);
+    var runTwoStageOrdered = windowType.GetMethod(
+      "RunTwoStageOrdered",
+      BindingFlags.Public | BindingFlags.Static);
+    Assert.NotNull(runTwoStageOrdered);
+
+    using var firstCollectionStarted = new ManualResetEventSlim();
+    using var releaseFirstCollection = new ManualResetEventSlim();
+    using var secondLookAheadStarted = new ManualResetEventSlim();
+    using var beyondAllowanceStarted = new ManualResetEventSlim();
+    var committedOrders = new List<int>();
+    var commitLock = new object();
+    Func<int, int, int> collect = (input, order) =>
+    {
+      if (order == 0)
+      {
+        firstCollectionStarted.Set();
+        releaseFirstCollection.Wait(TimeSpan.FromSeconds(5));
+      }
+
+      if (order == 2)
+      {
+        secondLookAheadStarted.Set();
+      }
+
+      if (order == 3)
+      {
+        beyondAllowanceStarted.Set();
+      }
+
+      return input;
+    };
+    Func<int, int, int> prepare = (input, _) => input;
+    Func<int, int, int> solve = (input, _) => input;
+    Action<int, int> commit = (_, order) =>
+    {
+      lock (commitLock)
+      {
+        committedOrders.Add(order);
+      }
+    };
+
+    var completionTask = Task.Run(() =>
+      runTwoStageOrdered.MakeGenericMethod(typeof(int), typeof(int), typeof(int), typeof(int)).Invoke(
+        null,
+        new object?[]
+        {
+          new[] { 10, 20, 30, 40 },
+          2,
+          collect,
+          prepare,
+          solve,
+          commit,
+          CancellationToken.None,
+          null,
+          null,
+          2,
+          100,
+        }));
+
+    Assert.True(firstCollectionStarted.Wait(TimeSpan.FromSeconds(5)));
+    Assert.True(secondLookAheadStarted.Wait(TimeSpan.FromSeconds(5)));
+    Assert.False(beyondAllowanceStarted.Wait(TimeSpan.FromMilliseconds(150)));
+    releaseFirstCollection.Set();
+    await completionTask;
+
+    Assert.Equal(new[] { 0, 1, 2, 3 }, committedOrders);
+  }
+
+  [Fact]
   public void FlowSummary_UsesRoslynParameterOrdinalsAndStableReturnEndpoint()
   {
     var summary = new NLCPGFlowSummary(
@@ -486,6 +560,25 @@ public sealed class NLCPGPartitionedBuilderTests
   }
 
   [Fact]
+  public void BuildFromSource_DataFlowCandidateBudget_SkipMethodPreservesNonFlowGraph()
+  {
+    var options = CreateDataFlowPartitionOptions(maxDegreeOfParallelism: 1) with
+    {
+      DataFlowOptions = new NLCPGDataFlowOptions(
+        MaxDefinitionsPerMethod: int.MaxValue,
+        MaxFlowNodesPerMethod: int.MaxValue,
+        MaxCandidateEdgesPerMethod: 0,
+        OverflowBehavior: NLCPGDataFlowOverflowBehavior.SkipMethod),
+    };
+
+    var graph = new NLCPGBuilder(options)
+      .BuildFromSource(CpgBuilderSources.DataFlowCandidateBudget, "candidate-budget-skip.cs");
+
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.DataFlow);
+    Assert.Contains(graph.Nodes, node => node.Kind == NLCPGNodeKind.Method && node.Name == "Run");
+  }
+
+  [Fact]
   public void BuildFromSource_SymbolTypeReuse_PreservesCompleteGraph()
   {
     const string filePath = "symbol-type-reuse.cs";
@@ -647,6 +740,39 @@ public sealed class NLCPGPartitionedBuilderTests
     Assert.Equal("internal-static-exact", callSiteDispatch.ToString());
   }
 
+  [Fact]
+  public void BuildFromSource_CallTargetResolution_PreservesEndpointOrderAndDispatch()
+  {
+    var graph = new NLCPGBuilder(CreateDataFlowPartitionOptions(1))
+      .BuildFromSource(CpgBuilderSources.CallTargetResolution, "call-target-resolution.cs");
+
+    Assert.Equal(
+      new[]
+      {
+        "baseValue.Virtual(value)|internal-virtual-dispatch-exact|Virtual",
+        "contract.Apply(value)|internal-interface-dispatch-exact|Apply",
+        "System.Math.Abs(value)|external-static-external-fallback|Abs",
+        "value.Extend()|internal-extension-static-exact|Extend",
+      },
+      DescribeCallTargets(graph));
+  }
+
+  [Fact]
+  public void BuildFromSource_CallTargetResolution_PreservesGraphAcrossDegreesOfParallelism()
+  {
+    const string source = CpgBuilderSources.CallTargetResolution;
+    var baseline = new NLCPGBuilder(CreateDataFlowPartitionOptions(1))
+      .BuildFromSource(source, "call-target-resolution.cs");
+
+    foreach (var degreeOfParallelism in new[] { 8, 12, 14, 16 })
+    {
+      var graph = new NLCPGBuilder(CreateDataFlowPartitionOptions(degreeOfParallelism))
+        .BuildFromSource(source, "call-target-resolution.cs");
+
+      AssertGraphsEqual(baseline, graph);
+    }
+  }
+
   private static void AssertGraphsEqual(NLCPGGraph expected, NLCPGGraph actual)
   {
     Assert.Equal(
@@ -775,6 +901,22 @@ public sealed class NLCPGPartitionedBuilderTests
       .Where(edge => edge.Kind == NLCPGEdgeKind.DataFlow)
       .Select(edge => $"{DescribeNode(graph, FindNode(graph, edge.SourceNodeId))}->{DescribeNode(graph, FindNode(graph, edge.TargetNodeId))}")
       .OrderBy(text => text, StringComparer.Ordinal)
+      .ToArray();
+  }
+
+  private static string[] DescribeCallTargets(NLCPGGraph graph)
+  {
+    return graph.Nodes
+      .Where(node => node.Kind == NLCPGNodeKind.CallSite)
+      .OrderBy(node => node.SpanStart)
+      .Select(callSite =>
+      {
+        var targets = graph.Edges
+          .Where(edge => edge.Kind == NLCPGEdgeKind.CallTargets && edge.SourceNodeId == RequireNodeId(callSite))
+          .Select(edge => FindNode(graph, edge.TargetNodeId).FullName)
+          .ToArray();
+        return $"{graph.GetDisplayText(callSite)}|{callSite.DispatchKind}|{string.Join(",", targets)}";
+      })
       .ToArray();
   }
 

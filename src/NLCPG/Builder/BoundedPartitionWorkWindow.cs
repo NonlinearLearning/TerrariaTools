@@ -118,4 +118,158 @@ internal static class BoundedPartitionWorkWindow
             }
         }
     }
+
+    // 采集与求解都可并行，但 prepare/commit 始终在调用线程按源序执行。
+    public static void RunTwoStageOrdered<TInput, TCollected, TPrepared, TResult>(
+      IReadOnlyList<TInput> inputs,
+      int maxDegreeOfParallelism,
+      Func<TInput, int, TCollected> collect,
+      Func<TCollected, int, TPrepared> prepare,
+      Func<TPrepared, int, TResult> solve,
+      Action<TResult, int> commit,
+      CancellationToken cancellationToken = default,
+      Func<TCollected, int>? collectedRetainedRecordCount = null,
+      Func<TResult, int>? resultRetainedRecordCount = null,
+      int? reorderAllowance = null,
+      int maxCompletedRecordCount = int.MaxValue)
+    {
+        ArgumentNullException.ThrowIfNull(inputs);
+        ArgumentNullException.ThrowIfNull(collect);
+        ArgumentNullException.ThrowIfNull(prepare);
+        ArgumentNullException.ThrowIfNull(solve);
+        ArgumentNullException.ThrowIfNull(commit);
+
+        if (inputs.Count == 0)
+        {
+            return;
+        }
+
+        var workerCount = Math.Min(inputs.Count, Math.Max(1, maxDegreeOfParallelism));
+        var effectiveReorderAllowance = Math.Max(0, reorderAllowance ?? workerCount);
+        var effectiveMaxCompletedRecordCount = Math.Max(1, maxCompletedRecordCount);
+        var activeCollections = new List<Task<CompletedWorkItem<TCollected>>>(workerCount);
+        var activeSolves = new List<Task<CompletedWorkItem<TResult>>>(workerCount);
+        var completedCollections = new Dictionary<int, CompletedWorkItem<TCollected>>();
+        var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
+        var nextOrderToSchedule = 0;
+        var nextOrderToPrepare = 0;
+        var nextOrderToCommit = 0;
+        var completedRecordCount = 0;
+
+        while (nextOrderToCommit < inputs.Count)
+        {
+            while (nextOrderToSchedule < inputs.Count &&
+                   activeCollections.Count + activeSolves.Count < workerCount &&
+                   completedCollections.Count < effectiveReorderAllowance &&
+                   completedResults.Count < effectiveReorderAllowance &&
+                   completedRecordCount < effectiveMaxCompletedRecordCount)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var order = nextOrderToSchedule;
+                nextOrderToSchedule += 1;
+                activeCollections.Add(Task.Run(() =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var collected = collect(inputs[order], order);
+                    return new CompletedWorkItem<TCollected>(
+                      order,
+                      collected,
+                      Math.Max(0, collectedRetainedRecordCount?.Invoke(collected) ?? 1),
+                      Stopwatch.GetTimestamp());
+                }, cancellationToken));
+            }
+
+            while (activeCollections.Count + activeSolves.Count < workerCount &&
+                   completedCollections.Remove(nextOrderToPrepare, out var collectedWorkItem))
+            {
+                completedRecordCount -= collectedWorkItem.RetainedRecordCount;
+                var order = collectedWorkItem.Order;
+                var prepared = prepare(collectedWorkItem.Result, order);
+                nextOrderToPrepare += 1;
+                activeSolves.Add(Task.Run(() =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var result = solve(prepared, order);
+                    return new CompletedWorkItem<TResult>(
+                      order,
+                      result,
+                      Math.Max(0, resultRetainedRecordCount?.Invoke(result) ?? 1),
+                      Stopwatch.GetTimestamp());
+                }, cancellationToken));
+            }
+
+            while (completedResults.Remove(nextOrderToCommit, out var resultWorkItem))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                commit(resultWorkItem.Result, resultWorkItem.Order);
+                completedRecordCount -= resultWorkItem.RetainedRecordCount;
+                nextOrderToCommit += 1;
+            }
+
+            if (nextOrderToCommit == inputs.Count)
+            {
+                return;
+            }
+
+            var activeTasks = activeCollections.Cast<Task>()
+              .Concat(activeSolves)
+              .ToArray();
+            if (activeTasks.Length == 0)
+            {
+                if (nextOrderToSchedule < inputs.Count ||
+                    completedCollections.ContainsKey(nextOrderToPrepare))
+                {
+                    continue;
+                }
+
+                throw new InvalidOperationException("The two-stage ordered work window stopped before all results were committed.");
+            }
+
+            var completedTask = Task.WhenAny(activeTasks).GetAwaiter().GetResult();
+            var completedCollectionTask = activeCollections.FirstOrDefault(task => ReferenceEquals(task, completedTask));
+            if (completedCollectionTask is not null)
+            {
+                activeCollections.Remove(completedCollectionTask);
+                try
+                {
+                    var collectedWorkItem = completedCollectionTask.GetAwaiter().GetResult();
+                    completedCollections.Add(collectedWorkItem.Order, collectedWorkItem);
+                    completedRecordCount += collectedWorkItem.RetainedRecordCount;
+                }
+                catch
+                {
+                    WaitForWorkers(activeCollections.Cast<Task>().Concat(activeSolves));
+                    throw;
+                }
+            }
+            else
+            {
+                var completedSolveTask = (Task<CompletedWorkItem<TResult>>)completedTask;
+                activeSolves.Remove(completedSolveTask);
+                try
+                {
+                    var resultWorkItem = completedSolveTask.GetAwaiter().GetResult();
+                    completedResults.Add(resultWorkItem.Order, resultWorkItem);
+                    completedRecordCount += resultWorkItem.RetainedRecordCount;
+                }
+                catch
+                {
+                    WaitForWorkers(activeCollections.Cast<Task>().Concat(activeSolves));
+                    throw;
+                }
+            }
+        }
+    }
+
+    private static void WaitForWorkers(IEnumerable<Task> workers)
+    {
+        try
+        {
+            Task.WhenAll(workers).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // 保留第一个观察到的工作异常；这里只等待其余任务退出。
+        }
+    }
 }

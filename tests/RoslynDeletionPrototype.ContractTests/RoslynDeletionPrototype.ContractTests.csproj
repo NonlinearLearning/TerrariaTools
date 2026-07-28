@@ -25,6 +25,6 @@
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Core\NLISSN.Core.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Rules\NLISSN.Rules.csproj" />
-    <ProjectReference Include="..\Roslyn Prototype.Testing\Roslyn Prototype.Testing.csproj" />
+    <ProjectReference Include="..\RoslynDeletionPrototype.Testing\RoslynDeletionPrototype.Testing.csproj" />
   </ItemGroup>
 </Project>

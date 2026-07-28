@@ -59,10 +59,13 @@ public sealed partial class NLCPGBuilder
                   facts = MaterializeOperationPartition(partition, context.Graph);
                   foreach (var record in partition.Records)
                   {
+                      var operationNode = GetOrCreateOperationNode(record.Operation, context.Graph);
                       context.AddOperationInventoryEntry(
                     record.Operation,
+                    partition.Records[0].Operation,
                     record.OwningMethod,
-                    record.ParentOperation is null);
+                    record.ParentOperation is null,
+                    operationNode);
                   }
 
                   if (streamingPublisher is not null)

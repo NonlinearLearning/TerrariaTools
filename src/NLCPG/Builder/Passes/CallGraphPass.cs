@@ -50,7 +50,7 @@ namespace NLCPG.Builder
             // Roslyn 已解析到目标时，继续扩充候选集并按内部优先规则排序。
             var resolvedCandidates = targetMethod is null
               ? null
-              : ResolvePreferredCallTargets(ResolveCallTargetCandidates(invocationOperation, targetMethod), targetMethod, invocationOperation.Instance?.Type);
+              : ResolveEffectiveCallTargets(invocationOperation, targetMethod);
             // 调用点节点复用操作节点的源码位置，但名字和签名以目标方法为准。
             var callSiteNode = graph.AddNode(new NLCPGNode(
               Kind: NLCPGNodeKind.CallSite,
@@ -75,6 +75,7 @@ namespace NLCPG.Builder
             // 只有拿到目标方法时，才继续补充调用目标和求值类型。
             if (targetMethod is not null)
             {
+                _resolvedCallTargetsByInvocation[invocationOperation] = resolvedCandidates!;
                 foreach (var candidateMethod in resolvedCandidates!)
                 {
                     var methodNode = GetOrCreateSymbolNode(candidateMethod, graph);
@@ -222,6 +223,25 @@ namespace NLCPG.Builder
             }
 
             return candidates.Values;
+        }
+
+        private IReadOnlyList<IMethodSymbol> ResolveEffectiveCallTargets(IInvocationOperation invocationOperation, IMethodSymbol targetMethod)
+        {
+            var canonicalTarget = CanonicalMethodSymbol(targetMethod);
+            var receiverType = invocationOperation.Instance?.Type;
+            var cacheKey = $"{ComposeMethodFullName(canonicalTarget)}|{ComposeTypeFullName(receiverType)}";
+            if (_resolvedCallTargetsByDispatchShape.TryGetValue(cacheKey, out var cachedTargets))
+            {
+                return cachedTargets;
+            }
+
+            var resolvedTargets = ResolvePreferredCallTargets(
+              ResolveCallTargetCandidates(invocationOperation, canonicalTarget),
+              canonicalTarget,
+              receiverType)
+              .ToArray();
+            _resolvedCallTargetsByDispatchShape[cacheKey] = resolvedTargets;
+            return resolvedTargets;
         }
 
         private IEnumerable<IMethodSymbol> ResolveExactMethodFallbackCandidates(IMethodSymbol targetMethod)

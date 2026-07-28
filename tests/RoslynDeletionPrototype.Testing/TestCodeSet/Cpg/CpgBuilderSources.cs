@@ -414,4 +414,37 @@ public static class CpgBuilderSources
       }
       """;
 
+  public const string CallTargetResolution = """
+      namespace Demo;
+
+      public interface IContract
+      {
+        int Apply(int value);
+      }
+
+      public class Base
+      {
+        public virtual int Virtual(int value) => value;
+      }
+
+      public sealed class Derived : Base, IContract
+      {
+        public override int Virtual(int value) => value + 1;
+        public int Apply(int value) => value + 2;
+
+        public int Run(Base baseValue, IContract contract, int value)
+        {
+          var first = baseValue.Virtual(value);
+          var second = contract.Apply(value);
+          var third = System.Math.Abs(value);
+          return first + second + third + value.Extend();
+        }
+      }
+
+      public static class CallTargetExtensions
+      {
+        public static int Extend(this int value) => value + 3;
+      }
+      """;
+
 }

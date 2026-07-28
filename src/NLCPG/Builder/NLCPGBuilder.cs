@@ -55,6 +55,10 @@ public sealed partial class NLCPGBuilder
     private readonly Dictionary<NLCPGNode, HashSet<NLCPGNode>> _cfgSuccessorsByNode = new();
     private readonly Dictionary<IInvocationOperation, NLCPGNode> _callSiteNodesByInvocation =
       new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<IInvocationOperation, IReadOnlyList<IMethodSymbol>> _resolvedCallTargetsByInvocation =
+      new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, IReadOnlyList<IMethodSymbol>> _resolvedCallTargetsByDispatchShape =
+      new(StringComparer.Ordinal);
     private readonly Dictionary<string, NLCPGNode> _propertyAccessorCallSiteNodesByKey = new(StringComparer.Ordinal);
     private readonly HashSet<SyntaxNode> _pendingOperationSyntaxTypeNodes = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<SyntaxNode, SyntaxSemanticFacts> _partitionedSyntaxFacts = new(ReferenceEqualityComparer.Instance);
@@ -74,8 +78,7 @@ public sealed partial class NLCPGBuilder
     private sealed record LoopControlTargets(IOperation? ContinueTarget, IOperation? BreakTarget);
     private sealed record DefinitionFact(string LocationKey, string? BaseKey, string Category, string? PathKey = null);
     private sealed record DataFlowOperationIndex(
-        IReadOnlyDictionary<IOperation, NLCPGNode> NodesByOperation,
-        IReadOnlyDictionary<IOperation, IMethodSymbol> OwningMethods);
+        IReadOnlyDictionary<IOperation, NLCPGNode> NodesByOperation);
 
     // 以给定选项初始化构图器；未提供时使用默认配置。
     public NLCPGBuilder(NLCPGBuilderOptions? options = null)
@@ -154,6 +157,8 @@ public sealed partial class NLCPGBuilder
         _cfgPredecessorsByNode.Clear();
         _cfgSuccessorsByNode.Clear();
         _callSiteNodesByInvocation.Clear();
+        _resolvedCallTargetsByInvocation.Clear();
+        _resolvedCallTargetsByDispatchShape.Clear();
         _propertyAccessorCallSiteNodesByKey.Clear();
         _pendingOperationSyntaxTypeNodes.Clear();
         _partitionedSyntaxFacts.Clear();
@@ -273,6 +278,8 @@ public sealed partial class NLCPGBuilder
         _cfgPredecessorsByNode.Clear();
         _cfgSuccessorsByNode.Clear();
         _callSiteNodesByInvocation.Clear();
+        _resolvedCallTargetsByInvocation.Clear();
+        _resolvedCallTargetsByDispatchShape.Clear();
         _propertyAccessorCallSiteNodesByKey.Clear();
         _pendingOperationSyntaxTypeNodes.Clear();
         _partitionedSyntaxFacts.Clear();
@@ -649,27 +656,25 @@ public sealed partial class NLCPGBuilder
           IsImplicit: operation.IsImplicit));
     }
 
-    private DataFlowOperationIndex CreateDataFlowOperationIndex(IReadOnlyList<IBlockOperation> methodBlocks, IReadOnlyDictionary<IOperation, IMethodSymbol> owningMethodsByMethodBlock, NLCPGGraph graph)
+    private static DataFlowOperationIndex CreateDataFlowOperationIndex(IReadOnlyList<OperationInventoryEntry> operationInventory, IReadOnlyCollection<IOperation> methodRoots)
     {
         var nodesByOperation = new Dictionary<IOperation, NLCPGNode>(
             (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
-        var owningMethods = new Dictionary<IOperation, IMethodSymbol>(
+        var methodBlockSet = new HashSet<IOperation>(
+            methodRoots,
             (IEqualityComparer<IOperation>)ReferenceEqualityComparer.Instance);
 
-        foreach (var methodBlock in methodBlocks)
+        foreach (var entry in operationInventory)
         {
-            owningMethodsByMethodBlock.TryGetValue(methodBlock, out var owningMethod);
-            foreach (var operation in methodBlock.DescendantsAndSelf())
+            if (!methodBlockSet.Contains(entry.MethodRoot))
             {
-                nodesByOperation[operation] = GetOrCreateOperationNode(operation, graph);
-                if (owningMethod is not null)
-                {
-                    owningMethods[operation] = owningMethod;
-                }
+                continue;
             }
+
+            nodesByOperation[entry.Operation] = entry.Node;
         }
 
-        return new DataFlowOperationIndex(nodesByOperation, owningMethods);
+        return new DataFlowOperationIndex(nodesByOperation);
     }
 
     private static IEnumerable<IOperation> EnumerateOperations(NLCPGBuildContext context)

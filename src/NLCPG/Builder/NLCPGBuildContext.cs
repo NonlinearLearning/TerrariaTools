@@ -33,10 +33,12 @@ internal sealed class NLCPGBuildContext
 
   internal IReadOnlyList<OperationInventoryEntry> OperationInventory => _operationInventory;
 
-  internal void AddOperationInventoryEntry(IOperation operation, IMethodSymbol? owningMethod, bool isRoot)
+  internal void AddOperationInventoryEntry(IOperation operation, IOperation methodRoot, IMethodSymbol? owningMethod, bool isRoot, NLCPGNode node)
   {
     ArgumentNullException.ThrowIfNull(operation);
-    _operationInventory.Add(new OperationInventoryEntry(operation, owningMethod, isRoot));
+    ArgumentNullException.ThrowIfNull(methodRoot);
+    ArgumentNullException.ThrowIfNull(node);
+    _operationInventory.Add(new OperationInventoryEntry(operation, methodRoot, owningMethod, isRoot, node));
   }
 
   internal static NLCPGBuildContext Create(SemanticModel semanticModel, SyntaxNode root, string source, string filePath, DeterministicNodeIdTable? preallocatedNodeIds = null, StableNodeIdentityFactory? identityFactory = null)
@@ -101,5 +103,7 @@ internal sealed class NLCPGBuildContext
 
 internal sealed record OperationInventoryEntry(
   IOperation Operation,
+  IOperation MethodRoot,
   IMethodSymbol? OwningMethod,
-  bool IsRoot);
+  bool IsRoot,
+  NLCPGNode Node);

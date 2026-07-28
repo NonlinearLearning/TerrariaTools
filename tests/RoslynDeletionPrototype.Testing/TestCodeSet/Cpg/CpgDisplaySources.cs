@@ -1,6 +1,6 @@
 namespace RoslynPrototype.Tests.TestCodeSet.Cpg;
 
-internal static class CpgDisplaySources
+public static class CpgDisplaySources
 {
     public const string ConditionalSeedSource = """
       namespace Demo;

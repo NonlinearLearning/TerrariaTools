@@ -47,6 +47,7 @@ namespace NLCPG.Builder
                 AddOperationTree(
                   semanticModel.GetOperation(operationRoot.BodySyntax),
                   parentOperation: null,
+                  methodRoot: null,
                   owningMethod: operationRoot.OwningMethod,
                   graph,
                   context);
@@ -111,15 +112,16 @@ namespace NLCPG.Builder
             return operationRoots;
         }
 
-        private void AddOperationTree(IOperation? operation, IOperation? parentOperation, IMethodSymbol? owningMethod, NLCPGGraph graph, NLCPGBuildContext context)
+        private void AddOperationTree(IOperation? operation, IOperation? parentOperation, IOperation? methodRoot, IMethodSymbol? owningMethod, NLCPGGraph graph, NLCPGBuildContext context)
         {
             if (operation is null)
             {
                 return;
             }
 
-            context.AddOperationInventoryEntry(operation, owningMethod, parentOperation is null);
             var operationNode = GetOrCreateOperationNode(operation, graph);
+            var resolvedMethodRoot = methodRoot ?? operation;
+            context.AddOperationInventoryEntry(operation, resolvedMethodRoot, owningMethod, parentOperation is null, operationNode);
             if (parentOperation is not null)
             {
                 // 非根操作通过父 operation 决定边类型，保留 Roslyn operation 树的结构关系。
@@ -150,7 +152,7 @@ namespace NLCPG.Builder
             foreach (var child in operation.ChildOperations)
             {
                 // 深度优先递归继续展开子操作树，维持与 Roslyn ChildOperations 一致的顺序。
-                AddOperationTree(child, operation, owningMethod, graph, context);
+                AddOperationTree(child, operation, resolvedMethodRoot, owningMethod, graph, context);
             }
         }
     }
