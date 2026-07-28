@@ -77,7 +77,7 @@ public static class PerformanceSources
       }
       """;
 
-    internal static (string FilePath, string Source)[] CreateNamedArgumentMethodPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateNamedArgumentMethodPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Game.cs", """
@@ -115,7 +115,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateOptionalParameterMethodPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateOptionalParameterMethodPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Game.cs", """
@@ -153,7 +153,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateImplicitParamsMethodPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateImplicitParamsMethodPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Game.cs", """
@@ -191,7 +191,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateExplicitParamsMethodPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateExplicitParamsMethodPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Game.cs", """
@@ -218,7 +218,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateNamedIndexerPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateNamedIndexerPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Buffer.cs", """
@@ -253,7 +253,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateDelegateMethodGroupPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateDelegateMethodGroupPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Handler.cs", HandlerIntSource),
@@ -282,7 +282,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateDelegateLambdaPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateDelegateLambdaPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Handler.cs", HandlerIntSource),
@@ -300,7 +300,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateDelegateInvocationChainPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateDelegateInvocationChainPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Handler.cs", HandlerIntSource),
@@ -318,7 +318,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateExtensionReceiverPlanFiles() =>
+    public static (string FilePath, string Source)[] CreateExtensionReceiverPlanFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("InputExtensions.cs", """
@@ -356,7 +356,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateDelegateReferencedTypeFiles() =>
+    public static (string FilePath, string Source)[] CreateDelegateReferencedTypeFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Handler.cs", HandlerVoidSource),
@@ -370,7 +370,7 @@ public static class PerformanceSources
         """)
     ];
 
-    internal static (string FilePath, string Source)[] CreateDelegateOnlyFiles() =>
+    public static (string FilePath, string Source)[] CreateDelegateOnlyFiles() =>
     [
       ("PlayerInput.cs", PlayerInputSource),
       ("Handler.cs", HandlerVoidSource)

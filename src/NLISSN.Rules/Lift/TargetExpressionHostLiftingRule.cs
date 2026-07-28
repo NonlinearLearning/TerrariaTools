@@ -12,6 +12,9 @@ public sealed class SObjectExpressionHostLiftingRule : RuleDefinitionLift
 
     public override string RuleId { get; } = "DEL-SOBJ-LIFT-HOST-001";
 
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.ExpressionHost };
+
     public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Lift s-object marks to direct expression and statement hosts";
@@ -26,6 +29,7 @@ public sealed class SObjectExpressionHostLiftingRule : RuleDefinitionLift
           context,
           RuleId,
           seedMarks,
-          propagatedMarks);
+          propagatedMarks)
+          .Select(mark => mark with { Mark = mark.Mark with { OutputKind = RuleOutputKind.ExpressionHost } });
     }
 }

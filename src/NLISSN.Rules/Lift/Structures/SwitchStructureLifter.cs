@@ -31,7 +31,7 @@ public static class DeleteSObjectSwitchLiftingHelpers
             yield return new LiftedMarkRecord(
               ruleId,
               switchMark,
-              FindSourceMarkForAncestor(seedMarks, switchMark.SyntaxNode),
+              FindSourceMarkForAncestor(seedMarks, existingLiftedMarks, switchMark.SyntaxNode),
               1);
         }
     }
@@ -78,10 +78,26 @@ public static class DeleteSObjectSwitchLiftingHelpers
         return marks;
     }
 
-    private static MarkRecord FindSourceMarkForAncestor(IReadOnlyList<MarkRecord> seedMarks, SyntaxNode ancestor)
+    private static MarkRecord FindSourceMarkForAncestor(
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<LiftedMarkRecord> existingLiftedMarks,
+      SyntaxNode ancestor)
     {
-        return seedMarks.FirstOrDefault(mark => ancestor.Span.Contains(mark.SyntaxNode.Span)) ??
-          seedMarks[0];
+        var seed = seedMarks.FirstOrDefault(mark => ancestor.Span.Contains(mark.SyntaxNode.Span));
+        if (seed is not null)
+        {
+            return seed;
+        }
+
+        var inherited = existingLiftedMarks
+          .Select(mark => mark.SourceMark)
+          .FirstOrDefault(mark => ancestor.Span.Contains(mark.SyntaxNode.Span));
+        if (inherited is not null)
+        {
+            return inherited;
+        }
+
+        throw new InvalidOperationException("Switch lift requires a source mark from a declared host or if lift producer.");
     }
 
     private static bool AllNonDefaultSectionsMarked(SwitchStatementSyntax switchStatement, IReadOnlySet<(int Start, int Length, int RawKind)> markKeys, IReadOnlyList<MarkRecord> synthesizedMarks)

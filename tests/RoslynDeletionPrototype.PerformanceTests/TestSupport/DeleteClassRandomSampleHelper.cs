@@ -1,4 +1,5 @@
 using System.Text.Json;
+using NLISSN;
 using NLISSN.Application;
 using NLISSN.Core.Rewrite;
 
@@ -84,7 +85,7 @@ internal static class DeleteClassRandomSampleHelper
             Directory.CreateDirectory(Path.GetDirectoryName(copiedPath)!);
             File.Copy(sourcePath, copiedPath, overwrite: true);
         }
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var commandHost = new CommandHost(RuleRegistry.CreateDefaultRules());
         var args = new List<string>
         {
             copiedSourceRoot,
@@ -105,7 +106,7 @@ internal static class DeleteClassRandomSampleHelper
             args.Add(maxDegreeOfParallelism.ToString());
         }
 
-        var analysisResult = application.AnalyzeFromArgs(args.ToArray());
+        var analysisResult = commandHost.AnalyzeFromArgs(args.ToArray());
         var fileResults = BuildFileResults(
           request.SourceDirectory,
           copiedSourceRoot,

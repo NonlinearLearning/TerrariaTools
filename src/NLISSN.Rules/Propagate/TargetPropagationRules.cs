@@ -54,6 +54,9 @@ public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropaga
 
     public override string RuleId { get; } = "DEL-SOBJ-PROP-DECL-INIT-001";
 
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalDefinitionFromInitializer };
+
     public override string Name { get; } = "Propagate s-object marks from definition initializers to declarators";
 
     // 把初始化表达式上的命中收束到变量 declarator，稳定后续局部定义传播入口。
@@ -78,7 +81,8 @@ public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropaga
                       MarkRecordFactory.Create(
                         RuleId,
                         variableDeclarator,
-                        "Definition initializer is marked; propagate mark to defined left value."),
+                        "Definition initializer is marked; propagate mark to defined left value.",
+                        RuleOutputKind.LocalDefinitionFromInitializer),
                       seedMark,
                       1);
                     break;
@@ -106,6 +110,7 @@ public sealed class SObjectLogicalConditionPropagationRule : SObjectPropagationR
             yield break;
         }
 
+        var targetNameList = string.Join(",", targetNames);
         var knownKeys = seedMarks
           .Select(mark => BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
@@ -120,7 +125,7 @@ public sealed class SObjectLogicalConditionPropagationRule : SObjectPropagationR
             LogicalConditionMarkAnalysis analysis;
             try
             {
-                analysis = context.AnalyzeLogicalCondition(expression, string.Join(",", targetNames));
+                analysis = context.AnalyzeLogicalCondition(expression, targetNameList);
             }
             catch (InvalidOperationException exception) when (
                 exception.Message.StartsWith(
@@ -187,6 +192,9 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
 
     public override string Name { get; } = "Propagate s-object logical operand groups as structured payloads";
 
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LogicalHost };
+
     // 为逻辑宿主补齐可删与保留操作数集合，让提案阶段直接生成语义安全的 Replace 决策。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
@@ -196,6 +204,7 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
             yield break;
         }
 
+        var targetNameList = string.Join(",", targetNames);
         var knownKeys = new HashSet<(int Start, int Length, int RawKind)>();
         foreach (var seedMark in seedMarks)
         {
@@ -208,7 +217,7 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
             LogicalConditionMarkAnalysis analysis;
             try
             {
-                analysis = context.AnalyzeLogicalCondition(expression, string.Join(",", targetNames));
+                analysis = context.AnalyzeLogicalCondition(expression, targetNameList);
             }
             catch (InvalidOperationException exception) when (
                 exception.Message.StartsWith(
@@ -258,6 +267,9 @@ public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropaga
 
     public override string Name { get; } = "Propagate s-object if/elseif/else completion state as structured payloads";
 
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.IfCompletion };
+
     // 把分散在 if 结构里的命中折叠成完整完成态 payload，避免提案阶段重复扫描控制结构。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
@@ -275,6 +287,17 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
     public override string CapabilityId { get; } = "propagate.target.symbol-reference";
 
     public override string RuleId { get; } = "DEL-SOBJ-PROP-SYMBOL-001";
+
+    public override IReadOnlyList<RuleDependency> Dependencies =>
+      new[]
+      {
+        new RuleDependency(
+          RuleNodeId.For(RuleKind.Propagate, "DEL-SOBJ-PROP-DECL-INIT-001"),
+          RuleOutputKind.LocalDefinitionFromInitializer)
+      };
+
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalReference };
 
     public override string Name { get; } = "Propagate s-object marks from marked definitions to symbol references";
 
@@ -295,8 +318,9 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
         {
             var referencedSymbol = ResolveReferencedSymbol(context, reference);
             if (referencedSymbol is null ||
-                !markedSymbols.TryGetValue(referencedSymbol, out var sourceMark) ||
-                !IsSameScope(sourceMark.SyntaxNode, reference) ||
+                !markedSymbols.TryGetValue(referencedSymbol, out var markedDefinition) ||
+                markedDefinition.ExecutableScope is null ||
+                !ReferenceEquals(markedDefinition.ExecutableScope, FindContainingExecutableScope(reference)) ||
                 !knownKeys.Add(BuildNodeKey(reference)))
             {
                 continue;
@@ -308,15 +332,15 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
                 RuleId,
                 reference,
                 $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked definition."),
-              sourceMark,
+              markedDefinition.SourceMark,
               1);
         }
     }
 
     /// 只接受前序“初始化器 -> 定义点”传播产物，确保符号引用传播从稳定的局部定义出发。
-    private static Dictionary<ISymbol, MarkRecord> BuildMarkedLocalDefinitions(RuleContext context, IReadOnlyList<MarkRecord> marks)
+    private static Dictionary<ISymbol, MarkedLocalDefinition> BuildMarkedLocalDefinitions(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
-        var symbols = new Dictionary<ISymbol, MarkRecord>(SymbolEqualityComparer.Default);
+        var symbols = new Dictionary<ISymbol, MarkedLocalDefinition>(SymbolEqualityComparer.Default);
         foreach (var mark in marks)
         {
             if (!IsInitializerDefinitionMark(mark))
@@ -330,7 +354,7 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
                 continue;
             }
 
-            symbols.Add(symbol, mark);
+            symbols.Add(symbol, new MarkedLocalDefinition(mark, FindContainingExecutableScope(mark.SyntaxNode)));
         }
 
         return symbols;
@@ -339,9 +363,7 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
     private static bool IsInitializerDefinitionMark(MarkRecord mark)
     {
         return mark.SyntaxNode is VariableDeclaratorSyntax &&
-          mark.Reason.Contains(
-            "Definition initializer is marked",
-            StringComparison.Ordinal);
+          mark.OutputKind == RuleOutputKind.LocalDefinitionFromInitializer;
     }
 
     private static ISymbol? ResolveDeclaredLocalSymbol(RuleContext context, SyntaxNode node)
@@ -364,15 +386,6 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
         return symbol is ILocalSymbol or IParameterSymbol ? symbol : null;
     }
 
-    private static bool IsSameScope(SyntaxNode sourceNode, SyntaxNode referenceNode)
-    {
-        var sourceScope = FindContainingExecutableScope(sourceNode);
-        var referenceScope = FindContainingExecutableScope(referenceNode);
-        return sourceScope is not null &&
-          referenceScope is not null &&
-          ReferenceEquals(sourceScope, referenceScope);
-    }
-
     private static SyntaxNode? FindContainingExecutableScope(SyntaxNode node)
     {
         return node.AncestorsAndSelf().FirstOrDefault(ancestor =>
@@ -385,4 +398,6 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
             AnonymousFunctionExpressionSyntax or
             LocalFunctionStatementSyntax);
     }
+
+    private sealed record MarkedLocalDefinition(MarkRecord SourceMark, SyntaxNode? ExecutableScope);
 }

@@ -1,6 +1,6 @@
 # 全局规则 DAG 执行提案
 
-> **状态：框架已落地，默认规则的原子输入映射尚未完成。** 图编译器、ready queue 和部分 typed 边已实现；但当前 `RuleGraphDependencyCatalog` 仍含 family barrier，且若干默认传播规则尚未声明其 seed 输入。因此不能将当前默认管道视为已完成的原子级 DAG 迁移。
+> **状态：已实现，完整发布验证有已知环境阻塞。** 默认规则按单条规则进入全局 DAG；所有消费阶段事实的节点均声明 producer，`GroupKey` 不参与调度。保留的 family join 反映当前规则对完整集合的真实读取，不是旧分组串行调度。
 
 ## 目标
 
@@ -31,7 +31,7 @@ Propagate1.DependsOn = new[] { Mark1 };
 - 跨规则类别的依赖，例如 `Mark <- Propagate` 或 `Lift <- Propose`；
 - 一个消费者只读取指定生产者输出，而不是增长中的全组 mark 集合。
 
-历史上的两条隐式 symbol-reference 依赖已迁移：`SObjectSymbolReferencePropagationRule` 消费 initializer definition typed output，`ClassSymbolReferencePropagationRule` 消费 object-creation definition typed output。其余默认规则的输入边仍须逐条确认，不能从这两条链的完成情况推导全图已原子化。
+历史上的两条隐式 symbol-reference 依赖已迁移：`SObjectSymbolReferencePropagationRule` 消费 initializer definition typed output，`ClassSymbolReferencePropagationRule` 消费 object-creation definition typed output。当前注册的默认 consumer 均已声明输入边；后续只能在 selector / aggregator 重构后继续缩小必要的 fan-in。
 
 ## 已落地部分与验证
 
@@ -40,8 +40,10 @@ Propagate1.DependsOn = new[] { Mark1 };
 - 四个 Engine 的兼容 `Run` / `Decide` 入口可委托给 `RuleGraphExecutor`；`GroupKey` 不参与 ready queue 或依赖推导，但仍保留为记录兼容字段和去重投影。
 - 两条 symbol-reference 链使用 `LocalDefinitionFromInitializer` / `LocalDefinitionFromObjectCreation` typed producer output；switch 只依赖 host、if lift 事实，并从这些事实继承 source provenance。
 - 一部分 Proposal 规则已按 declaration、parameter-usage、logical 或 if producer 声明单一依赖；Default/Control 仍显式汇聚整个 family。该汇聚目前是语义保守措施，不是原子并发的完成状态。
+- `RulePipeline` 不再删除未知 dependency；已注册但被显式禁用的规则保留为完成且空输出的图节点，真正缺失的 producer 由编译器拒绝。
+- `RuleNodeResult` 按基础阶段输出和记录上的 `OutputKind` 分桶，typed consumer 不会收到不匹配的通用记录。图遥测还公开 ready queue 与并发节点峰值。
 
-已验证：规则图聚焦测试 `13/13` 通过，包括 DOP 1/16 快照、跨 GroupKey 依赖、稳定顺序、空 producer 输出、未知 producer、output 类型不匹配和环。此前记录的 Host 全量与三次预热夹具结果可作为回归参考，但不证明默认规则的依赖清单已经完整。
+已验证：规则图聚焦测试 `17/17` 通过，包括 DOP 1/16 快照、跨 GroupKey 依赖、稳定顺序、空 producer 输出、未知 producer、output 类型不匹配、环、typed port 隔离和 queue/concurrency telemetry；Host Tests 为 `447/447`，其中禁用规则空 producer 路径也已覆盖。固定夹具三次预热样本为 `38/34/36 ms`，allocation 为 `5677816/6283368/5894504`，每次 `83` 个节点；没有旧路径对照，不能据此宣称性能提升。
 
 未作为 DAG 缺陷处理的验证边界：完整 Performance 在 304 秒边界超时；Contract Tests 为 `217/220`，失败于旧测试项目路径和架构基线；Unit Tests 因 `StructureViewBuilderTests.cs` 对 `NLISSN.Core.Pipeline` 的项目引用不可见而无法编译；harness 仍引用已迁移的 `src/RoslynPrototype/Program.cs`。
 
@@ -147,28 +149,28 @@ DEL-CLASS-LIFT-IF-001
 
 ## 默认图依赖审计
 
-下表描述的是当前源码已声明的图边，而不是目标状态。`family` 表示消费者等待同一删除家族的所有列举节点；它保留了旧阶段可见性，必须继续拆分。
+下表描述当前源码已声明的图边。`family` 表示消费者等待同一删除家族的所有列举节点；这是当前规则扫描完整集合所需的显式 fan-in，不会恢复 `GroupKey` 串行调度。
 
 | 节点集合 | 当前输入 | 判定 |
 | --- | --- | --- |
 | 所有 Mark | 无图输入，独立扫描 root | 原子，可并发。 |
 | `DEL-SOBJ-PROP-SYMBOL-001` | `DEL-SOBJ-PROP-DECL-INIT-001:LocalDefinitionFromInitializer` | 已精确。 |
 | `DEL-CLASS-PROP-LOCAL-REF-001` | `DEL-CLASS-PROP-NEW-DECL-001:LocalDefinitionFromObjectCreation` | 已精确。 |
-| 其余 SObject / Class Propagate | 当前没有声明 seed producer | 未完成。旧引擎把同 family 的全部 seed marks 传给每条规则；图路径不能把空依赖解释为“读取全部 seed”。 |
-| SObject host / if lift | 16 个 SObject Mark + 6 个 SObject Propagate | `family` barrier，未原子化。 |
-| Class host / if lift | 3 个 Class Mark + 9 个 Class Propagate | `family` barrier，未原子化。 |
-| 两条 switch lift | 各自的 host `ExpressionHost` 和 if `IfStructure` | 边本身精确；但仍间接受上游 host/if 的 family barrier 限制。 |
+| 其余 SObject / Class Propagate | 分别由 `SObjectPropagationRuleBase` 的 16 个 Mark、`ClassPropagationRuleBase` 的 3 个 Mark 显式提供 | 已显式化。当前规则会扫描完整 family seed 集合，因此这是必要 join；若以后引入更细 selector，才能缩小边集。 |
+| SObject host / if lift | 16 个 SObject Mark + 6 个 SObject Propagate | 显式 `family` fan-in；host/if 在全部必要事实完成后并行。 |
+| Class host / if lift | 3 个 Class Mark + 9 个 Class Propagate | 显式 `family` fan-in；host/if 在全部必要事实完成后并行。 |
+| 两条 switch lift | 各自的 host `ExpressionHost` 和 if `IfStructure` | 精确双边；只等待各自 family 内的 host/if producer。 |
 | logical / if Proposal 与各 parameter-shrink Proposal | 一个对应 Propagate producer | 已精确，但当前输出适配仍须保证只交付该 output kind。 |
 | SObject / Class Default、Control Proposal | 分别汇聚 `16 + 6 + 3`、`3 + 9 + 3` 个节点 | 有意保守的 terminal barrier；必须拆成“专门规则已接管”的显式索引后才能缩小。 |
 | 独立提案 `DEL-DEAD-001`、未引用方法、未使用接口实现、内部 public 私有化 | 一个对应 Mark producer | 已精确。 |
 
-当前实现还存在三个必须在删除旧阶段路径前解决的契约缺口：
+已关闭的图契约缺口：
 
-1. `RulePipeline.CompileRuleGraph()` 会过滤掉不在当前 pipeline 内的 dependency。图编译器本身能拒绝未知 producer，但默认入口先删除了该证据；应改为显式 external-input node，或让编译器报出缺失依赖。
-2. `RuleGraphAnalysisExecutor.CreateResult(...)` 将同一记录列表复制到节点声明的每个 `RuleOutputKind`。这只是兼容投影，不是 typed port；必须按记录的 `OutputKind` 分桶，或将 typed payload 建模为独立结果。
-3. `RuleGraphAnalysisExecutor` 只向节点传入声明依赖的输出。为保持旧语义，每条消费 seed / propagated / lifted 集合的规则都必须声明完整且最小的 producer 集合，或改为显式、可审计的 selector / aggregator 节点；禁止以空 dependency 作为隐式全量输入。
+1. `RulePipeline.CompileRuleGraph()` 保留 dependency 供编译器验证。禁用规则是图内空 producer；未注册 producer 得到确定性异常。
+2. `RuleNodeResult.FromProducedOutputs(...)` 只把匹配 `OutputKind` 的记录投影到 typed port，同时保留基础阶段输出的兼容集合。
+3. 所有默认 consumer node 均有显式 producer；仅 `DEL-CLASS-PROP-PARAM-001` 与 `DEL-CLASS-PROP-PUBLIC-PARAM-001` 是不读取输入、不产生 decision 的兼容 no-op 根节点。
 
-因此，本提案的“每条默认规则有显式依赖输入”完成条件目前**未满足**。后续实现应先用逐规则输入快照确定最小 producer 集合，再删除这些 family barrier；不得以将所有默认规则同时置零依赖来换取表面的并发。
+family join 仍是优化候选而不是正确性缺口：只有将规则从“扫描完整集合”改造成可增量消费的 selector / aggregator 后，才能安全减少 join 边。不得通过把消费者置为空 dependency 来伪造并发。
 
 ## 不变条件
 

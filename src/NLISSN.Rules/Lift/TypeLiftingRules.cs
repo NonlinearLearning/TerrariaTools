@@ -12,6 +12,9 @@ public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-HOST-001";
 
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.ExpressionHost };
+
     public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Lift delete-class marks to direct expression and statement hosts";
@@ -26,7 +29,8 @@ public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
           context,
           RuleId,
           seedMarks,
-          propagatedMarks);
+          propagatedMarks)
+          .Select(mark => mark with { Mark = mark.Mark with { OutputKind = RuleOutputKind.ExpressionHost } });
     }
 }
 
@@ -36,6 +40,9 @@ public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
     public override string CapabilityId { get; } = "lift.type.if-structure";
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-IF-001";
+
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.IfStructure };
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -51,7 +58,8 @@ public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
           context,
           RuleId,
           seedMarks,
-          propagatedMarks);
+          propagatedMarks)
+          .Select(mark => mark with { Mark = mark.Mark with { OutputKind = RuleOutputKind.IfStructure } });
     }
 }
 
@@ -61,6 +69,19 @@ public sealed class ClassSwitchStructureLiftingRule : RuleDefinitionLift
     public override string CapabilityId { get; } = "lift.type.switch-structure";
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-SWITCH-001";
+
+    public override IReadOnlyList<RuleDependency> Dependencies =>
+      RuleGraphDependencyCatalog.GetDependencies(
+        this,
+        RuleKind.Lift,
+        new[]
+        {
+          new RuleDependency(RuleNodeId.For(RuleKind.Lift, "DEL-CLASS-LIFT-HOST-001"), RuleOutputKind.ExpressionHost),
+          new RuleDependency(RuleNodeId.For(RuleKind.Lift, "DEL-CLASS-LIFT-IF-001"), RuleOutputKind.IfStructure)
+        });
+
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.SwitchStructure };
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -88,5 +109,17 @@ public sealed class ClassSwitchStructureLiftingRule : RuleDefinitionLift
           seedMarks,
           propagatedMarks,
           hostLiftedMarks.Concat(ifLiftedMarks).ToList());
+    }
+
+    public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
+    {
+        _ = context;
+        return DeleteSObjectSwitchLiftingHelpers.BuildSwitchLiftedMarks(
+          RuleId,
+          seedMarks,
+          propagatedMarks,
+          existingLiftedMarks
+            .Where(mark => mark.Mark.OutputKind is RuleOutputKind.ExpressionHost or RuleOutputKind.IfStructure)
+            .ToList());
     }
 }

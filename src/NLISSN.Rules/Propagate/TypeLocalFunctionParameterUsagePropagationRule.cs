@@ -7,7 +7,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 为局部函数参数删除收集声明与调用点，把“删除哪个参数”变成可重放的结构化 payload。
-public sealed class ClassLocalFunctionParameterUsagePropagationRule : RuleDefinitionPropagate
+public sealed class ClassLocalFunctionParameterUsagePropagationRule : ClassPropagationRuleBase
 {
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 

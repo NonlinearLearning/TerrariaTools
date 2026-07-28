@@ -7,7 +7,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 为 indexer 参数删除收集声明宿主和访问点，保证提案阶段能同时改声明与所有受影响的 element access。
-public sealed class ClassIndexerParameterUsagePropagationRule : RuleDefinitionPropagate
+public sealed class ClassIndexerParameterUsagePropagationRule : ClassPropagationRuleBase
 {
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 

@@ -12,6 +12,19 @@ public sealed class SObjectSwitchStructureLiftingRule : RuleDefinitionLift
 
     public override string RuleId { get; } = "DEL-SOBJ-LIFT-SWITCH-001";
 
+    public override IReadOnlyList<RuleDependency> Dependencies =>
+      RuleGraphDependencyCatalog.GetDependencies(
+        this,
+        RuleKind.Lift,
+        new[]
+        {
+          new RuleDependency(RuleNodeId.For(RuleKind.Lift, "DEL-SOBJ-LIFT-HOST-001"), RuleOutputKind.ExpressionHost),
+          new RuleDependency(RuleNodeId.For(RuleKind.Lift, "DEL-SOBJ-LIFT-IF-001"), RuleOutputKind.IfStructure)
+        });
+
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.SwitchStructure };
+
     public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Lift s-object marks into switch section and switch statement hosts";
@@ -40,5 +53,17 @@ public sealed class SObjectSwitchStructureLiftingRule : RuleDefinitionLift
           seedMarks,
           propagatedMarks,
           hostLiftedMarks.Concat(ifLiftedMarks).ToList());
+    }
+
+    public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
+    {
+        _ = context;
+        return DeleteSObjectSwitchLiftingHelpers.BuildSwitchLiftedMarks(
+          RuleId,
+          seedMarks,
+          propagatedMarks,
+          existingLiftedMarks
+            .Where(mark => mark.Mark.OutputKind is RuleOutputKind.ExpressionHost or RuleOutputKind.IfStructure)
+            .ToList());
     }
 }

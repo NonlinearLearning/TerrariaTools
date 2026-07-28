@@ -1,6 +1,6 @@
 namespace RoslynPrototype.Tests.TestCodeSet.DeleteClassDirectory;
 
-internal static class DirectoryDeleteClassSources
+public static class DirectoryDeleteClassSources
 {
     public const string PlayerInputEnabledSource = """
       namespace Demo;

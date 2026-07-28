@@ -18,6 +18,8 @@ public sealed class ApplicationService
     private readonly IReadOnlyList<RuleDefinitionPropagate> _propagators;
     private readonly IReadOnlyList<RuleDefinitionLift> _lifters;
     private readonly IReadOnlyList<RuleDefinitionPropose> _proposers;
+    private readonly RulePipeline _pipeline;
+    private readonly CompiledRuleGraph? _compiledRuleGraph;
     private readonly MarkingEngine _markingEngine;
     private readonly PropagationEngine _propagationEngine;
     private readonly MarkLiftingEngine _markLiftingEngine;
@@ -27,6 +29,10 @@ public sealed class ApplicationService
     // 用完整规则管道初始化单文件分析服务，并准备四个阶段的执行器和改写器。
     public ApplicationService(RulePipeline pipeline)
     {
+        _pipeline = pipeline;
+        _compiledRuleGraph = pipeline.EnableRuleGraphExecution
+          ? pipeline.CompileRuleGraph()
+          : null;
         _markers = pipeline.Markers;
         _propagators = pipeline.Propagators;
         _lifters = pipeline.Lifters;
@@ -88,25 +94,44 @@ public sealed class ApplicationService
 
     private PrototypeAnalysisResult RunAnalysis(AnalysisContext analysisContext)
     {
-        var seedMarks = _markingEngine.Run(analysisContext.RuleContext, analysisContext.Root, _markers);
-
-        var propagatedMarks = _propagationEngine.Run(
-          analysisContext.RuleContext,
-          seedMarks,
-          _propagators);
-
-        var liftedMarks = _markLiftingEngine.Run(
-          analysisContext.RuleContext,
-          seedMarks,
-          propagatedMarks,
-          _lifters);
-
-        var decisions = _decisionEngine.Decide(
-          analysisContext.RuleContext,
-          seedMarks,
-          propagatedMarks,
-          liftedMarks,
-          _proposers);
+        IReadOnlyList<MarkRecord> seedMarks;
+        IReadOnlyList<PropagatedMarkRecord> propagatedMarks;
+        IReadOnlyList<LiftedMarkRecord> liftedMarks;
+        IReadOnlyList<RuleDecision> decisions;
+        IReadOnlyList<RuleGraphNodeTelemetry>? ruleGraphTelemetry;
+        RuleGraphExecutionMetrics? ruleGraphMetrics;
+        if (_pipeline.EnableRuleGraphExecution)
+        {
+            var graphResult = new RuleGraphAnalysisExecutor().Run(
+              analysisContext.RuleContext,
+              analysisContext.Root,
+              _pipeline,
+              _compiledRuleGraph!);
+            seedMarks = graphResult.SeedMarks;
+            propagatedMarks = graphResult.PropagatedMarks;
+            liftedMarks = graphResult.LiftedMarks;
+            decisions = graphResult.Decisions;
+            ruleGraphTelemetry = graphResult.Telemetry;
+            ruleGraphMetrics = graphResult.Metrics;
+        }
+        else
+        {
+            seedMarks = _markingEngine.Run(analysisContext.RuleContext, analysisContext.Root, _markers);
+            propagatedMarks = _propagationEngine.Run(analysisContext.RuleContext, seedMarks, _propagators);
+            liftedMarks = _markLiftingEngine.Run(
+              analysisContext.RuleContext,
+              seedMarks,
+              propagatedMarks,
+              _lifters);
+            decisions = _decisionEngine.Decide(
+              analysisContext.RuleContext,
+              seedMarks,
+              propagatedMarks,
+              liftedMarks,
+              _proposers);
+            ruleGraphTelemetry = null;
+            ruleGraphMetrics = null;
+        }
 
         var filteredDecisions = FilterNestedDeleteDecisions(decisions);
         var rewriteResult = ShouldSkipRewrite(analysisContext.RuleContext)
@@ -130,7 +155,9 @@ public sealed class ApplicationService
           null,
           RewritePlans: rewriteResult.Operations is { Count: > 0 }
             ? new[] { new PrototypeFileRewritePlan(analysisContext.Root.SyntaxTree.FilePath, rewriteResult.Operations) }
-            : Array.Empty<PrototypeFileRewritePlan>());
+            : Array.Empty<PrototypeFileRewritePlan>(),
+          RuleGraphTelemetry: ruleGraphTelemetry,
+          RuleGraphMetrics: ruleGraphMetrics);
     }
 
     private AnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)

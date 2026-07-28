@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using NLCPG.Model;
+using NLISSN.Rules;
 
 namespace NLISSN.Core.Marking;
 
@@ -16,4 +17,5 @@ public sealed record MarkRecord(
   /// 说明本次命中的原因，供调试和结果输出使用。
   string Reason,
   /// 阶段之间共享的规则分组键；为空时回退到 RuleId。
-  string? GroupKey = null);
+  string? GroupKey = null,
+  RuleOutputKind? OutputKind = null);

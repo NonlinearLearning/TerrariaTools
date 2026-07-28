@@ -8,11 +8,14 @@ namespace NLISSN.Rules;
 
 /// 把 delete-class 对象创建命中收束到局部声明点，
 /// 让后续局部符号引用传播只依赖稳定 declarator，而不是具体 new 表达式形状。
-public sealed class ClassObjectCreationDeclarationPropagationRule : RuleDefinitionPropagate
+public sealed class ClassObjectCreationDeclarationPropagationRule : ClassPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.type.object-creation-declaration";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-NEW-DECL-001";
+
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalDefinitionFromObjectCreation };
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -47,7 +50,8 @@ public sealed class ClassObjectCreationDeclarationPropagationRule : RuleDefiniti
               MarkRecordFactory.Create(
                 RuleId,
                 declarator,
-                "Object creation initializer is marked; propagate mark to local declarator."),
+                "Object creation initializer is marked; propagate mark to local declarator.",
+                RuleOutputKind.LocalDefinitionFromObjectCreation),
               seedMark,
               1);
         }

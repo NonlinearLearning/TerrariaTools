@@ -13,6 +13,12 @@ public interface IRuleDefinition
     string CapabilityId { get; }
 
     string RuleId { get; }
+
+    RuleNodeId NodeId { get; }
+
+    IReadOnlyList<RuleDependency> Dependencies { get; }
+
+    IReadOnlyList<RuleOutputKind> ProducedOutputs { get; }
 }
 
 public abstract class RuleDefinitionMark : IRuleDefinition
@@ -23,6 +29,13 @@ public abstract class RuleDefinitionMark : IRuleDefinition
     public virtual string CapabilityId => RuleId;
 
     public abstract string RuleId { get; }
+
+    public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Mark, RuleId);
+
+    public virtual IReadOnlyList<RuleDependency> Dependencies =>
+      RuleGraphDependencyCatalog.GetDependencies(this, RuleKind.Mark, Array.Empty<RuleDependency>());
+
+    public virtual IReadOnlyList<RuleOutputKind> ProducedOutputs => new[] { RuleOutputKind.SeedMark };
 
     public virtual string GroupKey => RuleId;
 
@@ -43,6 +56,13 @@ public abstract class RuleDefinitionPropagate : IRuleDefinition
 
     public abstract string RuleId { get; }
 
+    public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Propagate, RuleId);
+
+    public virtual IReadOnlyList<RuleDependency> Dependencies =>
+      RuleGraphDependencyCatalog.GetDependencies(this, RuleKind.Propagate, Array.Empty<RuleDependency>());
+
+    public virtual IReadOnlyList<RuleOutputKind> ProducedOutputs => new[] { RuleOutputKind.PropagatedMark };
+
     public virtual string GroupKey => RuleId;
 
     public abstract string Name { get; }
@@ -61,6 +81,13 @@ public abstract class RuleDefinitionPropose : IRuleDefinition
     public virtual string CapabilityId => RuleId;
 
     public abstract string RuleId { get; }
+
+    public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Propose, RuleId);
+
+    public virtual IReadOnlyList<RuleDependency> Dependencies =>
+      RuleGraphDependencyCatalog.GetDependencies(this, RuleKind.Propose, Array.Empty<RuleDependency>());
+
+    public virtual IReadOnlyList<RuleOutputKind> ProducedOutputs => new[] { RuleOutputKind.DecisionUnit };
 
     public virtual string GroupKey => RuleId;
 
@@ -83,6 +110,13 @@ public abstract class RuleDefinitionLift : IRuleDefinition
 
     public abstract string RuleId { get; }
 
+    public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Lift, RuleId);
+
+    public virtual IReadOnlyList<RuleDependency> Dependencies =>
+      RuleGraphDependencyCatalog.GetDependencies(this, RuleKind.Lift, Array.Empty<RuleDependency>());
+
+    public virtual IReadOnlyList<RuleOutputKind> ProducedOutputs => new[] { RuleOutputKind.LiftedMark };
+
     public virtual string GroupKey => RuleId;
 
     public abstract string Name { get; }
@@ -91,4 +125,14 @@ public abstract class RuleDefinitionLift : IRuleDefinition
 
     // 把已有标记提升到更高层的表达式或结构宿主，生成后续决策可消费的提升结果。
     public abstract IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks);
+
+    public virtual IEnumerable<LiftedMarkRecord> Lift(
+      RuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
+    {
+        _ = existingLiftedMarks;
+        return Lift(context, seedMarks, propagatedMarks);
+    }
 }

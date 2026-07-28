@@ -6,7 +6,7 @@ namespace NLISSN.Rules;
 
 /// 为 delete-class 规则复用统一的 if 结构完成态传播，
 /// 把散落在条件、语句块和尾分支上的命中收束成单个结构 payload。
-public sealed class ClassIfStructureCompletionPropagationRule : RuleDefinitionPropagate
+public sealed class ClassIfStructureCompletionPropagationRule : ClassPropagationRuleBase
 {
     public override string CapabilityId { get; } = "propagate.type.if-structure-completion";
 
@@ -15,6 +15,9 @@ public sealed class ClassIfStructureCompletionPropagationRule : RuleDefinitionPr
     public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class if/elseif/else completion state as structured payloads";
+
+    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
+      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.IfCompletion };
 
     public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
       new[]

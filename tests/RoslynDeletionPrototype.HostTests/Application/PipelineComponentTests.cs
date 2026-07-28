@@ -399,7 +399,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_ChainsIndependentRulesWithinSameGroupKey()
+    public void PropagationEngine_Run_ChainsRulesThroughExplicitDependencies()
     {
         var source = PipelineSources.ChainedPropagationSource;
 
@@ -424,6 +424,126 @@ public sealed class PipelineComponentTests : IDisposable
           mark => mark.RuleId == "TEST-CHAIN-REF-001" &&
             mark.Mark.SyntaxNode is IdentifierNameSyntax identifier &&
             string.Equals(identifier.Identifier.ValueText, "value", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PropagationEngine_Run_ExposesDeclaredProducerOutputToConsumer()
+    {
+        var source = SObjectControlFlowSources.PropagationDedupSource;
+
+        var (context, root) = CreateContext(source, "s");
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var engine = new PropagationEngine();
+
+        var propagatedMarks = engine.Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[]
+          {
+            new DuplicatePropagationRule(),
+            new IfStatementVisibilityPropagationRule()
+          });
+
+        Assert.Contains(
+          propagatedMarks,
+          mark => mark.RuleId == "TEST-PROP-VISIBILITY-001" &&
+            mark.Mark.SyntaxNode is ReturnStatementSyntax);
+    }
+
+    [Fact]
+    public void ClassSymbolReferencePropagationRule_SameScopeReference_ExcludesNestedShadowedLocal()
+    {
+        var (context, root) = CreateContext("""
+          namespace Demo;
+
+          public sealed class PlayerInput
+          {
+          }
+
+          public sealed class Game
+          {
+            public void Run()
+            {
+              var input = new PlayerInput();
+              System.Console.Write(input);
+
+              void Nested()
+              {
+                var input = new PlayerInput();
+                System.Console.Write(input);
+              }
+            }
+          }
+          """, "PlayerInput");
+        var outerDeclarator = root.DescendantNodes()
+          .OfType<VariableDeclaratorSyntax>()
+          .First(declarator => string.Equals(declarator.Identifier.ValueText, "input", StringComparison.Ordinal));
+        var seedMark = new MarkRecord(
+          "TEST-CLASS-LOCAL-001",
+          outerDeclarator,
+          null,
+          null,
+          "This diagnostic text is intentionally unrelated.",
+          "DEL-CLASS",
+          RuleOutputKind.LocalDefinitionFromObjectCreation);
+
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          new[] { seedMark },
+          new RuleDefinitionPropagate[] { new ClassSymbolReferencePropagationRule() });
+
+        var propagated = Assert.Single(propagatedMarks);
+        Assert.Equal("input", Assert.IsType<IdentifierNameSyntax>(propagated.Mark.SyntaxNode).Identifier.ValueText);
+        Assert.True(propagated.Mark.SyntaxNode.SpanStart > outerDeclarator.SpanStart);
+    }
+
+    [Fact]
+    public void SObjectSymbolReferencePropagationRule_SameScopeReference_ExcludesNestedShadowedLocal()
+    {
+        var (context, root) = CreateContext("""
+          namespace Demo;
+
+          public sealed class Box
+          {
+            public int Value { get; set; }
+          }
+
+          public sealed class Game
+          {
+            public int Run(Box s)
+            {
+              var value = s.Value;
+
+              void Nested()
+              {
+                var value = 1;
+                System.Console.Write(value);
+              }
+
+              return value;
+            }
+          }
+          """, "s");
+        var outerDeclarator = root.DescendantNodes()
+          .OfType<VariableDeclaratorSyntax>()
+          .First(declarator => string.Equals(declarator.Identifier.ValueText, "value", StringComparison.Ordinal));
+        var seedMark = new MarkRecord(
+          "TEST-SOBJ-LOCAL-001",
+          outerDeclarator,
+          null,
+          null,
+          "This diagnostic text is intentionally unrelated.",
+          DeleteSObjectGroupKey,
+          RuleOutputKind.LocalDefinitionFromInitializer);
+
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          new[] { seedMark },
+          new RuleDefinitionPropagate[] { new SObjectSymbolReferencePropagationRule() });
+
+        var propagated = Assert.Single(propagatedMarks);
+        Assert.Equal("value", Assert.IsType<IdentifierNameSyntax>(propagated.Mark.SyntaxNode).Identifier.ValueText);
+        Assert.True(propagated.Mark.SyntaxNode.SpanStart > outerDeclarator.SpanStart);
     }
 
     [Fact]
@@ -496,7 +616,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void MarkingEngine_Run_EnableGroupParallelism_UsesScheduler()
+    public void MarkingEngine_Run_DoesNotUseGroupScheduler()
     {
         var source = PipelineSources.ParallelMarkingSource;
         var scheduler = new RecordingScheduler();
@@ -513,15 +633,15 @@ public sealed class PipelineComponentTests : IDisposable
             new ParallelClassMarkRule("TEST-PARALLEL-MARK-B", "TEST-GROUP-B", "Beta")
           });
 
-        Assert.Equal(1, scheduler.InvocationCount);
-        Assert.Equal(new[] { 2 }, scheduler.ItemCounts);
+        Assert.Equal(0, scheduler.InvocationCount);
+        Assert.Empty(scheduler.ItemCounts);
         Assert.Equal(
           new[] { "TEST-PARALLEL-MARK-A", "TEST-PARALLEL-MARK-B" },
           marks.Select(mark => mark.RuleId).ToArray());
     }
 
     [Fact]
-    public void PropagationEngine_Run_EnableGroupParallelism_UsesScheduler()
+    public void PropagationEngine_Run_DoesNotScheduleByGroupKey()
     {
         var source = PipelineSources.ParallelPropagationSource;
         var scheduler = new RecordingScheduler();
@@ -543,19 +663,19 @@ public sealed class PipelineComponentTests : IDisposable
           seedMarks,
           new RuleDefinitionPropagate[]
           {
-            new GroupMethodPropagationRule("TEST-PROP-A", "TEST-GROUP-A"),
-            new GroupMethodPropagationRule("TEST-PROP-B", "TEST-GROUP-B")
+            new GroupMethodPropagationRule("TEST-PROP-A", "TEST-GROUP-A", "TEST-PROP-SEED-A"),
+            new GroupMethodPropagationRule("TEST-PROP-B", "TEST-GROUP-B", "TEST-PROP-SEED-B")
           });
 
-        Assert.Equal(1, scheduler.InvocationCount);
-        Assert.Equal(new[] { 2 }, scheduler.ItemCounts);
+        Assert.Equal(0, scheduler.InvocationCount);
+        Assert.Empty(scheduler.ItemCounts);
         Assert.Equal(
           new[] { "TEST-PROP-A", "TEST-PROP-B" },
           propagatedMarks.Select(mark => mark.RuleId).ToArray());
     }
 
     [Fact]
-    public void MarkLiftingEngine_Run_EnableGroupParallelism_UsesScheduler()
+    public void MarkLiftingEngine_Run_DoesNotScheduleByGroupKey()
     {
         var source = PipelineSources.ParallelMarkingSource;
         var scheduler = new RecordingScheduler();
@@ -578,20 +698,20 @@ public sealed class PipelineComponentTests : IDisposable
           Array.Empty<PropagatedMarkRecord>(),
           new RuleDefinitionLift[]
           {
-            new NamespaceLiftRule("TEST-LIFT-A1", "TEST-GROUP-A"),
-            new NamespaceLiftRule("TEST-LIFT-A2", "TEST-GROUP-A"),
-            new NamespaceLiftRule("TEST-LIFT-B", "TEST-GROUP-B")
+            new NamespaceLiftRule("TEST-LIFT-A1", "TEST-GROUP-A", "TEST-LIFT-SEED-A"),
+            new NamespaceLiftRule("TEST-LIFT-A2", "TEST-GROUP-A", "TEST-LIFT-SEED-A"),
+            new NamespaceLiftRule("TEST-LIFT-B", "TEST-GROUP-B", "TEST-LIFT-SEED-B")
           });
 
-        Assert.Equal(1, scheduler.InvocationCount);
-        Assert.Equal(new[] { 2 }, scheduler.ItemCounts);
+        Assert.Equal(0, scheduler.InvocationCount);
+        Assert.Empty(scheduler.ItemCounts);
         Assert.Equal(
           new[] { "TEST-LIFT-A1", "TEST-LIFT-B" },
           liftedMarks.Select(mark => mark.RuleId).ToArray());
     }
 
     [Fact]
-    public void RuleDecisionEngine_Decide_EnableGroupParallelism_UsesScheduler()
+    public void RuleDecisionEngine_Decide_SchedulesOnlyConflictResolution()
     {
         var source = PipelineSources.ParallelMarkingSource;
         var scheduler = new RecordingScheduler();
@@ -615,9 +735,9 @@ public sealed class PipelineComponentTests : IDisposable
           Array.Empty<LiftedMarkRecord>(),
           new RuleDefinitionPropose[]
           {
-            new ClassDecisionRule("TEST-DECIDE-A1", "TEST-GROUP-A"),
-            new ClassDecisionRule("TEST-DECIDE-A2", "TEST-GROUP-A"),
-            new ClassDecisionRule("TEST-DECIDE-B", "TEST-GROUP-B")
+            new ClassDecisionRule("TEST-DECIDE-A1", "TEST-GROUP-A", "TEST-DECIDE-SEED-A"),
+            new ClassDecisionRule("TEST-DECIDE-A2", "TEST-GROUP-A", "TEST-DECIDE-SEED-A"),
+            new ClassDecisionRule("TEST-DECIDE-B", "TEST-GROUP-B", "TEST-DECIDE-SEED-B")
           });
 
         Assert.Equal(1, scheduler.InvocationCount);
@@ -922,7 +1042,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var source = PipelineSources.LogicalOperandGroupSource;
 
-        var (context, root) = CreateContext(source, "s");
+        var (context, root) = CreateContext(source, "s, unused");
         var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
         var engine = new PropagationEngine();
 
@@ -4560,6 +4680,8 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Contains(
           rules.Propagators,
           rule => string.Equals(rule.GetType().Name, "SObjectAssignmentLeftValuePropagationRule", StringComparison.Ordinal));
+        Assert.True(rules.EnableRuleGraphExecution);
+        Assert.NotEmpty(rules.CompileRuleGraph().Nodes);
     }
 
     [Fact]
@@ -5018,6 +5140,14 @@ public sealed class PipelineComponentTests : IDisposable
 
         public override string Name { get; } = "Propagate declarator marks to later local references";
 
+        public override IReadOnlyList<RuleDependency> Dependencies { get; } =
+            new[]
+            {
+                new RuleDependency(
+                    RuleNodeId.For(RuleKind.Propagate, "TEST-CHAIN-DECL-001"),
+                    RuleOutputKind.PropagatedMark)
+            };
+
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IdentifierName };
 
@@ -5065,14 +5195,49 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
+    private sealed class IfStatementVisibilityPropagationRule : RuleDefinitionPropagate
+    {
+        public override string RuleId { get; } = "TEST-PROP-VISIBILITY-001";
+
+        public override string GroupKey { get; } = DeleteSObjectGroupKey;
+
+        public override string Name { get; } = "Propagate only when one if statement is visible.";
+
+        public override IReadOnlyList<RuleDependency> Dependencies { get; } =
+            new[]
+            {
+                new RuleDependency(
+                    RuleNodeId.For(RuleKind.Propagate, "DEL-SOBJ-TEST-PROP-001"),
+                    RuleOutputKind.PropagatedMark)
+            };
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+            new[] { SyntaxKind.ReturnStatement };
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+        {
+            var ifMarks = seedMarks.Where(mark => mark.SyntaxNode is IfStatementSyntax).ToArray();
+            var ifMark = Assert.Single(ifMarks);
+
+            var returnStatement = context.Root.DescendantNodes().OfType<ReturnStatementSyntax>().First();
+            yield return new PropagatedMarkRecord(
+              RuleId,
+              new MarkRecord(RuleId, returnStatement, null, null, "A single propagated if statement is visible."),
+              ifMark,
+              1);
+        }
+    }
+
     private sealed class GroupMethodPropagationRule : RuleDefinitionPropagate
     {
         private readonly string _groupKey;
+        private readonly string _seedRuleId;
 
-        public GroupMethodPropagationRule(string ruleId, string groupKey)
+        public GroupMethodPropagationRule(string ruleId, string groupKey, string seedRuleId)
         {
             RuleId = ruleId;
             _groupKey = groupKey;
+            _seedRuleId = seedRuleId;
         }
 
         public override string RuleId { get; }
@@ -5080,6 +5245,14 @@ public sealed class PipelineComponentTests : IDisposable
         public override string GroupKey => _groupKey;
 
         public override string Name { get; } = "Propagate a class seed to its method for scheduler tests.";
+
+        public override IReadOnlyList<RuleDependency> Dependencies =>
+            new[]
+            {
+                new RuleDependency(
+                    RuleNodeId.For(RuleKind.Mark, _seedRuleId),
+                    RuleOutputKind.SeedMark)
+            };
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.MethodDeclaration };
@@ -5171,11 +5344,13 @@ public sealed class PipelineComponentTests : IDisposable
     private sealed class NamespaceLiftRule : RuleDefinitionLift
     {
         private readonly string _groupKey;
+        private readonly string _seedRuleId;
 
-        public NamespaceLiftRule(string ruleId, string groupKey)
+        public NamespaceLiftRule(string ruleId, string groupKey, string seedRuleId)
         {
             RuleId = ruleId;
             _groupKey = groupKey;
+            _seedRuleId = seedRuleId;
         }
 
         public override string RuleId { get; }
@@ -5183,6 +5358,14 @@ public sealed class PipelineComponentTests : IDisposable
         public override string GroupKey => _groupKey;
 
         public override string Name { get; } = "Lift a class seed to its namespace for scheduler tests.";
+
+        public override IReadOnlyList<RuleDependency> Dependencies =>
+            new[]
+            {
+                new RuleDependency(
+                    RuleNodeId.For(RuleKind.Mark, _seedRuleId),
+                    RuleOutputKind.SeedMark)
+            };
 
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
             new[] { SyntaxKind.FileScopedNamespaceDeclaration };
@@ -5231,11 +5414,13 @@ public sealed class PipelineComponentTests : IDisposable
     private sealed class ClassDecisionRule : RuleDefinitionPropose
     {
         private readonly string _groupKey;
+        private readonly string _seedRuleId;
 
-        public ClassDecisionRule(string ruleId, string groupKey)
+        public ClassDecisionRule(string ruleId, string groupKey, string seedRuleId)
         {
             RuleId = ruleId;
             _groupKey = groupKey;
+            _seedRuleId = seedRuleId;
         }
 
         public override string RuleId { get; }
@@ -5243,6 +5428,14 @@ public sealed class PipelineComponentTests : IDisposable
         public override string GroupKey => _groupKey;
 
         public override string Name { get; } = "Create a delete decision for scheduler tests.";
+
+        public override IReadOnlyList<RuleDependency> Dependencies =>
+            new[]
+            {
+                new RuleDependency(
+                    RuleNodeId.For(RuleKind.Mark, _seedRuleId),
+                    RuleOutputKind.SeedMark)
+            };
 
         public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds { get; } =
             new[] { SyntaxKind.ClassDeclaration };
