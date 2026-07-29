@@ -9,9 +9,19 @@ namespace NLISSN.Rules;
 /// 为没有更专门语法宿主的有效标记生成默认删除决策。
 public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
 {
+    private static readonly RuleTerminalConsumesContract AllSObjectFacts = new(
+      new[]
+      {
+        new RuleTerminalFactSelector(
+          RuleFactDomain.SObject,
+          new[] { RuleKind.Mark, RuleKind.Propagate, RuleKind.Lift })
+      });
+
     public override string CapabilityId { get; } = "propose.default-removal";
 
     public override string RuleId { get; } = "DEL-SOBJ-PROPOSE-DEFAULT-001";
+
+    public override RuleTerminalConsumesContract TerminalConsumes => AllSObjectFacts;
 
     public override string GroupKey { get; } = "DEL-SOBJ";
 

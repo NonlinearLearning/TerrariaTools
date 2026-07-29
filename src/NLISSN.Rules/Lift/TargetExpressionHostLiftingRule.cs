@@ -8,12 +8,31 @@ namespace NLISSN.Rules;
 /// 把已传播的原子命中提升到可单独改写的表达式宿主，避免 Proposal 重复向上遍历语法树。
 public sealed class SObjectExpressionHostLiftingRule : RuleDefinitionLift
 {
+    private static readonly RuleSemanticTag ExpressionHostSemanticTag = new("SObject.ExpressionHost");
+
+    private static readonly RuleTerminalConsumesContract SObjectInputFacts = new(
+      new[]
+      {
+        new RuleTerminalFactSelector(
+          RuleFactDomain.SObject,
+          new[] { RuleKind.Mark, RuleKind.Propagate })
+      });
+
+    private static readonly RuleProducesContract ExpressionHostProduces =
+      RuleStructureContractFactories.CreateExpressionOrStatementHostProduces(ExpressionHostSemanticTag);
+
     public override string CapabilityId { get; } = "lift.target.expression-host";
 
     public override string RuleId { get; } = "DEL-SOBJ-LIFT-HOST-001";
 
+    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
+
+    public override RuleTerminalConsumesContract TerminalConsumes => SObjectInputFacts;
+
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.LiftedMark, RuleOutputKind.ExpressionHost };
+
+    public override RuleProducesContract Produces => ExpressionHostProduces;
 
     public override string GroupKey { get; } = "DEL-SOBJ";
 
@@ -30,6 +49,13 @@ public sealed class SObjectExpressionHostLiftingRule : RuleDefinitionLift
           RuleId,
           seedMarks,
           propagatedMarks)
-          .Select(mark => mark with { Mark = mark.Mark with { OutputKind = RuleOutputKind.ExpressionHost } });
+          .Select(mark => mark with
+          {
+            Mark = mark.Mark with
+            {
+              OutputKind = RuleOutputKind.ExpressionHost,
+              SemanticTag = ExpressionHostSemanticTag
+            }
+          });
     }
 }

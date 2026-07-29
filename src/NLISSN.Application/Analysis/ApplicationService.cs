@@ -14,33 +14,15 @@ namespace NLISSN.Application;
 /// 编排单个源码文件的删除规则分析：构图、标记、传播、提升、决策和改写。
 public sealed class ApplicationService
 {
-    private readonly IReadOnlyList<RuleDefinitionMark> _markers;
-    private readonly IReadOnlyList<RuleDefinitionPropagate> _propagators;
-    private readonly IReadOnlyList<RuleDefinitionLift> _lifters;
-    private readonly IReadOnlyList<RuleDefinitionPropose> _proposers;
     private readonly RulePipeline _pipeline;
-    private readonly CompiledRuleGraph? _compiledRuleGraph;
-    private readonly MarkingEngine _markingEngine;
-    private readonly PropagationEngine _propagationEngine;
-    private readonly MarkLiftingEngine _markLiftingEngine;
-    private readonly RuleDecisionEngine _decisionEngine;
+    private readonly CompiledRuleGraph _compiledRuleGraph;
     private readonly PrototypeRewriter _rewriter;
 
     // 用完整规则管道初始化单文件分析服务，并准备四个阶段的执行器和改写器。
     public ApplicationService(RulePipeline pipeline)
     {
         _pipeline = pipeline;
-        _compiledRuleGraph = pipeline.EnableRuleGraphExecution
-          ? pipeline.CompileRuleGraph()
-          : null;
-        _markers = pipeline.Markers;
-        _propagators = pipeline.Propagators;
-        _lifters = pipeline.Lifters;
-        _proposers = pipeline.Proposers;
-        _markingEngine = new MarkingEngine();
-        _propagationEngine = new PropagationEngine();
-        _markLiftingEngine = new MarkLiftingEngine();
-        _decisionEngine = new RuleDecisionEngine();
+        _compiledRuleGraph = pipeline.CompileRuleGraph();
         _rewriter = new PrototypeRewriter();
     }
 
@@ -99,39 +81,20 @@ public sealed class ApplicationService
         IReadOnlyList<LiftedMarkRecord> liftedMarks;
         IReadOnlyList<RuleDecision> decisions;
         IReadOnlyList<RuleGraphNodeTelemetry>? ruleGraphTelemetry;
+        IReadOnlyDictionary<RuleNodeId, RuleGraphNodeStatus>? ruleGraphNodeStatuses;
         RuleGraphExecutionMetrics? ruleGraphMetrics;
-        if (_pipeline.EnableRuleGraphExecution)
-        {
-            var graphResult = new RuleGraphAnalysisExecutor().Run(
-              analysisContext.RuleContext,
-              analysisContext.Root,
-              _pipeline,
-              _compiledRuleGraph!);
-            seedMarks = graphResult.SeedMarks;
-            propagatedMarks = graphResult.PropagatedMarks;
-            liftedMarks = graphResult.LiftedMarks;
-            decisions = graphResult.Decisions;
-            ruleGraphTelemetry = graphResult.Telemetry;
-            ruleGraphMetrics = graphResult.Metrics;
-        }
-        else
-        {
-            seedMarks = _markingEngine.Run(analysisContext.RuleContext, analysisContext.Root, _markers);
-            propagatedMarks = _propagationEngine.Run(analysisContext.RuleContext, seedMarks, _propagators);
-            liftedMarks = _markLiftingEngine.Run(
-              analysisContext.RuleContext,
-              seedMarks,
-              propagatedMarks,
-              _lifters);
-            decisions = _decisionEngine.Decide(
-              analysisContext.RuleContext,
-              seedMarks,
-              propagatedMarks,
-              liftedMarks,
-              _proposers);
-            ruleGraphTelemetry = null;
-            ruleGraphMetrics = null;
-        }
+        var graphResult = new RuleGraphAnalysisExecutor().Run(
+          analysisContext.RuleContext,
+          analysisContext.Root,
+          _pipeline,
+          _compiledRuleGraph);
+        seedMarks = graphResult.SeedMarks;
+        propagatedMarks = graphResult.PropagatedMarks;
+        liftedMarks = graphResult.LiftedMarks;
+        decisions = graphResult.Decisions;
+        ruleGraphTelemetry = graphResult.Telemetry;
+        ruleGraphNodeStatuses = graphResult.NodeStatuses;
+        ruleGraphMetrics = graphResult.Metrics;
 
         var filteredDecisions = FilterNestedDeleteDecisions(decisions);
         var rewriteResult = ShouldSkipRewrite(analysisContext.RuleContext)
@@ -157,6 +120,7 @@ public sealed class ApplicationService
             ? new[] { new PrototypeFileRewritePlan(analysisContext.Root.SyntaxTree.FilePath, rewriteResult.Operations) }
             : Array.Empty<PrototypeFileRewritePlan>(),
           RuleGraphTelemetry: ruleGraphTelemetry,
+          RuleGraphNodeStatuses: ruleGraphNodeStatuses,
           RuleGraphMetrics: ruleGraphMetrics,
           GraphMetrics: new CpgGraphMetrics(
             analysisContext.CpgAnalysisContext.Graph.Nodes.Count,
@@ -213,8 +177,7 @@ public sealed class ApplicationService
         var builderOptions = NLCPGBuilderOptions.CreateDefault() with
         {
             MaxDegreeOfParallelism = runtime.CurrentCpgBuildAdmissionLease!.GrantedDegree,
-            RequestedCapabilities = new RulePipeline(_markers, _propagators, _lifters, _proposers)
-            .GetRequiredCapabilities()
+            RequestedCapabilities = _pipeline.GetRequiredCapabilities()
         };
         var builder = new NLCPGBuilder(builderOptions);
         var graph = builder.BuildFromSemanticModel(

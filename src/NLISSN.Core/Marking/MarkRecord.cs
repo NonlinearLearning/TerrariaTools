@@ -18,4 +18,5 @@ public sealed record MarkRecord(
   string Reason,
   /// 阶段之间共享的规则分组键；为空时回退到 RuleId。
   string? GroupKey = null,
-  RuleOutputKind? OutputKind = null);
+  RuleOutputKind? OutputKind = null,
+  RuleSemanticTag? SemanticTag = null);

@@ -49,14 +49,24 @@ public sealed record RuleNodeId
     }
 }
 
-public sealed record RuleDependency(RuleNodeId Producer, RuleOutputKind RequiredOutput);
+public sealed record RuleDependency(
+  RuleNodeId Producer,
+  RuleOutputKind RequiredOutput,
+  MarkedStructureSelector? RequiredStructure = null,
+  RuleTerminalFactSelector? RequiredTerminalFact = null);
 
-public sealed record RuleGraphNode(
-  RuleNodeId NodeId,
-  RuleKind Kind,
-  IReadOnlyList<RuleOutputKind> ProducedOutputs,
-  IReadOnlyList<RuleDependency> Dependencies)
+//ProducedOutputs此节点能产出什么输出
+//Dependencies
+public sealed record RuleGraphNode(RuleNodeId NodeId, RuleKind Kind, IReadOnlyList<RuleOutputKind> ProducedOutputs, IReadOnlyList<RuleDependency> Dependencies)
 {
+    public IReadOnlyList<MarkedStructureSelector> ProducedStructures { get; init; } =
+      Array.Empty<MarkedStructureSelector>();
+
+    public IReadOnlyList<RuleConsumedStructure> ConsumedStructures { get; init; } =
+      Array.Empty<RuleConsumedStructure>();
+
+    public RuleFactDomain FactDomain { get; init; } = RuleFactDomain.None;
+
     public RuleGraphNode(
       RuleNodeId nodeId,
       RuleKind kind,

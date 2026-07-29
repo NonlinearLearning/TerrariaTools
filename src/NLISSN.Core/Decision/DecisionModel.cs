@@ -294,7 +294,11 @@ public sealed class RuleDecisionEngine
           RuleNodeId.For(RuleKind.Propose, rule.RuleId),
           RuleKind.Propose,
           rule.ProducedOutputs,
-          ResolveDependencies(rule, sourceNodes, sourceNodeIds, proposalNodeIds))).ToList();
+          ResolveDependencies(rule, sourceNodes, sourceNodeIds, proposalNodeIds))
+        {
+          ProducedStructures = rule.Produces.Structures,
+          ConsumedStructures = rule.Consumes.Structures
+        }).ToList();
         var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
         var executionNodes = sourceNodes
           .Select(node => new RuleGraphExecutionNode(
@@ -315,7 +319,7 @@ public sealed class RuleDecisionEngine
                         values.OfType<LiftedMarkRecord>().ToList())
                       .Select(unit => unit.GroupKey is null ? unit with { GroupKey = rule.GroupKey } : unit)
                       .ToList();
-                    return Task.FromResult(CreateResult(rule.ProducedOutputs, units));
+                    return Task.FromResult(CreateResult(rule.ProducedOutputs, rule.Produces, units));
                 });
           }))
           .ToList();
@@ -361,7 +365,7 @@ public sealed class RuleDecisionEngine
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
-        return resolved.ToList();
+        return FilterCoveredDecisions(resolved);
     }
 
     private static IReadOnlyList<RuleGraphNode> CreateSourceNodes(
@@ -387,7 +391,7 @@ public sealed class RuleDecisionEngine
       IReadOnlySet<RuleNodeId> sourceNodeIds,
       IReadOnlySet<RuleNodeId> proposalNodeIds)
     {
-        var declared = RuleGraphDependencyCatalog.GetDependencies(rule, RuleKind.Propose, rule.Dependencies);
+        var declared = rule.Dependencies;
         if (declared.Count == 0)
         {
             return sourceNodes
@@ -397,8 +401,7 @@ public sealed class RuleDecisionEngine
 
         return declared
           .Where(dependency => sourceNodeIds.Contains(dependency.Producer) || proposalNodeIds.Contains(dependency.Producer))
-          .GroupBy(dependency => dependency.Producer)
-          .Select(group => group.First())
+          .Distinct()
           .ToList();
     }
 
@@ -419,16 +422,21 @@ public sealed class RuleDecisionEngine
         return RuleNodeResult.From(node.ProducedOutputs.Single(), values.ToArray());
     }
 
-    private static RuleNodeResult CreateResult<T>(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<T> values)
+    private static RuleNodeResult CreateResult<T>(
+      IReadOnlyList<RuleOutputKind> outputKinds,
+      RuleProducesContract produces,
+      IReadOnlyList<T> values)
     {
         var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed);
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed, produces);
     }
 
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+          .SelectMany(dependency => dependency.RequiredStructure is { } selector
+            ? inputs.GetOutputs(dependency.Producer, selector)
+            : inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
           .ToList();
     }
 
@@ -468,33 +476,47 @@ public sealed class RuleDecisionEngine
           .ToList();
     }
 
+    // 不同冲突键的决策在最终 rewrite 前仍可能嵌套；外层动作已覆盖子节点时只保留外层。
+    private static IReadOnlyList<RuleDecision> FilterCoveredDecisions(
+      IReadOnlyList<RuleDecision> decisions)
+    {
+        return decisions
+          .Where(decision => !decisions.Any(candidate =>
+            !ReferenceEquals(candidate, decision) &&
+            candidate.FinalNode.Span.Contains(decision.FinalNode.Span) &&
+            !candidate.FinalNode.Span.Equals(decision.FinalNode.Span)))
+          .ToList();
+    }
+
     /// 为一个决策单元确定冲突域键。
     private static string BuildConflictGroupKey(DecisionUnit unit, IReadOnlyList<RuleDefinitionPropose> rules)
     {
-        if (!string.IsNullOrWhiteSpace(unit.ConflictKey))
-        {
-            return unit.ConflictKey;
-        }
-
         // 约定第一个片段始终是决策锚点，冲突域也从它开始向外推导。
         var anchorFragment = unit.Fragments[0];
         if (!anchorFragment.NodeId.HasValue ||
             !unit.SyntaxBindings.TryGetValue(anchorFragment.NodeId.Value, out var anchorNode))
         {
-            return DecisionCpgFactory.BuildNodeKey(anchorFragment);
+            return unit.ConflictKey ?? DecisionCpgFactory.BuildNodeKey(anchorFragment);
+        }
+
+        var anchorKey = DecisionCpgFactory.BuildNodeKey(anchorNode);
+        if (!string.IsNullOrWhiteSpace(unit.ConflictKey) &&
+            !string.Equals(unit.ConflictKey, anchorKey, StringComparison.Ordinal))
+        {
+            return unit.ConflictKey;
         }
 
         var rule = rules.FirstOrDefault(candidate => string.Equals(candidate.RuleId, unit.RuleId, StringComparison.Ordinal));
         if (rule is null)
         {
             // 找不到规则定义时，退化回显式 conflict key 或节点键，保证引擎仍可工作。
-            return DecisionCpgFactory.BuildNodeKey(anchorFragment);
+            return unit.ConflictKey ?? anchorKey;
         }
 
         // Replace 决策必须绑定到当前替换锚点，不能再向外层结构合并，否则会丢掉局部规约语义。
         if (unit.Action == DecisionActionKind.Replace)
         {
-            return DecisionCpgFactory.BuildNodeKey(anchorFragment);
+            return anchorKey;
         }
 
         // 如果当前片段已经落在可规约的逻辑表达式子树里，优先把冲突域收口到逻辑宿主。

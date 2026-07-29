@@ -14,21 +14,31 @@ public sealed class MarkingEngine
           RuleNodeId.For(RuleKind.Mark, rule.RuleId),
           RuleKind.Mark,
           rule.ProducedOutputs,
-          RuleGraphDependencyCatalog.GetDependencies(rule, RuleKind.Mark, rule.Dependencies)
+          rule.Dependencies
             .Where(dependency => nodeIds.Contains(dependency.Producer))
-            .ToList())).ToList();
+            .ToList())
+        {
+          ProducedStructures = rule.Produces.Structures,
+          ConsumedStructures = rule.Consumes.Structures
+        }).ToList();
         var graph = new RuleGraphCompiler().Compile(nodes);
         var executionNodes = rules.Select(rule =>
         {
             var node = graph.Nodes.Single(candidate => candidate.NodeId == RuleNodeId.For(RuleKind.Mark, rule.RuleId));
             return new RuleGraphExecutionNode(
               node,
-              (_, _) => Task.FromResult(CreateResult(rule.ProducedOutputs, RunRule(context, root, rule))));
+              (_, _) => Task.FromResult(CreateResult(
+                rule.ProducedOutputs,
+                rule.Produces,
+                ExecuteRule(context, root, rule))));
         }).ToList();
+        var graphDegree = context.Runtime.ExecutionOptions.EnableGroupParallelism
+          ? context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism
+          : 1;
         var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
-            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            graphDegree,
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
@@ -46,22 +56,26 @@ public sealed class MarkingEngine
         .ToList();
     }
 
-    private static List<MarkRecord> RunRule(RuleContext context, SyntaxNode root, RuleDefinitionMark rule)
+    public static List<MarkRecord> ExecuteRule(RuleContext context, SyntaxNode root, RuleDefinitionMark rule)
     {
         var producedMarks = new List<MarkRecord>();
         foreach (var mark in rule.Mark(context, root))
         {
             ValidateMarkNode(rule, mark.SyntaxNode);
+            ValidateProducedStructure(rule.Produces, mark);
             producedMarks.Add(BindMarkRecord(context, mark, rule.GroupKey));
         }
 
         return producedMarks;
     }
 
-    private static RuleNodeResult CreateResult<T>(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<T> values)
+    private static RuleNodeResult CreateResult<T>(
+      IReadOnlyList<RuleOutputKind> outputKinds,
+      RuleProducesContract produces,
+      IReadOnlyList<T> values)
     {
         var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed);
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed, produces);
     }
 
     internal static void ValidateMarkNode(RuleDefinitionMark rule, SyntaxNode syntaxNode)
@@ -88,6 +102,14 @@ public sealed class MarkingEngine
         var allowedKinds = string.Join(", ", rule.AllowedPropagateNodeKinds);
         throw new InvalidOperationException(
           $"Rule '{rule.RuleId}' emitted unsupported propagate node kind '{nodeKind}'. Allowed propagate node kinds: {allowedKinds}.");
+    }
+
+    internal static void ValidateProducedStructure(RuleProducesContract produces, MarkRecord mark)
+    {
+        if (produces.Structures.Count > 0 && mark.SemanticTag is not null)
+        {
+            RuleStructureContractValidator.RequireProducedMark(produces, mark);
+        }
     }
 
     internal static MarkRecord BindMarkRecord(RuleContext context, MarkRecord candidate, string? groupKey = null)

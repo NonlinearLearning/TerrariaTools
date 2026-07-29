@@ -106,11 +106,12 @@ public static class DeleteSObjectProposalHelpers
     // 返回尚未被传播或提升宿主覆盖的 seed mark，供默认删除规则兜底消费。
     public static IEnumerable<MarkRecord> EnumerateUncoveredSeedMarks(IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
-        var derivedMarks = propagatedMarks
-          .Select(mark => mark.Mark)
-          .Concat(liftedMarks.Select(mark => mark.Mark))
-          .DistinctBy(mark => BuildNodeKey(mark.SyntaxNode))
-          .ToList();
+      var derivedMarks = propagatedMarks
+        .Select(mark => mark.Mark)
+        .Concat(liftedMarks.Select(mark => mark.Mark))
+        .Concat(GetSpecializedPayloadHosts(propagatedMarks))
+        .DistinctBy(mark => BuildNodeKey(mark.SyntaxNode))
+        .ToList();
         var coveredSeedKeys = BuildCoveredSeedKeys(seedMarks, derivedMarks);
 
         foreach (var seedMark in seedMarks)
@@ -121,7 +122,25 @@ public static class DeleteSObjectProposalHelpers
             }
 
             yield return seedMark;
+      }
+    }
+
+    // 专门 Proposal 消费的结构化 payload 也覆盖其子 seed，不能再落入默认删除。
+    private static IEnumerable<MarkRecord> GetSpecializedPayloadHosts(
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    {
+      foreach (var propagatedMark in propagatedMarks)
+      {
+        switch (propagatedMark.Payload)
+        {
+          case LogicalHostPayload logicalHost:
+            yield return propagatedMark.Mark with { SyntaxNode = logicalHost.Host };
+            break;
+          case IfStructureCompletionPayload ifStructure:
+            yield return propagatedMark.Mark with { SyntaxNode = ifStructure.AnchorIf };
+            break;
         }
+      }
     }
 
     // 识别来自局部定义符号引用传播的 mark，避免把它们当成原始结构事实再次处理。

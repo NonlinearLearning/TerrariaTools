@@ -22,6 +22,7 @@ public sealed class MarkLiftingEngine
           .Select(candidate =>
           {
               ValidateLiftNode(rule, candidate.Mark.SyntaxNode);
+              MarkingEngine.ValidateProducedStructure(rule.Produces, candidate.Mark);
               return BindLiftedMarkRecord(ruleContext, candidate, rule.GroupKey);
           })
           .ToList();
@@ -36,11 +37,22 @@ public sealed class MarkLiftingEngine
         var sourceNodes = CreateSourceNodes(seedMarks, liftEligiblePropagatedMarks);
         var sourceNodeIds = sourceNodes.Select(node => node.NodeId).ToHashSet();
         var liftNodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Lift, rule.RuleId)).ToHashSet();
+        var contractGraph = new RuleStructureContractGraphCompiler().Compile(rules
+          .Select(rule => new RuleStructureContractGraphNode(
+            rule.NodeId,
+            RuleKind.Lift,
+            rule.Consumes,
+            rule.Produces))
+          .ToList());
         var ruleNodes = rules.Select(rule => new RuleGraphNode(
           RuleNodeId.For(RuleKind.Lift, rule.RuleId),
           RuleKind.Lift,
           rule.ProducedOutputs,
-          ResolveDependencies(rule, sourceNodes, sourceNodeIds, liftNodeIds))).ToList();
+          ResolveDependencies(rule, sourceNodes, sourceNodeIds, liftNodeIds, contractGraph))
+        {
+          ProducedStructures = rule.Produces.Structures,
+          ConsumedStructures = rule.Consumes.Structures
+        }).ToList();
         var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
         var executionNodes = sourceNodes
           .Select(node => new RuleGraphExecutionNode(
@@ -56,6 +68,7 @@ public sealed class MarkLiftingEngine
                     var values = GetValues(node, inputs);
                     return Task.FromResult(CreateResult(
                       rule.ProducedOutputs,
+                      rule.Produces,
                       ExecuteRule(
                         context,
                         rule,
@@ -102,9 +115,18 @@ public sealed class MarkLiftingEngine
       RuleDefinitionLift rule,
       IReadOnlyList<RuleGraphNode> sourceNodes,
       IReadOnlySet<RuleNodeId> sourceNodeIds,
-      IReadOnlySet<RuleNodeId> liftNodeIds)
+      IReadOnlySet<RuleNodeId> liftNodeIds,
+      CompiledRuleStructureContractGraph contractGraph)
     {
-        var declared = RuleGraphDependencyCatalog.GetDependencies(rule, RuleKind.Lift, rule.Dependencies);
+        var declared = rule.Consumes.Structures.Count > 0
+          ? contractGraph.Edges
+            .Where(edge => edge.Consumer == rule.NodeId)
+            .Select(edge => new RuleDependency(
+              edge.Producer,
+              RuleOutputKind.LiftedMark,
+              edge.Selector))
+            .ToList()
+          : rule.Dependencies;
         if (declared.Count == 0)
         {
             return sourceNodes
@@ -114,8 +136,7 @@ public sealed class MarkLiftingEngine
 
         return declared
           .Where(dependency => sourceNodeIds.Contains(dependency.Producer) || liftNodeIds.Contains(dependency.Producer))
-          .GroupBy(dependency => dependency.Producer)
-          .Select(group => group.First())
+          .Distinct()
           .ToList();
     }
 
@@ -130,16 +151,21 @@ public sealed class MarkLiftingEngine
         return RuleNodeResult.From(node.ProducedOutputs.Single(), values.ToArray());
     }
 
-    private static RuleNodeResult CreateResult<T>(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<T> values)
+    private static RuleNodeResult CreateResult<T>(
+      IReadOnlyList<RuleOutputKind> outputKinds,
+      RuleProducesContract produces,
+      IReadOnlyList<T> values)
     {
         var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed);
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed, produces);
     }
 
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+          .SelectMany(dependency => dependency.RequiredStructure is { } selector
+            ? inputs.GetOutputs(dependency.Producer, selector)
+            : inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
           .ToList();
     }
 

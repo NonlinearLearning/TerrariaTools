@@ -10,11 +10,19 @@ namespace NLISSN.Rules;
 /// 保持 receiver 绑定不变，只把可安全收缩的槽位继续传给提案阶段。
 public sealed class ClassExtensionMethodMappedCallsitePropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag ExtensionMethodParameterUsageSemanticTag = new("Class.ExtensionMethodParameterUsage");
+
+    private static readonly RuleProducesContract ExtensionMethodParameterUsageProduces =
+      RuleStructureContractFactories.CreateExtensionMethodParameterUsageProduces(
+        ExtensionMethodParameterUsageSemanticTag);
+
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
     public override string CapabilityId { get; } = "propagate.type.extension-method-mapped-callsite";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-EXT-MAPPED-001";
+
+    public override RuleProducesContract Produces => ExtensionMethodParameterUsageProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -43,9 +51,10 @@ public sealed class ClassExtensionMethodMappedCallsitePropagationRule : ClassPro
                 yield return new PropagatedMarkRecord(
                   RuleId,
                   MarkRecordFactory.Create(
-                    RuleId,
-                    payload.Method,
-                    "Extension method non-receiver parameter type references the delete-class target; propagate to the owning method declaration."),
+                  RuleId,
+                  payload.Method,
+                  "Extension method non-receiver parameter type references the delete-class target; propagate to the owning method declaration.",
+                  semanticTag: ExtensionMethodParameterUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);
@@ -63,7 +72,8 @@ public sealed class ClassExtensionMethodMappedCallsitePropagationRule : ClassPro
                   MarkRecordFactory.Create(
                     RuleId,
                     invocation,
-                    "Extension method invocation passes the delete-class typed parameter; propagate to a shrinkable mapped callsite."),
+                    "Extension method invocation passes the delete-class typed parameter; propagate to a shrinkable mapped callsite.",
+                    semanticTag: ExtensionMethodParameterUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);

@@ -19,6 +19,14 @@ public interface IRuleDefinition
     IReadOnlyList<RuleDependency> Dependencies { get; }
 
     IReadOnlyList<RuleOutputKind> ProducedOutputs { get; }
+
+    RuleConsumesContract Consumes { get; }
+
+    RuleProducesContract Produces { get; }
+
+    RuleFactDomain FactDomain { get; }
+
+    RuleTerminalConsumesContract TerminalConsumes { get; }
 }
 
 public abstract class RuleDefinitionMark : IRuleDefinition
@@ -32,10 +40,17 @@ public abstract class RuleDefinitionMark : IRuleDefinition
 
     public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Mark, RuleId);
 
-    public virtual IReadOnlyList<RuleDependency> Dependencies =>
-      RuleGraphDependencyCatalog.GetDependencies(this, RuleKind.Mark, Array.Empty<RuleDependency>());
+    public virtual IReadOnlyList<RuleDependency> Dependencies => Array.Empty<RuleDependency>();
 
     public virtual IReadOnlyList<RuleOutputKind> ProducedOutputs => new[] { RuleOutputKind.SeedMark };
+
+    public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
+
+    public virtual RuleProducesContract Produces => RuleProducesContract.Empty;
+
+    public virtual RuleFactDomain FactDomain => RuleFactDomain.None;
+
+    public virtual RuleTerminalConsumesContract TerminalConsumes => RuleTerminalConsumesContract.Empty;
 
     public virtual string GroupKey => RuleId;
 
@@ -58,10 +73,17 @@ public abstract class RuleDefinitionPropagate : IRuleDefinition
 
     public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Propagate, RuleId);
 
-    public virtual IReadOnlyList<RuleDependency> Dependencies =>
-      RuleGraphDependencyCatalog.GetDependencies(this, RuleKind.Propagate, Array.Empty<RuleDependency>());
+    public virtual IReadOnlyList<RuleDependency> Dependencies => Array.Empty<RuleDependency>();
 
     public virtual IReadOnlyList<RuleOutputKind> ProducedOutputs => new[] { RuleOutputKind.PropagatedMark };
+
+    public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
+
+    public virtual RuleProducesContract Produces => RuleProducesContract.Empty;
+
+    public virtual RuleFactDomain FactDomain => RuleFactDomain.None;
+
+    public virtual RuleTerminalConsumesContract TerminalConsumes => RuleTerminalConsumesContract.Empty;
 
     public virtual string GroupKey => RuleId;
 
@@ -84,10 +106,17 @@ public abstract class RuleDefinitionPropose : IRuleDefinition
 
     public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Propose, RuleId);
 
-    public virtual IReadOnlyList<RuleDependency> Dependencies =>
-      RuleGraphDependencyCatalog.GetDependencies(this, RuleKind.Propose, Array.Empty<RuleDependency>());
+    public virtual IReadOnlyList<RuleDependency> Dependencies => Array.Empty<RuleDependency>();
 
     public virtual IReadOnlyList<RuleOutputKind> ProducedOutputs => new[] { RuleOutputKind.DecisionUnit };
+
+    public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
+
+    public virtual RuleProducesContract Produces => RuleProducesContract.Empty;
+
+    public virtual RuleFactDomain FactDomain => RuleFactDomain.None;
+
+    public virtual RuleTerminalConsumesContract TerminalConsumes => RuleTerminalConsumesContract.Empty;
 
     public virtual string GroupKey => RuleId;
 
@@ -112,10 +141,17 @@ public abstract class RuleDefinitionLift : IRuleDefinition
 
     public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Lift, RuleId);
 
-    public virtual IReadOnlyList<RuleDependency> Dependencies =>
-      RuleGraphDependencyCatalog.GetDependencies(this, RuleKind.Lift, Array.Empty<RuleDependency>());
+    public virtual IReadOnlyList<RuleDependency> Dependencies => Array.Empty<RuleDependency>();
 
     public virtual IReadOnlyList<RuleOutputKind> ProducedOutputs => new[] { RuleOutputKind.LiftedMark };
+
+    public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
+
+    public virtual RuleProducesContract Produces => RuleProducesContract.Empty;
+
+    public virtual RuleFactDomain FactDomain => RuleFactDomain.None;
+
+    public virtual RuleTerminalConsumesContract TerminalConsumes => RuleTerminalConsumesContract.Empty;
 
     public virtual string GroupKey => RuleId;
 

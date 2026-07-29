@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Core.Lifting;
+using NLISSN.Core.Analysis.Structure;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 
@@ -8,12 +9,31 @@ namespace NLISSN.Rules;
 /// 将 if 结构的完成态传播事实转换为结构化 Lift 记录。
 public sealed class SObjectIfStructureLiftingRule : RuleDefinitionLift
 {
+    private static readonly RuleSemanticTag IfStructureSemanticTag = new("SObject.IfStructure");
+
+    private static readonly RuleTerminalConsumesContract SObjectInputFacts = new(
+      new[]
+      {
+        new RuleTerminalFactSelector(
+          RuleFactDomain.SObject,
+          new[] { RuleKind.Mark, RuleKind.Propagate })
+      });
+
+    private static readonly RuleProducesContract IfStructureProduces =
+      RuleStructureContractFactories.CreateIfStructureProduces(IfStructureSemanticTag);
+
     public override string CapabilityId { get; } = "lift.target.if-structure";
 
     public override string RuleId { get; } = "DEL-SOBJ-LIFT-IF-001";
 
+    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
+
+    public override RuleTerminalConsumesContract TerminalConsumes => SObjectInputFacts;
+
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.LiftedMark, RuleOutputKind.IfStructure };
+
+    public override RuleProducesContract Produces => IfStructureProduces;
 
     public override string GroupKey { get; } = "DEL-SOBJ";
 
@@ -30,6 +50,15 @@ public sealed class SObjectIfStructureLiftingRule : RuleDefinitionLift
           RuleId,
           seedMarks,
           propagatedMarks)
-          .Select(mark => mark with { Mark = mark.Mark with { OutputKind = RuleOutputKind.IfStructure } });
+          .Select(mark => mark with
+          {
+            Mark = mark.Mark with
+            {
+              OutputKind = RuleOutputKind.IfStructure,
+              SemanticTag = RuleSyntaxStructureCatalog.TryGetIfRole(mark.Mark.SyntaxNode, out _)
+                ? IfStructureSemanticTag
+                : null
+            }
+          });
     }
 }

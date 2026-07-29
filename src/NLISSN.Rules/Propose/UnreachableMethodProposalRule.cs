@@ -9,9 +9,18 @@ namespace NLISSN.Rules;
 /// 将不可达方法的阶段事实转换为方法声明删除决策。
 public sealed class UnreachableMethodProposalRule : RuleDefinitionPropose
 {
+    private static readonly RuleSemanticTag UnreachableMethodSemanticTag = new("UnreachableMethod");
+
+    private static readonly RuleConsumesContract UnreachableMethodConsumes =
+      RuleStructureContractFactories.CreateDeclarationHostConsumes(
+        UnreachableMethodSemanticTag,
+        RuleInputCardinality.All);
+
     public override string CapabilityId { get; } = "propose.unreachable-method";
 
     public override string RuleId { get; } = "DEL-DEAD-001";
+
+    public override RuleConsumesContract Consumes => UnreachableMethodConsumes;
 
     public override string Name { get; } = "Match unreachable methods by graph reachability proposal";
 

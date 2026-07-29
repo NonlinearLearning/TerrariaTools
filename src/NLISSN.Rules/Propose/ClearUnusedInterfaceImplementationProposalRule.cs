@@ -13,9 +13,18 @@ namespace NLISSN.Rules;
 /// 删除已确认不再需要的接口实现方法体，同时保留接口声明的其他契约。
 public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinitionPropose
 {
+  private static readonly RuleSemanticTag UnusedInterfaceImplementationSemanticTag = new("UnusedInterfaceImplementation");
+
+  private static readonly RuleConsumesContract UnusedInterfaceImplementationConsumes =
+    RuleStructureContractFactories.CreateDeclarationHostConsumes(
+      UnusedInterfaceImplementationSemanticTag,
+      RuleInputCardinality.All);
+
   public override string CapabilityId { get; } = "propose.clear-unused-interface-implementation";
 
     public override string RuleId { get; } = "CLR-UNUSED-IFACE-IMPL-PROP-001";
+
+  public override RuleConsumesContract Consumes => UnusedInterfaceImplementationConsumes;
 
   public override string GroupKey { get; } = "CLR-UNUSED-IFACE-IMPL";
 

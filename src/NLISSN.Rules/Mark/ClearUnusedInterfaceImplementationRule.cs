@@ -9,9 +9,17 @@ namespace NLISSN.Rules;
 /// 命中未被调用的接口成员对应的源码实现方法。
 public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
 {
+  private static readonly RuleSemanticTag UnusedInterfaceImplementationSemanticTag = new("UnusedInterfaceImplementation");
+
+  private static readonly RuleProducesContract UnusedInterfaceImplementationProduces =
+    RuleStructureContractFactories.CreateDeclarationHostProduces(
+      UnusedInterfaceImplementationSemanticTag);
+
   public override string CapabilityId { get; } = "mark.clear-unused-interface-implementation";
 
     public override string RuleId { get; } = "CLR-UNUSED-IFACE-IMPL-MARK-001";
+
+  public override RuleProducesContract Produces => UnusedInterfaceImplementationProduces;
 
   public override string GroupKey { get; } = "CLR-UNUSED-IFACE-IMPL";
 
@@ -59,7 +67,8 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
       yield return MarkRecordFactory.Create(
         RuleId,
         method,
-        "Interface implementation is not referenced through its interface member or implementation method.");
+        "Interface implementation is not referenced through its interface member or implementation method.",
+        semanticTag: UnusedInterfaceImplementationSemanticTag);
     }
   }
 

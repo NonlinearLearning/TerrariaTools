@@ -25,7 +25,7 @@ public sealed class RuleGraphCompiler
 
         foreach (var node in nodes)
         {
-            var distinctDependencies = new HashSet<RuleNodeId>();
+            var distinctDependencies = new HashSet<RuleDependency>();
             foreach (var dependency in node.Dependencies)
             {
                 if (!byId.TryGetValue(dependency.Producer, out var producer))
@@ -40,14 +40,42 @@ public sealed class RuleGraphCompiler
                       $"Rule node '{node.NodeId.Value}' requires output '{dependency.RequiredOutput}' from producer '{dependency.Producer.Value}', but it is not produced.");
                 }
 
-                if (!distinctDependencies.Add(dependency.Producer))
+                if (dependency.RequiredStructure is { } requiredStructure &&
+                    !producer.ProducedStructures.Any(producedStructure =>
+                      RuleStructureContractMatcher.IsCompatible(
+                        producedStructure,
+                        requiredStructure)))
+                {
+                    throw new InvalidOperationException(
+                      $"Rule node '{node.NodeId.Value}' requires structure " +
+                      $"'{Format(requiredStructure)}' from producer " +
+                      $"'{dependency.Producer.Value}', but it is not produced.");
+                }
+
+                if (dependency.RequiredTerminalFact is { } terminalFact &&
+                    (producer.FactDomain != terminalFact.Domain ||
+                     !terminalFact.SourceStages.Contains(producer.Kind)))
+                {
+                    throw new InvalidOperationException(
+                      $"Rule node '{node.NodeId.Value}' requires terminal fact domain " +
+                      $"'{terminalFact.Domain}' from producer '{dependency.Producer.Value}', " +
+                      "but that producer does not declare the required domain and stage.");
+                }
+
+                if (!distinctDependencies.Add(dependency))
                 {
                     throw new InvalidOperationException(
                       $"Rule node '{node.NodeId.Value}' declares producer '{dependency.Producer.Value}' more than once.");
                 }
 
+            }
+
+            foreach (var producer in node.Dependencies
+              .Select(dependency => dependency.Producer)
+              .Distinct())
+            {
                 indegrees[node.NodeId]++;
-                downstream[dependency.Producer].Add(node.NodeId);
+                downstream[producer].Add(node.NodeId);
             }
         }
 
@@ -100,5 +128,10 @@ public sealed class RuleGraphCompiler
             entry => (IReadOnlyList<RuleNodeId>)entry.Value
               .OrderBy(id => declarationIndexes[id])
               .ToList()));
+    }
+
+    private static string Format(MarkedStructureSelector selector)
+    {
+        return $"({selector.StructureKind}, {selector.Role}, {selector.SemanticTag.Value})";
     }
 }

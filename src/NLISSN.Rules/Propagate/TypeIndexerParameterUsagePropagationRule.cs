@@ -9,11 +9,19 @@ namespace NLISSN.Rules;
 /// 为 indexer 参数删除收集声明宿主和访问点，保证提案阶段能同时改声明与所有受影响的 element access。
 public sealed class ClassIndexerParameterUsagePropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag IndexerParameterUsageSemanticTag = new("Class.IndexerParameterUsage");
+
+    private static readonly RuleProducesContract IndexerParameterUsageProduces =
+      RuleStructureContractFactories.CreateIndexerParameterUsageProduces(
+        IndexerParameterUsageSemanticTag);
+
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
     public override string CapabilityId { get; } = "propagate.type.indexer-parameter-usage";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-INDEXER-PARAM-USAGE-001";
+
+    public override RuleProducesContract Produces => IndexerParameterUsageProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -42,9 +50,10 @@ public sealed class ClassIndexerParameterUsagePropagationRule : ClassPropagation
                 yield return new PropagatedMarkRecord(
                   RuleId,
                   MarkRecordFactory.Create(
-                    RuleId,
-                    payload.Indexer,
-                    "Indexer parameter type references the delete-class target; propagate to the owning indexer declaration."),
+                  RuleId,
+                  payload.Indexer,
+                  "Indexer parameter type references the delete-class target; propagate to the owning indexer declaration.",
+                  semanticTag: IndexerParameterUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);
@@ -62,7 +71,8 @@ public sealed class ClassIndexerParameterUsagePropagationRule : ClassPropagation
                   MarkRecordFactory.Create(
                     RuleId,
                     access,
-                    "Indexer access passes the delete-class typed parameter; propagate to a shrinkable access site."),
+                    "Indexer access passes the delete-class typed parameter; propagate to a shrinkable access site.",
+                    semanticTag: IndexerParameterUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);

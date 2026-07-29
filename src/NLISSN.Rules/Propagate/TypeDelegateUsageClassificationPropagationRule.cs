@@ -10,11 +10,18 @@ namespace NLISSN.Rules;
 /// 先把 delegate 参数删除影响分类成单一改写通道，再把同一份 payload 发给声明、method group、lambda 或调用链。
 public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag DelegateUsageSemanticTag = new("Class.DelegateUsage");
+
+    private static readonly RuleProducesContract DelegateUsageProduces =
+      RuleStructureContractFactories.CreateDelegateUsageProduces(DelegateUsageSemanticTag);
+
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
     public override string CapabilityId { get; } = "propagate.type.delegate-usage-classification";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-DELEGATE-USAGE-001";
+
+    public override RuleProducesContract Produces => DelegateUsageProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -48,9 +55,10 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropa
                 yield return new PropagatedMarkRecord(
                   RuleId,
                   MarkRecordFactory.Create(
-                    RuleId,
-                    payload.DelegateDeclaration,
-                    "Delegate parameter type references the delete-class target; propagate to the owning delegate declaration."),
+                  RuleId,
+                  payload.DelegateDeclaration,
+                  "Delegate parameter type references the delete-class target; propagate to the owning delegate declaration.",
+                  semanticTag: DelegateUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);
@@ -68,7 +76,8 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropa
                   MarkRecordFactory.Create(
                     RuleId,
                     method,
-                    "Delegate method-group target must shrink to stay compatible with the delete-class delegate signature."),
+                    "Delegate method-group target must shrink to stay compatible with the delete-class delegate signature.",
+                    semanticTag: DelegateUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);
@@ -86,7 +95,8 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropa
                   MarkRecordFactory.Create(
                     RuleId,
                     localFunction,
-                    "Delegate local-function target must shrink to stay compatible with the delete-class delegate signature."),
+                    "Delegate local-function target must shrink to stay compatible with the delete-class delegate signature.",
+                    semanticTag: DelegateUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);
@@ -104,7 +114,8 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropa
                   MarkRecordFactory.Create(
                     RuleId,
                     lambda,
-                    "Delegate lambda binding must shrink to stay compatible with the delete-class delegate signature."),
+                    "Delegate lambda binding must shrink to stay compatible with the delete-class delegate signature.",
+                    semanticTag: DelegateUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);
@@ -122,7 +133,8 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropa
                   MarkRecordFactory.Create(
                     RuleId,
                     invocation,
-                    "Delegate invocation passes the delete-class typed parameter; propagate to a shrinkable invocation chain."),
+                    "Delegate invocation passes the delete-class typed parameter; propagate to a shrinkable invocation chain.",
+                    semanticTag: DelegateUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);

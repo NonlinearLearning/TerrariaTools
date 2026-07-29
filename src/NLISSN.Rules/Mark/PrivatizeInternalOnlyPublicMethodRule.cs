@@ -9,9 +9,17 @@ namespace NLISSN.Rules;
 /// 命中只被同一类型内部调用的 public 方法，供后续改成 private。
 public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
 {
+    private static readonly RuleSemanticTag InternalOnlyPublicMethodSemanticTag = new("InternalOnlyPublicMethod");
+
+    private static readonly RuleProducesContract InternalOnlyPublicMethodProduces =
+      RuleStructureContractFactories.CreateDeclarationHostProduces(
+        InternalOnlyPublicMethodSemanticTag);
+
     public override string CapabilityId { get; } = "mark.privatize-internal-only-public-method";
 
     public override string RuleId { get; } = "PRIV-INTERNAL-PUBLIC-MARK-001";
+
+    public override RuleProducesContract Produces => InternalOnlyPublicMethodProduces;
 
     public override string GroupKey { get; } = "PRIV-INTERNAL-PUBLIC";
 
@@ -49,9 +57,10 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
             }
 
             yield return MarkRecordFactory.Create(
-              RuleId,
-              method,
-              "Public method is referenced only from inside its declaring type.");
+        RuleId,
+        method,
+        "Public method is referenced only from inside its declaring type.",
+        semanticTag: InternalOnlyPublicMethodSemanticTag);
         }
     }
 

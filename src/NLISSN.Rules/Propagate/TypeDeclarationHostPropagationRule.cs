@@ -11,9 +11,16 @@ namespace NLISSN.Rules;
 /// 让后续提案直接对字段、属性、方法、接口成员等可改写边界做决策。
 public sealed class ClassDeclarationHostPropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag DeclarationHostSemanticTag = new("Class.DeclarationHost");
+
+    private static readonly RuleProducesContract DeclarationHostProduces =
+      RuleStructureContractFactories.CreateDeclarationHostProduces(DeclarationHostSemanticTag);
+
     public override string CapabilityId { get; } = "propagate.type.declaration-host";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-DECL-HOST-001";
+
+    public override RuleProducesContract Produces => DeclarationHostProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -57,7 +64,8 @@ public sealed class ClassDeclarationHostPropagationRule : ClassPropagationRuleBa
               MarkRecordFactory.Create(
                 RuleId,
                 payload.HostDeclaration,
-                reason),
+                reason,
+                semanticTag: DeclarationHostSemanticTag),
               seedMark,
               1,
               Payload: payload);

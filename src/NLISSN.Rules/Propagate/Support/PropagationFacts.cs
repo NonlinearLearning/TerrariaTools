@@ -72,7 +72,11 @@ public static class DeleteSObjectPropagationHelpers
     }
 
     // 只在 if 结构已经形成完整删除或替换形态时，传播单一结构 payload 给提案阶段。
-    public static IEnumerable<PropagatedMarkRecord> EnumerateIfStructureCompletionPropagations(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, string ruleId)
+    public static IEnumerable<PropagatedMarkRecord> EnumerateIfStructureCompletionPropagations(
+      RuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks,
+      string ruleId,
+      RuleSemanticTag? semanticTag = null)
     {
         // 传播阶段只负责产出“结构已完整命中”的 payload；
         // 真正删除整段 if 还是折叠到 tail，由 Propose 阶段统一裁决。
@@ -98,7 +102,8 @@ public static class DeleteSObjectPropagationHelpers
               MarkRecordFactory.Create(
                 ruleId,
                 decisionNode,
-                BuildIfStructureCompletionReason(payload.Kind)),
+                BuildIfStructureCompletionReason(payload.Kind),
+                semanticTag: semanticTag),
               seedMark,
               1,
               Payload: payload);

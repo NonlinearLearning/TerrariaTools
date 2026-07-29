@@ -9,11 +9,19 @@ namespace NLISSN.Rules;
 /// 为局部函数参数删除收集声明与调用点，把“删除哪个参数”变成可重放的结构化 payload。
 public sealed class ClassLocalFunctionParameterUsagePropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag LocalFunctionParameterUsageSemanticTag = new("Class.LocalFunctionParameterUsage");
+
+    private static readonly RuleProducesContract LocalFunctionParameterUsageProduces =
+      RuleStructureContractFactories.CreateLocalFunctionParameterUsageProduces(
+        LocalFunctionParameterUsageSemanticTag);
+
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
     public override string CapabilityId { get; } = "propagate.type.local-function-parameter-usage";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-LOCALFUNC-PARAM-USAGE-001";
+
+    public override RuleProducesContract Produces => LocalFunctionParameterUsageProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -42,9 +50,10 @@ public sealed class ClassLocalFunctionParameterUsagePropagationRule : ClassPropa
                 yield return new PropagatedMarkRecord(
                   RuleId,
                   MarkRecordFactory.Create(
-                    RuleId,
-                    payload.LocalFunction,
-                    "Local function parameter type references the delete-class target; propagate to the owning local function."),
+                  RuleId,
+                  payload.LocalFunction,
+                  "Local function parameter type references the delete-class target; propagate to the owning local function.",
+                  semanticTag: LocalFunctionParameterUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);
@@ -62,7 +71,8 @@ public sealed class ClassLocalFunctionParameterUsagePropagationRule : ClassPropa
                   MarkRecordFactory.Create(
                     RuleId,
                     invocation,
-                    "Local function invocation passes the delete-class typed parameter; propagate to a shrinkable callsite."),
+                    "Local function invocation passes the delete-class typed parameter; propagate to a shrinkable callsite.",
+                    semanticTag: LocalFunctionParameterUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);

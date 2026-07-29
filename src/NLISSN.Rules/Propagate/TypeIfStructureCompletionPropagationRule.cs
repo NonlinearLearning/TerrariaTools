@@ -8,6 +8,11 @@ namespace NLISSN.Rules;
 /// 把散落在条件、语句块和尾分支上的命中收束成单个结构 payload。
 public sealed class ClassIfStructureCompletionPropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag IfCompletionSemanticTag = new("Class.IfCompletion");
+
+    private static readonly RuleProducesContract IfCompletionProduces =
+      RuleStructureContractFactories.CreateIfCompletionProduces(IfCompletionSemanticTag);
+
     public override string CapabilityId { get; } = "propagate.type.if-structure-completion";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IF-COMPLETE-001";
@@ -18,6 +23,8 @@ public sealed class ClassIfStructureCompletionPropagationRule : ClassPropagation
 
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.IfCompletion };
+
+    public override RuleProducesContract Produces => IfCompletionProduces;
 
     public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
       new[]
@@ -58,6 +65,7 @@ public sealed class ClassIfStructureCompletionPropagationRule : ClassPropagation
         return DeleteSObjectPropagationHelpers.EnumerateIfStructureCompletionPropagations(
           context,
           seedMarks,
-          RuleId);
+          RuleId,
+          IfCompletionSemanticTag);
     }
 }

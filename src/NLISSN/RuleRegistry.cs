@@ -35,7 +35,6 @@ public static class RuleRegistry
           Propagators: CreateRules(propagators, disabledTypeNames),
           Lifters: CreateRules(lifters, disabledTypeNames),
           Proposers: CreateRules(proposers, disabledTypeNames),
-          EnableRuleGraphExecution: true,
           DisabledMarkers: FindDisabled(markers, disabledTypeNames),
           DisabledPropagators: FindDisabled(propagators, disabledTypeNames),
           DisabledLifters: FindDisabled(lifters, disabledTypeNames),

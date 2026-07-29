@@ -9,9 +9,18 @@ namespace NLISSN.Rules;
 /// 仅为已证明无引用的方法生成声明删除决策。
 public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
 {
+  private static readonly RuleSemanticTag UnreferencedMethodSemanticTag = new("UnreferencedMethod");
+
+  private static readonly RuleConsumesContract UnreferencedMethodConsumes =
+    RuleStructureContractFactories.CreateDeclarationHostConsumes(
+      UnreferencedMethodSemanticTag,
+      RuleInputCardinality.All);
+
   public override string CapabilityId { get; } = "propose.unreferenced-method";
 
     public override string RuleId { get; } = "DEL-UNREF-METHOD-PROP-001";
+
+  public override RuleConsumesContract Consumes => UnreferencedMethodConsumes;
 
   public override string GroupKey { get; } = "DEL-UNREF-METHOD";
 

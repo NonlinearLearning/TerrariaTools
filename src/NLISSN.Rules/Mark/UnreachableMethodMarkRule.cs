@@ -12,10 +12,17 @@ namespace NLISSN.Rules;
 /// 基于最小调用图可达性，命中从入口点不可达的方法声明。
 public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
 {
+    private static readonly RuleSemanticTag UnreachableMethodSemanticTag = new("UnreachableMethod");
+
+    private static readonly RuleProducesContract UnreachableMethodProduces =
+      RuleStructureContractFactories.CreateDeclarationHostProduces(UnreachableMethodSemanticTag);
+
     /// 规则稳定标识。
     public override string CapabilityId { get; } = "mark.unreachable-method";
 
     public override string RuleId { get; } = "DEL-DEAD-001";
+
+    public override RuleProducesContract Produces => UnreachableMethodProduces;
 
     /// 规则的人类可读名称。
     public override string Name { get; } = "Match unreachable methods by graph reachability";
@@ -53,7 +60,8 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
               method,
               null,
               methodNode,
-              "Method is unreachable from the discovered entry point.");
+              "Method is unreachable from the discovered entry point.",
+              SemanticTag: UnreachableMethodSemanticTag);
         }
     }
 

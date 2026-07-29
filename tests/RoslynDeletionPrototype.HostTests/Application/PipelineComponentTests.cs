@@ -216,6 +216,33 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void MarkingEngine_Run_WithGroupParallelismDisabled_RunsIndependentRulesSerially()
+    {
+        // Arrange
+        var runtime = new AnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(
+            MaxDegreeOfParallelism: 2,
+            EnableGroupParallelism: false),
+          new AnalysisEpoch(0, 0, 0));
+        var (context, root) = CreateContext(PipelineSources.ConcurrentMarkingSource, runtime: runtime);
+        var probe = new ConcurrentRuleProbe(
+          expectedConcurrentRules: 2,
+          releaseWait: TimeSpan.FromMilliseconds(250));
+        var rules = new RuleDefinitionMark[]
+        {
+          new ConcurrentClassMarkRule("TEST-CONCURRENT-MARK-001", "test-concurrent-first", "First", probe),
+          new ConcurrentClassMarkRule("TEST-CONCURRENT-MARK-002", "test-concurrent-second", "Second", probe)
+        };
+
+        // Act
+        var marks = new MarkingEngine().Run(context, root, rules);
+
+        // Assert
+        Assert.Equal(2, marks.Count);
+        Assert.Equal(1, probe.PeakActiveRuleCount);
+    }
+
+    [Fact]
     public void MarkingEngine_Run_DeduplicatesSameRuleAndSyntaxSpan()
     {
         var source = SObjectExpressionSources.MarkingDedupSource;
@@ -4753,7 +4780,6 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Contains(
           rules.Propagators,
           rule => string.Equals(rule.GetType().Name, "SObjectAssignmentLeftValuePropagationRule", StringComparison.Ordinal));
-        Assert.True(rules.EnableRuleGraphExecution);
         Assert.NotEmpty(rules.CompileRuleGraph().Nodes);
     }
 
@@ -5123,12 +5149,14 @@ public sealed class PipelineComponentTests : IDisposable
     {
         private readonly int _expectedConcurrentRules;
         private readonly ManualResetEventSlim _release = new();
+        private readonly TimeSpan _releaseWait;
         private int _activeRuleCount;
         private int _peakActiveRuleCount;
 
-        public ConcurrentRuleProbe(int expectedConcurrentRules)
+        public ConcurrentRuleProbe(int expectedConcurrentRules, TimeSpan? releaseWait = null)
         {
             _expectedConcurrentRules = expectedConcurrentRules;
+            _releaseWait = releaseWait ?? TimeSpan.FromSeconds(2);
         }
 
         public int PeakActiveRuleCount => Volatile.Read(ref _peakActiveRuleCount);
@@ -5142,7 +5170,7 @@ public sealed class PipelineComponentTests : IDisposable
                 _release.Set();
             }
 
-            _release.Wait(TimeSpan.FromSeconds(2));
+            _release.Wait(_releaseWait);
         }
 
         public void Leave()

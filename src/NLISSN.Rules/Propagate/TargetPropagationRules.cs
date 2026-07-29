@@ -50,12 +50,20 @@ public sealed class SObjectAssignmentLeftValuePropagationRule : SObjectPropagati
 /// 把初始化表达式上的命中收束到变量声明点，避免后续规则直接依赖易碎的子表达式位置。
 public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropagationRuleBase
 {
+    private static readonly RuleSemanticTag LocalDefinitionSemanticTag =
+      new("SObject.LocalDefinitionFromInitializer");
+
+    private static readonly RuleProducesContract LocalDefinitionProduces =
+      RuleStructureContractFactories.CreateVariableDeclaratorProduces(LocalDefinitionSemanticTag);
+
     public override string CapabilityId { get; } = "propagate.target.definition-initializer";
 
     public override string RuleId { get; } = "DEL-SOBJ-PROP-DECL-INIT-001";
 
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalDefinitionFromInitializer };
+
+    public override RuleProducesContract Produces => LocalDefinitionProduces;
 
     public override string Name { get; } = "Propagate s-object marks from definition initializers to declarators";
 
@@ -82,7 +90,8 @@ public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropaga
                         RuleId,
                         variableDeclarator,
                         "Definition initializer is marked; propagate mark to defined left value.",
-                        RuleOutputKind.LocalDefinitionFromInitializer),
+                        RuleOutputKind.LocalDefinitionFromInitializer,
+                        LocalDefinitionSemanticTag),
                       seedMark,
                       1);
                     break;
@@ -186,6 +195,11 @@ public sealed class SObjectLogicalConditionPropagationRule : SObjectPropagationR
 /// 让 Propose 阶段直接做短路语义安全的 Replace 决策。
 public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagationRuleBase
 {
+    private static readonly RuleSemanticTag LogicalHostSemanticTag = new("SObject.LogicalHost");
+
+    private static readonly RuleProducesContract LogicalHostProduces =
+      RuleStructureContractFactories.CreateLogicalBinaryProduces(LogicalHostSemanticTag);
+
     public override string CapabilityId { get; } = "propagate.target.logical-operand-group";
 
     public override string RuleId { get; } = "DEL-SOBJ-PROP-LOGIC-GROUP-001";
@@ -194,6 +208,8 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
 
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LogicalHost };
+
+    public override RuleProducesContract Produces => LogicalHostProduces;
 
     // 为逻辑宿主补齐可删与保留操作数集合，让提案阶段直接生成语义安全的 Replace 决策。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
@@ -249,7 +265,9 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
               MarkRecordFactory.Create(
                 RuleId,
                 host,
-                "Logical condition group is marked; propagate removable and surviving operands to the logical host."),
+                "Logical condition group is marked; propagate removable and surviving operands to the logical host.",
+                RuleOutputKind.LogicalHost,
+                LogicalHostSemanticTag),
               seedMark,
               1,
               Payload: payload);
@@ -261,6 +279,11 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
 /// 后续只需要按结构决策，不再重复扫描控制流外壳。
 public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropagationRuleBase
 {
+    private static readonly RuleSemanticTag IfCompletionSemanticTag = new("SObject.IfCompletion");
+
+    private static readonly RuleProducesContract IfCompletionProduces =
+      RuleStructureContractFactories.CreateIfCompletionProduces(IfCompletionSemanticTag);
+
     public override string CapabilityId { get; } = "propagate.target.if-structure-completion";
 
     public override string RuleId { get; } = "DEL-SOBJ-PROP-IF-COMPLETE-001";
@@ -270,13 +293,16 @@ public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropaga
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.IfCompletion };
 
+    public override RuleProducesContract Produces => IfCompletionProduces;
+
     // 把分散在 if 结构里的命中折叠成完整完成态 payload，避免提案阶段重复扫描控制结构。
     public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
         return DeleteSObjectPropagationHelpers.EnumerateIfStructureCompletionPropagations(
           context,
           seedMarks,
-          RuleId);
+          RuleId,
+          IfCompletionSemanticTag);
     }
 }
 
@@ -284,17 +310,19 @@ public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropaga
 /// 避免把 s-object 的局部事实泛化成跨作用域删除结论。
 public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRuleBase
 {
+    private static readonly RuleSemanticTag LocalDefinitionSemanticTag =
+      new("SObject.LocalDefinitionFromInitializer");
+
+    private static readonly RuleConsumesContract LocalDefinitionConsumes =
+      RuleStructureContractFactories.CreateVariableDeclaratorConsumes(
+        LocalDefinitionSemanticTag,
+        RuleInputCardinality.All);
+
     public override string CapabilityId { get; } = "propagate.target.symbol-reference";
 
     public override string RuleId { get; } = "DEL-SOBJ-PROP-SYMBOL-001";
 
-    public override IReadOnlyList<RuleDependency> Dependencies =>
-      new[]
-      {
-        new RuleDependency(
-          RuleNodeId.For(RuleKind.Propagate, "DEL-SOBJ-PROP-DECL-INIT-001"),
-          RuleOutputKind.LocalDefinitionFromInitializer)
-      };
+    public override RuleConsumesContract Consumes => LocalDefinitionConsumes;
 
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalReference };

@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis.CSharp;
+using NLISSN.Core.Analysis.Structure;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
@@ -8,12 +9,31 @@ namespace NLISSN.Rules;
 /// 删除类链路的表达式宿主提升规则。
 public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
 {
+    private static readonly RuleSemanticTag ExpressionHostSemanticTag = new("Class.ExpressionHost");
+
+    private static readonly RuleTerminalConsumesContract ClassInputFacts = new(
+      new[]
+      {
+        new RuleTerminalFactSelector(
+          RuleFactDomain.Class,
+          new[] { RuleKind.Mark, RuleKind.Propagate })
+      });
+
+    private static readonly RuleProducesContract ExpressionHostProduces =
+      RuleStructureContractFactories.CreateExpressionOrStatementHostProduces(ExpressionHostSemanticTag);
+
     public override string CapabilityId { get; } = "lift.type.expression-host";
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-HOST-001";
 
+    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
+
+    public override RuleTerminalConsumesContract TerminalConsumes => ClassInputFacts;
+
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.LiftedMark, RuleOutputKind.ExpressionHost };
+
+    public override RuleProducesContract Produces => ExpressionHostProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -30,19 +50,45 @@ public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
           RuleId,
           seedMarks,
           propagatedMarks)
-          .Select(mark => mark with { Mark = mark.Mark with { OutputKind = RuleOutputKind.ExpressionHost } });
+          .Select(mark => mark with
+          {
+            Mark = mark.Mark with
+            {
+              OutputKind = RuleOutputKind.ExpressionHost,
+              SemanticTag = ExpressionHostSemanticTag
+            }
+          });
     }
 }
 
 /// 删除类链路的 if 结构完成态提升规则。
 public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
 {
+    private static readonly RuleSemanticTag IfStructureSemanticTag = new("Class.IfStructure");
+
+    private static readonly RuleTerminalConsumesContract ClassInputFacts = new(
+      new[]
+      {
+        new RuleTerminalFactSelector(
+          RuleFactDomain.Class,
+          new[] { RuleKind.Mark, RuleKind.Propagate })
+      });
+
+    private static readonly RuleProducesContract IfStructureProduces =
+      RuleStructureContractFactories.CreateIfStructureProduces(IfStructureSemanticTag);
+
     public override string CapabilityId { get; } = "lift.type.if-structure";
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-IF-001";
 
+    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
+
+    public override RuleTerminalConsumesContract TerminalConsumes => ClassInputFacts;
+
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.LiftedMark, RuleOutputKind.IfStructure };
+
+    public override RuleProducesContract Produces => IfStructureProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -59,26 +105,44 @@ public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
           RuleId,
           seedMarks,
           propagatedMarks)
-          .Select(mark => mark with { Mark = mark.Mark with { OutputKind = RuleOutputKind.IfStructure } });
+          .Select(mark => mark with
+          {
+            Mark = mark.Mark with
+            {
+              OutputKind = RuleOutputKind.IfStructure,
+              SemanticTag = RuleSyntaxStructureCatalog.TryGetIfRole(mark.Mark.SyntaxNode, out _)
+                ? IfStructureSemanticTag
+                : null
+            }
+          });
     }
 }
 
 /// 删除类链路的 switch 结构完成态提升规则。
 public sealed class ClassSwitchStructureLiftingRule : RuleDefinitionLift
 {
+    private static readonly RuleSemanticTag IfStructureSemanticTag = new("Class.IfStructure");
+
+    private static readonly RuleSemanticTag ExpressionHostSemanticTag = new("Class.ExpressionHost");
+
+    private static readonly RuleConsumesContract SwitchConsumes = new(
+      RuleStructureContractFactories.CreateExpressionOrStatementHostConsumes(
+        ExpressionHostSemanticTag,
+        RuleInputCardinality.All)
+        .Structures
+        .Concat(RuleStructureContractFactories.CreateIfStructureConsumes(
+          IfStructureSemanticTag,
+          RuleInputCardinality.All)
+          .Structures)
+        .ToList());
+
     public override string CapabilityId { get; } = "lift.type.switch-structure";
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-SWITCH-001";
 
-    public override IReadOnlyList<RuleDependency> Dependencies =>
-      RuleGraphDependencyCatalog.GetDependencies(
-        this,
-        RuleKind.Lift,
-        new[]
-        {
-          new RuleDependency(RuleNodeId.For(RuleKind.Lift, "DEL-CLASS-LIFT-HOST-001"), RuleOutputKind.ExpressionHost),
-          new RuleDependency(RuleNodeId.For(RuleKind.Lift, "DEL-CLASS-LIFT-IF-001"), RuleOutputKind.IfStructure)
-        });
+    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
+
+    public override RuleConsumesContract Consumes => SwitchConsumes;
 
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.LiftedMark, RuleOutputKind.SwitchStructure };

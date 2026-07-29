@@ -9,17 +9,19 @@ namespace NLISSN.Rules;
 /// 把已收束到局部 declarator 的 delete-class 事实继续传播到同一作用域内、且出现在定义之后的引用点。
 public sealed class ClassSymbolReferencePropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag LocalDefinitionSemanticTag =
+      new("Class.LocalDefinitionFromObjectCreation");
+
+    private static readonly RuleConsumesContract LocalDefinitionConsumes =
+      RuleStructureContractFactories.CreateVariableDeclaratorConsumes(
+        LocalDefinitionSemanticTag,
+        RuleInputCardinality.All);
+
     public override string CapabilityId { get; } = "propagate.type.symbol-reference";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-LOCAL-REF-001";
 
-    public override IReadOnlyList<RuleDependency> Dependencies =>
-      new[]
-      {
-        new RuleDependency(
-          RuleNodeId.For(RuleKind.Propagate, "DEL-CLASS-PROP-NEW-DECL-001"),
-          RuleOutputKind.LocalDefinitionFromObjectCreation)
-      };
+    public override RuleConsumesContract Consumes => LocalDefinitionConsumes;
 
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalReference };

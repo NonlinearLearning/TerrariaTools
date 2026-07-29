@@ -9,11 +9,18 @@ namespace NLISSN.Rules;
 /// 为方法参数删除汇总声明宿主与调用点，并把不同调用约束编码成 mode，供后续收缩提案选择正确改写策略。
 public sealed class ClassMethodParameterUsagePropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag MethodParameterUsageSemanticTag = new("Class.MethodParameterUsage");
+
+    private static readonly RuleProducesContract MethodParameterUsageProduces =
+      RuleStructureContractFactories.CreateMethodParameterUsageProduces(MethodParameterUsageSemanticTag);
+
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
     public override string CapabilityId { get; } = "propagate.type.method-parameter-usage";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-METHOD-PARAM-USAGE-001";
+
+    public override RuleProducesContract Produces => MethodParameterUsageProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -44,7 +51,8 @@ public sealed class ClassMethodParameterUsagePropagationRule : ClassPropagationR
                   MarkRecordFactory.Create(
                     RuleId,
                     payload.Method,
-                    "Method parameter type references the delete-class target; propagate to the owning method declaration."),
+                    "Method parameter type references the delete-class target; propagate to the owning method declaration.",
+                    semanticTag: MethodParameterUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);
@@ -62,7 +70,8 @@ public sealed class ClassMethodParameterUsagePropagationRule : ClassPropagationR
                   MarkRecordFactory.Create(
                     RuleId,
                     invocation,
-                    "Invocation passes the delete-class typed parameter; propagate to a shrinkable callsite."),
+                    "Invocation passes the delete-class typed parameter; propagate to a shrinkable callsite.",
+                    semanticTag: MethodParameterUsageSemanticTag),
                   seedMark,
                   1,
                   Payload: payload);

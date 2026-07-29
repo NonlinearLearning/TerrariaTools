@@ -13,6 +13,7 @@ internal sealed record RuleGraphAnalysisResult(
   IReadOnlyList<LiftedMarkRecord> LiftedMarks,
   IReadOnlyList<RuleDecision> Decisions,
   IReadOnlyList<RuleGraphNodeTelemetry> Telemetry,
+  IReadOnlyDictionary<RuleNodeId, RuleGraphNodeStatus> NodeStatuses,
   RuleGraphExecutionMetrics? Metrics);
 
 internal sealed class RuleGraphAnalysisExecutor
@@ -30,10 +31,13 @@ internal sealed class RuleGraphAnalysisExecutor
           .Concat(pipeline.Proposers.Select(rule => CreateProposerNode(context, rule, graph)))
           .Concat(CreateDisabledNodes(graph, pipeline))
           .ToList();
+        var graphDegree = context.Runtime.ExecutionOptions.EnableGroupParallelism
+          ? context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism
+          : 1;
         var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
-            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            graphDegree,
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
@@ -74,6 +78,7 @@ internal sealed class RuleGraphAnalysisExecutor
           liftedMarks,
           decisions,
           execution.Telemetry ?? Array.Empty<RuleGraphNodeTelemetry>(),
+          execution.Nodes.ToDictionary(node => node.NodeId, node => node.Status),
           execution.Metrics);
     }
 
@@ -88,7 +93,8 @@ internal sealed class RuleGraphAnalysisExecutor
           node,
           (_, _) => Task.FromResult(CreateResult(
             rule.ProducedOutputs,
-            new MarkingEngine().Run(context, root, new[] { rule }))));
+            rule.Produces,
+            MarkingEngine.ExecuteRule(context, root, rule))));
     }
 
     private static RuleGraphExecutionNode CreatePropagatorNode(
@@ -101,6 +107,7 @@ internal sealed class RuleGraphAnalysisExecutor
           node,
           (inputs, _) => Task.FromResult(CreateResult(
             rule.ProducedOutputs,
+            rule.Produces,
             PropagationEngine.ExecuteRule(context, rule, GetMarks(node, inputs)))));
     }
 
@@ -117,6 +124,7 @@ internal sealed class RuleGraphAnalysisExecutor
               var values = GetValues(node, inputs);
               return Task.FromResult(CreateResult(
                 rule.ProducedOutputs,
+                rule.Produces,
                 MarkLiftingEngine.ExecuteRule(
                   context,
                   rule,
@@ -146,7 +154,7 @@ internal sealed class RuleGraphAnalysisExecutor
                   values.OfType<LiftedMarkRecord>().ToList())
                 .Select(unit => unit.GroupKey is null ? unit with { GroupKey = rule.GroupKey } : unit)
                 .ToList();
-              return Task.FromResult(CreateResult(rule.ProducedOutputs, units));
+              return Task.FromResult(CreateResult(rule.ProducedOutputs, rule.Produces, units));
           });
     }
 
@@ -173,15 +181,17 @@ internal sealed class RuleGraphAnalysisExecutor
           .Where(node => !activeNodeIds.Contains(node.NodeId))
           .Select(node => new RuleGraphExecutionNode(
             node,
-            (_, _) => Task.FromResult(RuleNodeResult.Empty)));
+            (_, _) => Task.FromResult(RuleNodeResult.Empty),
+            RuleGraphNodeStatus.Disabled));
     }
 
     private static RuleNodeResult CreateResult<T>(
       IReadOnlyList<RuleOutputKind> outputKinds,
+      RuleProducesContract produces,
       IReadOnlyList<T> values)
     {
         var boxedValues = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxedValues);
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxedValues, produces);
     }
 
     private static IReadOnlyList<MarkRecord> GetMarks(RuleGraphNode node, RuleNodeInputs inputs)
@@ -201,7 +211,9 @@ internal sealed class RuleGraphAnalysisExecutor
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+          .SelectMany(dependency => dependency.RequiredStructure is { } structure
+            ? inputs.GetOutputs(dependency.Producer, structure)
+            : inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
           .ToList();
     }
 }

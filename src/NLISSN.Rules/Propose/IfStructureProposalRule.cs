@@ -10,6 +10,13 @@ namespace NLISSN.Rules;
 /// 将 Lift 阶段确认完整的 if / else if / else 结构规约为单个改写决策。
 public sealed class IfStructureProposalRule : RuleDefinitionPropose
 {
+    private static readonly RuleSemanticTag IfCompletionSemanticTag = new("SObject.IfCompletion");
+
+    private static readonly RuleConsumesContract IfCompletionConsumes =
+      RuleStructureContractFactories.CreateIfCompletionConsumes(
+        IfCompletionSemanticTag,
+        RuleInputCardinality.All);
+
     public override string CapabilityId { get; } = "propose.if-structure";
 
     public override string RuleId { get; } = "DEL-SOBJ-PROPOSE-IF-001";
@@ -17,6 +24,8 @@ public sealed class IfStructureProposalRule : RuleDefinitionPropose
     public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Match s-rooted if/elseif/else structure decisions";
+
+    public override RuleConsumesContract Consumes => IfCompletionConsumes;
 
     public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds =>
       DeleteSObjectProposalHelpers.IfConflictNodeKinds;

@@ -9,12 +9,94 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+public abstract class ClassDeclarationHostProposalRuleBase : RuleDefinitionPropose
+{
+    private static readonly RuleSemanticTag DeclarationHostSemanticTag = new("Class.DeclarationHost");
+
+    private static readonly RuleConsumesContract DeclarationHostConsumes =
+      RuleStructureContractFactories.CreateDeclarationHostConsumes(
+        DeclarationHostSemanticTag,
+        RuleInputCardinality.All);
+
+    public override RuleConsumesContract Consumes => DeclarationHostConsumes;
+}
+
+public abstract class ClassMethodParameterUsageProposalRuleBase : RuleDefinitionPropose
+{
+    private static readonly RuleSemanticTag MethodParameterUsageSemanticTag = new("Class.MethodParameterUsage");
+
+    private static readonly RuleConsumesContract MethodParameterUsageConsumes =
+      RuleStructureContractFactories.CreateMethodParameterUsageConsumes(
+        MethodParameterUsageSemanticTag,
+        RuleInputCardinality.All);
+
+    public override RuleConsumesContract Consumes => MethodParameterUsageConsumes;
+}
+
+public abstract class ClassLocalFunctionParameterUsageProposalRuleBase : RuleDefinitionPropose
+{
+    private static readonly RuleSemanticTag LocalFunctionParameterUsageSemanticTag = new("Class.LocalFunctionParameterUsage");
+
+    private static readonly RuleConsumesContract LocalFunctionParameterUsageConsumes =
+      RuleStructureContractFactories.CreateLocalFunctionParameterUsageConsumes(
+        LocalFunctionParameterUsageSemanticTag,
+        RuleInputCardinality.All);
+
+    public override RuleConsumesContract Consumes => LocalFunctionParameterUsageConsumes;
+}
+
+public abstract class ClassIndexerParameterUsageProposalRuleBase : RuleDefinitionPropose
+{
+    private static readonly RuleSemanticTag IndexerParameterUsageSemanticTag = new("Class.IndexerParameterUsage");
+
+    private static readonly RuleConsumesContract IndexerParameterUsageConsumes =
+      RuleStructureContractFactories.CreateIndexerParameterUsageConsumes(
+        IndexerParameterUsageSemanticTag,
+        RuleInputCardinality.All);
+
+    public override RuleConsumesContract Consumes => IndexerParameterUsageConsumes;
+}
+
+public abstract class ClassDelegateUsageProposalRuleBase : RuleDefinitionPropose
+{
+    private static readonly RuleSemanticTag DelegateUsageSemanticTag = new("Class.DelegateUsage");
+
+    private static readonly RuleConsumesContract DelegateUsageConsumes =
+      RuleStructureContractFactories.CreateDelegateUsageConsumes(
+        DelegateUsageSemanticTag,
+        RuleInputCardinality.All);
+
+    public override RuleConsumesContract Consumes => DelegateUsageConsumes;
+}
+
+public abstract class ClassExtensionMethodParameterUsageProposalRuleBase : RuleDefinitionPropose
+{
+    private static readonly RuleSemanticTag ExtensionMethodParameterUsageSemanticTag = new("Class.ExtensionMethodParameterUsage");
+
+    private static readonly RuleConsumesContract ExtensionMethodParameterUsageConsumes =
+      RuleStructureContractFactories.CreateExtensionMethodParameterUsageConsumes(
+        ExtensionMethodParameterUsageSemanticTag,
+        RuleInputCardinality.All);
+
+    public override RuleConsumesContract Consumes => ExtensionMethodParameterUsageConsumes;
+}
+
 /// 默认处理未被专门规则接管的类删除标记，避免与结构或声明宿主决策重叠。
 public sealed class ClassDefaultRemovalProposalRule : RuleDefinitionPropose
 {
+    private static readonly RuleTerminalConsumesContract AllClassFacts = new(
+      new[]
+      {
+        new RuleTerminalFactSelector(
+          RuleFactDomain.Class,
+          new[] { RuleKind.Mark, RuleKind.Propagate, RuleKind.Lift })
+      });
+
     public override string CapabilityId { get; } = "propose.type.default-removal";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-DEFAULT-001";
+
+    public override RuleTerminalConsumesContract TerminalConsumes => AllClassFacts;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -85,9 +167,19 @@ public sealed class ClassDefaultRemovalProposalRule : RuleDefinitionPropose
 /// 仅为传播确认的控制结构宿主生成删除决策。
 public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPropose
 {
+    private static readonly RuleTerminalConsumesContract AllClassFacts = new(
+      new[]
+      {
+        new RuleTerminalFactSelector(
+          RuleFactDomain.Class,
+          new[] { RuleKind.Mark, RuleKind.Propagate, RuleKind.Lift })
+      });
+
     public override string CapabilityId { get; } = "propose.type.control-structure-removal";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-CTRL-001";
+
+    public override RuleTerminalConsumesContract TerminalConsumes => AllClassFacts;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -125,7 +217,7 @@ public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPro
 }
 
 /// 将 TypeSyntax 标记提升为包含该类型语法的声明改写。
-public sealed class ClassTypeSyntaxDeclarationProposalRule : RuleDefinitionPropose
+public sealed class ClassTypeSyntaxDeclarationProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.type-syntax-declaration";
 
@@ -177,7 +269,7 @@ public sealed class ClassTypeSyntaxDeclarationProposalRule : RuleDefinitionPropo
 }
 
 /// 删除可安全替换的方法返回类型，并保留声明主体。
-public sealed class ClassMethodReturnTypeProposalRule : RuleDefinitionPropose
+public sealed class ClassMethodReturnTypeProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.method-return-type";
 
@@ -223,7 +315,7 @@ public sealed class ClassMethodReturnTypeProposalRule : RuleDefinitionPropose
 }
 
 /// 处理公开方法返回类型，要求调用与重载绑定不会因替换而漂移。
-public sealed class ClassPublicMethodReturnTypeProposalRule : RuleDefinitionPropose
+public sealed class ClassPublicMethodReturnTypeProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.public-method-return-type";
 
@@ -300,7 +392,7 @@ public sealed class ClassParameterProposalRule : RuleDefinitionPropose
 }
 
 /// 删除私有方法参数，并同步改写可证明的稳定位置调用。
-public sealed class ClassPrivateMethodParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassPrivateMethodParameterShrinkProposalRule : ClassMethodParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.private-method-parameter-shrink";
 
@@ -356,7 +448,7 @@ public sealed class ClassPrivateMethodParameterShrinkProposalRule : RuleDefiniti
 }
 
 /// 处理具名实参方法调用，按参数符号而非位置删除对应实参。
-public sealed class ClassNamedArgumentMethodParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassNamedArgumentMethodParameterShrinkProposalRule : ClassMethodParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.named-argument-method-parameter-shrink";
 
@@ -412,7 +504,7 @@ public sealed class ClassNamedArgumentMethodParameterShrinkProposalRule : RuleDe
 }
 
 /// 删除可省略的可选参数，同时维持省略调用的绑定语义。
-public sealed class ClassOptionalParameterDefaultedMethodShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassOptionalParameterDefaultedMethodShrinkProposalRule : ClassMethodParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.optional-parameter-defaulted-method-shrink";
 
@@ -514,7 +606,7 @@ public sealed class ClassPublicParameterProposalRule : RuleDefinitionPropose
 }
 
 /// 仅收缩末尾 params 参数，并拒绝显式数组或展开形状不确定的调用。
-public sealed class ClassParamsMethodParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassParamsMethodParameterShrinkProposalRule : ClassMethodParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.params-method-parameter-shrink";
 
@@ -561,7 +653,7 @@ public sealed class ClassParamsMethodParameterShrinkProposalRule : RuleDefinitio
 }
 
 /// 仅在收集到全部调用点时收缩非私有方法参数。
-public sealed class ClassPublicMethodParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassPublicMethodParameterShrinkProposalRule : ClassMethodParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.public-method-parameter-shrink";
 
@@ -617,7 +709,7 @@ public sealed class ClassPublicMethodParameterShrinkProposalRule : RuleDefinitio
 }
 
 /// 处理局部函数的具名实参，并与局部声明同步替换。
-public sealed class ClassNamedArgumentLocalFunctionParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassNamedArgumentLocalFunctionParameterShrinkProposalRule : ClassLocalFunctionParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.named-argument-local-function-parameter-shrink";
 
@@ -673,7 +765,7 @@ public sealed class ClassNamedArgumentLocalFunctionParameterShrinkProposalRule :
 }
 
 /// 删除局部函数的可选参数，同时保留省略实参调用的合法性。
-public sealed class ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRule : ClassLocalFunctionParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.optional-parameter-defaulted-local-function-shrink";
 
@@ -729,7 +821,7 @@ public sealed class ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRu
 }
 
 /// 删除局部函数参数并改写同一作用域内可绑定的调用点。
-public sealed class ClassLocalFunctionParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassLocalFunctionParameterShrinkProposalRule : ClassLocalFunctionParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.local-function-parameter-shrink";
 
@@ -785,7 +877,7 @@ public sealed class ClassLocalFunctionParameterShrinkProposalRule : RuleDefiniti
 }
 
 /// 处理索引器具名参数的声明与元素访问同步收缩。
-public sealed class ClassNamedArgumentIndexerParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassNamedArgumentIndexerParameterShrinkProposalRule : ClassIndexerParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.named-argument-indexer-parameter-shrink";
 
@@ -841,7 +933,7 @@ public sealed class ClassNamedArgumentIndexerParameterShrinkProposalRule : RuleD
 }
 
 /// 仅在所有元素访问都可安全重写时收缩索引器参数。
-public sealed class ClassIndexerParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassIndexerParameterShrinkProposalRule : ClassIndexerParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.indexer-parameter-shrink";
 
@@ -897,7 +989,7 @@ public sealed class ClassIndexerParameterShrinkProposalRule : RuleDefinitionProp
 }
 
 /// 处理没有方法组或 lambda 绑定链的简单委托参数删除。
-public sealed class ClassDelegateParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassDelegateParameterShrinkProposalRule : ClassDelegateUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.delegate-parameter-shrink";
 
@@ -944,7 +1036,7 @@ public sealed class ClassDelegateParameterShrinkProposalRule : RuleDefinitionPro
 }
 
 /// 收缩委托参数并同步改写经方法组绑定的目标方法。
-public sealed class ClassMethodGroupDelegateParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassMethodGroupDelegateParameterShrinkProposalRule : ClassDelegateUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.method-group-delegate-parameter-shrink";
 
@@ -1053,7 +1145,7 @@ public sealed class ClassMethodGroupDelegateParameterShrinkProposalRule : RuleDe
 }
 
 /// 收缩委托参数并同步改写依赖该签名的 lambda 形参。
-public sealed class ClassLambdaDelegateParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassLambdaDelegateParameterShrinkProposalRule : ClassDelegateUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.lambda-delegate-parameter-shrink";
 
@@ -1147,7 +1239,7 @@ public sealed class ClassLambdaDelegateParameterShrinkProposalRule : RuleDefinit
 }
 
 /// 覆盖直接委托调用链，确保声明、绑定和调用实参一起收缩。
-public sealed class ClassDelegateInvocationChainParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassDelegateInvocationChainParameterShrinkProposalRule : ClassDelegateUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.delegate-invocation-chain-parameter-shrink";
 
@@ -1216,7 +1308,7 @@ public sealed class ClassDelegateInvocationChainParameterShrinkProposalRule : Ru
 }
 
 /// 只收缩扩展方法的非接收者参数；接收者参数受调用形式约束而保留。
-public sealed class ClassExtensionReceiverNonFirstParameterShrinkProposalRule : RuleDefinitionPropose
+public sealed class ClassExtensionReceiverNonFirstParameterShrinkProposalRule : ClassExtensionMethodParameterUsageProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.extension-receiver-non-first-parameter-shrink";
 
@@ -1271,7 +1363,7 @@ public sealed class ClassExtensionReceiverNonFirstParameterShrinkProposalRule : 
 }
 
 /// 将接口方法签名中的目标类型删除映射为接口成员声明改写。
-public sealed class ClassInterfaceMethodProposalRule : RuleDefinitionPropose
+public sealed class ClassInterfaceMethodProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.interface-method";
 
@@ -1316,7 +1408,7 @@ public sealed class ClassInterfaceMethodProposalRule : RuleDefinitionPropose
 }
 
 /// 将接口属性签名中的目标类型删除映射为属性声明改写。
-public sealed class ClassInterfacePropertyProposalRule : RuleDefinitionPropose
+public sealed class ClassInterfacePropertyProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.interface-property";
 
@@ -1356,7 +1448,7 @@ public sealed class ClassInterfacePropertyProposalRule : RuleDefinitionPropose
 }
 
 /// 将接口事件签名中的目标类型删除映射为事件声明改写。
-public sealed class ClassInterfaceEventProposalRule : RuleDefinitionPropose
+public sealed class ClassInterfaceEventProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.interface-event";
 
@@ -1397,7 +1489,7 @@ public sealed class ClassInterfaceEventProposalRule : RuleDefinitionPropose
 }
 
 /// 将接口索引器签名中的目标类型删除映射为索引器声明改写。
-public sealed class ClassInterfaceIndexerProposalRule : RuleDefinitionPropose
+public sealed class ClassInterfaceIndexerProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.interface-indexer";
 
@@ -1437,7 +1529,7 @@ public sealed class ClassInterfaceIndexerProposalRule : RuleDefinitionPropose
 }
 
 /// 处理委托返回类型删除；参数删除由参数收缩专门规则承担。
-public sealed class ClassDelegateProposalRule : RuleDefinitionPropose
+public sealed class ClassDelegateProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.delegate";
 
@@ -1482,7 +1574,7 @@ public sealed class ClassDelegateProposalRule : RuleDefinitionPropose
 }
 
 /// 处理扩展接收者类型删除，并避免把实例调用改写为不等价形式。
-public sealed class ClassExtensionReceiverProposalRule : RuleDefinitionPropose
+public sealed class ClassExtensionReceiverProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.extension-receiver";
 
@@ -1527,7 +1619,7 @@ public sealed class ClassExtensionReceiverProposalRule : RuleDefinitionPropose
 }
 
 /// 删除基类型列表中已标记的目标类型，保留其余继承和接口项。
-public sealed class ClassBaseTypeProposalRule : RuleDefinitionPropose
+public sealed class ClassBaseTypeProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.base-type";
 
@@ -1568,7 +1660,7 @@ public sealed class ClassBaseTypeProposalRule : RuleDefinitionPropose
 }
 
 /// 处理泛型局部声明中的目标类型实参，且只在宿主语法可完整替换时提出决策。
-public sealed class ClassGenericTypeArgumentProposalRule : RuleDefinitionPropose
+public sealed class ClassGenericTypeArgumentProposalRule : ClassDeclarationHostProposalRuleBase
 {
     public override string CapabilityId { get; } = "propose.type.generic-type-argument";
 
@@ -1610,6 +1702,13 @@ public sealed class ClassGenericTypeArgumentProposalRule : RuleDefinitionPropose
 /// 将类删除传播出的完整条件结构转换为结构化改写决策。
 public sealed class ClassIfStructureProposalRule : RuleDefinitionPropose
 {
+    private static readonly RuleSemanticTag IfCompletionSemanticTag = new("Class.IfCompletion");
+
+    private static readonly RuleConsumesContract IfCompletionConsumes =
+      RuleStructureContractFactories.CreateIfCompletionConsumes(
+        IfCompletionSemanticTag,
+        RuleInputCardinality.All);
+
     public override string CapabilityId { get; } = "propose.type.if-structure";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IF-001";
@@ -1617,6 +1716,8 @@ public sealed class ClassIfStructureProposalRule : RuleDefinitionPropose
     public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Match delete-class if/elseif/else structure decisions";
+
+    public override RuleConsumesContract Consumes => IfCompletionConsumes;
 
     public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds =>
       DeleteSObjectProposalHelpers.IfConflictNodeKinds;

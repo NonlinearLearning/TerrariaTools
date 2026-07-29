@@ -13,9 +13,18 @@ namespace NLISSN.Rules;
 /// 仅在所有调用点都位于当前程序集内部时，将公开方法的可见性改为 private。
 public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefinitionPropose
 {
+  private static readonly RuleSemanticTag InternalOnlyPublicMethodSemanticTag = new("InternalOnlyPublicMethod");
+
+  private static readonly RuleConsumesContract InternalOnlyPublicMethodConsumes =
+    RuleStructureContractFactories.CreateDeclarationHostConsumes(
+      InternalOnlyPublicMethodSemanticTag,
+      RuleInputCardinality.All);
+
   public override string CapabilityId { get; } = "propose.privatize-internal-only-public-method";
 
     public override string RuleId { get; } = "PRIV-INTERNAL-PUBLIC-PROP-001";
+
+  public override RuleConsumesContract Consumes => InternalOnlyPublicMethodConsumes;
 
   public override string GroupKey { get; } = "PRIV-INTERNAL-PUBLIC";
 

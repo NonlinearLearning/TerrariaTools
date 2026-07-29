@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using NL.Concurrency;
+using NLISSN.Core.Analysis.Structure;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -23,8 +25,7 @@ public sealed class RuleGraphCompilerTests
         var legacy = new ApplicationService(new RulePipeline(
           rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers));
         var graph = new ApplicationService(new RulePipeline(
-          rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers,
-          EnableRuleGraphExecution: true));
+          rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers));
         var options = new Dictionary<string, string> { ["target-name"] = "s", ["skip-rewrite"] = "true" };
 
         var legacyResult = legacy.Analyze(source, "graph-sobj.cs", options);
@@ -53,8 +54,7 @@ public sealed class RuleGraphCompilerTests
         var legacy = new ApplicationService(new RulePipeline(
           rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers));
         var graph = new ApplicationService(new RulePipeline(
-          rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers,
-          EnableRuleGraphExecution: true));
+          rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers));
         var options = new Dictionary<string, string> { ["delete-class"] = "PlayerInput", ["skip-rewrite"] = "true" };
 
         var legacyResult = legacy.Analyze(source, "graph-class.cs", options);
@@ -79,8 +79,7 @@ public sealed class RuleGraphCompilerTests
           new[] { marker },
           Array.Empty<RuleDefinitionPropagate>(),
           new[] { lifter },
-          new[] { proposer },
-          EnableRuleGraphExecution: true));
+          new[] { proposer }));
 
         var result = service.Analyze(source, "graph-cross-group.cs", new Dictionary<string, string> { ["skip-rewrite"] = "true" });
 
@@ -101,8 +100,7 @@ public sealed class RuleGraphCompilerTests
               new LocalReferenceOnlyConsumer()
           },
           Array.Empty<RuleDefinitionLift>(),
-          Array.Empty<RuleDefinitionPropose>(),
-          EnableRuleGraphExecution: true));
+          Array.Empty<RuleDefinitionPropose>()));
 
         var result = service.Analyze(
           "public sealed class Demo { }",
@@ -156,6 +154,72 @@ public sealed class RuleGraphCompilerTests
           singleThreadResult.RuleGraphTelemetry.Select(node => node.NodeId),
           parallelResult.RuleGraphTelemetry!.Select(node => node.NodeId));
         Assert.All(singleThreadResult.RuleGraphTelemetry, node => Assert.True(node.InputCount >= 0 && node.OutputCount >= 0 && node.ElapsedMilliseconds >= 0));
+    }
+
+    [Fact]
+    public void Analyze_WithGroupParallelismDisabled_RunsRuleGraphSerially()
+    {
+        const string source = "public sealed class Demo { int Run(int s) { return s; } }";
+        var service = new ApplicationService(RuleRegistry.CreateDefaultRules());
+        var options = new Dictionary<string, string>
+        {
+            ["target-name"] = "s",
+            ["skip-rewrite"] = "true",
+            ["max-degree-of-parallelism"] = "16",
+            ["cpg-max-degree-of-parallelism"] = "1"
+        };
+
+        var result = service.Analyze(source, "graph-group-disabled.cs", options);
+
+        Assert.NotNull(result.RuleGraphMetrics);
+        Assert.Equal(1, result.RuleGraphMetrics!.PeakConcurrentNodeCount);
+    }
+
+    [Fact]
+    public void Analyze_WithDefaultPipeline_UsesOneDependencyGraphSubmission()
+    {
+        var concurrencyPool = new DependencyGraphCountingPool();
+        var runtime = new AnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(1, EnableGroupParallelism: true),
+          new AnalysisEpoch(0, 0, 0),
+          concurrencyPool);
+        var service = new ApplicationService(new RulePipeline(
+          new RuleDefinitionMark[] { new CrossGroupMarker() },
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>()));
+
+        var result = service.Analyze(
+          "public sealed class Demo { }",
+          "graph-single-submission.cs",
+          new Dictionary<string, string> { ["skip-rewrite"] = "true" },
+          runtime);
+
+        Assert.Single(result.SeedMarks);
+        Assert.Equal(1, concurrencyPool.DependencyGraphInvocationCount);
+    }
+
+    [Fact]
+    public void Analyze_WithDisabledRuleGraphNode_ReportsDisabledStatus()
+    {
+        var disabledMarker = new CrossGroupMarker();
+        var service = new ApplicationService(new RulePipeline(
+          Array.Empty<RuleDefinitionMark>(),
+          Array.Empty<RuleDefinitionPropagate>(),
+          Array.Empty<RuleDefinitionLift>(),
+          Array.Empty<RuleDefinitionPropose>(),
+          DisabledMarkers: new[] { disabledMarker }));
+
+        var result = service.Analyze(
+          "public sealed class Demo { }",
+          "graph-disabled-status.cs",
+          new Dictionary<string, string> { ["skip-rewrite"] = "true" });
+
+        Assert.Empty(result.SeedMarks);
+        Assert.NotNull(result.RuleGraphNodeStatuses);
+        Assert.Equal(
+          RuleGraphNodeStatus.Disabled,
+          result.RuleGraphNodeStatuses![RuleNodeId.For(RuleKind.Mark, CrossGroupMarker.Id)]);
     }
 
     [Fact]
@@ -230,19 +294,33 @@ public sealed class RuleGraphCompilerTests
         Assert.Contains(
           sObjectReference.Dependencies,
           dependency => dependency.Producer.Value == "Propagate:DEL-SOBJ-PROP-DECL-INIT-001" &&
-            dependency.RequiredOutput == RuleOutputKind.LocalDefinitionFromInitializer);
+            dependency.RequiredOutput == RuleOutputKind.PropagatedMark &&
+            dependency.RequiredStructure is
+            {
+              StructureKind: RuleSyntaxStructureKind.VariableDeclarator,
+              Role: RuleSyntaxStructureRole.Whole,
+              SemanticTag.Value: "SObject.LocalDefinitionFromInitializer"
+            });
         Assert.Contains(
           classReference.Dependencies,
           dependency => dependency.Producer.Value == "Propagate:DEL-CLASS-PROP-NEW-DECL-001" &&
-            dependency.RequiredOutput == RuleOutputKind.LocalDefinitionFromObjectCreation);
-        Assert.Equal(2, sObjectSwitch.Dependencies.Count);
-        Assert.Equal(2, classSwitch.Dependencies.Count);
-        Assert.Contains(sObjectSwitch.Dependencies, dependency =>
-          dependency.Producer.Value == "Lift:DEL-SOBJ-LIFT-HOST-001" &&
-          dependency.RequiredOutput == RuleOutputKind.ExpressionHost);
-        Assert.Contains(sObjectSwitch.Dependencies, dependency =>
-          dependency.Producer.Value == "Lift:DEL-SOBJ-LIFT-IF-001" &&
-          dependency.RequiredOutput == RuleOutputKind.IfStructure);
+            dependency.RequiredOutput == RuleOutputKind.PropagatedMark &&
+            dependency.RequiredStructure is
+            {
+              StructureKind: RuleSyntaxStructureKind.VariableDeclarator,
+              Role: RuleSyntaxStructureRole.Whole,
+              SemanticTag.Value: "Class.LocalDefinitionFromObjectCreation"
+            });
+        AssertSwitchLiftDependencies(
+          sObjectSwitch,
+          "Lift:DEL-SOBJ-LIFT-HOST-001",
+          "Lift:DEL-SOBJ-LIFT-IF-001",
+          "SObject.IfStructure");
+        AssertSwitchLiftDependencies(
+          classSwitch,
+          "Lift:DEL-CLASS-LIFT-HOST-001",
+          "Lift:DEL-CLASS-LIFT-IF-001",
+          "Class.IfStructure");
     }
 
     [Fact]
@@ -262,14 +340,65 @@ public sealed class RuleGraphCompilerTests
         Assert.Equal(
           new[] { "Propagate:DEL-SOBJ-PROP-LOGIC-GROUP-001" },
           logical.Dependencies.Select(dependency => dependency.Producer.Value));
-        Assert.Equal(RuleOutputKind.PropagatedMark, Assert.Single(logical.Dependencies).RequiredOutput);
+        var logicalDependency = Assert.Single(logical.Dependencies);
+        Assert.Equal(RuleOutputKind.PropagatedMark, logicalDependency.RequiredOutput);
+        Assert.Equal(RuleSyntaxStructureKind.LogicalBinary, logicalDependency.RequiredStructure!.StructureKind);
+        Assert.Equal(RuleSyntaxStructureRole.Whole, logicalDependency.RequiredStructure.Role);
+        Assert.Equal("SObject.LogicalHost", logicalDependency.RequiredStructure.SemanticTag.Value);
         Assert.Equal(
           new[] { "Propagate:DEL-CLASS-PROP-DECL-HOST-001" },
           classReturn.Dependencies.Select(dependency => dependency.Producer.Value));
         Assert.Equal(
-          new[] { "Propagate:DEL-CLASS-PROP-METHOD-PARAM-USAGE-001" },
+          new[]
+          {
+            "Propagate:DEL-CLASS-PROP-METHOD-PARAM-USAGE-001",
+            "Propagate:DEL-CLASS-PROP-METHOD-PARAM-USAGE-001"
+          },
           privateParameter.Dependencies.Select(dependency => dependency.Producer.Value));
-        Assert.Equal(2, sObjectSwitch.Dependencies.Count);
+        Assert.Equal(
+          new[] { RuleSyntaxStructureRole.Declaration, RuleSyntaxStructureRole.Callsite },
+          privateParameter.Dependencies
+            .Select(dependency => dependency.RequiredStructure!.Role)
+            .OrderBy(role => role));
+        AssertSwitchLiftDependencies(
+          sObjectSwitch,
+          "Lift:DEL-SOBJ-LIFT-HOST-001",
+          "Lift:DEL-SOBJ-LIFT-IF-001",
+          "SObject.IfStructure");
+    }
+
+    private static void AssertSwitchLiftDependencies(
+      RuleGraphNode switchNode,
+      string hostProducerId,
+      string ifProducerId,
+      string semanticTag)
+    {
+        Assert.Equal(4, switchNode.Dependencies.Count);
+        Assert.Contains(switchNode.Dependencies, dependency =>
+          dependency.Producer.Value == hostProducerId &&
+          dependency.RequiredOutput == RuleOutputKind.LiftedMark &&
+          dependency.RequiredStructure is
+          {
+            StructureKind: RuleSyntaxStructureKind.ExpressionOrStatementHost,
+            Role: RuleSyntaxStructureRole.Whole,
+            SemanticTag.Value: var tag
+          } && tag.EndsWith(".ExpressionHost", StringComparison.Ordinal));
+        var ifDependencies = switchNode.Dependencies
+          .Where(dependency => dependency.Producer.Value == ifProducerId)
+          .ToList();
+        Assert.Equal(3, ifDependencies.Count);
+        Assert.Equal(
+          new[]
+          {
+            RuleSyntaxStructureRole.Whole,
+            RuleSyntaxStructureRole.ElseBranch,
+            RuleSyntaxStructureRole.ElseIf
+          },
+          ifDependencies
+            .Select(dependency => dependency.RequiredStructure!.Role)
+            .OrderBy(role => role));
+        Assert.All(ifDependencies, dependency =>
+          Assert.Equal(semanticTag, dependency.RequiredStructure!.SemanticTag.Value));
     }
 
     [Fact]
@@ -302,6 +431,84 @@ public sealed class RuleGraphCompilerTests
 
         Assert.Equal(1, consumerCalls);
         Assert.Equal(new[] { "mark-a", "propagate-a" }, result.Nodes.Select(node => node.NodeId.Value));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenConsumerRequiresTwoOutputsFromOneProducer_ProvidesBothPorts()
+    {
+        var producer = new RuleGraphNode(
+          new RuleNodeId("producer"),
+          RuleKind.Mark,
+          new[] { RuleOutputKind.SeedMark, RuleOutputKind.LocalReference },
+          Array.Empty<RuleDependency>());
+        var consumer = new RuleGraphNode(
+          new RuleNodeId("consumer"),
+          RuleKind.Propagate,
+          new[] { RuleOutputKind.PropagatedMark },
+          new RuleDependency(producer.NodeId, RuleOutputKind.SeedMark),
+          new RuleDependency(producer.NodeId, RuleOutputKind.LocalReference));
+        var graph = new RuleGraphCompiler().Compile(new[] { producer, consumer });
+
+        Assert.Equal(new[] { consumer.NodeId }, graph.DownstreamNodes[producer.NodeId]);
+
+        var result = await new RuleGraphExecutor().ExecuteAsync(
+          graph,
+          new[]
+          {
+              new RuleGraphExecutionNode(
+                producer,
+                (_, _) => Task.FromResult(new RuleNodeResult(
+                  new Dictionary<RuleOutputKind, IReadOnlyList<object>>
+                  {
+                      [RuleOutputKind.SeedMark] = new object[] { "seed" },
+                      [RuleOutputKind.LocalReference] = new object[] { "reference" }
+                  }))),
+              new RuleGraphExecutionNode(
+                consumer,
+                (inputs, _) =>
+                {
+                    Assert.Equal(new object[] { "seed" }, inputs.GetOutputs(producer.NodeId, RuleOutputKind.SeedMark));
+                    Assert.Equal(new object[] { "reference" }, inputs.GetOutputs(producer.NodeId, RuleOutputKind.LocalReference));
+                    return Task.FromResult(RuleNodeResult.Empty);
+                })
+          },
+          maxDegreeOfParallelism: 1);
+
+        Assert.Equal(new[] { "producer", "consumer" }, result.Nodes.Select(node => node.NodeId.Value));
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_WhenProducerIsDisabled_ExposesDisabledStatusToConsumer()
+    {
+        var producer = Node("producer", RuleKind.Mark, RuleOutputKind.SeedMark);
+        var consumer = Node(
+          "consumer",
+          RuleKind.Propagate,
+          RuleOutputKind.PropagatedMark,
+          new RuleDependency(producer.NodeId, RuleOutputKind.SeedMark));
+        var graph = new RuleGraphCompiler().Compile(new[] { producer, consumer });
+
+        var result = await new RuleGraphExecutor().ExecuteAsync(
+          graph,
+          new[]
+          {
+              new RuleGraphExecutionNode(
+                producer,
+                (_, _) => Task.FromResult(RuleNodeResult.Empty),
+                RuleGraphNodeStatus.Disabled),
+              new RuleGraphExecutionNode(
+                consumer,
+                (inputs, _) =>
+                {
+                    Assert.Empty(inputs.GetOutputs(producer.NodeId, RuleOutputKind.SeedMark));
+                    Assert.Equal(RuleGraphNodeStatus.Disabled, inputs.GetStatus(producer.NodeId));
+                    return Task.FromResult(RuleNodeResult.Empty);
+                })
+          },
+          maxDegreeOfParallelism: 1);
+
+        Assert.Equal(RuleGraphNodeStatus.Disabled, result.Nodes.Single(node => node.NodeId == producer.NodeId).Status);
+        Assert.Equal(RuleGraphNodeStatus.Disabled, result.Telemetry!.Single(node => node.NodeId == producer.NodeId).Status);
     }
 
     [Fact]
@@ -464,6 +671,120 @@ public sealed class RuleGraphCompilerTests
         {
             _ = context;
             yield return new MarkRecord(RuleId, root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>().Single(), null, null, RuleId);
+        }
+    }
+
+    private sealed class DependencyGraphCountingPool : IConcurrencyPool
+    {
+        private readonly IConcurrencyPool _inner = new BoundedConcurrencyPool();
+
+        public int DependencyGraphInvocationCount { get; private set; }
+
+        public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TResult>(
+          int itemCount,
+          int maxDegreeOfParallelism,
+          Func<int, CancellationToken, Task<TResult>> workItem,
+          CancellationToken cancellationToken = default)
+        {
+            return _inner.SelectOrderedAsync(
+              itemCount,
+              maxDegreeOfParallelism,
+              workItem,
+              cancellationToken);
+        }
+
+        public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TSource, TResult>(
+          IReadOnlyList<TSource> sources,
+          int maxDegreeOfParallelism,
+          Func<TSource, int, CancellationToken, Task<TResult>> workItem,
+          CancellationToken cancellationToken = default)
+        {
+            return _inner.SelectOrderedAsync(
+              sources,
+              maxDegreeOfParallelism,
+              workItem,
+              cancellationToken);
+        }
+
+        public Task<IReadOnlyList<TResult>> SelectCpuBoundOrdered<TSource, TResult>(
+          IReadOnlyList<TSource> sources,
+          int maxDegreeOfParallelism,
+          Func<TSource, int, CancellationToken, TResult> workItem,
+          CancellationToken cancellationToken = default)
+        {
+            return _inner.SelectCpuBoundOrdered(
+              sources,
+              maxDegreeOfParallelism,
+              workItem,
+              cancellationToken);
+        }
+
+        public void CommitOrdered<TSource, TResult>(
+          IReadOnlyList<TSource> sources,
+          ConcurrencyWindowOptions options,
+          Func<TSource, int, TResult> workItem,
+          Action<TResult, int> commit,
+          Func<TResult, int>? retainedRecordCount = null,
+          CancellationToken cancellationToken = default)
+        {
+            _inner.CommitOrdered(
+              sources,
+              options,
+              workItem,
+              commit,
+              retainedRecordCount,
+              cancellationToken);
+        }
+
+        public void CommitTwoStageOrdered<TSource, TCollected, TPrepared, TResult>(
+          IReadOnlyList<TSource> sources,
+          ConcurrencyWindowOptions options,
+          Func<TSource, int, TCollected> collect,
+          Func<TCollected, int, TPrepared> prepare,
+          Func<TPrepared, int, TResult> solve,
+          Action<TResult, int> commit,
+          Func<TCollected, int>? collectedRetainedRecordCount = null,
+          Func<TResult, int>? resultRetainedRecordCount = null,
+          CancellationToken cancellationToken = default)
+        {
+            _inner.CommitTwoStageOrdered(
+              sources,
+              options,
+              collect,
+              prepare,
+              solve,
+              commit,
+              collectedRetainedRecordCount,
+              resultRetainedRecordCount,
+              cancellationToken);
+        }
+
+        public Task ForEachAsync<TSource>(
+          IReadOnlyList<TSource> sources,
+          int maxDegreeOfParallelism,
+          Func<TSource, int, CancellationToken, Task> workItem,
+          CancellationToken cancellationToken = default)
+        {
+            return _inner.ForEachAsync(
+              sources,
+              maxDegreeOfParallelism,
+              workItem,
+              cancellationToken);
+        }
+
+        public Task<DependencyExecutionResult<TNode, TResult>> RunDependencyGraphAsync<TNode, TResult>(
+          IReadOnlyList<DependencyWorkItem<TNode, TResult>> workItems,
+          int maxDegreeOfParallelism,
+          IComparer<TNode> readyOrder,
+          CancellationToken cancellationToken = default)
+          where TNode : notnull
+        {
+            DependencyGraphInvocationCount++;
+            return _inner.RunDependencyGraphAsync(
+              workItems,
+              maxDegreeOfParallelism,
+              readyOrder,
+              cancellationToken);
         }
     }
 

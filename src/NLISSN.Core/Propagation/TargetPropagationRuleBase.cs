@@ -8,6 +8,14 @@ public abstract class SObjectPropagationRuleBase : RuleDefinitionPropagate
 {
     private const string DeleteSObjectGroupKey = "DEL-SOBJ";
 
+    private static readonly RuleTerminalConsumesContract SObjectSeedFacts = new(
+      new[]
+      {
+        new RuleTerminalFactSelector(
+          RuleFactDomain.SObject,
+          new[] { RuleKind.Mark })
+      });
+
     protected static readonly IReadOnlyList<SyntaxKind> SharedAllowedPropagateNodeKinds =
       new[]
       {
@@ -43,18 +51,9 @@ public abstract class SObjectPropagationRuleBase : RuleDefinitionPropagate
 
     public override string GroupKey { get; } = DeleteSObjectGroupKey;
 
-    public override IReadOnlyList<RuleDependency> Dependencies { get; } =
-      new[]
-      {
-        "DEL-SOBJ-MARK-ID-001", "DEL-SOBJ-MARK-THIS-001", "DEL-SOBJ-MARK-BASE-001",
-        "DEL-SOBJ-MARK-DECL-001", "DEL-SOBJ-MARK-LIT-NUM-001", "DEL-SOBJ-MARK-LIT-STR-001",
-        "DEL-SOBJ-MARK-LIT-TRUE-001", "DEL-SOBJ-MARK-LIT-FALSE-001", "DEL-SOBJ-MARK-LIT-NULL-001",
-        "DEL-SOBJ-MARK-MEMBER-001", "DEL-SOBJ-MARK-BINDING-001", "DEL-SOBJ-MARK-INVOKE-001",
-        "DEL-SOBJ-MARK-NEW-001", "DEL-SOBJ-MARK-IMPLICIT-NEW-001", "DEL-SOBJ-MARK-ELEMENT-001",
-        "DEL-SOBJ-MARK-CONDITIONAL-001"
-      }
-      .Select(ruleId => new RuleDependency(RuleNodeId.For(RuleKind.Mark, ruleId), RuleOutputKind.SeedMark))
-      .ToList();
+    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
+
+    public override RuleTerminalConsumesContract TerminalConsumes => SObjectSeedFacts;
 
     public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds =>
       SharedAllowedPropagateNodeKinds;

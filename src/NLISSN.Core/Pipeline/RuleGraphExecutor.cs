@@ -5,8 +5,18 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+public enum RuleGraphNodeStatus
+{
+    Completed,
+    Disabled,
+    Cancelled
+}
+
 public sealed record RuleNodeResult(IReadOnlyDictionary<RuleOutputKind, IReadOnlyList<object>> Outputs)
 {
+    public IReadOnlyDictionary<MarkedStructureSelector, IReadOnlyList<object>> StructureOutputs { get; init; } =
+      new Dictionary<MarkedStructureSelector, IReadOnlyList<object>>();
+
     public static RuleNodeResult Empty { get; } = new(new Dictionary<RuleOutputKind, IReadOnlyList<object>>());
 
     public static RuleNodeResult From(RuleOutputKind outputKind, params object[] values)
@@ -26,9 +36,59 @@ public sealed record RuleNodeResult(IReadOnlyDictionary<RuleOutputKind, IReadOnl
             : (IReadOnlyList<object>)values.Where(value => GetTypedOutputKind(value) == outputKind).ToList()));
     }
 
+    public static RuleNodeResult FromProducedOutputs(
+      IReadOnlyList<RuleOutputKind> outputKinds,
+      IReadOnlyList<object> values,
+      RuleProducesContract produces)
+    {
+        ArgumentNullException.ThrowIfNull(produces);
+
+        var result = FromProducedOutputs(outputKinds, values);
+        if (produces.Structures.Count == 0)
+        {
+            return result;
+        }
+
+        var structureOutputs = new Dictionary<MarkedStructureSelector, List<object>>();
+        foreach (var value in values)
+        {
+            var mark = GetMarkedRecord(value);
+            if (mark is null)
+            {
+                continue;
+            }
+
+            if (mark.SemanticTag is null)
+            {
+                continue;
+            }
+
+            var selector = RuleStructureContractValidator.RequireProducedMark(produces, mark);
+            if (!structureOutputs.TryGetValue(selector, out var selectorValues))
+            {
+                selectorValues = new List<object>();
+                structureOutputs.Add(selector, selectorValues);
+            }
+
+            selectorValues.Add(value);
+        }
+
+        return result with
+        {
+            StructureOutputs = structureOutputs.ToDictionary(
+            entry => entry.Key,
+            entry => (IReadOnlyList<object>)entry.Value)
+        };
+    }
+
     public IReadOnlyList<object> GetOutputs(RuleOutputKind outputKind)
     {
         return Outputs.TryGetValue(outputKind, out var values) ? values : Array.Empty<object>();
+    }
+
+    public IReadOnlyList<object> GetOutputs(MarkedStructureSelector selector)
+    {
+        return StructureOutputs.TryGetValue(selector, out var values) ? values : Array.Empty<object>();
     }
 
     private static bool IsStageOutput(RuleOutputKind outputKind)
@@ -47,13 +107,24 @@ public sealed record RuleNodeResult(IReadOnlyDictionary<RuleOutputKind, IReadOnl
             _ => null,
         };
     }
+
+    private static MarkRecord? GetMarkedRecord(object value)
+    {
+        return value switch
+        {
+            MarkRecord mark => mark,
+            PropagatedMarkRecord propagated => propagated.Mark,
+            LiftedMarkRecord lifted => lifted.Mark,
+            _ => null
+        };
+    }
 }
 
 public sealed class RuleNodeInputs
 {
-    private readonly IReadOnlyDictionary<RuleNodeId, RuleNodeResult> _producerResults;
+    private readonly IReadOnlyDictionary<RuleNodeId, RuleGraphExecutionNodeResult> _producerResults;
 
-    public RuleNodeInputs(IReadOnlyDictionary<RuleNodeId, RuleNodeResult> producerResults)
+    public RuleNodeInputs(IReadOnlyDictionary<RuleNodeId, RuleGraphExecutionNodeResult> producerResults)
     {
         _producerResults = producerResults;
     }
@@ -61,16 +132,34 @@ public sealed class RuleNodeInputs
     public IReadOnlyList<object> GetOutputs(RuleNodeId producer, RuleOutputKind outputKind)
     {
         return _producerResults.TryGetValue(producer, out var result)
-          ? result.GetOutputs(outputKind)
+          ? result.Result.GetOutputs(outputKind)
           : Array.Empty<object>();
     }
 
-    public int OutputCount => _producerResults.Values.Sum(result => result.Outputs.Values.Sum(values => values.Count));
+    public IReadOnlyList<object> GetOutputs(RuleNodeId producer, MarkedStructureSelector selector)
+    {
+        return _producerResults.TryGetValue(producer, out var result)
+          ? result.Result.GetOutputs(selector)
+          : Array.Empty<object>();
+    }
+
+    public RuleGraphNodeStatus GetStatus(RuleNodeId producer)
+    {
+        if (_producerResults.TryGetValue(producer, out var result))
+        {
+            return result.Status;
+        }
+
+        throw new InvalidOperationException($"Producer '{producer.Value}' is not available to this rule node.");
+    }
+
+    public int OutputCount => _producerResults.Values.Sum(result => result.Result.Outputs.Values.Sum(values => values.Count));
 }
 
 public sealed record RuleGraphExecutionNode(
   RuleGraphNode Node,
-  Func<RuleNodeInputs, CancellationToken, Task<RuleNodeResult>> ExecuteAsync);
+  Func<RuleNodeInputs, CancellationToken, Task<RuleNodeResult>> ExecuteAsync,
+  RuleGraphNodeStatus Status = RuleGraphNodeStatus.Completed);
 
 public sealed record RuleGraphExecutionResult(
   IReadOnlyList<RuleGraphExecutionNodeResult> Nodes,
@@ -83,9 +172,17 @@ public sealed record RuleGraphExecutionResult(
     }
 }
 
-public sealed record RuleGraphExecutionNodeResult(RuleNodeId NodeId, RuleNodeResult Result);
+public sealed record RuleGraphExecutionNodeResult(
+  RuleNodeId NodeId,
+  RuleNodeResult Result,
+  RuleGraphNodeStatus Status = RuleGraphNodeStatus.Completed);
 
-public sealed record RuleGraphNodeTelemetry(RuleNodeId NodeId, int InputCount, int OutputCount, long ElapsedMilliseconds);
+public sealed record RuleGraphNodeTelemetry(
+  RuleNodeId NodeId,
+  int InputCount,
+  int OutputCount,
+  long ElapsedMilliseconds,
+  RuleGraphNodeStatus Status = RuleGraphNodeStatus.Completed);
 
 public sealed record RuleGraphExecutionMetrics(int PeakReadyNodeCount, int PeakConcurrentNodeCount);
 
@@ -118,13 +215,16 @@ public sealed class RuleGraphExecutor
           node.Dependencies.Select(dependency => dependency.Producer).Distinct().ToList(),
           async (dependencyResults, token) =>
           {
-              var inputs = BuildInputs(node, dependencyResults.ToDictionary(
-                pair => pair.Key,
-                pair => pair.Value.Result));
+              var executor = executors[node.NodeId];
+              var inputs = BuildInputs(node, dependencyResults);
               var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-              var result = await executors[node.NodeId].ExecuteAsync(inputs, token);
+              var result = await executor.ExecuteAsync(inputs, token);
               stopwatch.Stop();
-              return new NodeExecutionCompletion(result, inputs.OutputCount, stopwatch.ElapsedMilliseconds);
+              return new NodeExecutionCompletion(
+                result,
+                inputs.OutputCount,
+                stopwatch.ElapsedMilliseconds,
+                executor.Status);
           })).ToList();
 
         var execution = await _concurrencyPool.RunDependencyGraphAsync(
@@ -134,7 +234,11 @@ public sealed class RuleGraphExecutor
           cancellationToken);
 
         return new RuleGraphExecutionResult(
-          graph.Nodes.Select(node => new RuleGraphExecutionNodeResult(node.NodeId, execution.Results[node.NodeId].Result)).ToList(),
+          graph.Nodes.Select(node =>
+            new RuleGraphExecutionNodeResult(
+              node.NodeId,
+              execution.Results[node.NodeId].Result,
+              execution.Results[node.NodeId].Status)).ToList(),
           graph.Nodes.Select(node =>
           {
               var completion = execution.Results[node.NodeId];
@@ -142,19 +246,25 @@ public sealed class RuleGraphExecutor
                 node.NodeId,
                 completion.InputCount,
                 completion.Result.Outputs.Values.Sum(values => values.Count),
-                completion.ElapsedMilliseconds);
+                completion.ElapsedMilliseconds,
+                completion.Status);
           }).ToList(),
           new RuleGraphExecutionMetrics(execution.PeakReadyWorkItemCount, execution.PeakConcurrentWorkItemCount));
     }
 
     private static RuleNodeInputs BuildInputs(
       RuleGraphNode node,
-      IReadOnlyDictionary<RuleNodeId, RuleNodeResult> results)
+      IReadOnlyDictionary<RuleNodeId, NodeExecutionCompletion> results)
     {
         return new RuleNodeInputs(node.Dependencies
-          .Select(dependency => dependency.Producer)
-          .Distinct()
-          .ToDictionary(producer => producer, producer => results[producer]));
+            .Select(dependency => dependency.Producer)
+            .Distinct()
+            .ToDictionary(
+              producer => producer,
+              producer => new RuleGraphExecutionNodeResult(
+                producer,
+                results[producer].Result,
+                results[producer].Status)));
     }
 
     private sealed class GraphOrderComparer : IComparer<RuleNodeId>
@@ -187,5 +297,9 @@ public sealed class RuleGraphExecutor
         }
     }
 
-    private sealed record NodeExecutionCompletion(RuleNodeResult Result, int InputCount, long ElapsedMilliseconds);
+    private sealed record NodeExecutionCompletion(
+      RuleNodeResult Result,
+      int InputCount,
+      long ElapsedMilliseconds,
+      RuleGraphNodeStatus Status);
 }

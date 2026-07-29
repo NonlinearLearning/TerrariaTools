@@ -11,6 +11,8 @@ public abstract class SObjectAtomicExpressionMarkRuleBase : RuleDefinitionMark
 
     public override string GroupKey { get; } = DeleteSObjectGroupKey;
 
+    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
+
     protected abstract SyntaxKind MarkKind { get; }
 
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => new[] { MarkKind };

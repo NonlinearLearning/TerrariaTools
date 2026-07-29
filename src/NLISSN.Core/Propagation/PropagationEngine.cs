@@ -17,6 +17,7 @@ public sealed class PropagationEngine
           .Select(candidate =>
           {
               MarkingEngine.ValidatePropagateNode(rule, candidate.Mark.SyntaxNode);
+              MarkingEngine.ValidateProducedStructure(rule.Produces, candidate.Mark);
               return BindPropagatedMarkRecord(ruleContext, candidate, rule.GroupKey);
           })
           .ToList();
@@ -38,12 +39,24 @@ public sealed class PropagationEngine
         var propagationNodeIds = rules
           .Select(rule => RuleNodeId.For(RuleKind.Propagate, rule.RuleId))
           .ToHashSet();
+        var contractGraph = new RuleStructureContractGraphCompiler().Compile(rules
+          .Select(rule => new RuleStructureContractGraphNode(
+            rule.NodeId,
+            RuleKind.Propagate,
+            rule.Consumes,
+            rule.Produces))
+          .ToList());
         var ruleNodes = rules.Select(rule =>
         {
-            var declaredDependencies = RuleGraphDependencyCatalog.GetDependencies(
-              rule,
-              RuleKind.Propagate,
-              rule.Dependencies);
+            var declaredDependencies = rule.Consumes.Structures.Count > 0
+              ? contractGraph.Edges
+                .Where(edge => edge.Consumer == rule.NodeId)
+                .Select(edge => new RuleDependency(
+                  edge.Producer,
+                  RuleOutputKind.PropagatedMark,
+                  edge.Selector))
+                .ToList()
+              : rule.Dependencies;
             var dependencies = ResolveDependencies(
               declaredDependencies,
               sourceNodes,
@@ -55,7 +68,11 @@ public sealed class PropagationEngine
               RuleNodeId.For(RuleKind.Propagate, rule.RuleId),
               RuleKind.Propagate,
               rule.ProducedOutputs,
-              dependencies);
+              dependencies)
+            {
+              ProducedStructures = rule.Produces.Structures,
+              ConsumedStructures = rule.Consumes.Structures
+            };
         }).ToList();
         var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(virtualNodes.Values).Concat(ruleNodes).ToList());
         var executionNodes = sourceNodes
@@ -70,6 +87,7 @@ public sealed class PropagationEngine
                 node,
                 (inputs, _) => Task.FromResult(CreateResult(
                   rule.ProducedOutputs,
+                  rule.Produces,
                   ExecuteRule(context, rule, GetInputMarks(node, inputs)))));
           }))
           .ToList();
@@ -162,8 +180,7 @@ public sealed class PropagationEngine
         }
 
         return dependencies
-          .GroupBy(dependency => dependency.Producer)
-          .Select(group => group.First())
+          .Distinct()
           .ToList();
     }
 
@@ -176,16 +193,21 @@ public sealed class PropagationEngine
         return RuleNodeResult.From(outputKind, marks.Cast<object>().ToArray());
     }
 
-    private static RuleNodeResult CreateResult<T>(IReadOnlyList<RuleOutputKind> outputKinds, IReadOnlyList<T> values)
+    private static RuleNodeResult CreateResult<T>(
+      IReadOnlyList<RuleOutputKind> outputKinds,
+      RuleProducesContract produces,
+      IReadOnlyList<T> values)
     {
         var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed);
+        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed, produces);
     }
 
     private static IReadOnlyList<MarkRecord> GetInputMarks(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+          .SelectMany(dependency => dependency.RequiredStructure is { } selector
+            ? inputs.GetOutputs(dependency.Producer, selector)
+            : inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
           .Select(value => value switch
           {
               MarkRecord mark => mark,

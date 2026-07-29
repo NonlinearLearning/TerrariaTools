@@ -13,6 +13,8 @@ public sealed class ClassDeclarationMarkRule : RuleDefinitionMark
 
     public override string RuleId { get; } = "DEL-CLASS-MARK-DECL-001";
 
+    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
+
     public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Match class declarations by delete-class option";
@@ -47,6 +49,8 @@ public sealed class ClassExpressionMarkRule : RuleDefinitionMark
 
     public override string RuleId { get; } = "DEL-CLASS-MARK-EXPR-001";
 
+    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
+
     public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Match expressions that reference the delete-class target";
@@ -79,6 +83,8 @@ public sealed class ClassTypeSyntaxMarkRule : RuleDefinitionMark
     public override string CapabilityId { get; } = "mark.type.type-syntax";
 
     public override string RuleId { get; } = "DEL-CLASS-MARK-TYPE-001";
+
+    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 

@@ -8,19 +8,28 @@ namespace NLISSN.Rules;
 /// 将 switch 中可完整规约的分支事实提升为单一结构宿主。
 public sealed class SObjectSwitchStructureLiftingRule : RuleDefinitionLift
 {
+    private static readonly RuleSemanticTag IfStructureSemanticTag = new("SObject.IfStructure");
+
+    private static readonly RuleSemanticTag ExpressionHostSemanticTag = new("SObject.ExpressionHost");
+
+    private static readonly RuleConsumesContract SwitchConsumes = new(
+      RuleStructureContractFactories.CreateExpressionOrStatementHostConsumes(
+        ExpressionHostSemanticTag,
+        RuleInputCardinality.All)
+        .Structures
+        .Concat(RuleStructureContractFactories.CreateIfStructureConsumes(
+          IfStructureSemanticTag,
+          RuleInputCardinality.All)
+          .Structures)
+        .ToList());
+
     public override string CapabilityId { get; } = "lift.target.switch-structure";
 
     public override string RuleId { get; } = "DEL-SOBJ-LIFT-SWITCH-001";
 
-    public override IReadOnlyList<RuleDependency> Dependencies =>
-      RuleGraphDependencyCatalog.GetDependencies(
-        this,
-        RuleKind.Lift,
-        new[]
-        {
-          new RuleDependency(RuleNodeId.For(RuleKind.Lift, "DEL-SOBJ-LIFT-HOST-001"), RuleOutputKind.ExpressionHost),
-          new RuleDependency(RuleNodeId.For(RuleKind.Lift, "DEL-SOBJ-LIFT-IF-001"), RuleOutputKind.IfStructure)
-        });
+    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
+
+    public override RuleConsumesContract Consumes => SwitchConsumes;
 
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.LiftedMark, RuleOutputKind.SwitchStructure };

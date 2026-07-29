@@ -34,6 +34,7 @@ public sealed class SObjectBaseExpressionMarkRule : SObjectAtomicExpressionMarkR
 
 public sealed class SObjectVariableDeclaratorMarkRule : RuleDefinitionMark
 {
+    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
     public override string CapabilityId { get; } = "mark.target.variable-declarator";
 
     public override string RuleId { get; } = "DEL-SOBJ-MARK-DECL-001";

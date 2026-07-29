@@ -10,12 +10,20 @@ namespace NLISSN.Rules;
 /// 让后续局部符号引用传播只依赖稳定 declarator，而不是具体 new 表达式形状。
 public sealed class ClassObjectCreationDeclarationPropagationRule : ClassPropagationRuleBase
 {
+    private static readonly RuleSemanticTag LocalDefinitionSemanticTag =
+      new("Class.LocalDefinitionFromObjectCreation");
+
+    private static readonly RuleProducesContract LocalDefinitionProduces =
+      RuleStructureContractFactories.CreateVariableDeclaratorProduces(LocalDefinitionSemanticTag);
+
     public override string CapabilityId { get; } = "propagate.type.object-creation-declaration";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-NEW-DECL-001";
 
     public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
       new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalDefinitionFromObjectCreation };
+
+    public override RuleProducesContract Produces => LocalDefinitionProduces;
 
     public override string GroupKey { get; } = "DEL-CLASS";
 
@@ -51,7 +59,8 @@ public sealed class ClassObjectCreationDeclarationPropagationRule : ClassPropaga
                 RuleId,
                 declarator,
                 "Object creation initializer is marked; propagate mark to local declarator.",
-                RuleOutputKind.LocalDefinitionFromObjectCreation),
+                RuleOutputKind.LocalDefinitionFromObjectCreation,
+                LocalDefinitionSemanticTag),
               seedMark,
               1);
         }
