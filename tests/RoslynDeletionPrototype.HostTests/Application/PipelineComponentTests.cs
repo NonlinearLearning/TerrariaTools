@@ -665,6 +665,30 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void AnalysisRuntime_GetOrCreateCompilationCache_AcrossRuntimeEpochs_ReusesValue()
+    {
+        var tree = CSharpSyntaxTree.ParseText("namespace Demo; public sealed class Sample { }", path: "runtime-cache-epoch.cs");
+        var compilation = CreateCompilation(tree);
+        var runtime = AnalysisRuntime.CreateDefault();
+
+        var first = GetCompilationCache(
+            runtime,
+            compilation,
+            static _ => new TestCompilationCacheA("first"));
+        var invalidated = GetCompilationCache(
+            runtime.InvalidateCaches(),
+            compilation,
+            static _ => new TestCompilationCacheA("invalidated"));
+        var nextEpoch = GetCompilationCache(
+            runtime.NextEpoch(),
+            compilation,
+            static _ => new TestCompilationCacheA("next"));
+
+        Assert.Same(first, invalidated);
+        Assert.Same(first, nextEpoch);
+    }
+
+    [Fact]
     public void MarkingEngine_Run_DoesNotUseGroupScheduler()
     {
         var source = PipelineSources.ParallelMarkingSource;

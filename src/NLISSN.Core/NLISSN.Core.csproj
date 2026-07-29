@@ -9,6 +9,7 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.14.0" />
+    <ProjectReference Include="..\NL.Caching\NL.Caching.csproj" />
     <ProjectReference Include="..\NL.Concurrency\NL.Concurrency.csproj" />
     <ProjectReference Include="..\NLCPG\NLCPG.csproj" />
   </ItemGroup>

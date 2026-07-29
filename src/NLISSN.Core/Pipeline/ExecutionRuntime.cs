@@ -1,6 +1,5 @@
-using System.Collections.Concurrent;
-using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
+using NL.Caching;
 using NL.Concurrency;
 using NLCPG.Builder;
 
@@ -33,7 +32,7 @@ public sealed record AnalysisEpoch(
 
 public sealed class AnalysisRuntime
 {
-    private readonly RuntimeCacheRegistry _cacheRegistry;
+    private readonly WeakTypedCacheRegistry<Compilation> _cacheRegistry;
     private readonly AsyncLocal<CpgBuildAdmissionBudget.CpgBuildAdmissionLease?> _currentCpgBuildAdmissionLease = new();
 
     // 用执行选项、epoch 和可选调度器创建一次分析运行时，并初始化配套缓存与 CPG 准入预算。
@@ -44,14 +43,14 @@ public sealed class AnalysisRuntime
         concurrencyPool,
         new ConcurrencyOperationTelemetryCollector(),
         new ConcurrencyAdmissionController(CreateConcurrencyAdmissionOptions(executionOptions)),
-        new RuntimeCacheRegistry(),
+        new WeakTypedCacheRegistry<Compilation>(),
         new CpgBuildAdmissionBudget(
           executionOptions.EffectiveCpgMaxDegreeOfParallelism,
           CpgBuildAdmissionPolicy.FairCapped))
     {
     }
 
-    private AnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, AnalysisEpoch epoch, IConcurrencyPool? concurrencyPool, ConcurrencyOperationTelemetryCollector concurrencyTelemetry, ConcurrencyAdmissionController concurrencyAdmissionController, RuntimeCacheRegistry cacheRegistry, CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
+    private AnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, AnalysisEpoch epoch, IConcurrencyPool? concurrencyPool, ConcurrencyOperationTelemetryCollector concurrencyTelemetry, ConcurrencyAdmissionController concurrencyAdmissionController, WeakTypedCacheRegistry<Compilation> cacheRegistry, CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
     {
         ExecutionOptions = executionOptions;
         Epoch = epoch;
@@ -152,21 +151,7 @@ public sealed class AnalysisRuntime
     public TCache GetOrCreateCompilationCache<TCache>(Compilation compilation, Func<Compilation, TCache> factory)
       where TCache : class
     {
-        return _cacheRegistry.GetOrCreateCompilationCache(compilation, factory);
-    }
-
-    private sealed class RuntimeCacheRegistry
-    {
-        private readonly ConditionalWeakTable<Compilation, ConcurrentDictionary<Type, object>> _compilationCaches = new();
-
-        public TCache GetOrCreateCompilationCache<TCache>(Compilation compilation, Func<Compilation, TCache> factory)
-          where TCache : class
-        {
-            var compilationCaches = _compilationCaches.GetValue(
-              compilation,
-              static _ => new ConcurrentDictionary<Type, object>());
-            return (TCache)compilationCaches.GetOrAdd(typeof(TCache), _ => factory(compilation));
-        }
+        return _cacheRegistry.GetOrCreate(compilation, factory);
     }
 
     private sealed class CpgBuildAdmissionLeaseScope : IDisposable
