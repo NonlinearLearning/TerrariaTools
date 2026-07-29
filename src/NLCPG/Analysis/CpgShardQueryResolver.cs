@@ -1,3 +1,4 @@
+using NL.Caching;
 using NLCPG.Persistence;
 using NLCPG.Model;
 
@@ -10,17 +11,16 @@ public sealed class CpgShardQueryResolver
 {
     private readonly ICpgShardCatalog _catalog;
     private readonly ICpgShardStore _store;
-    private readonly long _maxCachedBytes;
-    private readonly Dictionary<string, LinkedListNode<CacheEntry>> _entries = new(StringComparer.Ordinal);
-    private readonly LinkedList<CacheEntry> _recency = new();
-    private long _cachedBytes;
+    private readonly ByteBudgetLruCache<string, CpgFrozenShard> _cache;
 
     // 绑定目录与存储读取器，并设置分片读取缓存上限。
     public CpgShardQueryResolver(ICpgShardCatalog catalog, ICpgShardStore store, long maxCachedBytes)
     {
         _catalog = catalog ?? throw new ArgumentNullException(nameof(catalog));
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _maxCachedBytes = Math.Max(0, maxCachedBytes);
+        _cache = new ByteBudgetLruCache<string, CpgFrozenShard>(
+            Math.Max(0, maxCachedBytes),
+            StringComparer.Ordinal);
     }
 
     // 按符号键查询分片位置，并打开命中的冻结分片。
@@ -48,41 +48,18 @@ public sealed class CpgShardQueryResolver
         var shards = new List<CpgFrozenShard>(locations.Count);
         foreach (var location in locations.OrderBy(location => location.ShardId, StringComparer.Ordinal))
         {
-            if (_entries.TryGetValue(location.ShardId, out var cachedNode))
+            if (_cache.TryGet(location.ShardId, out var cachedShard))
             {
-                _recency.Remove(cachedNode);
-                _recency.AddLast(cachedNode);
-                shards.Add(cachedNode.Value.Shard);
+                shards.Add(cachedShard);
                 continue;
             }
 
             var shard = await _store.ReadAsync(location, cancellationToken);
-            AddToCache(location, shard);
+            _cache.Set(location.ShardId, shard, location.ByteLength);
             shards.Add(shard);
         }
 
         return shards;
     }
 
-    private void AddToCache(CpgShardLocation location, CpgFrozenShard shard)
-    {
-        if (_maxCachedBytes == 0 || location.ByteLength > _maxCachedBytes)
-        {
-            return;
-        }
-
-        while (_cachedBytes + location.ByteLength > _maxCachedBytes && _recency.First is not null)
-        {
-            var oldest = _recency.First;
-            _entries.Remove(oldest.Value.Location.ShardId);
-            _recency.RemoveFirst();
-            _cachedBytes -= oldest.Value.Location.ByteLength;
-        }
-
-        var entry = new CacheEntry(location, shard);
-        _entries[location.ShardId] = _recency.AddLast(entry);
-        _cachedBytes += location.ByteLength;
-    }
-
-    private sealed record CacheEntry(CpgShardLocation Location, CpgFrozenShard Shard);
 }

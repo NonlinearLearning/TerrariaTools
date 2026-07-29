@@ -688,6 +688,70 @@ public sealed class NLCPGSliceQueryTests
         }
     }
 
+    [Fact]
+    public async Task ShardResolver_ZeroCapacity_DoesNotRetainShard()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cpg-shard-resolver-zero-cache-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var file = new CpgFileKey("project", "input.cs", "source");
+            var store = new CpgShardStore(root);
+            var catalog = new SqliteCpgShardCatalog(Path.Combine(root, "catalog.db"));
+            var location = await WriteAndPublishAsync(
+                store,
+                catalog,
+                new CpgFrozenShard(
+                    new CpgShardLookup(file, new CpgFragmentKey("zero", 0, 10, "zero"), 1, "profile"),
+                    new[] { FrozenNode(0, 1, "zero") },
+                    Array.Empty<CpgFrozenEdge>(),
+                    Array.Empty<CpgSymbolLocation>()));
+            var resolver = new CpgShardQueryResolver(catalog, store, maxCachedBytes: 0);
+
+            _ = Assert.Single(await resolver.FindByNodeAsync(new NodeId(1), CancellationToken.None));
+            File.Delete(location.ShardPath);
+
+            await Assert.ThrowsAsync<FileNotFoundException>(() =>
+                resolver.FindByNodeAsync(new NodeId(1), CancellationToken.None));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ShardResolver_OversizedShard_DoesNotRetainShard()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "cpg-shard-resolver-oversized-cache-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var file = new CpgFileKey("project", "input.cs", "source");
+            var store = new CpgShardStore(root);
+            var catalog = new SqliteCpgShardCatalog(Path.Combine(root, "catalog.db"));
+            var location = await WriteAndPublishAsync(
+                store,
+                catalog,
+                new CpgFrozenShard(
+                    new CpgShardLookup(file, new CpgFragmentKey("oversized", 0, 10, "oversized"), 1, "profile"),
+                    new[] { FrozenNode(0, 1, "oversized") },
+                    Array.Empty<CpgFrozenEdge>(),
+                    Array.Empty<CpgSymbolLocation>()));
+            var resolver = new CpgShardQueryResolver(catalog, store, maxCachedBytes: location.ByteLength - 1);
+
+            _ = Assert.Single(await resolver.FindByNodeAsync(new NodeId(1), CancellationToken.None));
+            File.Delete(location.ShardPath);
+
+            await Assert.ThrowsAsync<FileNotFoundException>(() =>
+                resolver.FindByNodeAsync(new NodeId(1), CancellationToken.None));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static NLCPGNode CreateNode(string id)
     {
         return new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: id);
