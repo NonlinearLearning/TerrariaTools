@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System.Text;
 using NLISSN.Core.Decision;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Rewrite;
 

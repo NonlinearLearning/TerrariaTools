@@ -30,12 +30,8 @@ public sealed class SObjectIfStructureLiftingRule : RuleDefinitionLift
 
     public override RuleTerminalConsumesContract TerminalConsumes => SObjectInputFacts;
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.IfStructure };
-
     public override RuleProducesContract Produces => IfStructureProduces;
 
-    public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Lift s-object marks into if/elseif/else structure tails";
 

@@ -17,12 +17,8 @@ public sealed class ClassIfStructureCompletionPropagationRule : ClassPropagation
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IF-COMPLETE-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class if/elseif/else completion state as structured payloads";
-
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.IfCompletion };
 
     public override RuleProducesContract Produces => IfCompletionProduces;
 

@@ -1,0 +1,12 @@
+global using NLISSN.Artifacts;
+global using NLISSN;
+global using NLISSN.Cli.Hosting;
+global using NLISSN.Cli.Parsing;
+global using NLISSN.Composition;
+global using NLISSN.Core.Decision;
+global using NLISSN.Core.Lifting;
+global using NLISSN.Core.Marking;
+global using NLISSN.Core.Pipeline;
+global using NLISSN.Core.Propagation;
+global using NLISSN.Telemetry;
+global using RoslynPrototype.Testing.TestInfrastructure;

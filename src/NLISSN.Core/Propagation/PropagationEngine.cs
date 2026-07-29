@@ -1,12 +1,12 @@
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Propagation;
 
 public sealed class PropagationEngine
 {
-    // 为规则图执行器执行一个已准备好显式输入的传播节点；不读取 GroupKey。
+    // 为规则图执行器执行一个已准备好显式输入的传播节点。
     public static IReadOnlyList<PropagatedMarkRecord> ExecuteRule(
       RuleContext context,
       RuleDefinitionPropagate rule,
@@ -16,67 +16,69 @@ public sealed class PropagationEngine
         return rule.Propagate(ruleContext, inputMarks)
           .Select(candidate =>
           {
-              MarkingEngine.ValidatePropagateNode(rule, candidate.Mark.SyntaxNode);
+              ValidatePropagateNode(rule, candidate.Mark.SyntaxNode);
               MarkingEngine.ValidateProducedStructure(rule.Produces, candidate.Mark);
-              return BindPropagatedMarkRecord(ruleContext, candidate, rule.GroupKey);
+              return BindPropagatedMarkRecord(ruleContext, candidate);
           })
           .ToList();
     }
 
-    // 按 GroupKey 组织传播规则，并把同组链式传播收束成去重后的传播标记集合。
+    // 兼容入口也按规则图执行，并按产生规则和语法位置去重。
     public IReadOnlyList<PropagatedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<RuleDefinitionPropagate> rules)
     {
+        var consumedStructures = rules
+          .SelectMany(rule => rule.Consumes.Structures)
+          .ToList();
         var sourceNodes = seedMarks
           .GroupBy(mark => mark.RuleId, StringComparer.Ordinal)
-          .Select(group => new RuleGraphNode(
-            RuleNodeId.For(RuleKind.Mark, group.Key),
-            RuleKind.Mark,
-            new[] { RuleOutputKind.SeedMark },
-            Array.Empty<RuleDependency>()))
+          .Select(group =>
+          {
+              var produces = RuleStructureContractValidator.CreateObservedProduces(
+                group.ToList(),
+                consumedStructures);
+              return new RuleGraphNode(
+                RuleNodeId.For(RuleKind.Mark, group.Key),
+                RuleKind.Mark,
+                Array.Empty<RuleDependency>())
+              {
+                ProducedStructures = produces.Structures
+              };
+          })
           .ToList();
-        var sourceById = sourceNodes.ToDictionary(node => node.NodeId);
-        var virtualNodes = new Dictionary<RuleNodeId, RuleGraphNode>();
-        var propagationNodeIds = rules
-          .Select(rule => RuleNodeId.For(RuleKind.Propagate, rule.RuleId))
-          .ToHashSet();
-        var contractGraph = new RuleStructureContractGraphCompiler().Compile(rules
+        var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
+          .Select(node => new RuleStructureContractGraphNode(
+            node.NodeId,
+            node.Kind,
+            RuleConsumesContract.Empty,
+            new RuleProducesContract(node.ProducedStructures)))
+          .Concat(rules
           .Select(rule => new RuleStructureContractGraphNode(
             rule.NodeId,
             RuleKind.Propagate,
             rule.Consumes,
-            rule.Produces))
+            rule.Produces)))
           .ToList());
         var ruleNodes = rules.Select(rule =>
         {
-            var declaredDependencies = rule.Consumes.Structures.Count > 0
+            var dependencies = rule.Consumes.Structures.Count > 0
               ? contractGraph.Edges
                 .Where(edge => edge.Consumer == rule.NodeId)
                 .Select(edge => new RuleDependency(
                   edge.Producer,
-                  RuleOutputKind.PropagatedMark,
                   edge.Selector))
                 .ToList()
-              : rule.Dependencies;
-            var dependencies = ResolveDependencies(
-              declaredDependencies,
-              sourceNodes,
-              sourceById,
-              propagationNodeIds,
-              virtualNodes,
-              seedMarks);
+              : sourceNodes.Select(node => new RuleDependency(node.NodeId)).ToList();
             return new RuleGraphNode(
               RuleNodeId.For(RuleKind.Propagate, rule.RuleId),
               RuleKind.Propagate,
-              rule.ProducedOutputs,
               dependencies)
             {
               ProducedStructures = rule.Produces.Structures,
               ConsumedStructures = rule.Consumes.Structures
             };
         }).ToList();
-        var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(virtualNodes.Values).Concat(ruleNodes).ToList());
+        var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
         var executionNodes = sourceNodes
-          .Concat(virtualNodes.Values)
           .Select(node => new RuleGraphExecutionNode(
             node,
             (_, _) => Task.FromResult(CreateSourceResult(node, seedMarks))))
@@ -86,7 +88,6 @@ public sealed class PropagationEngine
               return new RuleGraphExecutionNode(
                 node,
                 (inputs, _) => Task.FromResult(CreateResult(
-                  rule.ProducedOutputs,
                   rule.Produces,
                   ExecuteRule(context, rule, GetInputMarks(node, inputs)))));
           }))
@@ -101,10 +102,9 @@ public sealed class PropagationEngine
 
         return execution.Nodes
           .Where(node => node.NodeId.Value.StartsWith("Propagate:", StringComparison.Ordinal))
-          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.PropagatedMark))
+          .SelectMany(node => node.Result.Values)
           .OfType<PropagatedMarkRecord>()
           .DistinctBy(mark => (
-            mark.GroupKey ?? mark.RuleId,
             mark.RuleId,
             mark.Mark.SyntaxNode.SpanStart,
             mark.Mark.SyntaxNode.Span.Length,
@@ -112,15 +112,28 @@ public sealed class PropagationEngine
           .ToList();
     }
 
-    private static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate, string? groupKey = null)
+    private static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate)
     {
         return candidate with
         {
-            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark, groupKey),
-            SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark, groupKey),
-            GroupKey = candidate.GroupKey ?? groupKey
+            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark),
+            SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark)
         };
     }
+
+    internal static void ValidatePropagateNode(RuleDefinitionPropagate rule, Microsoft.CodeAnalysis.SyntaxNode syntaxNode)
+    {
+        var nodeKind = (Microsoft.CodeAnalysis.CSharp.SyntaxKind)syntaxNode.RawKind;
+        if (rule.AllowedPropagateNodeKinds.Contains(nodeKind))
+        {
+            return;
+        }
+
+        var allowedKinds = string.Join(", ", rule.AllowedPropagateNodeKinds);
+        throw new InvalidOperationException(
+          $"Rule '{rule.RuleId}' emitted unsupported propagate node kind '{nodeKind}'. Allowed propagate node kinds: {allowedKinds}.");
+    }
+
     private static RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var fragments = marks
@@ -136,70 +149,21 @@ public sealed class PropagationEngine
         return context.StructureViews.WithStructureView(structureView);
     }
 
-    private static IReadOnlyList<RuleDependency> ResolveDependencies(
-      IReadOnlyList<RuleDependency> declaredDependencies,
-      IReadOnlyList<RuleGraphNode> sourceNodes,
-      IReadOnlyDictionary<RuleNodeId, RuleGraphNode> sourceById,
-      IReadOnlySet<RuleNodeId> propagationNodeIds,
-      IDictionary<RuleNodeId, RuleGraphNode> virtualNodes,
-      IReadOnlyList<MarkRecord> seedMarks)
-    {
-        if (declaredDependencies.Count == 0)
-        {
-            return sourceNodes
-              .Select(node => new RuleDependency(node.NodeId, RuleOutputKind.SeedMark))
-              .ToList();
-        }
-
-        var dependencies = new List<RuleDependency>();
-        foreach (var dependency in declaredDependencies)
-        {
-            if (sourceById.ContainsKey(dependency.Producer) ||
-                propagationNodeIds.Contains(dependency.Producer) ||
-                virtualNodes.ContainsKey(dependency.Producer))
-            {
-                dependencies.Add(dependency);
-                continue;
-            }
-
-            if (dependency.RequiredOutput == RuleOutputKind.SeedMark)
-            {
-                dependencies.AddRange(sourceNodes.Select(node => new RuleDependency(node.NodeId, RuleOutputKind.SeedMark)));
-                continue;
-            }
-
-            if (seedMarks.Any(mark => mark.OutputKind == dependency.RequiredOutput))
-            {
-                virtualNodes[dependency.Producer] = new RuleGraphNode(
-                  dependency.Producer,
-                  ParseKind(dependency.Producer),
-                  new[] { dependency.RequiredOutput },
-                  Array.Empty<RuleDependency>());
-                dependencies.Add(dependency);
-            }
-        }
-
-        return dependencies
-          .Distinct()
-          .ToList();
-    }
-
     private static RuleNodeResult CreateSourceResult(RuleGraphNode node, IReadOnlyList<MarkRecord> seedMarks)
     {
-        var outputKind = node.ProducedOutputs.Single();
-        var marks = outputKind == RuleOutputKind.SeedMark
-          ? seedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Mark:".Length..], StringComparison.Ordinal))
-          : seedMarks.Where(mark => mark.OutputKind == outputKind);
-        return RuleNodeResult.From(outputKind, marks.Cast<object>().ToArray());
+        var marks = seedMarks.Where(mark =>
+          string.Equals(mark.RuleId, node.NodeId.Value["Mark:".Length..], StringComparison.Ordinal));
+        return RuleNodeResult.FromObservedValues(
+          marks.Cast<object>().ToList(),
+          new RuleProducesContract(node.ProducedStructures));
     }
 
     private static RuleNodeResult CreateResult<T>(
-      IReadOnlyList<RuleOutputKind> outputKinds,
       RuleProducesContract produces,
       IReadOnlyList<T> values)
     {
         var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed, produces);
+        return RuleNodeResult.FromValues(boxed, produces);
     }
 
     private static IReadOnlyList<MarkRecord> GetInputMarks(RuleGraphNode node, RuleNodeInputs inputs)
@@ -207,7 +171,7 @@ public sealed class PropagationEngine
         return node.Dependencies
           .SelectMany(dependency => dependency.RequiredStructure is { } selector
             ? inputs.GetOutputs(dependency.Producer, selector)
-            : inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+            : inputs.GetValues(dependency.Producer))
           .Select(value => value switch
           {
               MarkRecord mark => mark,
@@ -223,8 +187,4 @@ public sealed class PropagationEngine
           .ToList();
     }
 
-    private static RuleKind ParseKind(RuleNodeId nodeId)
-    {
-        return Enum.Parse<RuleKind>(nodeId.Value.Split(':', 2)[0], ignoreCase: false);
-    }
 }

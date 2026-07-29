@@ -23,7 +23,6 @@ public sealed class ClassIndexerParameterUsagePropagationRule : ClassPropagation
 
     public override RuleProducesContract Produces => IndexerParameterUsageProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class indexer parameter usage to indexers and mapped access sites";
 

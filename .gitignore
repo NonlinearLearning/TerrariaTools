@@ -34,4 +34,4 @@ tools/*
 !tools/CpgPersistenceBenchmark/
 !tools/CpgPersistenceBenchmark/*.cs
 !tools/CpgPersistenceBenchmark/*.csproj
-失败的探索方向.md
+skills-lock.json

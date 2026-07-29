@@ -7,7 +7,12 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
-    <ProjectReference Include="..\NL.Concurrency\NL.Concurrency.csproj" />
+    <Using Include="NLISSN.Core.Decision" />
+    <Using Include="NLISSN.Core.Lifting" />
+    <Using Include="NLISSN.Core.Marking" />
+    <Using Include="NLISSN.Core.Pipeline" />
+    <Using Include="NLISSN.Core.Propagation" />
+    <ProjectReference Include="..\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
     <ProjectReference Include="..\NLISSN.Core\NLISSN.Core.csproj" />
     <ProjectReference Include="..\NLCPG\NLCPG.csproj" />
   </ItemGroup>

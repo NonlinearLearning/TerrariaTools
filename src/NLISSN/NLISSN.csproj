@@ -10,9 +10,9 @@
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
     <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="4.14.0" />
-    <ProjectReference Include="..\NL.Concurrency\NL.Concurrency.csproj" />
+    <ProjectReference Include="..\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
     <ProjectReference Include="..\NLISSN.Application\NLISSN.Application.csproj" />
-    <ProjectReference Include="..\NLISSN.Logging\NLISSN.Logging.csproj" />
+    <ProjectReference Include="..\NLISSN.Infrastructure\Logging\NLISSN.Logging.csproj" />
     <ProjectReference Include="..\NLISSN.Rules\NLISSN.Rules.csproj" />
     <ProjectReference Include="..\NLISSN.Core\NLISSN.Core.csproj" />
     <ProjectReference Include="..\NLCPG\NLCPG.csproj" />

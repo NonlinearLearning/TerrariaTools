@@ -22,7 +22,6 @@ public sealed class ClassDeclarationHostPropagationRule : ClassPropagationRuleBa
 
     public override RuleProducesContract Produces => DeclarationHostProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class type syntax marks to stable declaration hosts";
 

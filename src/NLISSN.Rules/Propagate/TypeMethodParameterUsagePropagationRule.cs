@@ -22,7 +22,6 @@ public sealed class ClassMethodParameterUsagePropagationRule : ClassPropagationR
 
     public override RuleProducesContract Produces => MethodParameterUsageProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class method parameter usage to owning methods and mapped callsites";
 

@@ -7,5 +7,4 @@ public sealed record LiftedMarkRecord(
   string RuleId,
   MarkRecord Mark,
   MarkRecord SourceMark,
-  int Depth,
-  string? GroupKey = null);
+  int Depth);

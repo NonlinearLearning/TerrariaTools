@@ -1,5 +1,5 @@
 using Microsoft.CodeAnalysis;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Marking;
 

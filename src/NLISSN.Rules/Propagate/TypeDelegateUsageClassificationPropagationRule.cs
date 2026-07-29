@@ -23,7 +23,6 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropa
 
     public override RuleProducesContract Produces => DelegateUsageProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class delegate parameter usage to delegate declarations and mapped bindings";
 

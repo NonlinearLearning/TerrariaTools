@@ -22,7 +22,6 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
 
     public override RuleProducesContract Produces => UnreferencedMethodProduces;
 
-    public override string GroupKey { get; } = "DEL-UNREF-METHOD";
 
     public override string Name { get; } = "Match unreferenced private method declarations";
 
@@ -57,7 +56,6 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
               null,
               CreateMethodGraphNode(methodSymbol, method),
               "Private method has no references from methods that remain in the project.",
-              GroupKey,
               SemanticTag: UnreferencedMethodSemanticTag);
         }
     }

@@ -22,7 +22,6 @@ public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
 
   public override RuleConsumesContract Consumes => UnreferencedMethodConsumes;
 
-  public override string GroupKey { get; } = "DEL-UNREF-METHOD";
 
   public override string Name { get; } = "Delete unreferenced private method declarations";
 

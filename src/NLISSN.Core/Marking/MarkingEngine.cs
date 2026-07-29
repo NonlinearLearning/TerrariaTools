@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Marking;
 
@@ -9,14 +9,10 @@ public sealed class MarkingEngine
     // 执行所有标记规则，补齐图绑定后按规则节点和语法位置去重返回种子标记。
     public IReadOnlyList<MarkRecord> Run(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
     {
-        var nodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Mark, rule.RuleId)).ToHashSet();
         var nodes = rules.Select(rule => new RuleGraphNode(
           RuleNodeId.For(RuleKind.Mark, rule.RuleId),
           RuleKind.Mark,
-          rule.ProducedOutputs,
-          rule.Dependencies
-            .Where(dependency => nodeIds.Contains(dependency.Producer))
-            .ToList())
+          Array.Empty<RuleDependency>())
         {
           ProducedStructures = rule.Produces.Structures,
           ConsumedStructures = rule.Consumes.Structures
@@ -28,7 +24,6 @@ public sealed class MarkingEngine
             return new RuleGraphExecutionNode(
               node,
               (_, _) => Task.FromResult(CreateResult(
-                rule.ProducedOutputs,
                 rule.Produces,
                 ExecuteRule(context, root, rule))));
         }).ToList();
@@ -43,14 +38,14 @@ public sealed class MarkingEngine
           .GetAwaiter()
           .GetResult();
         var seedMarks = execution.Nodes
-          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.SeedMark))
+          .SelectMany(node => node.Result.Values)
           .OfType<MarkRecord>()
           .ToList();
 
         // 同一规则可能通过多条路径命中同一个语法节点，这里按规则和语法位置去重。
         return seedMarks
         .DistinctBy(mark => (
-          RuleStageGroupKey.Get(mark),
+          mark.RuleId,
           mark.SyntaxNode.SpanStart,
           mark.SyntaxNode.Span.Length))
         .ToList();
@@ -63,19 +58,18 @@ public sealed class MarkingEngine
         {
             ValidateMarkNode(rule, mark.SyntaxNode);
             ValidateProducedStructure(rule.Produces, mark);
-            producedMarks.Add(BindMarkRecord(context, mark, rule.GroupKey));
+            producedMarks.Add(BindMarkRecord(context, mark));
         }
 
         return producedMarks;
     }
 
     private static RuleNodeResult CreateResult<T>(
-      IReadOnlyList<RuleOutputKind> outputKinds,
       RuleProducesContract produces,
       IReadOnlyList<T> values)
     {
         var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed, produces);
+        return RuleNodeResult.FromValues(boxed, produces);
     }
 
     internal static void ValidateMarkNode(RuleDefinitionMark rule, SyntaxNode syntaxNode)
@@ -91,19 +85,6 @@ public sealed class MarkingEngine
           $"Rule '{rule.RuleId}' emitted unsupported mark node kind '{nodeKind}'. Allowed mark node kinds: {allowedKinds}.");
     }
 
-    internal static void ValidatePropagateNode(RuleDefinitionPropagate rule, SyntaxNode syntaxNode)
-    {
-        var nodeKind = (SyntaxKind)syntaxNode.RawKind;
-        if (rule.AllowedPropagateNodeKinds.Contains(nodeKind))
-        {
-            return;
-        }
-
-        var allowedKinds = string.Join(", ", rule.AllowedPropagateNodeKinds);
-        throw new InvalidOperationException(
-          $"Rule '{rule.RuleId}' emitted unsupported propagate node kind '{nodeKind}'. Allowed propagate node kinds: {allowedKinds}.");
-    }
-
     internal static void ValidateProducedStructure(RuleProducesContract produces, MarkRecord mark)
     {
         if (produces.Structures.Count > 0 && mark.SemanticTag is not null)
@@ -112,7 +93,7 @@ public sealed class MarkingEngine
         }
     }
 
-    internal static MarkRecord BindMarkRecord(RuleContext context, MarkRecord candidate, string? groupKey = null)
+    internal static MarkRecord BindMarkRecord(RuleContext context, MarkRecord candidate)
     {
         var annotation = candidate.Annotation ?? new SyntaxAnnotation("RuleHitNode", Guid.NewGuid().ToString("N"));
         var primaryGraphNode = candidate.PrimaryGraphNode;
@@ -130,8 +111,7 @@ public sealed class MarkingEngine
         return candidate with
         {
             Annotation = annotation,
-            PrimaryGraphNode = primaryGraphNode,
-            GroupKey = candidate.GroupKey ?? groupKey
+            PrimaryGraphNode = primaryGraphNode
         };
     }
 }

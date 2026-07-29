@@ -26,7 +26,6 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
 
   public override RuleConsumesContract Consumes => UnusedInterfaceImplementationConsumes;
 
-  public override string GroupKey { get; } = "CLR-UNUSED-IFACE-IMPL";
 
   public override string Name { get; } = "Clear unused interface implementation method bodies";
 

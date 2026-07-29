@@ -30,12 +30,8 @@ public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
 
     public override RuleTerminalConsumesContract TerminalConsumes => ClassInputFacts;
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.ExpressionHost };
-
     public override RuleProducesContract Produces => ExpressionHostProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Lift delete-class marks to direct expression and statement hosts";
 
@@ -85,12 +81,8 @@ public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
 
     public override RuleTerminalConsumesContract TerminalConsumes => ClassInputFacts;
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.IfStructure };
-
     public override RuleProducesContract Produces => IfStructureProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Lift delete-class marks into if/elseif/else structure tails";
 
@@ -144,10 +136,6 @@ public sealed class ClassSwitchStructureLiftingRule : RuleDefinitionLift
 
     public override RuleConsumesContract Consumes => SwitchConsumes;
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.SwitchStructure };
-
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Lift delete-class marks through switch structures";
 

@@ -23,7 +23,6 @@ public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
 
     public override RuleTerminalConsumesContract TerminalConsumes => AllSObjectFacts;
 
-    public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Match s-rooted default delete decisions";
 

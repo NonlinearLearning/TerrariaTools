@@ -1,8 +1,27 @@
 using Microsoft.CodeAnalysis;
 using NLCPG.Model;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Marking;
+
+/// <summary>
+/// Retains the provenance category of a marked value for compatibility outside graph routing.
+/// </summary>
+public enum RuleOutputKind
+{
+    SeedMark,
+    PropagatedMark,
+    LiftedMark,
+    LocalDefinitionFromInitializer,
+    LocalDefinitionFromObjectCreation,
+    LocalReference,
+    LogicalHost,
+    IfCompletion,
+    ExpressionHost,
+    IfStructure,
+    SwitchStructure,
+    DecisionUnit
+}
 
 /// 表示规则在标记阶段产出的一条直接命中记录。
 public sealed record MarkRecord(
@@ -16,7 +35,5 @@ public sealed record MarkRecord(
   NLCPGNode? PrimaryGraphNode,
   /// 说明本次命中的原因，供调试和结果输出使用。
   string Reason,
-  /// 阶段之间共享的规则分组键；为空时回退到 RuleId。
-  string? GroupKey = null,
   RuleOutputKind? OutputKind = null,
   RuleSemanticTag? SemanticTag = null);

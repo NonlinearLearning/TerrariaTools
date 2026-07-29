@@ -98,7 +98,6 @@ public sealed class ClassDefaultRemovalProposalRule : RuleDefinitionPropose
 
     public override RuleTerminalConsumesContract TerminalConsumes => AllClassFacts;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Match delete-class default delete decisions";
 
@@ -181,7 +180,6 @@ public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPro
 
     public override RuleTerminalConsumesContract TerminalConsumes => AllClassFacts;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Match delete-class control structure delete decisions";
 
@@ -223,7 +221,6 @@ public sealed class ClassTypeSyntaxDeclarationProposalRule : ClassDeclarationHos
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-TYPE-DECL-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete declarations whose type syntax references the delete-class target";
 
@@ -275,7 +272,6 @@ public sealed class ClassMethodReturnTypeProposalRule : ClassDeclarationHostProp
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-RETURN-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete private methods whose return type references the delete-class target";
 
@@ -321,7 +317,6 @@ public sealed class ClassPublicMethodReturnTypeProposalRule : ClassDeclarationHo
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-PUBLIC-RETURN-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete non-private methods whose return type references the delete-class target";
 
@@ -367,7 +362,6 @@ public sealed class ClassParameterProposalRule : RuleDefinitionPropose
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-PARAM-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete private methods whose parameter type references the delete-class target";
 
@@ -398,7 +392,6 @@ public sealed class ClassPrivateMethodParameterShrinkProposalRule : ClassMethodP
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-PRIVATE-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink private method parameters whose type references the delete-class target";
 
@@ -454,7 +447,6 @@ public sealed class ClassNamedArgumentMethodParameterShrinkProposalRule : ClassM
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-NAMED-METHOD-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink method parameters whose type references the delete-class target when callsites use named arguments";
 
@@ -510,7 +502,6 @@ public sealed class ClassOptionalParameterDefaultedMethodShrinkProposalRule : Cl
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-OPTIONAL-METHOD-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink optional method parameters whose type references the delete-class target";
 
@@ -566,7 +557,6 @@ public sealed class ClassPublicParameterProposalRule : RuleDefinitionPropose
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-PUBLIC-PARAM-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete non-private methods whose parameter type references the delete-class target";
 
@@ -612,7 +602,6 @@ public sealed class ClassParamsMethodParameterShrinkProposalRule : ClassMethodPa
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-PARAMS-METHOD-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink params method parameters whose type references the delete-class target";
 
@@ -659,7 +648,6 @@ public sealed class ClassPublicMethodParameterShrinkProposalRule : ClassMethodPa
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-PUBLIC-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink non-private method parameters whose type references the delete-class target";
 
@@ -715,7 +703,6 @@ public sealed class ClassNamedArgumentLocalFunctionParameterShrinkProposalRule :
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-NAMED-LOCALFUNC-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink local function parameters whose type references the delete-class target when callsites use named arguments";
 
@@ -771,7 +758,6 @@ public sealed class ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRu
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-OPTIONAL-LOCALFUNC-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink optional local function parameters whose type references the delete-class target";
 
@@ -827,7 +813,6 @@ public sealed class ClassLocalFunctionParameterShrinkProposalRule : ClassLocalFu
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-LOCALFUNC-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink local function parameters whose type references the delete-class target";
 
@@ -883,7 +868,6 @@ public sealed class ClassNamedArgumentIndexerParameterShrinkProposalRule : Class
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-NAMED-INDEXER-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink indexer parameters whose type references the delete-class target when accesses use named arguments";
 
@@ -939,7 +923,6 @@ public sealed class ClassIndexerParameterShrinkProposalRule : ClassIndexerParame
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-INDEXER-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink indexer parameters whose type references the delete-class target";
 
@@ -995,7 +978,6 @@ public sealed class ClassDelegateParameterShrinkProposalRule : ClassDelegateUsag
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-DELEGATE-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink delegate parameters whose type references the delete-class target";
 
@@ -1042,7 +1024,6 @@ public sealed class ClassMethodGroupDelegateParameterShrinkProposalRule : ClassD
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-METHODGROUP-DELEGATE-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink delegate parameters and method-group targets when the delete-class target flows through a custom delegate signature";
 
@@ -1151,7 +1132,6 @@ public sealed class ClassLambdaDelegateParameterShrinkProposalRule : ClassDelega
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-LAMBDA-DELEGATE-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink delegate parameters and lambda bindings when the delete-class target flows through a custom delegate signature";
 
@@ -1245,7 +1225,6 @@ public sealed class ClassDelegateInvocationChainParameterShrinkProposalRule : Cl
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-DELEGATE-INVOKE-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink delegate parameters and direct delegate invocation chains when the delete-class target flows through a custom delegate signature";
 
@@ -1314,7 +1293,6 @@ public sealed class ClassExtensionReceiverNonFirstParameterShrinkProposalRule : 
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-EXT-NONRECV-PARAM-SHRINK-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Shrink non-receiver extension-method parameters whose type references the delete-class target";
 
@@ -1369,7 +1347,6 @@ public sealed class ClassInterfaceMethodProposalRule : ClassDeclarationHostPropo
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IFACE-METHOD-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete interface methods whose signature references the delete-class target";
 
@@ -1414,7 +1391,6 @@ public sealed class ClassInterfacePropertyProposalRule : ClassDeclarationHostPro
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IFACE-PROPERTY-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete interface properties whose signature references the delete-class target";
 
@@ -1454,7 +1430,6 @@ public sealed class ClassInterfaceEventProposalRule : ClassDeclarationHostPropos
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IFACE-EVENT-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete interface events whose signature references the delete-class target";
 
@@ -1495,7 +1470,6 @@ public sealed class ClassInterfaceIndexerProposalRule : ClassDeclarationHostProp
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IFACE-INDEXER-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete interface indexers whose signature references the delete-class target";
 
@@ -1535,7 +1509,6 @@ public sealed class ClassDelegateProposalRule : ClassDeclarationHostProposalRule
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-DELEGATE-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete delegates whose signature references the delete-class target";
 
@@ -1580,7 +1553,6 @@ public sealed class ClassExtensionReceiverProposalRule : ClassDeclarationHostPro
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-EXT-RECV-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete extension methods whose receiver type references the delete-class target";
 
@@ -1625,7 +1597,6 @@ public sealed class ClassBaseTypeProposalRule : ClassDeclarationHostProposalRule
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-BASE-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Remove base-list entries whose type references the delete-class target";
 
@@ -1666,7 +1637,6 @@ public sealed class ClassGenericTypeArgumentProposalRule : ClassDeclarationHostP
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-GENERIC-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Delete local declarations whose generic type argument references the delete-class target";
 
@@ -1713,7 +1683,6 @@ public sealed class ClassIfStructureProposalRule : RuleDefinitionPropose
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IF-001";
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Match delete-class if/elseif/else structure decisions";
 

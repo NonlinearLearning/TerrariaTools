@@ -10,7 +10,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.7" />
-    <ProjectReference Include="..\NL.Caching\NL.Caching.csproj" />
-    <ProjectReference Include="..\NL.Concurrency\NL.Concurrency.csproj" />
+    <ProjectReference Include="..\NLISSN.Infrastructure\Caching\NL.Caching.csproj" />
+    <ProjectReference Include="..\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
   </ItemGroup>
 </Project>

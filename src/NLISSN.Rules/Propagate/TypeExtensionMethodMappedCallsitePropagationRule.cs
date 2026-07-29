@@ -24,7 +24,6 @@ public sealed class ClassExtensionMethodMappedCallsitePropagationRule : ClassPro
 
     public override RuleProducesContract Produces => ExtensionMethodParameterUsageProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class extension-method parameter usage to mapped extension callsites";
 

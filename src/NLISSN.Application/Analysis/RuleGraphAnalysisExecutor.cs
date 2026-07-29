@@ -3,7 +3,7 @@ using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Application;
 
@@ -43,31 +43,34 @@ internal sealed class RuleGraphAnalysisExecutor
           .GetResult();
 
         var seedMarks = execution.Nodes
-          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.SeedMark))
+          .Where(node => node.NodeId.Value.StartsWith("Mark:", StringComparison.Ordinal))
+          .SelectMany(node => node.Result.Values)
           .OfType<MarkRecord>()
-          .DistinctBy(mark => (mark.GroupKey ?? mark.RuleId, mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length))
+          .DistinctBy(mark => (mark.RuleId, mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length))
           .ToList();
         var propagatedMarks = execution.Nodes
-          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.PropagatedMark))
+          .Where(node => node.NodeId.Value.StartsWith("Propagate:", StringComparison.Ordinal))
+          .SelectMany(node => node.Result.Values)
           .OfType<PropagatedMarkRecord>()
           .DistinctBy(mark => (
-            mark.GroupKey ?? mark.RuleId,
             mark.RuleId,
             mark.Mark.SyntaxNode.SpanStart,
             mark.Mark.SyntaxNode.Span.Length,
             mark.Mark.SyntaxNode.RawKind))
           .ToList();
         var liftedMarks = execution.Nodes
-          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.LiftedMark))
+          .Where(node => node.NodeId.Value.StartsWith("Lift:", StringComparison.Ordinal))
+          .SelectMany(node => node.Result.Values)
           .OfType<LiftedMarkRecord>()
           .DistinctBy(mark => (
-            mark.GroupKey ?? mark.RuleId,
+            mark.RuleId,
             mark.Mark.SyntaxNode.SpanStart,
             mark.Mark.SyntaxNode.Span.Length,
             mark.Mark.SyntaxNode.RawKind))
           .ToList();
         var units = execution.Nodes
-          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.DecisionUnit))
+          .Where(node => node.NodeId.Value.StartsWith("Propose:", StringComparison.Ordinal))
+          .SelectMany(node => node.Result.Values)
           .OfType<DecisionUnit>()
           .ToList();
         var decisions = new RuleDecisionEngine().ResolveUnits(context, units, pipeline.Proposers);
@@ -92,7 +95,6 @@ internal sealed class RuleGraphAnalysisExecutor
         return new RuleGraphExecutionNode(
           node,
           (_, _) => Task.FromResult(CreateResult(
-            rule.ProducedOutputs,
             rule.Produces,
             MarkingEngine.ExecuteRule(context, root, rule))));
     }
@@ -106,7 +108,6 @@ internal sealed class RuleGraphAnalysisExecutor
         return new RuleGraphExecutionNode(
           node,
           (inputs, _) => Task.FromResult(CreateResult(
-            rule.ProducedOutputs,
             rule.Produces,
             PropagationEngine.ExecuteRule(context, rule, GetMarks(node, inputs)))));
     }
@@ -123,7 +124,6 @@ internal sealed class RuleGraphAnalysisExecutor
           {
               var values = GetValues(node, inputs);
               return Task.FromResult(CreateResult(
-                rule.ProducedOutputs,
                 rule.Produces,
                 MarkLiftingEngine.ExecuteRule(
                   context,
@@ -152,9 +152,8 @@ internal sealed class RuleGraphAnalysisExecutor
                   values.OfType<MarkRecord>().ToList(),
                   values.OfType<PropagatedMarkRecord>().ToList(),
                   values.OfType<LiftedMarkRecord>().ToList())
-                .Select(unit => unit.GroupKey is null ? unit with { GroupKey = rule.GroupKey } : unit)
                 .ToList();
-              return Task.FromResult(CreateResult(rule.ProducedOutputs, rule.Produces, units));
+              return Task.FromResult(CreateResult(rule.Produces, units));
           });
     }
 
@@ -186,12 +185,11 @@ internal sealed class RuleGraphAnalysisExecutor
     }
 
     private static RuleNodeResult CreateResult<T>(
-      IReadOnlyList<RuleOutputKind> outputKinds,
       RuleProducesContract produces,
       IReadOnlyList<T> values)
     {
         var boxedValues = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxedValues, produces);
+        return RuleNodeResult.FromValues(boxedValues, produces);
     }
 
     private static IReadOnlyList<MarkRecord> GetMarks(RuleGraphNode node, RuleNodeInputs inputs)
@@ -213,7 +211,7 @@ internal sealed class RuleGraphAnalysisExecutor
         return node.Dependencies
           .SelectMany(dependency => dependency.RequiredStructure is { } structure
             ? inputs.GetOutputs(dependency.Producer, structure)
-            : inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+            : inputs.GetValues(dependency.Producer))
           .ToList();
     }
 }

@@ -1,4 +1,4 @@
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Propagation;
 

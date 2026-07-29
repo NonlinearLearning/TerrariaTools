@@ -31,10 +31,6 @@ public sealed class SObjectSwitchStructureLiftingRule : RuleDefinitionLift
 
     public override RuleConsumesContract Consumes => SwitchConsumes;
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.SwitchStructure };
-
-    public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Lift s-object marks into switch section and switch statement hosts";
 

@@ -20,12 +20,8 @@ public sealed class ClassObjectCreationDeclarationPropagationRule : ClassPropaga
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-NEW-DECL-001";
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalDefinitionFromObjectCreation };
-
     public override RuleProducesContract Produces => LocalDefinitionProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class object creations to local declarators";
 

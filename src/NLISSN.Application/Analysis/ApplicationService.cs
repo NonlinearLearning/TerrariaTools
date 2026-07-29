@@ -7,7 +7,7 @@ using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Rewrite;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Application;
 

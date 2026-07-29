@@ -24,7 +24,6 @@ public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
 
     public override RuleConsumesContract Consumes => LogicalHostConsumes;
 
-    public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Match s-rooted logical expression reductions";
 

@@ -60,9 +60,6 @@ public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropaga
 
     public override string RuleId { get; } = "DEL-SOBJ-PROP-DECL-INIT-001";
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalDefinitionFromInitializer };
-
     public override RuleProducesContract Produces => LocalDefinitionProduces;
 
     public override string Name { get; } = "Propagate s-object marks from definition initializers to declarators";
@@ -206,9 +203,6 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
 
     public override string Name { get; } = "Propagate s-object logical operand groups as structured payloads";
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LogicalHost };
-
     public override RuleProducesContract Produces => LogicalHostProduces;
 
     // 为逻辑宿主补齐可删与保留操作数集合，让提案阶段直接生成语义安全的 Replace 决策。
@@ -290,9 +284,6 @@ public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropaga
 
     public override string Name { get; } = "Propagate s-object if/elseif/else completion state as structured payloads";
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.IfCompletion };
-
     public override RuleProducesContract Produces => IfCompletionProduces;
 
     // 把分散在 if 结构里的命中折叠成完整完成态 payload，避免提案阶段重复扫描控制结构。
@@ -323,9 +314,6 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
     public override string RuleId { get; } = "DEL-SOBJ-PROP-SYMBOL-001";
 
     public override RuleConsumesContract Consumes => LocalDefinitionConsumes;
-
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalReference };
 
     public override string Name { get; } = "Propagate s-object marks from marked definitions to symbol references";
 

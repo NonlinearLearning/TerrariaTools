@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Propagation;
 
@@ -49,7 +49,6 @@ public abstract class SObjectPropagationRuleBase : RuleDefinitionPropagate
         SyntaxKind.ReturnStatement
       };
 
-    public override string GroupKey { get; } = DeleteSObjectGroupKey;
 
     public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
 

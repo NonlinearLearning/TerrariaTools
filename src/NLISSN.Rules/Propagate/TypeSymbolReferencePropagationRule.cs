@@ -23,10 +23,6 @@ public sealed class ClassSymbolReferencePropagationRule : ClassPropagationRuleBa
 
     public override RuleConsumesContract Consumes => LocalDefinitionConsumes;
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.PropagatedMark, RuleOutputKind.LocalReference };
-
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class local declarators to same-scope references";
 

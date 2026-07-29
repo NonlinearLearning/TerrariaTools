@@ -9,7 +9,7 @@ using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Rewrite;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Application;
 
@@ -39,8 +39,6 @@ public sealed record DirectoryAnalysisOutcome(
 public sealed class DirectoryAnalysisUseCase
 {
     private const string DeleteUnreferencedMethodMarkRuleId = "DEL-UNREF-METHOD-MARK-001";
-    private const string DeleteUnreferencedMethodGroupKey = "DEL-UNREF-METHOD";
-
     private readonly ApplicationService _application;
     private readonly DeleteClassPostRewriteCleanupService _cleanupService = new();
     private readonly PrototypeRewriter _rewriter = new();
@@ -277,8 +275,7 @@ public sealed class DirectoryAnalysisUseCase
             method,
             null,
             null,
-            "Method has no references from methods that remain in the project.",
-            DeleteUnreferencedMethodGroupKey))
+            "Method has no references from methods that remain in the project."))
           .ToList();
         var decisions = methodsToDelete
           .Select(method => new RuleDecision(

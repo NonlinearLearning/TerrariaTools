@@ -38,8 +38,8 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 入口和主要区域：
 
 - CLI：`src/NLISSN/Program.cs`
-- CLI 运行器：`src/NLISSN/CommandHost.cs`
-- 目录分析适配：`src/NLISSN/DirectoryAnalysisService.cs`
+- CLI 运行器：`src/NLISSN/Cli/Hosting/CommandHost.cs`
+- 目录分析适配：`src/NLISSN/Cli/Hosting/DirectoryAnalysisService.cs`
 - 应用编排：`src/NLISSN.Application/Analysis/ApplicationService.cs`
 - 运行时：`src/NLISSN.Core/Pipeline/ExecutionRuntime.cs`
 - 规则：`src/NLISSN.Rules/`

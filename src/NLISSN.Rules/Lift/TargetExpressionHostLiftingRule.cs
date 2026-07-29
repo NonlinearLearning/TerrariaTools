@@ -29,12 +29,8 @@ public sealed class SObjectExpressionHostLiftingRule : RuleDefinitionLift
 
     public override RuleTerminalConsumesContract TerminalConsumes => SObjectInputFacts;
 
-    public override IReadOnlyList<RuleOutputKind> ProducedOutputs =>
-      new[] { RuleOutputKind.LiftedMark, RuleOutputKind.ExpressionHost };
-
     public override RuleProducesContract Produces => ExpressionHostProduces;
 
-    public override string GroupKey { get; } = "DEL-SOBJ";
 
     public override string Name { get; } = "Lift s-object marks to direct expression and statement hosts";
 

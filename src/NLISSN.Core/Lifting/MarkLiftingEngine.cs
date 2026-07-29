@@ -3,13 +3,13 @@ using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Lifting;
 
 public sealed class MarkLiftingEngine
 {
-    // 为规则图执行器执行一个已准备好显式输入的提升节点；不读取 GroupKey。
+    // 为规则图执行器执行一个已准备好显式输入的提升节点。
     public static IReadOnlyList<LiftedMarkRecord> ExecuteRule(
       RuleContext context,
       RuleDefinitionLift rule,
@@ -23,31 +23,42 @@ public sealed class MarkLiftingEngine
           {
               ValidateLiftNode(rule, candidate.Mark.SyntaxNode);
               MarkingEngine.ValidateProducedStructure(rule.Produces, candidate.Mark);
-              return BindLiftedMarkRecord(ruleContext, candidate, rule.GroupKey);
+              return BindLiftedMarkRecord(ruleContext, candidate);
           })
           .ToList();
     }
 
-    // 兼容入口也按规则图执行；GroupKey 只保留在输出投影中。
+    // 兼容入口也按规则图执行。
     public IReadOnlyList<LiftedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<RuleDefinitionLift> rules)
     {
         var liftEligiblePropagatedMarks = propagatedMarks
           .Where(mark => mark.Payload is null)
           .ToList();
-        var sourceNodes = CreateSourceNodes(seedMarks, liftEligiblePropagatedMarks);
+        var consumedStructures = rules
+          .SelectMany(rule => rule.Consumes.Structures)
+          .ToList();
+        var sourceNodes = CreateSourceNodes(
+          seedMarks,
+          liftEligiblePropagatedMarks,
+          consumedStructures);
         var sourceNodeIds = sourceNodes.Select(node => node.NodeId).ToHashSet();
         var liftNodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Lift, rule.RuleId)).ToHashSet();
-        var contractGraph = new RuleStructureContractGraphCompiler().Compile(rules
+        var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
+          .Select(node => new RuleStructureContractGraphNode(
+            node.NodeId,
+            node.Kind,
+            RuleConsumesContract.Empty,
+            new RuleProducesContract(node.ProducedStructures)))
+          .Concat(rules
           .Select(rule => new RuleStructureContractGraphNode(
             rule.NodeId,
             RuleKind.Lift,
             rule.Consumes,
-            rule.Produces))
+            rule.Produces)))
           .ToList());
         var ruleNodes = rules.Select(rule => new RuleGraphNode(
           RuleNodeId.For(RuleKind.Lift, rule.RuleId),
           RuleKind.Lift,
-          rule.ProducedOutputs,
           ResolveDependencies(rule, sourceNodes, sourceNodeIds, liftNodeIds, contractGraph))
         {
           ProducedStructures = rule.Produces.Structures,
@@ -67,7 +78,6 @@ public sealed class MarkLiftingEngine
                 {
                     var values = GetValues(node, inputs);
                     return Task.FromResult(CreateResult(
-                      rule.ProducedOutputs,
                       rule.Produces,
                       ExecuteRule(
                         context,
@@ -88,10 +98,10 @@ public sealed class MarkLiftingEngine
 
         return execution.Nodes
           .Where(node => node.NodeId.Value.StartsWith("Lift:", StringComparison.Ordinal))
-          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.LiftedMark))
+          .SelectMany(node => node.Result.Values)
           .OfType<LiftedMarkRecord>()
           .DistinctBy(mark => (
-            RuleStageGroupKey.Get(mark),
+            mark.RuleId,
             mark.Mark.SyntaxNode.SpanStart,
             mark.Mark.SyntaxNode.Span.Length,
             mark.Mark.SyntaxNode.RawKind))
@@ -100,15 +110,37 @@ public sealed class MarkLiftingEngine
 
     private static IReadOnlyList<RuleGraphNode> CreateSourceNodes(
       IReadOnlyList<MarkRecord> seedMarks,
-      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<RuleConsumedStructure> consumedStructures)
     {
         return seedMarks
           .GroupBy(mark => RuleNodeId.For(RuleKind.Mark, mark.RuleId))
-          .Select(group => new RuleGraphNode(group.Key, RuleKind.Mark, new[] { RuleOutputKind.SeedMark }, Array.Empty<RuleDependency>()))
+          .Select(group => CreateSourceNode(
+            group.Key,
+            RuleKind.Mark,
+            group.ToList(),
+            consumedStructures))
           .Concat(propagatedMarks
             .GroupBy(mark => RuleNodeId.For(RuleKind.Propagate, mark.RuleId))
-            .Select(group => new RuleGraphNode(group.Key, RuleKind.Propagate, new[] { RuleOutputKind.PropagatedMark }, Array.Empty<RuleDependency>())))
+            .Select(group => CreateSourceNode(
+              group.Key,
+              RuleKind.Propagate,
+              group.Select(mark => mark.Mark).ToList(),
+              consumedStructures)))
           .ToList();
+    }
+
+    private static RuleGraphNode CreateSourceNode(
+      RuleNodeId nodeId,
+      RuleKind kind,
+      IReadOnlyList<MarkRecord> marks,
+      IReadOnlyList<RuleConsumedStructure> consumedStructures)
+    {
+        var produces = RuleStructureContractValidator.CreateObservedProduces(marks, consumedStructures);
+        return new RuleGraphNode(nodeId, kind, Array.Empty<RuleDependency>())
+        {
+            ProducedStructures = produces.Structures
+        };
     }
 
     private static IReadOnlyList<RuleDependency> ResolveDependencies(
@@ -118,19 +150,18 @@ public sealed class MarkLiftingEngine
       IReadOnlySet<RuleNodeId> liftNodeIds,
       CompiledRuleStructureContractGraph contractGraph)
     {
-        var declared = rule.Consumes.Structures.Count > 0
+        IReadOnlyList<RuleDependency> declared = rule.Consumes.Structures.Count > 0
           ? contractGraph.Edges
             .Where(edge => edge.Consumer == rule.NodeId)
             .Select(edge => new RuleDependency(
               edge.Producer,
-              RuleOutputKind.LiftedMark,
               edge.Selector))
             .ToList()
-          : rule.Dependencies;
+          : Array.Empty<RuleDependency>();
         if (declared.Count == 0)
         {
             return sourceNodes
-              .Select(node => new RuleDependency(node.NodeId, node.ProducedOutputs.Single()))
+              .Select(node => new RuleDependency(node.NodeId))
               .ToList();
         }
 
@@ -148,16 +179,17 @@ public sealed class MarkLiftingEngine
         var values = node.Kind == RuleKind.Mark
           ? seedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Mark:".Length..], StringComparison.Ordinal)).Cast<object>()
           : propagatedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Propagate:".Length..], StringComparison.Ordinal)).Cast<object>();
-        return RuleNodeResult.From(node.ProducedOutputs.Single(), values.ToArray());
+        return RuleNodeResult.FromObservedValues(
+          values.ToList(),
+          new RuleProducesContract(node.ProducedStructures));
     }
 
     private static RuleNodeResult CreateResult<T>(
-      IReadOnlyList<RuleOutputKind> outputKinds,
       RuleProducesContract produces,
       IReadOnlyList<T> values)
     {
         var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed, produces);
+        return RuleNodeResult.FromValues(boxed, produces);
     }
 
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
@@ -165,7 +197,7 @@ public sealed class MarkLiftingEngine
         return node.Dependencies
           .SelectMany(dependency => dependency.RequiredStructure is { } selector
             ? inputs.GetOutputs(dependency.Producer, selector)
-            : inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+            : inputs.GetValues(dependency.Producer))
           .ToList();
     }
 
@@ -198,13 +230,12 @@ public sealed class MarkLiftingEngine
           $"Rule '{rule.RuleId}' emitted unsupported lift node kind '{nodeKind}'. Allowed lift node kinds: {allowedKinds}.");
     }
 
-    internal static LiftedMarkRecord BindLiftedMarkRecord(RuleContext context, LiftedMarkRecord candidate, string? groupKey = null)
+    internal static LiftedMarkRecord BindLiftedMarkRecord(RuleContext context, LiftedMarkRecord candidate)
     {
         return candidate with
         {
-            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark, groupKey),
-            SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark, groupKey),
-            GroupKey = candidate.GroupKey ?? groupKey
+            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark),
+            SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark)
         };
     }
 }

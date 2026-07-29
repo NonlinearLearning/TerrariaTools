@@ -23,7 +23,6 @@ public sealed class ClassLocalFunctionParameterUsagePropagationRule : ClassPropa
 
     public override RuleProducesContract Produces => LocalFunctionParameterUsageProduces;
 
-    public override string GroupKey { get; } = "DEL-CLASS";
 
     public override string Name { get; } = "Propagate delete-class local-function parameter usage to local functions and mapped callsites";
 

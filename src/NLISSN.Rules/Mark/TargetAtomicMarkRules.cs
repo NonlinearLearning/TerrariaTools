@@ -38,7 +38,6 @@ public sealed class SObjectVariableDeclaratorMarkRule : RuleDefinitionMark
     public override string CapabilityId { get; } = "mark.target.variable-declarator";
 
     public override string RuleId { get; } = "DEL-SOBJ-MARK-DECL-001";
-    public override string GroupKey { get; } = "DEL-SOBJ";
     public override string Name { get; } = "Match s-rooted variable declarators";
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } = new[] { SyntaxKind.VariableDeclarator };
 

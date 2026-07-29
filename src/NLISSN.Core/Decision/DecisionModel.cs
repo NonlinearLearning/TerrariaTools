@@ -6,7 +6,7 @@ using NLCPG.Model;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
-using NLISSN.Rules;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Decision;
 
@@ -82,10 +82,8 @@ public sealed record DecisionUnit
     /// 当前决策单元的人类可读原因说明。
     public string Reason { get; init; }
 
-    public string? GroupKey { get; init; }
-
     // 描述单条规则提出的一组相关片段、关系和冲突信息，供决策策略统一收口。
-    public DecisionUnit(string ruleId, DecisionActionKind action, NLCPGNode unitNode, IReadOnlyList<NLCPGNode> fragments, IReadOnlyList<NLCPGEdge> relations, IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "", string? groupKey = null)
+    public DecisionUnit(string ruleId, DecisionActionKind action, NLCPGNode unitNode, IReadOnlyList<NLCPGNode> fragments, IReadOnlyList<NLCPGEdge> relations, IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "")
     {
         RuleId = ruleId;
         Action = action;
@@ -96,7 +94,6 @@ public sealed record DecisionUnit
         ConflictKey = conflictKey;
         MergeKey = mergeKey;
         Reason = reason;
-        GroupKey = groupKey;
     }
 }
 
@@ -233,8 +230,7 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
           syntaxBindings,
           conflictKey: coveringRoot.ConflictKey,
           mergeKey: coveringRoot.MergeKey,
-          reason: reason,
-          groupKey: coveringRoot.GroupKey);
+          reason: reason);
     }
 
     private static SyntaxNode? TryResolveAnchorNode(DecisionUnit unit)
@@ -284,17 +280,34 @@ public sealed class RuleDecisionEngine
         _policy = policy ?? new DefaultDecisionPolicy();
     }
 
-    // 兼容入口也按规则图执行；GroupKey 不参与 Proposal 调度。
+    // 兼容入口也按规则图执行。
     public IReadOnlyList<RuleDecision> Decide(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks, IReadOnlyList<RuleDefinitionPropose> rules)
     {
-        var sourceNodes = CreateSourceNodes(seedMarks, propagatedMarks, liftedMarks);
-        var sourceNodeIds = sourceNodes.Select(node => node.NodeId).ToHashSet();
-        var proposalNodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Propose, rule.RuleId)).ToHashSet();
+        var consumedStructures = rules
+          .SelectMany(rule => rule.Consumes.Structures)
+          .ToList();
+        var sourceNodes = CreateSourceNodes(
+          seedMarks,
+          propagatedMarks,
+          liftedMarks,
+          consumedStructures);
+        var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
+          .Select(node => new RuleStructureContractGraphNode(
+            node.NodeId,
+            node.Kind,
+            RuleConsumesContract.Empty,
+            new RuleProducesContract(node.ProducedStructures)))
+          .Concat(rules
+            .Select(rule => new RuleStructureContractGraphNode(
+              rule.NodeId,
+              RuleKind.Propose,
+              rule.Consumes,
+              rule.Produces)))
+          .ToList());
         var ruleNodes = rules.Select(rule => new RuleGraphNode(
           RuleNodeId.For(RuleKind.Propose, rule.RuleId),
           RuleKind.Propose,
-          rule.ProducedOutputs,
-          ResolveDependencies(rule, sourceNodes, sourceNodeIds, proposalNodeIds))
+          ResolveDependencies(rule, sourceNodes, contractGraph))
         {
           ProducedStructures = rule.Produces.Structures,
           ConsumedStructures = rule.Consumes.Structures
@@ -317,9 +330,8 @@ public sealed class RuleDecisionEngine
                         values.OfType<MarkRecord>().ToList(),
                         values.OfType<PropagatedMarkRecord>().ToList(),
                         values.OfType<LiftedMarkRecord>().ToList())
-                      .Select(unit => unit.GroupKey is null ? unit with { GroupKey = rule.GroupKey } : unit)
                       .ToList();
-                    return Task.FromResult(CreateResult(rule.ProducedOutputs, rule.Produces, units));
+                    return Task.FromResult(CreateResult(rule.Produces, units));
                 });
           }))
           .ToList();
@@ -332,7 +344,7 @@ public sealed class RuleDecisionEngine
           .GetResult();
         var units = execution.Nodes
           .Where(node => node.NodeId.Value.StartsWith("Propose:", StringComparison.Ordinal))
-          .SelectMany(node => node.Result.GetOutputs(RuleOutputKind.DecisionUnit))
+          .SelectMany(node => node.Result.Values)
           .OfType<DecisionUnit>()
           .ToList();
 
@@ -371,37 +383,61 @@ public sealed class RuleDecisionEngine
     private static IReadOnlyList<RuleGraphNode> CreateSourceNodes(
       IReadOnlyList<MarkRecord> seedMarks,
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<LiftedMarkRecord> liftedMarks)
+      IReadOnlyList<LiftedMarkRecord> liftedMarks,
+      IReadOnlyList<RuleConsumedStructure> consumedStructures)
     {
         return seedMarks
           .GroupBy(mark => RuleNodeId.For(RuleKind.Mark, mark.RuleId))
-          .Select(group => new RuleGraphNode(group.Key, RuleKind.Mark, new[] { RuleOutputKind.SeedMark }, Array.Empty<RuleDependency>()))
+          .Select(group => CreateSourceNode(
+            group.Key,
+            RuleKind.Mark,
+            group.ToList(),
+            consumedStructures))
           .Concat(propagatedMarks
             .GroupBy(mark => RuleNodeId.For(RuleKind.Propagate, mark.RuleId))
-            .Select(group => new RuleGraphNode(group.Key, RuleKind.Propagate, new[] { RuleOutputKind.PropagatedMark }, Array.Empty<RuleDependency>())))
+            .Select(group => CreateSourceNode(
+              group.Key,
+              RuleKind.Propagate,
+              group.Select(mark => mark.Mark).ToList(),
+              consumedStructures)))
           .Concat(liftedMarks
             .GroupBy(mark => RuleNodeId.For(RuleKind.Lift, mark.RuleId))
-            .Select(group => new RuleGraphNode(group.Key, RuleKind.Lift, new[] { RuleOutputKind.LiftedMark }, Array.Empty<RuleDependency>())))
+            .Select(group => CreateSourceNode(
+              group.Key,
+              RuleKind.Lift,
+              group.Select(mark => mark.Mark).ToList(),
+              consumedStructures)))
           .ToList();
+    }
+
+    private static RuleGraphNode CreateSourceNode(
+      RuleNodeId nodeId,
+      RuleKind kind,
+      IReadOnlyList<MarkRecord> marks,
+      IReadOnlyList<RuleConsumedStructure> consumedStructures)
+    {
+        var produces = RuleStructureContractValidator.CreateObservedProduces(marks, consumedStructures);
+        return new RuleGraphNode(nodeId, kind, Array.Empty<RuleDependency>())
+        {
+            ProducedStructures = produces.Structures
+        };
     }
 
     private static IReadOnlyList<RuleDependency> ResolveDependencies(
       RuleDefinitionPropose rule,
       IReadOnlyList<RuleGraphNode> sourceNodes,
-      IReadOnlySet<RuleNodeId> sourceNodeIds,
-      IReadOnlySet<RuleNodeId> proposalNodeIds)
+      CompiledRuleStructureContractGraph contractGraph)
     {
-        var declared = rule.Dependencies;
-        if (declared.Count == 0)
+        if (rule.Consumes.Structures.Count == 0)
         {
             return sourceNodes
-              .Select(node => new RuleDependency(node.NodeId, node.ProducedOutputs.Single()))
+              .Select(node => new RuleDependency(node.NodeId))
               .ToList();
         }
 
-        return declared
-          .Where(dependency => sourceNodeIds.Contains(dependency.Producer) || proposalNodeIds.Contains(dependency.Producer))
-          .Distinct()
+        return contractGraph.Edges
+          .Where(edge => edge.Consumer == rule.NodeId)
+          .Select(edge => new RuleDependency(edge.Producer, edge.Selector))
           .ToList();
     }
 
@@ -419,16 +455,17 @@ public sealed class RuleDecisionEngine
             RuleKind.Lift => liftedMarks.Where(mark => string.Equals(mark.RuleId, ruleId, StringComparison.Ordinal)).Cast<object>(),
             _ => Array.Empty<object>()
         };
-        return RuleNodeResult.From(node.ProducedOutputs.Single(), values.ToArray());
+        return RuleNodeResult.FromObservedValues(
+          values.ToList(),
+          new RuleProducesContract(node.ProducedStructures));
     }
 
     private static RuleNodeResult CreateResult<T>(
-      IReadOnlyList<RuleOutputKind> outputKinds,
       RuleProducesContract produces,
       IReadOnlyList<T> values)
     {
         var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromProducedOutputs(outputKinds, boxed, produces);
+        return RuleNodeResult.FromValues(boxed, produces);
     }
 
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
@@ -436,7 +473,7 @@ public sealed class RuleDecisionEngine
         return node.Dependencies
           .SelectMany(dependency => dependency.RequiredStructure is { } selector
             ? inputs.GetOutputs(dependency.Producer, selector)
-            : inputs.GetOutputs(dependency.Producer, dependency.RequiredOutput))
+            : inputs.GetValues(dependency.Producer))
           .ToList();
     }
 

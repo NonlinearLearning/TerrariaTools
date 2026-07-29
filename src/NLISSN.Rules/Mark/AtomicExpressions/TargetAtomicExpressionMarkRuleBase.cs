@@ -9,7 +9,6 @@ public abstract class SObjectAtomicExpressionMarkRuleBase : RuleDefinitionMark
 {
     private const string DeleteSObjectGroupKey = "DEL-SOBJ";
 
-    public override string GroupKey { get; } = DeleteSObjectGroupKey;
 
     public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
 
