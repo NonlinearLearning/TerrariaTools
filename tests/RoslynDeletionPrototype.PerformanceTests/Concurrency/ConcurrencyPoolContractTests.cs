@@ -648,6 +648,81 @@ public sealed class ConcurrencyPoolContractTests
         Assert.True(telemetry.FailureDrainElapsed >= TimeSpan.Zero);
     }
 
+    [Fact]
+    public async Task RunDependencyGraphAsync_WhenReadyNodeFails_CancelsRunningSiblingAndSkipsDependent()
+    {
+        var pool = new BoundedConcurrencyPool();
+        using var callerCancellation = new CancellationTokenSource();
+        var siblingStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var siblingCanceled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var dependentStarted = false;
+        var failure = new InvalidOperationException("Synthetic dependency-graph failure.");
+        var workItems = new[]
+        {
+            new DependencyWorkItem<string, int>(
+              "failing",
+              Array.Empty<string>(),
+              async (_, _) =>
+              {
+                  await siblingStarted.Task;
+                  throw failure;
+              }),
+            new DependencyWorkItem<string, int>(
+              "sibling",
+              Array.Empty<string>(),
+              async (_, cancellationToken) =>
+              {
+                  siblingStarted.TrySetResult();
+                  try
+                  {
+                      await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                  }
+                  catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                  {
+                      siblingCanceled.TrySetResult();
+                      throw;
+                  }
+
+                  return 0;
+              }),
+            new DependencyWorkItem<string, int>(
+              "dependent",
+              new[] { "failing" },
+              (_, _) =>
+              {
+                  dependentStarted = true;
+                  return Task.FromResult(0);
+              })
+        };
+        var runTask = pool.RunDependencyGraphAsync(
+          workItems,
+          maxDegreeOfParallelism: 2,
+          StringComparer.Ordinal,
+          callerCancellation.Token);
+
+        try
+        {
+            var completed = await Task.WhenAny(runTask, Task.Delay(TimeSpan.FromSeconds(1)));
+
+            Assert.Same(runTask, completed);
+            var exception = await Assert.ThrowsAsync<InvalidOperationException>(async () => await runTask);
+            Assert.Same(failure, exception);
+            await siblingCanceled.Task.WaitAsync(TimeSpan.FromSeconds(1));
+            Assert.False(dependentStarted);
+        }
+        finally
+        {
+            callerCancellation.Cancel();
+            try
+            {
+                await runTask;
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private sealed class RecordingTelemetrySink : IConcurrencyPoolTelemetrySink
     {
         public List<ConcurrencyOperationTelemetry> Operations { get; } = new();

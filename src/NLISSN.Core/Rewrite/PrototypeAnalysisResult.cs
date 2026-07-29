@@ -33,6 +33,8 @@ public sealed record PrototypeAnalysisResult(
   IReadOnlyList<PrototypeFileRewritePlan>? RewritePlans = null,
   /// 规则图每个节点的输入、输出和耗时；非图执行路径为空。
   IReadOnlyList<RuleGraphNodeTelemetry>? RuleGraphTelemetry = null,
+  /// 规则图节点的完成状态；非图执行路径为空。
+  IReadOnlyDictionary<RuleNodeId, RuleGraphNodeStatus>? RuleGraphNodeStatuses = null,
   /// 规则图的 ready queue 与并发节点峰值；非图执行路径为空。
   RuleGraphExecutionMetrics? RuleGraphMetrics = null,
   /// 本次单文件分析构建的完整 CPG 规模；目录聚合结果为空。

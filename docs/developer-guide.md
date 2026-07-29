@@ -51,9 +51,9 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 测试工程位于 `tests/` 下的 Unit、Contract、Host 和 Performance 项目。先选择拥有该行为的最小项目，再扩大到分层执行：
 
 ```powershell
-dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore --filter "FullyQualifiedName~<TestName>" -p:UseSharedCompilation=false
-dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
-dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore --filter "FullyQualifiedName~<TestName>" -p:UseSharedCompilation=false
+dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
 ```
 
 真实源码性能测量独立于 `dotnet test`。`Run-ConcurrencyPoolPerformance.ps1` 要求显式输入
@@ -112,7 +112,7 @@ Microsoft Coyote PoC 未保留：在当前 `net10.0` 与 xUnit 组合中，它�
 rewrite 流程，且没有找到现有持久化、写入锁和取消覆盖之外的可复现调度。后续只有在
 出现无法用这些受控测试表达的交错缺陷时，才重新评估该隔离 PoC。
 
-运行前按根目录约束设置 `DOTNET_CLI_HOME`；`init.ps1` 会完成该设置。当前 checkout 未包含 `check-harness-consistency.ps1` 或 `Run-TestTiers.ps1`，因此不能把它们作为本分支的验证前提；CLI、文档或 harness 改动应运行对应的 `dotnet build`、`dotnet test` 和 CLI smoke。
+运行前按根目录约束设置 `DOTNET_CLI_HOME`；`init.ps1` 会完成该设置。CLI、文档或 harness 改动应运行对应的 `dotnet build`、`dotnet test` 和 CLI smoke；随后使用 `pwsh -File .\scripts\check-harness-consistency.ps1` 核对当前入口、文档与状态文件。
 
 ## 文档与状态同步
 

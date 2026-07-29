@@ -31,7 +31,7 @@ pwsh -File .\init.ps1
 
 - 首页负责导航，专题页只解决一种读者任务。
 - 示例必须使用真实路径、真实命令和真实选项。
-- `docs/plans/` 保存提案与计划；`设计docs/` 保存设计事实与历史；不要把它们复制进门户页。
+- `设计docs/` 保存设计事实与历史；不要把它们复制进门户页。
 - 大文档采用小批次 patch，每次修改后回读标题、链接和交叉引用。
 
 ## 提交前验证
@@ -40,11 +40,11 @@ pwsh -File .\init.ps1
 
 ```powershell
 dotnet build .\src\NLCPG\NLCPG.csproj
-dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore
-dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore
+dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore
+dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore
 ```
 
-当前 checkout 未包含 `scripts/check-harness-consistency.ps1` 或 `scripts/Run-TestTiers.ps1`；恢复这些 harness 脚本前，不要将其列为已执行的验证。
+`scripts/check-harness-consistency.ps1` 用于核对当前入口、文档和状态文件；`scripts/Run-TestTiers.ps1` 用于按层记录测试证据。只报告实际执行的脚本与结果。
 
 完整分层要求见 [Harness 验证矩阵](harness-verification-matrix.md)。提交说明应记录实际执行的命令和未验证边界。
 

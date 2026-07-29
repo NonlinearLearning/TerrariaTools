@@ -15,7 +15,7 @@
 pwsh -File .\init.ps1
 ```
 
-成功时会报告仓库根、SDK 版本，并通过 `src/NLCPG/NLCPG.csproj` 的构建健康检查。
+成功时会报告仓库根、SDK 版本，并通过 `src/NLISSN/NLISSN.csproj` 的构建健康检查。
 
 ## 2. 运行最小 CPG
 
@@ -58,11 +58,11 @@ dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> --target-name <n
 ## 4. 运行回归测试
 
 ```powershell
-dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj --no-restore
-dotnet test .\tests\Roslyn Prototype.ContractTests\Roslyn Prototype.ContractTests.csproj --no-restore
+dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore
+dotnet test .\tests\RoslynDeletionPrototype.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore
 ```
 
-测试输出以通过/失败计数结束。当前 checkout 未包含 `Run-TestTiers.ps1`；更窄的验证选择见 [Harness 验证矩阵](harness-verification-matrix.md)。
+测试输出以通过/失败计数结束。需要按层执行时，使用 `pwsh -File .\scripts\Run-TestTiers.ps1 -Fast`；更窄的验证选择见 [Harness 验证矩阵](harness-verification-matrix.md)。
 
 ## 下一步
 

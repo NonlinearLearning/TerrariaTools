@@ -60,11 +60,11 @@ public sealed class ArchitectureBoundaryTests
     {
       var source = File.ReadAllText(sourcePath);
       Assert.DoesNotContain("namespace RoslynPrototype", source, StringComparison.Ordinal);
-      Assert.DoesNotContain("namespace ", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Application", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Rules", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Host", source, StringComparison.Ordinal);
       Assert.DoesNotContain("namespace Logging", source, StringComparison.Ordinal);
+      Assert.DoesNotMatch("(?m)^namespace (?!NLISSN(?:[.;]))", source);
     }
   }
 

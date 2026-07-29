@@ -5,7 +5,6 @@ using NLISSN.Core.Analysis;
 using NLCPG.Builder;
 using NLCPG.Contracts;
 using NLCPG.Model;
-using NLISSN.Core.Pipeline;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
 using NLISSN.Rules;
 using Xunit;

@@ -3,22 +3,34 @@ using System.Runtime.ExceptionServices;
 
 namespace NL.Concurrency;
 
+/// <summary>
+/// 提供带有有序提交、依赖调度和遥测采集的受限并发执行池。
+/// </summary>
 public sealed class BoundedConcurrencyPool : IConcurrencyPool
 {
     private readonly IConcurrencyPoolTelemetrySink? _telemetrySink;
     private readonly ConcurrencyAdmissionController? _admissionController;
     private readonly AsyncLocal<ConcurrencyAdmissionController.ConcurrencyAdmissionLease?> _currentAdmissionLease = new();
 
+    /// <summary>
+    /// 使用默认遥测和默认准入控制创建并发池。
+    /// </summary>
     public BoundedConcurrencyPool()
       : this(null)
     {
     }
 
+    /// <summary>
+    /// 使用指定的遥测接收器创建并发池。
+    /// </summary>
     public BoundedConcurrencyPool(IConcurrencyPoolTelemetrySink? telemetrySink)
       : this(telemetrySink, null)
     {
     }
 
+    /// <summary>
+    /// 使用指定的遥测接收器和准入控制器创建并发池。
+    /// </summary>
     public BoundedConcurrencyPool(
         IConcurrencyPoolTelemetrySink? telemetrySink,
         ConcurrencyAdmissionController? admissionController)
@@ -27,6 +39,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         _admissionController = admissionController;
     }
 
+    /// <summary>
+    /// 按索引顺序并发执行异步工作项，并按输入顺序返回结果。
+    /// </summary>
     public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TResult>(
         int itemCount,
         int maxDegreeOfParallelism,
@@ -46,6 +61,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
           cancellationToken);
     }
 
+    /// <summary>
+    /// 对输入源执行有序异步选择，在保持结果顺序的同时限制并发度。
+    /// </summary>
     public async Task<IReadOnlyList<TResult>> SelectOrderedAsync<TSource, TResult>(
         IReadOnlyList<TSource> sources,
         int maxDegreeOfParallelism,
@@ -96,8 +114,8 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                           }
 
                           cancellationToken.ThrowIfCancellationRequested();
-                          // Register the work while holding the gate, but invoke caller code on a
-                          // separate task. An async delegate may block before its first await.
+                          // 在持有门闩时先登记任务，但把调用方代码放到独立任务里执行。
+                          // 异步委托可能在第一次 await 之前就发生阻塞。
                           workItemTask = Task.Run(
                             async () =>
                             {
@@ -163,6 +181,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         }
     }
 
+    /// <summary>
+    /// 对处理器密集型工作项执行有序并发选择，并按输入顺序输出结果。
+    /// </summary>
     public async Task<IReadOnlyList<TResult>> SelectCpuBoundOrdered<TSource, TResult>(
         IReadOnlyList<TSource> sources,
         int maxDegreeOfParallelism,
@@ -272,6 +293,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         }
     }
 
+    /// <summary>
+    /// 在受限重排窗口内并发计算结果，并按原始顺序串行提交。
+    /// </summary>
     public void CommitOrdered<TSource, TResult>(
         IReadOnlyList<TSource> sources,
         ConcurrencyWindowOptions options,
@@ -374,6 +398,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         }
     }
 
+    /// <summary>
+    /// 以采集、准备、求解、提交四个阶段执行两段式有序并发处理。
+    /// </summary>
     public void CommitTwoStageOrdered<TSource, TCollected, TPrepared, TResult>(
         IReadOnlyList<TSource> sources,
         ConcurrencyWindowOptions options,
@@ -570,6 +597,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         }
     }
 
+    /// <summary>
+    /// 对输入源执行受限并发的异步遍历，并在首个失败后取消剩余工作。
+    /// </summary>
     public async Task ForEachAsync<TSource>(
         IReadOnlyList<TSource> sources,
         int maxDegreeOfParallelism,
@@ -674,6 +704,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         }
     }
 
+    /// <summary>
+    /// 按依赖关系调度工作项，只在依赖满足后才启动对应节点。
+    /// </summary>
     public async Task<DependencyExecutionResult<TNode, TResult>> RunDependencyGraphAsync<TNode, TResult>(
         IReadOnlyList<DependencyWorkItem<TNode, TResult>> workItems,
         int maxDegreeOfParallelism,
@@ -822,6 +855,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
     private sealed record DependencyCompletion<TNode, TResult>(TNode Node, TResult Result)
         where TNode : notnull;
 
+    /// <summary>
+    /// 为一次并发操作创建遥测跟踪器。
+    /// </summary>
     private OperationTelemetryTracker CreateTelemetry(
         ConcurrencyOperationKind operationKind,
         int sourceCount,
@@ -836,6 +872,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
           workClass);
     }
 
+    /// <summary>
+    /// 在当前上下文尚未持有租约时申请新的并发准入租约。
+    /// </summary>
     private async Task<ConcurrencyAdmissionController.ConcurrencyAdmissionLease?> AcquireAdmissionAsync(
         ConcurrencyAdmissionRequest request,
         CancellationToken cancellationToken,
@@ -856,6 +895,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         return lease;
     }
 
+    /// <summary>
+    /// 将准入租约压入当前异步上下文，并返回可恢复旧值的作用域对象。
+    /// </summary>
     private IDisposable? PushAdmissionLease(ConcurrencyAdmissionController.ConcurrencyAdmissionLease? lease)
     {
         if (lease is null)
@@ -886,6 +928,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         private int _admissionReason = -1;
         private int _wasCanceled;
 
+        /// <summary>
+        /// 初始化一次并发操作的遥测采样状态。
+        /// </summary>
         public OperationTelemetryTracker(
             IConcurrencyPoolTelemetrySink? telemetrySink,
             ConcurrencyOperationKind operationKind,
@@ -900,37 +945,58 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             _workClass = (int)workClass;
         }
 
+        /// <summary>
+        /// 记录一个工作项开始执行。
+        /// </summary>
         public void WorkItemStarted()
         {
             var activeWorkItemCount = Interlocked.Increment(ref _activeWorkItemCount);
             UpdateMaximum(ref _peakActiveWorkItemCount, activeWorkItemCount);
         }
 
+        /// <summary>
+        /// 记录一个工作项执行完成。
+        /// </summary>
         public void WorkItemCompleted()
         {
             Interlocked.Decrement(ref _activeWorkItemCount);
         }
 
+        /// <summary>
+        /// 刷新就绪队列峰值。
+        /// </summary>
         public void ReadyQueueChanged(int readyWorkItemCount)
         {
             UpdateMaximum(ref _peakReadyWorkItemCount, readyWorkItemCount);
         }
 
+        /// <summary>
+        /// 刷新已完成缓冲区峰值。
+        /// </summary>
         public void CompletedBufferChanged(int completedBufferItemCount)
         {
             UpdateMaximum(ref _peakCompletedBufferItemCount, completedBufferItemCount);
         }
 
+        /// <summary>
+        /// 刷新保留记录数峰值。
+        /// </summary>
         public void RetainedRecordCountChanged(int retainedRecordCount)
         {
             UpdateMaximum(ref _peakRetainedRecordCount, retainedRecordCount);
         }
 
+        /// <summary>
+        /// 标记本次操作已进入取消路径。
+        /// </summary>
         public void MarkCanceled()
         {
             Volatile.Write(ref _wasCanceled, 1);
         }
 
+        /// <summary>
+        /// 记录准入控制返回的工作类别和排队信息。
+        /// </summary>
         public void AdmissionGranted(ConcurrencyAdmissionController.ConcurrencyAdmissionLease lease)
         {
             Volatile.Write(ref _workClass, (int)lease.Request.WorkClass);
@@ -939,6 +1005,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             Volatile.Write(ref _admissionReason, (int)lease.AdmissionReason);
         }
 
+        /// <summary>
+        /// 汇总本次操作的遥测数据并发送给接收器。
+        /// </summary>
         public void Report(bool callerCancellationRequested, TimeSpan failureDrainElapsed)
         {
             _stopwatch.Stop();
@@ -968,6 +1037,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             }
         }
 
+        /// <summary>
+        /// 以无锁方式更新峰值计数。
+        /// </summary>
         private static void UpdateMaximum(ref int target, int candidate)
         {
             while (true)
@@ -989,6 +1061,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         private readonly ConcurrencyAdmissionController.ConcurrencyAdmissionLease? _previous;
         private int _disposed;
 
+        /// <summary>
+        /// 创建一个在释放时恢复先前租约的作用域对象。
+        /// </summary>
         public AdmissionLeaseScope(
             AsyncLocal<ConcurrencyAdmissionController.ConcurrencyAdmissionLease?> lease,
             ConcurrencyAdmissionController.ConcurrencyAdmissionLease? previous)
@@ -997,6 +1072,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             _previous = previous;
         }
 
+        /// <summary>
+        /// 恢复进入作用域前的租约状态。
+        /// </summary>
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
@@ -1006,6 +1084,9 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         }
     }
 
+    /// <summary>
+    /// 在异常路径上等待所有工作线程结束，并吞掉后续异常。
+    /// </summary>
     private static void WaitForWorkers(IEnumerable<Task> workers)
     {
         try
