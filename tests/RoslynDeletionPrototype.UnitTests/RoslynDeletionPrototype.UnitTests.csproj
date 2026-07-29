@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\NL.Caching\NL.Caching.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Rules\NLISSN.Rules.csproj" />
