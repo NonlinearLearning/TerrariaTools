@@ -56,20 +56,22 @@ dotnet test .\tests\Roslyn Prototype.UnitTests\Roslyn Prototype.UnitTests.csproj
 dotnet test .\tests\Roslyn Prototype.HostTests\Roslyn Prototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
 ```
 
-真实源码性能测量独立于 `dotnet test`。它要求显式输入目录，默认对 DOP
-8、12、14、16 各执行一次预热和三次测量，写入每次的 runtime log 以及中位数报告：
+真实源码性能测量独立于 `dotnet test`。`Run-ConcurrencyPoolPerformance.ps1` 要求显式输入
+`.cs` 文件，默认对 DOP
+1、8、12、16 各执行一次预热和三次测量，写入每次的 runtime log 以及中位数报告：
 
 当需要区分目录 DOP 与每文件 CPG DOP 时，使用 `--cpg-max-degree-of-parallelism` 覆盖 builder 值，并比较 `(12,1)`、`(1,12)`、`(12,12)`。每组保持输入、规则、日志配置和 SDK 相同；阶段累计是逐文件 elapsed 总和，端到端裁决使用墙钟中位数。该诊断不会改变默认 DOP。
 
 ```powershell
-pwsh -File .\scripts\Run-PerformanceSuite.ps1 `
-  -SourceRoot "D:\path\to\source" `
-  -TargetName PlayerInput
+pwsh -File .\scripts\Run-ConcurrencyPoolPerformance.ps1 `
+  -SourceFile "D:\path\to\source\Example.cs" `
+  -TargetName Example `
+  -Dop "1,8,12,16"
 ```
 
 报告根目录默认在 `Build\PerformanceResults\`，包含 `summary.json`、
-`summary.csv`、`summary.md` 和按 DOP/阶段隔离的日志。该命令仅用于有意的
-性能决策；常规回归继续使用分层测试。
+`summary.csv` 和按 DOP/阶段隔离的日志。脚本会拒绝缺少成功终态日志或与 DOP 1
+图/规则快照不一致的样本。该命令仅用于有意的性能决策；常规回归继续使用分层测试。
 
 针对目录 DOP 与 CPG DOP 的拆分诊断，可先生成固定的 103 文件小型输入集：不超过
 512 KiB 的 3 个最大 C# 文件加 100 个最小 C# 文件。选择按字节数排序，并以规范化相对路径作为并列排序键；

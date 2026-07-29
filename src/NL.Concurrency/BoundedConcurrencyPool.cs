@@ -1,9 +1,32 @@
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 
 namespace NL.Concurrency;
 
 public sealed class BoundedConcurrencyPool : IConcurrencyPool
 {
+    private readonly IConcurrencyPoolTelemetrySink? _telemetrySink;
+    private readonly ConcurrencyAdmissionController? _admissionController;
+    private readonly AsyncLocal<ConcurrencyAdmissionController.ConcurrencyAdmissionLease?> _currentAdmissionLease = new();
+
+    public BoundedConcurrencyPool()
+      : this(null)
+    {
+    }
+
+    public BoundedConcurrencyPool(IConcurrencyPoolTelemetrySink? telemetrySink)
+      : this(telemetrySink, null)
+    {
+    }
+
+    public BoundedConcurrencyPool(
+        IConcurrencyPoolTelemetrySink? telemetrySink,
+        ConcurrencyAdmissionController? admissionController)
+    {
+        _telemetrySink = telemetrySink;
+        _admissionController = admissionController;
+    }
+
     public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TResult>(
         int itemCount,
         int maxDegreeOfParallelism,
@@ -32,8 +55,14 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(workItem);
 
+        var telemetry = CreateTelemetry(
+          ConcurrencyOperationKind.OrderedSelection,
+          sources.Count,
+          maxDegreeOfParallelism);
+
         if (sources.Count == 0)
         {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
             return Array.Empty<TResult>();
         }
 
@@ -73,10 +102,18 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                             async () =>
                             {
                                 workItemCancellation.Token.ThrowIfCancellationRequested();
-                                return await workItem(
+                                telemetry.WorkItemStarted();
+                                try
+                                {
+                                    return await workItem(
                                   sources[index],
                                   index,
                                   workItemCancellation.Token).ConfigureAwait(false);
+                                }
+                                finally
+                                {
+                                    telemetry.WorkItemCompleted();
+                                }
                             },
                             CancellationToken.None);
                       }
@@ -109,9 +146,130 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
               cancellationToken);
         }
 
-        await Task.WhenAll(workers);
-        Volatile.Read(ref workItemFailure)?.Throw();
-        return results;
+        try
+        {
+            await Task.WhenAll(workers);
+            Volatile.Read(ref workItemFailure)?.Throw();
+            return results;
+        }
+        catch (OperationCanceledException)
+        {
+            telemetry.MarkCanceled();
+            throw;
+        }
+        finally
+        {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
+        }
+    }
+
+    public async Task<IReadOnlyList<TResult>> SelectCpuBoundOrdered<TSource, TResult>(
+        IReadOnlyList<TSource> sources,
+        int maxDegreeOfParallelism,
+        Func<TSource, int, CancellationToken, TResult> workItem,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(workItem);
+
+        var telemetry = CreateTelemetry(
+          ConcurrencyOperationKind.CpuBoundOrderedSelection,
+          sources.Count,
+          maxDegreeOfParallelism);
+
+        try
+        {
+            if (sources.Count == 0)
+            {
+                return Array.Empty<TResult>();
+            }
+
+            using var workItemCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var results = new TResult[sources.Count];
+            var nextIndex = -1;
+            ExceptionDispatchInfo? workItemFailure = null;
+            var workItemStartGate = new object();
+            var workerCount = Math.Min(sources.Count, Math.Max(1, maxDegreeOfParallelism));
+            var workers = new Task[workerCount];
+            for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
+            {
+                workers[workerIndex] = Task.Run(
+                  () =>
+                  {
+                      while (true)
+                      {
+                          int index;
+                          lock (workItemStartGate)
+                          {
+                              if (workItemFailure is not null)
+                              {
+                                  return;
+                              }
+
+                              cancellationToken.ThrowIfCancellationRequested();
+                              index = Interlocked.Increment(ref nextIndex);
+                              if (index >= sources.Count)
+                              {
+                                  return;
+                              }
+                          }
+
+                          try
+                          {
+                              workItemCancellation.Token.ThrowIfCancellationRequested();
+                              telemetry.WorkItemStarted();
+                              try
+                              {
+                                  results[index] = workItem(sources[index], index, workItemCancellation.Token);
+                              }
+                              finally
+                              {
+                                  telemetry.WorkItemCompleted();
+                              }
+                          }
+                          catch (Exception exception)
+                          {
+                              if (exception is OperationCanceledException)
+                              {
+                                  telemetry.MarkCanceled();
+                              }
+
+                              var shouldCancelWorkItems = false;
+                              lock (workItemStartGate)
+                              {
+                                  if (workItemFailure is null)
+                                  {
+                                      workItemFailure = ExceptionDispatchInfo.Capture(exception);
+                                      shouldCancelWorkItems = true;
+                                  }
+                              }
+
+                              if (shouldCancelWorkItems)
+                              {
+                                  workItemCancellation.Cancel();
+                              }
+
+                              return;
+                          }
+                      }
+                  },
+                  CancellationToken.None);
+            }
+
+            await Task.WhenAll(workers).ConfigureAwait(false);
+            Volatile.Read(ref workItemFailure)?.Throw();
+            cancellationToken.ThrowIfCancellationRequested();
+            return results;
+        }
+        catch (OperationCanceledException)
+        {
+            telemetry.MarkCanceled();
+            throw;
+        }
+        finally
+        {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
+        }
     }
 
     public void CommitOrdered<TSource, TResult>(
@@ -126,12 +284,21 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(workItem);
         ArgumentNullException.ThrowIfNull(commit);
+        options.Validate();
 
+        var telemetry = CreateTelemetry(
+          ConcurrencyOperationKind.OrderedCommit,
+          sources.Count,
+          options.EffectiveMaxDegreeOfParallelism,
+          options.WorkClass);
         if (sources.Count == 0)
         {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
             return;
         }
 
+        try
+        {
         var activeWorkers = new List<Task<CompletedWorkItem<TResult>>>(options.EffectiveMaxDegreeOfParallelism);
         var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
         var nextOrderToSchedule = 0;
@@ -152,11 +319,19 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                   () =>
                   {
                       cancellationToken.ThrowIfCancellationRequested();
-                      var result = workItem(sources[order], order);
-                      return new CompletedWorkItem<TResult>(
-                        order,
-                        result,
-                        Math.Max(0, retainedRecordCount?.Invoke(result) ?? 1));
+                      telemetry.WorkItemStarted();
+                      try
+                      {
+                          var result = workItem(sources[order], order);
+                          return new CompletedWorkItem<TResult>(
+                            order,
+                            result,
+                            Math.Max(0, retainedRecordCount?.Invoke(result) ?? 1));
+                      }
+                      finally
+                      {
+                          telemetry.WorkItemCompleted();
+                      }
                   },
                   cancellationToken));
             }
@@ -173,6 +348,8 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                 var completedWorkItem = completedTask.GetAwaiter().GetResult();
                 completedResults.Add(completedWorkItem.Order, completedWorkItem);
                 completedRecordCount += completedWorkItem.RetainedRecordCount;
+                telemetry.CompletedBufferChanged(completedResults.Count);
+                telemetry.RetainedRecordCountChanged(completedRecordCount);
             }
             catch
             {
@@ -185,8 +362,15 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                 cancellationToken.ThrowIfCancellationRequested();
                 commit(nextResult.Result, nextOrderToCommit);
                 completedRecordCount -= nextResult.RetainedRecordCount;
+                telemetry.CompletedBufferChanged(completedResults.Count);
+                telemetry.RetainedRecordCountChanged(completedRecordCount);
                 nextOrderToCommit++;
             }
+        }
+        }
+        finally
+        {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
         }
     }
 
@@ -207,14 +391,23 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         ArgumentNullException.ThrowIfNull(prepare);
         ArgumentNullException.ThrowIfNull(solve);
         ArgumentNullException.ThrowIfNull(commit);
+        options.Validate();
 
+        var telemetry = CreateTelemetry(
+          ConcurrencyOperationKind.TwoStageOrderedCommit,
+          sources.Count,
+          options.EffectiveMaxDegreeOfParallelism,
+          options.WorkClass);
         if (sources.Count == 0)
         {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
             return;
         }
 
-        var activeCollections = new List<Task<CompletedWorkItem<TCollected>>>(options.EffectiveMaxDegreeOfParallelism);
-        var activeSolves = new List<Task<CompletedWorkItem<TResult>>>(options.EffectiveMaxDegreeOfParallelism);
+        try
+        {
+        var activeCollections = new List<ActiveWorkItem<TCollected>>(options.EffectiveMaxDegreeOfParallelism);
+        var activeSolves = new List<ActiveWorkItem<TResult>>(options.EffectiveMaxDegreeOfParallelism);
         var completedCollections = new Dictionary<int, CompletedWorkItem<TCollected>>();
         var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
         var nextOrderToSchedule = 0;
@@ -226,44 +419,61 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         {
             while (nextOrderToSchedule < sources.Count &&
                    activeCollections.Count + activeSolves.Count < options.EffectiveMaxDegreeOfParallelism &&
-                   completedCollections.Count < options.EffectiveReorderAllowance &&
-                   completedResults.Count < options.EffectiveReorderAllowance &&
+                   completedCollections.Count + completedResults.Count < options.EffectiveReorderAllowance &&
                    completedRecordCount < options.EffectiveMaxCompletedRecordCount)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var order = nextOrderToSchedule;
                 nextOrderToSchedule++;
-                activeCollections.Add(Task.Run(
+                activeCollections.Add(new ActiveWorkItem<TCollected>(order, Task.Run(
                   () =>
                   {
                       cancellationToken.ThrowIfCancellationRequested();
-                      var collected = collect(sources[order], order);
-                      return new CompletedWorkItem<TCollected>(
-                        order,
-                        collected,
-                        Math.Max(0, collectedRetainedRecordCount?.Invoke(collected) ?? 1));
+                      telemetry.WorkItemStarted();
+                      try
+                      {
+                          var collected = collect(sources[order], order);
+                          return new CompletedWorkItem<TCollected>(
+                            order,
+                            collected,
+                            Math.Max(0, collectedRetainedRecordCount?.Invoke(collected) ?? 1));
+                      }
+                      finally
+                      {
+                          telemetry.WorkItemCompleted();
+                      }
                   },
-                  cancellationToken));
+                  cancellationToken)));
             }
 
             while (activeCollections.Count + activeSolves.Count < options.EffectiveMaxDegreeOfParallelism &&
                    completedCollections.Remove(nextOrderToPrepare, out var collectedWorkItem))
             {
                 completedRecordCount -= collectedWorkItem.RetainedRecordCount;
+                telemetry.CompletedBufferChanged(completedCollections.Count + completedResults.Count);
+                telemetry.RetainedRecordCountChanged(completedRecordCount);
                 var order = collectedWorkItem.Order;
                 var prepared = prepare(collectedWorkItem.Result, order);
                 nextOrderToPrepare++;
-                activeSolves.Add(Task.Run(
+                activeSolves.Add(new ActiveWorkItem<TResult>(order, Task.Run(
                   () =>
                   {
                       cancellationToken.ThrowIfCancellationRequested();
-                      var result = solve(prepared, order);
-                      return new CompletedWorkItem<TResult>(
-                        order,
-                        result,
-                        Math.Max(0, resultRetainedRecordCount?.Invoke(result) ?? 1));
+                      telemetry.WorkItemStarted();
+                      try
+                      {
+                          var result = solve(prepared, order);
+                          return new CompletedWorkItem<TResult>(
+                            order,
+                            result,
+                            Math.Max(0, resultRetainedRecordCount?.Invoke(result) ?? 1));
+                      }
+                      finally
+                      {
+                          telemetry.WorkItemCompleted();
+                      }
                   },
-                  cancellationToken));
+                  cancellationToken)));
             }
 
             while (completedResults.Remove(nextOrderToCommit, out var resultWorkItem))
@@ -271,6 +481,8 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                 cancellationToken.ThrowIfCancellationRequested();
                 commit(resultWorkItem.Result, nextOrderToCommit);
                 completedRecordCount -= resultWorkItem.RetainedRecordCount;
+                telemetry.CompletedBufferChanged(completedCollections.Count + completedResults.Count);
+                telemetry.RetainedRecordCountChanged(completedRecordCount);
                 nextOrderToCommit++;
             }
 
@@ -279,50 +491,82 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                 return;
             }
 
-            var activeTasks = activeCollections.Cast<Task>().Concat(activeSolves).ToArray();
+            var completedBufferCount = completedCollections.Count + completedResults.Count;
+            var headSolveTasks = activeSolves
+              .Where(item => item.Order == nextOrderToCommit)
+              .Select(item => (Task)item.Task)
+              .ToArray();
+            var activeTasks = completedBufferCount >= options.EffectiveReorderAllowance - 1
+              ? headSolveTasks.Length > 0
+                ? headSolveTasks
+                : activeCollections
+                  .Where(item => item.Order == nextOrderToPrepare)
+                  .Select(item => (Task)item.Task)
+                  .ToArray()
+              : activeCollections
+                .Select(item => (Task)item.Task)
+                .Concat(activeSolves.Select(item => (Task)item.Task))
+                .ToArray();
             if (activeTasks.Length == 0)
             {
-                if (nextOrderToSchedule < sources.Count || completedCollections.ContainsKey(nextOrderToPrepare))
+                activeTasks = activeCollections
+                  .Select(item => (Task)item.Task)
+                  .Concat(activeSolves.Select(item => (Task)item.Task))
+                  .ToArray();
+                if (activeTasks.Length == 0 &&
+                    (nextOrderToSchedule < sources.Count || completedCollections.ContainsKey(nextOrderToPrepare)))
                 {
                     continue;
                 }
 
-                throw new InvalidOperationException("The two-stage ordered work window stopped before all results were committed.");
+                if (activeTasks.Length == 0)
+                {
+                    throw new InvalidOperationException("The two-stage ordered work window stopped before all results were committed.");
+                }
             }
 
             var completedTask = Task.WhenAny(activeTasks).GetAwaiter().GetResult();
-            var completedCollectionTask = activeCollections.FirstOrDefault(task => ReferenceEquals(task, completedTask));
-            if (completedCollectionTask is not null)
+            var completedCollection = activeCollections.FirstOrDefault(item => ReferenceEquals(item.Task, completedTask));
+            if (completedCollection is not null)
             {
-                activeCollections.Remove(completedCollectionTask);
+                activeCollections.Remove(completedCollection);
                 try
                 {
-                    var collectedWorkItem = completedCollectionTask.GetAwaiter().GetResult();
+                    var collectedWorkItem = completedCollection.Task.GetAwaiter().GetResult();
                     completedCollections.Add(collectedWorkItem.Order, collectedWorkItem);
                     completedRecordCount += collectedWorkItem.RetainedRecordCount;
+                    telemetry.CompletedBufferChanged(completedCollections.Count + completedResults.Count);
+                    telemetry.RetainedRecordCountChanged(completedRecordCount);
                 }
                 catch
                 {
-                    WaitForWorkers(activeCollections.Cast<Task>().Concat(activeSolves));
+                    WaitForWorkers(activeCollections.Select(item => (Task)item.Task).Concat(activeSolves.Select(item => (Task)item.Task)));
                     throw;
                 }
             }
             else
             {
-                var completedSolveTask = (Task<CompletedWorkItem<TResult>>)completedTask;
-                activeSolves.Remove(completedSolveTask);
+                var completedSolve = activeSolves.Single(item => ReferenceEquals(item.Task, completedTask));
+                activeSolves.Remove(completedSolve);
                 try
                 {
-                    var resultWorkItem = completedSolveTask.GetAwaiter().GetResult();
+                    var resultWorkItem = completedSolve.Task.GetAwaiter().GetResult();
                     completedResults.Add(resultWorkItem.Order, resultWorkItem);
                     completedRecordCount += resultWorkItem.RetainedRecordCount;
+                    telemetry.CompletedBufferChanged(completedCollections.Count + completedResults.Count);
+                    telemetry.RetainedRecordCountChanged(completedRecordCount);
                 }
                 catch
                 {
-                    WaitForWorkers(activeCollections.Cast<Task>().Concat(activeSolves));
+                    WaitForWorkers(activeCollections.Select(item => (Task)item.Task).Concat(activeSolves.Select(item => (Task)item.Task)));
                     throw;
                 }
             }
+        }
+        }
+        finally
+        {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
         }
     }
 
@@ -332,17 +576,102 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         Func<TSource, int, CancellationToken, Task> workItem,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(workItem);
 
-        await SelectOrderedAsync(
-          sources,
-          maxDegreeOfParallelism,
-          async (source, index, token) =>
-          {
-              await workItem(source, index, token);
-              return true;
-          },
-          cancellationToken);
+        var telemetry = CreateTelemetry(
+          ConcurrencyOperationKind.ForEach,
+          sources.Count,
+          maxDegreeOfParallelism);
+
+        if (sources.Count == 0)
+        {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
+            return;
+        }
+
+        using var workItemCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var nextIndex = -1;
+        ExceptionDispatchInfo? workItemFailure = null;
+        var workItemStartGate = new object();
+        var workerCount = Math.Min(sources.Count, Math.Max(1, maxDegreeOfParallelism));
+        var workers = new Task[workerCount];
+        for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
+        {
+            workers[workerIndex] = Task.Run(
+              async () =>
+              {
+                  while (true)
+                  {
+                      int index;
+                      lock (workItemStartGate)
+                      {
+                          if (workItemFailure is not null)
+                          {
+                              return;
+                          }
+
+                          cancellationToken.ThrowIfCancellationRequested();
+                          index = Interlocked.Increment(ref nextIndex);
+                          if (index >= sources.Count)
+                          {
+                              return;
+                          }
+                      }
+
+                      try
+                      {
+                          workItemCancellation.Token.ThrowIfCancellationRequested();
+                          telemetry.WorkItemStarted();
+                          try
+                          {
+                              await workItem(sources[index], index, workItemCancellation.Token)
+                                .ConfigureAwait(false);
+                          }
+                          finally
+                          {
+                              telemetry.WorkItemCompleted();
+                          }
+                      }
+                      catch (Exception exception)
+                      {
+                          var shouldCancelWorkItems = false;
+                          lock (workItemStartGate)
+                          {
+                              if (workItemFailure is null)
+                              {
+                                  workItemFailure = ExceptionDispatchInfo.Capture(exception);
+                                  shouldCancelWorkItems = true;
+                              }
+                          }
+
+                          if (shouldCancelWorkItems)
+                          {
+                              workItemCancellation.Cancel();
+                          }
+
+                          return;
+                      }
+                  }
+              },
+              CancellationToken.None);
+        }
+
+        try
+        {
+            await Task.WhenAll(workers).ConfigureAwait(false);
+            Volatile.Read(ref workItemFailure)?.Throw();
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        catch (OperationCanceledException)
+        {
+            telemetry.MarkCanceled();
+            throw;
+        }
+        finally
+        {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
+        }
     }
 
     public async Task<DependencyExecutionResult<TNode, TResult>> RunDependencyGraphAsync<TNode, TResult>(
@@ -354,6 +683,21 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
     {
         ArgumentNullException.ThrowIfNull(workItems);
         ArgumentNullException.ThrowIfNull(readyOrder);
+
+        var telemetry = CreateTelemetry(
+          ConcurrencyOperationKind.DependencyGraph,
+          workItems.Count,
+          maxDegreeOfParallelism,
+          ConcurrencyWorkClass.LatencySensitive);
+        var failureDrainElapsed = TimeSpan.Zero;
+        try
+        {
+        using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var admissionLease = await AcquireAdmissionAsync(
+          new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.LatencySensitive),
+          cancellationToken,
+          telemetry).ConfigureAwait(false);
+        using var admissionScope = PushAdmissionLease(admissionLease);
 
         var workItemsByNode = workItems.ToDictionary(workItem => workItem.Node);
         if (workItemsByNode.Count != workItems.Count)
@@ -389,10 +733,11 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         var degree = Math.Max(1, maxDegreeOfParallelism);
         var peakReadyWorkItemCount = ready.Count;
         var peakConcurrentWorkItemCount = 0;
+        telemetry.ReadyQueueChanged(peakReadyWorkItemCount);
 
         while (ready.Count > 0 || running.Count > 0)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            runCancellation.Token.ThrowIfCancellationRequested();
             while (ready.Count > 0 && running.Count < degree)
             {
                 var node = ready.Min!;
@@ -404,15 +749,17 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                 var task = Task.Run(
                   async () => new DependencyCompletion<TNode, TResult>(
                     node,
-                    await workItem.ExecuteAsync(dependencyResults, cancellationToken)),
-                  cancellationToken);
+                    await workItem.ExecuteAsync(dependencyResults, runCancellation.Token)),
+                  CancellationToken.None);
                 running.Add(task, node);
+                telemetry.WorkItemStarted();
                 peakConcurrentWorkItemCount = Math.Max(peakConcurrentWorkItemCount, running.Count);
             }
 
             var completedTask = await Task.WhenAny(running.Keys);
             var completedNode = running[completedTask];
             running.Remove(completedTask);
+            telemetry.WorkItemCompleted();
             DependencyCompletion<TNode, TResult> completed;
             try
             {
@@ -420,12 +767,20 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             }
             catch
             {
+                runCancellation.Cancel();
+                telemetry.MarkCanceled();
+                var failureDrainStopwatch = Stopwatch.StartNew();
                 try
                 {
                     await Task.WhenAll(running.Keys);
                 }
                 catch
                 {
+                }
+                finally
+                {
+                    failureDrainStopwatch.Stop();
+                    failureDrainElapsed = failureDrainStopwatch.Elapsed;
                 }
 
                 throw;
@@ -439,6 +794,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                 {
                     ready.Add(downstreamNode);
                     peakReadyWorkItemCount = Math.Max(peakReadyWorkItemCount, ready.Count);
+                    telemetry.ReadyQueueChanged(ready.Count);
                 }
             }
         }
@@ -447,12 +803,208 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
           results,
           peakReadyWorkItemCount,
           peakConcurrentWorkItemCount);
+        }
+        catch (OperationCanceledException)
+        {
+            telemetry.MarkCanceled();
+            throw;
+        }
+        finally
+        {
+            telemetry.Report(cancellationToken.IsCancellationRequested, failureDrainElapsed);
+        }
     }
 
     private sealed record CompletedWorkItem<TResult>(int Order, TResult Result, int RetainedRecordCount);
 
+    private sealed record ActiveWorkItem<TResult>(int Order, Task<CompletedWorkItem<TResult>> Task);
+
     private sealed record DependencyCompletion<TNode, TResult>(TNode Node, TResult Result)
         where TNode : notnull;
+
+    private OperationTelemetryTracker CreateTelemetry(
+        ConcurrencyOperationKind operationKind,
+        int sourceCount,
+        int requestedMaxDegreeOfParallelism,
+        ConcurrencyWorkClass workClass = ConcurrencyWorkClass.Throughput)
+    {
+        return new OperationTelemetryTracker(
+          _telemetrySink,
+          operationKind,
+          sourceCount,
+          requestedMaxDegreeOfParallelism,
+          workClass);
+    }
+
+    private async Task<ConcurrencyAdmissionController.ConcurrencyAdmissionLease?> AcquireAdmissionAsync(
+        ConcurrencyAdmissionRequest request,
+        CancellationToken cancellationToken,
+        OperationTelemetryTracker telemetry)
+    {
+        if (_admissionController is null)
+        {
+            return null;
+        }
+
+        if (_currentAdmissionLease.Value is not null)
+        {
+            return null;
+        }
+
+        var lease = await _admissionController.AcquireAsync(request, cancellationToken).ConfigureAwait(false);
+        telemetry.AdmissionGranted(lease);
+        return lease;
+    }
+
+    private IDisposable? PushAdmissionLease(ConcurrencyAdmissionController.ConcurrencyAdmissionLease? lease)
+    {
+        if (lease is null)
+        {
+            return null;
+        }
+
+        var previous = _currentAdmissionLease.Value;
+        _currentAdmissionLease.Value = lease;
+        return new AdmissionLeaseScope(_currentAdmissionLease, previous);
+    }
+
+    private sealed class OperationTelemetryTracker
+    {
+        private readonly IConcurrencyPoolTelemetrySink? _telemetrySink;
+        private readonly ConcurrencyOperationKind _operationKind;
+        private readonly int _sourceCount;
+        private readonly int _requestedMaxDegreeOfParallelism;
+        private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
+        private int _activeWorkItemCount;
+        private int _peakActiveWorkItemCount;
+        private int _peakReadyWorkItemCount;
+        private int _peakCompletedBufferItemCount;
+        private int _peakRetainedRecordCount;
+        private long _peakReservedByteCount;
+        private long _queueWaitTicks;
+        private int _workClass;
+        private int _admissionReason = -1;
+        private int _wasCanceled;
+
+        public OperationTelemetryTracker(
+            IConcurrencyPoolTelemetrySink? telemetrySink,
+            ConcurrencyOperationKind operationKind,
+            int sourceCount,
+            int requestedMaxDegreeOfParallelism,
+            ConcurrencyWorkClass workClass)
+        {
+            _telemetrySink = telemetrySink;
+            _operationKind = operationKind;
+            _sourceCount = sourceCount;
+            _requestedMaxDegreeOfParallelism = requestedMaxDegreeOfParallelism;
+            _workClass = (int)workClass;
+        }
+
+        public void WorkItemStarted()
+        {
+            var activeWorkItemCount = Interlocked.Increment(ref _activeWorkItemCount);
+            UpdateMaximum(ref _peakActiveWorkItemCount, activeWorkItemCount);
+        }
+
+        public void WorkItemCompleted()
+        {
+            Interlocked.Decrement(ref _activeWorkItemCount);
+        }
+
+        public void ReadyQueueChanged(int readyWorkItemCount)
+        {
+            UpdateMaximum(ref _peakReadyWorkItemCount, readyWorkItemCount);
+        }
+
+        public void CompletedBufferChanged(int completedBufferItemCount)
+        {
+            UpdateMaximum(ref _peakCompletedBufferItemCount, completedBufferItemCount);
+        }
+
+        public void RetainedRecordCountChanged(int retainedRecordCount)
+        {
+            UpdateMaximum(ref _peakRetainedRecordCount, retainedRecordCount);
+        }
+
+        public void MarkCanceled()
+        {
+            Volatile.Write(ref _wasCanceled, 1);
+        }
+
+        public void AdmissionGranted(ConcurrencyAdmissionController.ConcurrencyAdmissionLease lease)
+        {
+            Volatile.Write(ref _workClass, (int)lease.Request.WorkClass);
+            Volatile.Write(ref _peakReservedByteCount, lease.Request.ReservedByteCount);
+            Volatile.Write(ref _queueWaitTicks, lease.QueueWait.Ticks);
+            Volatile.Write(ref _admissionReason, (int)lease.AdmissionReason);
+        }
+
+        public void Report(bool callerCancellationRequested, TimeSpan failureDrainElapsed)
+        {
+            _stopwatch.Stop();
+            var telemetry = new ConcurrencyOperationTelemetry(
+              _operationKind,
+              _sourceCount,
+              _requestedMaxDegreeOfParallelism,
+              Volatile.Read(ref _peakActiveWorkItemCount),
+              Volatile.Read(ref _peakReadyWorkItemCount),
+              Volatile.Read(ref _peakCompletedBufferItemCount),
+              Volatile.Read(ref _peakRetainedRecordCount),
+              (ConcurrencyWorkClass)Volatile.Read(ref _workClass),
+              Volatile.Read(ref _peakReservedByteCount),
+              TimeSpan.FromTicks(Volatile.Read(ref _queueWaitTicks)),
+              Volatile.Read(ref _admissionReason) is var admissionReason && admissionReason >= 0
+                ? (ConcurrencyAdmissionReason)admissionReason
+                : null,
+              _stopwatch.Elapsed,
+              callerCancellationRequested || Volatile.Read(ref _wasCanceled) != 0,
+              failureDrainElapsed);
+            try
+            {
+                _telemetrySink?.Record(telemetry);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void UpdateMaximum(ref int target, int candidate)
+        {
+            while (true)
+            {
+                var current = Volatile.Read(ref target);
+                if (candidate <= current ||
+                    Interlocked.CompareExchange(ref target, candidate, current) == current)
+                {
+                    return;
+                }
+            }
+        }
+
+    }
+
+    private sealed class AdmissionLeaseScope : IDisposable
+    {
+        private readonly AsyncLocal<ConcurrencyAdmissionController.ConcurrencyAdmissionLease?> _lease;
+        private readonly ConcurrencyAdmissionController.ConcurrencyAdmissionLease? _previous;
+        private int _disposed;
+
+        public AdmissionLeaseScope(
+            AsyncLocal<ConcurrencyAdmissionController.ConcurrencyAdmissionLease?> lease,
+            ConcurrencyAdmissionController.ConcurrencyAdmissionLease? previous)
+        {
+            _lease = lease;
+            _previous = previous;
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _lease.Value = _previous;
+            }
+        }
+    }
 
     private static void WaitForWorkers(IEnumerable<Task> workers)
     {

@@ -55,6 +55,12 @@ internal static class  ApplicationOptions
           string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static string? ResolveRuntimeLogPath(IReadOnlyDictionary<string, string> options)
+    {
+        return ResolveRequiredFilePathOption(options, "runtime-log") ??
+          ResolveRequiredFilePathOption(options, "runtime-metrics-log");
+    }
+
     internal static string? ResolveRewritePlanOutPath(IReadOnlyDictionary<string, string> options)
     {
         return ResolveRequiredPathOption(options, "rewrite-plan-out");
@@ -91,6 +97,24 @@ internal static class  ApplicationOptions
         if (string.IsNullOrWhiteSpace(value) || string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException($"--{key} requires a non-empty directory path.");
+        }
+
+        return value;
+    }
+
+    private static string? ResolveRequiredFilePathOption(
+        IReadOnlyDictionary<string, string> options,
+        string key)
+    {
+        if (!options.TryGetValue(key, out var value))
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(value) ||
+            string.Equals(value, "true", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"--{key} requires a non-empty file path.");
         }
 
         return value;

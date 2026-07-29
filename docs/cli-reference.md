@@ -42,7 +42,8 @@ dotnet run --project .\src\NLISSN\NLISSN.csproj -- <source-directory> --delete-c
 | `--diff-out <path>` | 设置 diff 输出路径或目录。 |
 | `--max-degree-of-parallelism <N>` | 限制目录、规则阶段和默认 CPG 分片的并发量；缺省或无效值使用处理器数量，最小值为 1。 |
 | `--cpg-max-degree-of-parallelism <N>` | 仅覆盖每个文件内 CPG 分片的并发量；缺省时继承 `--max-degree-of-parallelism`，值必须为正整数。 |
-| `--runtime-log <path>` | 写入运行汇总日志。 |
+| `--runtime-log <path>` | 写入运行开始、周期采样、逐项并发池遥测和终态汇总日志。 |
+| `--runtime-metrics-log <path>` | `--runtime-log` 的兼容别名。 |
 | `--analysis-log <path>` | 写入文件、diff 和 I/O 分析日志。 |
 | `--log-profile <name>`、`--log-level <level>`、`--log-categories <list>`、`--log-events <list>`、`--log-view <name>` | 控制文本日志的过滤与呈现。 |
 | `--rewrite-plan-out <directory>` | 对目录分析保存可移植的文本编辑计划，不隐含写回。 |

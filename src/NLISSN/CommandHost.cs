@@ -30,6 +30,7 @@ public sealed class  CommandHost
         var options =  ApplicationOptions.Parse(args);
          ApplicationOptions.ValidateRewritePlanOptions(options);
         var runtime =  ApplicationOptions.CreateRuntime(options);
+        await using var runtimeLog = RuntimeMeasurementLog.TryCreate(options, inputPath, runtime);
         var diffView =  ApplicationOptions.ResolveDiffView(options);
         var rules =  ApplicationOptions.TryParseDisabledRuleTypes(
           options,
@@ -37,61 +38,91 @@ public sealed class  CommandHost
           ? RuleRegistry.CreateDefaultRules(disabledRuleTypes)
           : _pipeline;
 
-        if (inputPath is not null && Directory.Exists(inputPath))
+        try
         {
-            var replayPlanPath =  ApplicationOptions.ResolveRewritePlanInPath(options);
-            if (replayPlanPath is not null)
+            if (inputPath is not null && Directory.Exists(inputPath))
             {
-                return await new RewritePlanReplayService().ReplayAsync(
+                var replayPlanPath =  ApplicationOptions.ResolveRewritePlanInPath(options);
+                if (replayPlanPath is not null)
+                {
+                    var replayResult = await new RewritePlanReplayService().ReplayAsync(
+                      inputPath,
+                      replayPlanPath,
+                      options,
+                      runtime);
+                    await CompleteRuntimeLogAsync(runtimeLog, replayResult, runtime);
+                    return replayResult;
+                }
+
+                var directoryResult = await new  DirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
                   inputPath,
-                  replayPlanPath,
                   options,
                   runtime);
+                var capturePlanPath =  ApplicationOptions.ResolveRewritePlanOutPath(options);
+                if (capturePlanPath is not null)
+                {
+                    CaptureRewritePlan(inputPath, capturePlanPath, directoryResult);
+                }
+
+                await CompleteRuntimeLogAsync(runtimeLog, directoryResult, runtime);
+                return directoryResult;
             }
 
-            var directoryResult = await new  DirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
-              inputPath,
-              options,
-              runtime);
-            var capturePlanPath =  ApplicationOptions.ResolveRewritePlanOutPath(options);
-            if (capturePlanPath is not null)
+            var source = inputPath is not null && File.Exists(inputPath)
+              ? File.ReadAllText(inputPath)
+              : DefaultSourceProvider.GetDefaultSource();
+            var filePath = inputPath ?? "demo.cs";
+            var application = new  ApplicationService(rules);
+            var result = application.Analyze(source, filePath, options, runtime);
+            result =  PostRewriteDiagnostics.AddSingleFileDiagnostics(
+              result,
+              filePath,
+               ApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options));
+
+            if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
             {
-                CaptureRewritePlan(inputPath, capturePlanPath, directoryResult);
+                await CompleteRuntimeLogAsync(runtimeLog, result, runtime);
+                return result;
             }
 
-            return directoryResult;
-        }
+            if ( ApplicationOptions.ShouldWriteBack(options))
+            {
+                File.WriteAllText(inputPath, result.RewrittenSource ?? source, Encoding.UTF8);
+            }
 
-        var source = inputPath is not null && File.Exists(inputPath)
-          ? File.ReadAllText(inputPath)
-          : DefaultSourceProvider.GetDefaultSource();
-        var filePath = inputPath ?? "demo.cs";
-        var application = new  ApplicationService(rules);
-        var result = application.Analyze(source, filePath, options, runtime);
-        result =  PostRewriteDiagnostics.AddSingleFileDiagnostics(
-          result,
-          filePath,
-           ApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options));
+            if (! ApplicationOptions.ShouldWriteDiff(options))
+            {
+                await CompleteRuntimeLogAsync(runtimeLog, result, runtime);
+                return result;
+            }
 
-        if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
-        {
+            var diffPath =  DiffPathResolver.ResolveDiffPath(inputPath, options);
+            var renderedDiff = _textDiffRenderer.Render(result.Diff, diffView);
+            File.WriteAllText(diffPath, renderedDiff, Encoding.UTF8);
+            result = result with { DiffFilePath = diffPath };
+            await CompleteRuntimeLogAsync(runtimeLog, result, runtime);
             return result;
         }
-
-        if ( ApplicationOptions.ShouldWriteBack(options))
+        catch (Exception exception)
         {
-            File.WriteAllText(inputPath, result.RewrittenSource ?? source, Encoding.UTF8);
-        }
+            if (runtimeLog is not null)
+            {
+                await runtimeLog.FailAsync(exception, runtime);
+            }
 
-        if (! ApplicationOptions.ShouldWriteDiff(options))
+            throw;
+        }
+    }
+
+    private static async Task CompleteRuntimeLogAsync(
+        RuntimeMeasurementLog? runtimeLog,
+        PrototypeAnalysisResult result,
+        AnalysisRuntime runtime)
+    {
+        if (runtimeLog is not null)
         {
-            return result;
+            await runtimeLog.CompleteAsync(result, runtime);
         }
-
-        var diffPath =  DiffPathResolver.ResolveDiffPath(inputPath, options);
-        var renderedDiff = _textDiffRenderer.Render(result.Diff, diffView);
-        File.WriteAllText(diffPath, renderedDiff, Encoding.UTF8);
-        return result with { DiffFilePath = diffPath };
     }
 
     private static void CaptureRewritePlan(string inputRoot, string artifactRoot, PrototypeAnalysisResult result)

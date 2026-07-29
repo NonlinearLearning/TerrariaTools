@@ -42,6 +42,8 @@ public sealed class AnalysisRuntime
         executionOptions,
         epoch,
         concurrencyPool,
+        new ConcurrencyOperationTelemetryCollector(),
+        new ConcurrencyAdmissionController(CreateConcurrencyAdmissionOptions(executionOptions)),
         new RuntimeCacheRegistry(),
         new CpgBuildAdmissionBudget(
           executionOptions.EffectiveCpgMaxDegreeOfParallelism,
@@ -49,11 +51,13 @@ public sealed class AnalysisRuntime
     {
     }
 
-    private AnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, AnalysisEpoch epoch, IConcurrencyPool? concurrencyPool, RuntimeCacheRegistry cacheRegistry, CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
+    private AnalysisRuntime(RoslynPrototypeExecutionOptions executionOptions, AnalysisEpoch epoch, IConcurrencyPool? concurrencyPool, ConcurrencyOperationTelemetryCollector concurrencyTelemetry, ConcurrencyAdmissionController concurrencyAdmissionController, RuntimeCacheRegistry cacheRegistry, CpgBuildAdmissionBudget cpgBuildAdmissionBudget)
     {
         ExecutionOptions = executionOptions;
         Epoch = epoch;
-        ConcurrencyPool = concurrencyPool ?? new BoundedConcurrencyPool();
+        ConcurrencyPool = concurrencyPool ?? new BoundedConcurrencyPool(concurrencyTelemetry, concurrencyAdmissionController);
+        ConcurrencyTelemetry = concurrencyTelemetry;
+        ConcurrencyAdmissionController = concurrencyAdmissionController;
         _cacheRegistry = cacheRegistry;
         CpgBuildAdmissionBudget = cpgBuildAdmissionBudget;
     }
@@ -63,6 +67,10 @@ public sealed class AnalysisRuntime
     public AnalysisEpoch Epoch { get; }
 
     public IConcurrencyPool ConcurrencyPool { get; }
+
+    public ConcurrencyOperationTelemetryCollector ConcurrencyTelemetry { get; }
+
+    public ConcurrencyAdmissionController ConcurrencyAdmissionController { get; }
 
     public CpgBuildAdmissionBudget CpgBuildAdmissionBudget { get; }
 
@@ -108,6 +116,8 @@ public sealed class AnalysisRuntime
           ExecutionOptions,
           Epoch with { CacheVersion = Epoch.CacheVersion + 1 },
           ConcurrencyPool,
+          ConcurrencyTelemetry,
+          ConcurrencyAdmissionController,
           _cacheRegistry,
           CpgBuildAdmissionBudget);
     }
@@ -123,6 +133,8 @@ public sealed class AnalysisRuntime
             Epoch.SourceVersion + 1,
             Epoch.CacheVersion + 1),
           ConcurrencyPool,
+          ConcurrencyTelemetry,
+          ConcurrencyAdmissionController,
           _cacheRegistry,
           CpgBuildAdmissionBudget);
     }
@@ -214,5 +226,15 @@ public sealed class AnalysisRuntime
         }
 
         return parsedValue;
+    }
+
+    private static ConcurrencyAdmissionOptions CreateConcurrencyAdmissionOptions(
+        RoslynPrototypeExecutionOptions executionOptions)
+    {
+        var maximumParallelism = executionOptions.EffectiveMaxDegreeOfParallelism;
+        return new ConcurrencyAdmissionOptions(
+          MaxConcurrentOperations: maximumParallelism,
+          MaxReservedItemCount: checked(maximumParallelism * 2),
+          MaxReservedByteCount: 128L * 1024 * 1024);
     }
 }
