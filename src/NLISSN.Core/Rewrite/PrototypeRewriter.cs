@@ -175,7 +175,7 @@ public sealed class PrototypeRewriter
   {
     var typeInfo = semanticModel.GetTypeInfo(expression);
     var targetType = typeInfo.ConvertedType ?? typeInfo.Type;
-    if (targetType is null) {
+    if (targetType is null || targetType.TypeKind == TypeKind.Error) {
       return SyntaxFactory.LiteralExpression(SyntaxKind.DefaultLiteralExpression);
     }
 

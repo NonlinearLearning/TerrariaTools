@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NLCPG.Analysis;
 using NLISSN.Core.Analysis;
 using NLCPG.Builder;
 using NLCPG.Contracts;
@@ -129,7 +130,12 @@ public sealed class StructureViewBuilderTests
         var (context, root) = CreateAnalysisContext(source, "structure-view-single-fragment.cs");
         var memberAccess = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>().Single();
         var expectedNodeIds = ResolveGraphNodeIdsInside(context, memberAccess);
-        var expectedEdgeKeys = ResolveGraphEdgeKeysInside(context, expectedNodeIds);
+        var expectedEdgeKeys = ResolveGraphEdgeKeysInside(context, expectedNodeIds)
+            .Where(key => key.Contains($"|{NLCPGEdgeKind.SyntaxChild}|", StringComparison.Ordinal) ||
+                key.Contains($"|{NLCPGEdgeKind.TokenChild}|", StringComparison.Ordinal) ||
+                key.Contains($"|{NLCPGEdgeKind.SyntaxHasOperation}|", StringComparison.Ordinal) ||
+                key.Contains($"|{NLCPGEdgeKind.OpHasSyntax}|", StringComparison.Ordinal))
+            .ToArray();
 
         var view = new NLCPGStructureViewBuilder().Build(memberAccess, context);
 
@@ -151,7 +157,7 @@ public sealed class StructureViewBuilderTests
         var declaratorNodeIds = ResolveGraphNodeIdsInside(context, declarator);
         var memberAccessNodeIds = ResolveGraphNodeIdsInside(context, memberAccess);
 
-        var view = new NLCPGStructureViewBuilder().Build(new SyntaxNode[] { declarator, memberAccess }, context);
+        var view = BuildStructuralView(new SyntaxNode[] { declarator, memberAccess }, context);
 
         Assert.NotEmpty(declaratorNodeIds);
         Assert.NotEmpty(memberAccessNodeIds);
@@ -182,9 +188,7 @@ public sealed class StructureViewBuilderTests
         var firstNodeIds = ResolveGraphNodeIdsInside(context, firstLiteral);
         var secondNodeIds = ResolveGraphNodeIdsInside(context, secondLiteral);
 
-        var view = new NLCPGStructureViewBuilder().Build(
-            new SyntaxNode[] { firstLiteral, secondLiteral },
-            context);
+        var view = BuildStructuralView(new SyntaxNode[] { firstLiteral, secondLiteral }, context);
 
         Assert.True(HasUndirectedPath(view, firstNodeIds, secondNodeIds));
         Assert.True(view.Nodes.Count > firstNodeIds.Union(secondNodeIds).Count());
@@ -202,8 +206,8 @@ public sealed class StructureViewBuilderTests
             .Single(node => node.ToString() == "s.Seed");
         var builder = new NLCPGStructureViewBuilder();
 
-        var firstView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
-        var secondView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
+        var firstView = BuildStructuralView(new SyntaxNode[] { declarator, memberAccess }, context);
+        var secondView = BuildStructuralView(new SyntaxNode[] { declarator, memberAccess }, context);
 
         Assert.Same(firstView, secondView);
     }
@@ -228,9 +232,15 @@ public sealed class StructureViewBuilderTests
             runtime: runtime.InvalidateCaches());
 
         var firstView = firstRuleContext.StructureViews.BuildStructureView(
-            new SyntaxNode[] { declarator, memberAccess });
+            new SyntaxNode[] { declarator, memberAccess },
+            CpgRelationProfile.StructuralContainment,
+            CpgQueryDirection.Bidirectional,
+            new NLCPGTraversalBudget(16, 1, 1, 4096, 8192));
         var secondView = secondRuleContext.StructureViews.BuildStructureView(
-            new SyntaxNode[] { declarator, memberAccess });
+            new SyntaxNode[] { declarator, memberAccess },
+            CpgRelationProfile.StructuralContainment,
+            CpgQueryDirection.Bidirectional,
+            new NLCPGTraversalBudget(16, 1, 1, 4096, 8192));
 
         Assert.NotSame(firstView, secondView);
     }
@@ -246,8 +256,8 @@ public sealed class StructureViewBuilderTests
             .Single(node => node.ToString() == "s.Seed");
         var builder = new NLCPGStructureViewBuilder();
 
-        var declaratorFirstView = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
-        var memberAccessFirstView = builder.Build(new SyntaxNode[] { memberAccess, declarator }, context);
+        var declaratorFirstView = BuildStructuralView(new SyntaxNode[] { declarator, memberAccess }, context);
+        var memberAccessFirstView = BuildStructuralView(new SyntaxNode[] { memberAccess, declarator }, context);
 
         Assert.NotSame(declaratorFirstView, memberAccessFirstView);
         Assert.Equal(declarator.SpanStart, declaratorFirstView.Root.SpanStart);
@@ -265,9 +275,9 @@ public sealed class StructureViewBuilderTests
             .Single(node => node.ToString() == "s.Seed");
         var builder = new NLCPGStructureViewBuilder();
 
-        var first = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
-        var second = builder.Build(new SyntaxNode[] { declarator, memberAccess }, context);
-        var reversed = builder.Build(new SyntaxNode[] { memberAccess, declarator }, context);
+        var first = BuildStructuralView(new SyntaxNode[] { declarator, memberAccess }, context);
+        var second = BuildStructuralView(new SyntaxNode[] { declarator, memberAccess }, context);
+        var reversed = BuildStructuralView(new SyntaxNode[] { memberAccess, declarator }, context);
 
         Assert.Same(first, second);
         Assert.NotSame(first, reversed);
@@ -332,6 +342,52 @@ public sealed class StructureViewBuilderTests
 
         Assert.NotEmpty(view.Nodes);
         Assert.Contains(view.Nodes, node => node.SpanStart == memberAccess.SpanStart);
+    }
+
+    [Fact]
+    public void Query_WhenAnchorHasMultipleSyntaxRoots_ReturnsAmbiguous()
+    {
+        // Arrange
+        const string source = "class Sample { }";
+        var tree = CSharpSyntaxTree.ParseText(source, path: "structure-view-ambiguous.cs");
+        var root = tree.GetRoot();
+        var compilation = CSharpCompilation.Create(
+            "StructureViewAmbiguousTests",
+            new[] { tree },
+            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        var graph = new NLCPGGraph();
+        graph.AddNode(new NLCPGNode(
+            NLCPGNodeKind.SyntaxNode,
+            "SyntaxNode",
+            "first",
+            FilePath: tree.FilePath,
+            SpanStart: root.SpanStart,
+            SpanEnd: root.Span.End,
+            StableAnchor: new StableNodeAnchor(
+                NLCPGNodeKind.SyntaxNode, 1, root.SpanStart, root.Span.End, StableNodeRole.SyntaxNode, 0, 1)));
+        graph.AddNode(new NLCPGNode(
+            NLCPGNodeKind.SyntaxNode,
+            "SyntaxNode",
+            "second",
+            FilePath: tree.FilePath,
+            SpanStart: root.SpanStart,
+            SpanEnd: root.Span.End,
+            StableAnchor: new StableNodeAnchor(
+                NLCPGNodeKind.SyntaxNode, 1, root.SpanStart, root.Span.End, StableNodeRole.SyntaxNode, 1, 2)));
+        graph.FreezeQueryIndex();
+        var context = new CpgAnalysisContext(graph, compilation.GetSemanticModel(tree), root);
+
+        // Act
+        var result = new NLCPGStructureViewBuilder().Query(
+            new[] { root },
+            context,
+            CpgRelationProfile.StructuralContainment,
+            CpgQueryDirection.Incoming,
+            new NLCPGTraversalBudget(1, 1, 1, 16, 16));
+
+        // Assert
+        Assert.Equal(CpgQueryStatus.Ambiguous, result.Status);
+        Assert.Null(result.View);
     }
 
     [Fact]
@@ -440,6 +496,18 @@ public sealed class StructureViewBuilderTests
         var semanticModel = compilation.GetSemanticModel(tree);
         var graph = new NLCPGBuilder().BuildFromSource(source, filePath);
         return (new CpgAnalysisContext(graph, semanticModel, root), root);
+    }
+
+    private static NLCPGStructureView BuildStructuralView(
+        IReadOnlyCollection<SyntaxNode> fragments,
+        CpgAnalysisContext context)
+    {
+        return new NLCPGStructureViewBuilder().Build(
+            fragments,
+            context,
+            CpgRelationProfile.StructuralContainment,
+            CpgQueryDirection.Bidirectional,
+            new NLCPGTraversalBudget(16, 1, 1, 4096, 8192));
     }
 
     private static HashSet<NodeId> ResolveGraphNodeIdsInside(CpgAnalysisContext context, SyntaxNode syntaxNode)

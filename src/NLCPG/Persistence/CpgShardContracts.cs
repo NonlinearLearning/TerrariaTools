@@ -1,3 +1,7 @@
+using NLCPG.Analysis.FlowSummaries;
+using NLCPG.Contracts;
+using NLCPG.Model;
+
 namespace NLCPG.Persistence;
 
 public enum CpgShardStatus
@@ -145,7 +149,8 @@ public sealed record CpgFrozenEdge(
   string? CallSiteFilePath = null,
   int? CallSiteSpanStart = null,
   int? CallSiteSpanEnd = null,
-  string? CallSiteDisplayName = null);
+  string? CallSiteDisplayName = null,
+  CpgFrozenFlowSummaryLabel? FlowSummaryLabel = null);
 
 /// 端点由全局 NodeId 值定位的一条跨分片边。
 public sealed record CpgFrozenBoundaryEdge(
@@ -157,7 +162,48 @@ public sealed record CpgFrozenBoundaryEdge(
   string? CallSiteFilePath = null,
   int? CallSiteSpanStart = null,
   int? CallSiteSpanEnd = null,
-  string? CallSiteDisplayName = null);
+  string? CallSiteDisplayName = null,
+  CpgFrozenFlowSummaryLabel? FlowSummaryLabel = null);
+
+/// <summary>
+/// Persists the typed portion of a summary bridge label without requiring stable-key parsing on recovery.
+/// </summary>
+public sealed record CpgFrozenFlowSummaryLabel(
+  NLCPGInterproceduralBridgeKind BridgeKind,
+  FlowSummaryResolution Resolution,
+  string MethodKey,
+  FlowSummaryEndpoint Source,
+  FlowSummaryEndpoint Target)
+{
+    public static CpgFrozenFlowSummaryLabel? From(NLCPGEdgeLabel? label)
+    {
+        if (label?.InterproceduralBridgeKind is not { } bridgeKind ||
+            label.FlowSummaryResolution is not { } resolution ||
+            string.IsNullOrWhiteSpace(label.FlowSummaryMethodKey) ||
+            label.FlowSummarySource is null ||
+            label.FlowSummaryTarget is null)
+        {
+            return null;
+        }
+
+        return new CpgFrozenFlowSummaryLabel(
+          bridgeKind,
+          resolution,
+          label.FlowSummaryMethodKey,
+          label.FlowSummarySource,
+          label.FlowSummaryTarget);
+    }
+
+    public NLCPGEdgeLabel ToEdgeLabel()
+    {
+        return NLCPGEdgeLabel.ForFlowSummaryBridge(
+          BridgeKind,
+          Resolution,
+          MethodKey,
+          Source,
+          Target);
+    }
+}
 
 public sealed record CpgBoundaryAdjacency(string OwnerFragmentId, CpgBoundaryAdjacencyDirection Direction);
 

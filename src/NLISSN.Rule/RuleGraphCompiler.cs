@@ -34,26 +34,15 @@ public sealed class RuleGraphCompiler
                       $"Rule node '{node.NodeId.Value}' depends on unknown producer '{dependency.Producer.Value}'.");
                 }
 
-                if (dependency.RequiredStructure is { } requiredStructure &&
-                    !producer.ProducedStructures.Any(producedStructure =>
-                      RuleStructureContractMatcher.IsCompatible(
-                        producedStructure,
-                        requiredStructure)))
+                if (dependency.RequiredInput is { } requiredInput &&
+                    !producer.ProducedSyntax.Any(producedSyntax =>
+                      RuleSyntaxContractMatcher.IsCompatible(producedSyntax, requiredInput)))
                 {
                     throw new InvalidOperationException(
-                      $"Rule node '{node.NodeId.Value}' requires structure " +
-                      $"'{Format(requiredStructure)}' from producer " +
+                      $"Rule node '{node.NodeId.Value}' requires syntax tag " +
+                      $"'{requiredInput.SemanticTag.Value}' and syntax kinds " +
+                      $"'{string.Join(", ", requiredInput.SyntaxKinds)}' from producer " +
                       $"'{dependency.Producer.Value}', but it is not produced.");
-                }
-
-                if (dependency.RequiredTerminalFact is { } terminalFact &&
-                    (producer.FactDomain != terminalFact.Domain ||
-                     !terminalFact.SourceStages.Contains(producer.Kind)))
-                {
-                    throw new InvalidOperationException(
-                      $"Rule node '{node.NodeId.Value}' requires terminal fact domain " +
-                      $"'{terminalFact.Domain}' from producer '{dependency.Producer.Value}', " +
-                      "but that producer does not declare the required domain and stage.");
                 }
 
                 if (!distinctDependencies.Add(dependency))
@@ -124,8 +113,4 @@ public sealed class RuleGraphCompiler
               .ToList()));
     }
 
-    private static string Format(MarkedStructureSelector selector)
-    {
-        return $"({selector.StructureKind}, {selector.Role}, {selector.SemanticTag.Value})";
-    }
 }

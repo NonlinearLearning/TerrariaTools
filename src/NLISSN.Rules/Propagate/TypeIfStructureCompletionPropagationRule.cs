@@ -6,16 +6,52 @@ namespace NLISSN.Rules;
 
 /// 为 delete-class 规则复用统一的 if 结构完成态传播，
 /// 把散落在条件、语句块和尾分支上的命中收束成单个结构 payload。
-public sealed class ClassIfStructureCompletionPropagationRule : ClassPropagationRuleBase
+public sealed class ClassIfStructureCompletionPropagationRule : RuleDefinitionPropagate
 {
+    private static readonly RuleConsumesContract IfCompletionConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[] { SyntaxKind.ClassDeclaration },
+        new RuleSemanticTag("Class.DeclarationTarget")),
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.SimpleMemberAccessExpression,
+          SyntaxKind.MemberBindingExpression,
+          SyntaxKind.InvocationExpression,
+          SyntaxKind.ElementAccessExpression,
+          SyntaxKind.ConditionalAccessExpression,
+          SyntaxKind.ObjectCreationExpression,
+          SyntaxKind.ImplicitObjectCreationExpression
+        },
+        new RuleSemanticTag("Class.ExpressionTarget")),
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.QualifiedName,
+          SyntaxKind.AliasQualifiedName,
+          SyntaxKind.GenericName
+        },
+        new RuleSemanticTag("Class.TypeSyntaxTarget"))
+    });
+
     private static readonly RuleSemanticTag IfCompletionSemanticTag = new("Class.IfCompletion");
 
     private static readonly RuleProducesContract IfCompletionProduces =
-      RuleStructureContractFactories.CreateIfCompletionProduces(IfCompletionSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          IfCompletionSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propagate.type.if-structure-completion";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-IF-COMPLETE-001";
+
+    public override RuleConsumesContract Consumes => IfCompletionConsumes;
 
 
     public override string Name { get; } = "Propagate delete-class if/elseif/else completion state as structured payloads";

@@ -1250,6 +1250,37 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void MultiFragmentStructureView_RuleOutputDecisionRewriteAndDiff_RemainConnected()
+    {
+        // ViewAwareLiftRule verifies that both seed and propagated graph anchors are selected.
+        var source = SObjectControlFlowSources.PropagationDedupSource;
+        var (context, root) = CreateContext(source, "s");
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[] { new DuplicatePropagationRule() });
+        var liftedMark = Assert.Single(new MarkLiftingEngine().Run(
+          context,
+          seedMarks,
+          propagatedMarks,
+          new RuleDefinitionLift[] { new ViewAwareLiftRule() }));
+        var decision = new RuleDecision(
+          liftedMark.Mark.SyntaxNode,
+          liftedMark.Mark.SyntaxNode,
+          DecisionActionKind.Delete,
+          "Delete the rule-selected return statement.");
+        var rewriter = new PrototypeRewriter();
+
+        var result = rewriter.Rewrite(root, context.SemanticModel, new[] { decision });
+
+        Assert.Equal(SyntaxKind.ReturnStatement, (SyntaxKind)liftedMark.Mark.SyntaxNode.RawKind);
+        Assert.Single(result.Edits);
+        TextDiffAssert.Contains("return default(int);", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("return 1;", result.RewrittenSource, result.Diff);
+    }
+
+    [Fact]
     public void PrototypeRewriter_Rewrite_ReplacesExpressionsAndDeletesStatements()
     {
         var source = RewriteSources.ReplaceAndDeleteSource;
@@ -4718,12 +4749,15 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_ComposesClassAndSObjectRuleSetsWithoutDeletePrefixedTypeNames()
+    public void RuleRegistry_CreateDefaultRules_UsesFlatStageRegistrationWithoutRuleFamilyTypes()
     {
         var rules = RuleRegistry.CreateDefaultRules();
 
-        Assert.IsAssignableFrom<IRuleSet>(new ClassRuleSet());
-        Assert.IsAssignableFrom<IRuleSet>(new SObjectRuleSet());
+        Assert.DoesNotContain(
+          typeof(RuleRegistry).Assembly.GetTypes(),
+          type => type.Name.EndsWith("RuleSet", StringComparison.Ordinal) &&
+            (type.Name.StartsWith("Class", StringComparison.Ordinal) ||
+             type.Name.StartsWith("SObject", StringComparison.Ordinal)));
         Assert.Contains(rules.Markers, rule => rule is SObjectIdentifierNameMarkRule);
         Assert.Contains(rules.Markers, rule => rule is ClassTypeSyntaxMarkRule);
         Assert.DoesNotContain(
@@ -4736,31 +4770,30 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateRules_UsesOnlyExplicitlyProvidedRuleSets()
+    public void RuleRegistry_CreateDefaultRules_RegistersStandaloneRulesWithoutRuleSetTypes()
     {
-        var rules = RuleRegistry.CreateRules(new IRuleSet[] { new TestRuleSet() });
+        var rules = RuleRegistry.CreateDefaultRules();
 
-        var marker = Assert.Single(rules.Markers);
-        Assert.IsType<TestRuleSetMarkRule>(marker);
-        Assert.Empty(rules.Propagators);
-        Assert.Empty(rules.Lifters);
-        Assert.Empty(rules.Proposers);
+        Assert.Contains(rules.Markers, rule => rule is UnreachableMethodMarkRule);
+        Assert.Contains(rules.Markers, rule => rule is UnreferencedMethodMarkRule);
+        Assert.Contains(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
+        Assert.Contains(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
+        Assert.DoesNotContain(
+          typeof(RuleRegistry).Assembly.GetTypes(),
+          type => type.Name.Contains("RuleSet", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void DefaultRuleSets_ExposeUniqueIdsAndCapabilityIds()
+    public void DefaultRulePipeline_ExposesUniqueCapabilityIds()
     {
-        var ruleSets = DefaultRuleSets.Create();
-        var capabilityIds = ruleSets
-          .SelectMany(ruleSet => ruleSet.Markers.Select(rule => rule.CapabilityId))
-          .Concat(ruleSets.SelectMany(ruleSet => ruleSet.Propagators.Select(rule => rule.CapabilityId)))
-          .Concat(ruleSets.SelectMany(ruleSet => ruleSet.Lifters.Select(rule => rule.CapabilityId)))
-          .Concat(ruleSets.SelectMany(ruleSet => ruleSet.Proposers.Select(rule => rule.CapabilityId)))
+        var pipeline = RuleRegistry.CreateDefaultRules();
+        var capabilityIds = pipeline.Markers.Cast<IRuleDefinition>()
+          .Concat(pipeline.Propagators)
+          .Concat(pipeline.Lifters)
+          .Concat(pipeline.Proposers)
+          .Select(rule => rule.CapabilityId)
           .ToList();
 
-        Assert.Equal(
-          ruleSets.Count,
-          ruleSets.Select(ruleSet => ruleSet.Id).Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(capabilityIds.Count, capabilityIds.Distinct(StringComparer.Ordinal).Count());
         Assert.All(capabilityIds, capabilityId =>
         {
@@ -4943,7 +4976,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
-          .Where(rule => rule.FactDomain == RuleFactDomain.SObject)
+          .Where(rule => rule.Produces.Outputs.Any(output => output.SemanticTag.Value == "Target.Atomic"))
           .ToList();
     }
 
@@ -4951,7 +4984,8 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
-          .Where(rule => rule.FactDomain == RuleFactDomain.Class)
+          .Where(rule => rule.Produces.Outputs.Any(output =>
+            output.SemanticTag.Value.StartsWith("Class.", StringComparison.Ordinal)))
           .ToList();
     }
 
@@ -5100,7 +5134,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override string Name { get; } = "Mark a named class for parallel scheduler tests.";
 
         public override RuleProducesContract Produces =>
-          RuleStructureContractFactories.CreateDeclarationHostProduces(CreateSemanticTag(RuleId));
+          CreateSyntaxProduces(new[] { SyntaxKind.MethodDeclaration }, CreateSemanticTag(RuleId));
 
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
             new[] { SyntaxKind.MethodDeclaration };
@@ -5221,8 +5255,10 @@ public sealed class PipelineComponentTests : IDisposable
 
         public override string Name { get; } = "Emit duplicated propagated marks";
 
+        public override RuleConsumesContract Consumes => CreateSObjectAtomicConsumes();
+
         public override RuleProducesContract Produces =>
-          RuleStructureContractFactories.CreateIfStructureProduces(IfSemanticTag);
+          CreateSyntaxProduces(new[] { SyntaxKind.IfStatement }, IfSemanticTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IfStatement };
@@ -5257,8 +5293,10 @@ public sealed class PipelineComponentTests : IDisposable
 
         public override string Name { get; } = "Propagate initializer marks to declarators";
 
+        public override RuleConsumesContract Consumes => CreateSObjectAtomicConsumes();
+
         public override RuleProducesContract Produces =>
-          RuleStructureContractFactories.CreateVariableDeclaratorProduces(DeclaratorSemanticTag);
+          CreateSyntaxProduces(new[] { SyntaxKind.VariableDeclarator }, DeclaratorSemanticTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.VariableDeclarator };
@@ -5306,9 +5344,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override string Name { get; } = "Propagate declarator marks to later local references";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateVariableDeclaratorConsumes(
-            DeclaratorSemanticTag,
-            RuleInputCardinality.All);
+          CreateSyntaxConsumes(new[] { SyntaxKind.VariableDeclarator }, DeclaratorSemanticTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IdentifierName };
@@ -5367,9 +5403,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override string Name { get; } = "Propagate only when one if statement is visible.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateIfStructureConsumes(
-            IfSemanticTag,
-            RuleInputCardinality.All);
+          CreateSyntaxConsumes(new[] { SyntaxKind.IfStatement }, IfSemanticTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.ReturnStatement };
@@ -5404,9 +5438,9 @@ public sealed class PipelineComponentTests : IDisposable
         public override string Name { get; } = "Propagate a class seed to its method for scheduler tests.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateDeclarationHostConsumes(
-            CreateSemanticTag(_seedRuleId),
-            RuleInputCardinality.ExactlyOne);
+          CreateSyntaxConsumes(new[] { SyntaxKind.MethodDeclaration }, CreateSemanticTag(_seedRuleId));
+
+        public override RuleInputCardinality InputCardinality => RuleInputCardinality.ExactlyOne;
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.MethodDeclaration };
@@ -5431,6 +5465,8 @@ public sealed class PipelineComponentTests : IDisposable
 
 
         public override string Name { get; } = "Require a rule-scoped structure view during propagation";
+
+        public override RuleConsumesContract Consumes => CreateSObjectAtomicConsumes();
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IfStatement };
@@ -5458,10 +5494,20 @@ public sealed class PipelineComponentTests : IDisposable
 
     private sealed class ViewAwareLiftRule : RuleDefinitionLift
     {
+        private static readonly RuleSemanticTag IfSemanticTag = new("Test.Propagation.If");
+
         public override string RuleId { get; } = "TEST-VIEW-LIFT-001";
 
 
         public override string Name { get; } = "Require a rule-scoped structure view during lifting";
+
+        public override RuleConsumesContract Consumes => new(new[]
+        {
+            new RuleConsumedSyntax(
+                SObjectPropagationRuleBase.AtomicTargetNodeKinds,
+                new RuleSemanticTag("Target.Atomic")),
+            new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement }, IfSemanticTag)
+        });
 
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
             new[] { SyntaxKind.ReturnStatement };
@@ -5509,9 +5555,9 @@ public sealed class PipelineComponentTests : IDisposable
         public override string Name { get; } = "Lift a class seed to its namespace for scheduler tests.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateDeclarationHostConsumes(
-            CreateSemanticTag(_seedRuleId),
-            RuleInputCardinality.ExactlyOne);
+          CreateSyntaxConsumes(new[] { SyntaxKind.MethodDeclaration }, CreateSemanticTag(_seedRuleId));
+
+        public override RuleInputCardinality InputCardinality => RuleInputCardinality.ExactlyOne;
 
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
             new[] { SyntaxKind.FileScopedNamespaceDeclaration };
@@ -5532,31 +5578,6 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private sealed class TestRuleSet : NLISSN.Rules.RuleSetDefinition
-    {
-        public override string Id => "test";
-
-        public override IReadOnlyList<RuleDefinitionMark> Markers { get; } =
-          new RuleDefinitionMark[] { new TestRuleSetMarkRule() };
-    }
-
-    private sealed class TestRuleSetMarkRule : RuleDefinitionMark
-    {
-        public override string RuleId => "TEST-SET-MARK-001";
-
-        public override string Name => "Test RuleSet marker";
-
-        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
-          Array.Empty<SyntaxKind>();
-
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
-        {
-            _ = context;
-            _ = root;
-            return Array.Empty<MarkRecord>();
-        }
-    }
-
     private sealed class ClassDecisionRule : RuleDefinitionPropose
     {
         private readonly string _seedRuleId;
@@ -5573,9 +5594,9 @@ public sealed class PipelineComponentTests : IDisposable
         public override string Name { get; } = "Create a delete decision for scheduler tests.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateDeclarationHostConsumes(
-            CreateSemanticTag(_seedRuleId),
-            RuleInputCardinality.ExactlyOne);
+          CreateSyntaxConsumes(new[] { SyntaxKind.MethodDeclaration }, CreateSemanticTag(_seedRuleId));
+
+        public override RuleInputCardinality InputCardinality => RuleInputCardinality.ExactlyOne;
 
         public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds { get; } =
             new[] { SyntaxKind.ClassDeclaration };
@@ -5614,6 +5635,33 @@ public sealed class PipelineComponentTests : IDisposable
     private static RuleSemanticTag CreateSemanticTag(string ruleId)
     {
         return new RuleSemanticTag($"Test.Parallel.{ruleId}");
+    }
+
+    private static RuleProducesContract CreateSyntaxProduces(
+      IReadOnlyList<SyntaxKind> syntaxKinds,
+      RuleSemanticTag semanticTag)
+    {
+        return new RuleProducesContract(new[]
+        {
+            new RuleProducedSyntax(syntaxKinds, semanticTag)
+        });
+    }
+
+    private static RuleConsumesContract CreateSyntaxConsumes(
+      IReadOnlyList<SyntaxKind> syntaxKinds,
+      RuleSemanticTag semanticTag)
+    {
+        return new RuleConsumesContract(new[]
+        {
+            new RuleConsumedSyntax(syntaxKinds, semanticTag)
+        });
+    }
+
+    private static RuleConsumesContract CreateSObjectAtomicConsumes()
+    {
+        return CreateSyntaxConsumes(
+          SObjectPropagationRuleBase.AtomicTargetNodeKinds,
+          new RuleSemanticTag("Target.Atomic"));
     }
 
     private static void AssertEquivalentAnalysisResults(PrototypeAnalysisResult expected, PrototypeAnalysisResult actual)

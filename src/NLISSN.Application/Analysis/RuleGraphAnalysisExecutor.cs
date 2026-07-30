@@ -4,6 +4,7 @@ using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Pipeline;
+using NLISSN.Core.Validation;
 
 namespace NLISSN.Application;
 
@@ -12,6 +13,8 @@ internal sealed record RuleGraphAnalysisResult(
   IReadOnlyList<PropagatedMarkRecord> PropagatedMarks,
   IReadOnlyList<LiftedMarkRecord> LiftedMarks,
   IReadOnlyList<RuleDecision> Decisions,
+  AnalysisEvidenceGraph Evidence,
+  AnalysisValidationReport? ValidationReport,
   IReadOnlyList<RuleGraphNodeTelemetry> Telemetry,
   IReadOnlyDictionary<RuleNodeId, RuleGraphNodeStatus> NodeStatuses,
   RuleGraphExecutionMetrics? Metrics);
@@ -74,15 +77,32 @@ internal sealed class RuleGraphAnalysisExecutor
           .OfType<DecisionUnit>()
           .ToList();
         var decisions = new RuleDecisionEngine().ResolveUnits(context, units, pipeline.Proposers);
+        var nodeStatuses = execution.Nodes.ToDictionary(node => node.NodeId, node => node.Status);
+        context.Evidence.RecordNodeStatuses(nodeStatuses);
+        context.Evidence.RecordEmptyOutputs(execution.Nodes);
+        var evidence = context.Evidence.Complete(decisions);
+        var validationReport = IsValidationEnabled(context)
+          ? new RuleBindingValidator()
+            .Validate(context, graph, execution)
+            .Combine(new DecisionBindingValidator().Validate(root, units, evidence.Decisions, evidence.Graph))
+          : null;
 
         return new RuleGraphAnalysisResult(
           seedMarks,
           propagatedMarks,
           liftedMarks,
-          decisions,
+          evidence.Decisions,
+          evidence.Graph,
+          validationReport,
           execution.Telemetry ?? Array.Empty<RuleGraphNodeTelemetry>(),
-          execution.Nodes.ToDictionary(node => node.NodeId, node => node.Status),
+          nodeStatuses,
           execution.Metrics);
+    }
+
+    private static bool IsValidationEnabled(RuleContext context)
+    {
+        return context.TryGetOption("validate-bindings", out var value) &&
+          (string.IsNullOrEmpty(value) || bool.TryParse(value, out var enabled) && enabled);
     }
 
     private static RuleGraphExecutionNode CreateMarkerNode(
@@ -153,6 +173,7 @@ internal sealed class RuleGraphAnalysisExecutor
                   values.OfType<PropagatedMarkRecord>().ToList(),
                   values.OfType<LiftedMarkRecord>().ToList())
                 .ToList();
+              context.Evidence.RecordProposal(rule.RuleId, values, units);
               return Task.FromResult(CreateResult(rule.Produces, units));
           });
     }
@@ -209,8 +230,8 @@ internal sealed class RuleGraphAnalysisExecutor
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => dependency.RequiredStructure is { } structure
-            ? inputs.GetOutputs(dependency.Producer, structure)
+          .SelectMany(dependency => dependency.RequiredInput is { } input
+            ? inputs.GetOutputs(dependency.Producer, input)
             : inputs.GetValues(dependency.Producer))
           .ToList();
     }

@@ -13,21 +13,19 @@ public sealed class SObjectSwitchStructureLiftingRule : RuleDefinitionLift
     private static readonly RuleSemanticTag ExpressionHostSemanticTag = new("SObject.ExpressionHost");
 
     private static readonly RuleConsumesContract SwitchConsumes = new(
-      RuleStructureContractFactories.CreateExpressionOrStatementHostConsumes(
-        ExpressionHostSemanticTag,
-        RuleInputCardinality.All)
-        .Structures
-        .Concat(RuleStructureContractFactories.CreateIfStructureConsumes(
-          IfStructureSemanticTag,
-          RuleInputCardinality.All)
-          .Structures)
-        .ToList());
+      new[]
+      {
+        new RuleConsumedSyntax(
+          DeleteSObjectLiftingCommon.AllowedLiftNodeKinds,
+          ExpressionHostSemanticTag),
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          IfStructureSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "lift.target.switch-structure";
 
     public override string RuleId { get; } = "DEL-SOBJ-LIFT-SWITCH-001";
-
-    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
 
     public override RuleConsumesContract Consumes => SwitchConsumes;
 

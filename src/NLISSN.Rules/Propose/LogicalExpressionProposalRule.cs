@@ -14,9 +14,12 @@ public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
     private static readonly RuleSemanticTag LogicalHostSemanticTag = new("SObject.LogicalHost");
 
     private static readonly RuleConsumesContract LogicalHostConsumes =
-      RuleStructureContractFactories.CreateLogicalBinaryConsumes(
-        LogicalHostSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
+          LogicalHostSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propose.logical-expression";
 

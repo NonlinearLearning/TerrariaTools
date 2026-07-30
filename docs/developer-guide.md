@@ -114,6 +114,8 @@ rewrite 流程，且没有找到现有持久化、写入锁和取消覆盖之外
 
 运行前按根目录约束设置 `DOTNET_CLI_HOME`；`init.ps1` 会完成该设置。CLI、文档或 harness 改动应运行对应的 `dotnet build`、`dotnet test` 和 CLI smoke；随后使用 `pwsh -File .\scripts\check-harness-consistency.ps1` 核对当前入口、文档与状态文件。
 
+绑定校验只在显式传入 `--validate-bindings` 时运行。它在规则图输出归并和 rewrite 前检查 CPG/规则/决策关系；Error 会保留诊断报告并跳过写入，默认分析路径不承担全图校验成本。
+
 ## 文档与状态同步
 
 - 用户入口与命令：维护 `README.md`、`docs/quick-start.md`、`docs/cli-reference.md`。

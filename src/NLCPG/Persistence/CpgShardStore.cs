@@ -3,7 +3,9 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
+using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Builder;
+using NLCPG.Contracts;
 
 namespace NLCPG.Persistence;
 
@@ -13,7 +15,8 @@ public sealed class CpgShardStore : ICpgShardStore
     private const int StreamBufferSize = 64 * 1024;
     private const int MaxPooledLocalIndexCount = 16 * 1024 * 1024;
     private const int LegacyFormatVersion = 5;
-    private const int FormatVersion = 6;
+    private const int IncomingEdgeIndexFormatVersion = 6;
+    private const int FormatVersion = 7;
     private static Action<string>? _afterTemporaryWriteForTesting;
     private static Action<CpgShardLocation>? _afterReadForTesting;
     private readonly CpgPersistenceDurabilityMode _durabilityMode;
@@ -221,6 +224,7 @@ public sealed class CpgShardStore : ICpgShardStore
             WriteOptionalInt(writer, edge.CallSiteSpanStart);
             WriteOptionalInt(writer, edge.CallSiteSpanEnd);
             WriteOptional(writer, edge.CallSiteDisplayName);
+            WriteFlowSummaryLabel(writer, edge.FlowSummaryLabel);
         }
 
         foreach (var offset in incomingEdgeOffsets)
@@ -246,6 +250,7 @@ public sealed class CpgShardStore : ICpgShardStore
             WriteOptionalInt(writer, edge.CallSiteSpanStart);
             WriteOptionalInt(writer, edge.CallSiteSpanEnd);
             WriteOptional(writer, edge.CallSiteDisplayName);
+            WriteFlowSummaryLabel(writer, edge.FlowSummaryLabel);
         }
 
         writer.Write(shard.SymbolLocations.Count);
@@ -269,7 +274,7 @@ public sealed class CpgShardStore : ICpgShardStore
         }
 
         var formatVersion = reader.ReadInt32();
-        if (formatVersion != LegacyFormatVersion && formatVersion != FormatVersion)
+        if (!IsSupportedFormatVersion(formatVersion))
         {
             throw new InvalidDataException("The CPG shard header is unsupported or corrupt.");
         }
@@ -289,10 +294,10 @@ public sealed class CpgShardStore : ICpgShardStore
         var edges = Enumerable.Range(0, reader.ReadInt32()).Select(_ => new CpgFrozenEdge(
           reader.ReadInt32(), reader.ReadInt32(), ReadRequired(reader), ReadOptional(reader),
           ReadOptional(reader), ReadOptional(reader), ReadOptionalInt(reader), ReadOptionalInt(reader),
-          ReadOptional(reader))).ToArray();
+          ReadOptional(reader), formatVersion >= FormatVersion ? ReadFlowSummaryLabel(reader) : null)).ToArray();
         int[]? incomingEdgeOffsets = null;
         int[]? incomingEdgeIndexes = null;
-        if (formatVersion >= FormatVersion)
+        if (formatVersion >= IncomingEdgeIndexFormatVersion)
         {
             incomingEdgeOffsets = Enumerable.Range(0, nodes.Length + 1)
               .Select(_ => reader.ReadInt32())
@@ -305,7 +310,7 @@ public sealed class CpgShardStore : ICpgShardStore
         var boundaryEdges = Enumerable.Range(0, reader.ReadInt32()).Select(_ => new CpgFrozenBoundaryEdge(
           reader.ReadUInt32(), reader.ReadUInt32(), ReadRequired(reader), ReadOptional(reader),
           ReadOptional(reader), ReadOptional(reader), ReadOptionalInt(reader), ReadOptionalInt(reader),
-          ReadOptional(reader))).ToArray();
+          ReadOptional(reader), formatVersion >= FormatVersion ? ReadFlowSummaryLabel(reader) : null)).ToArray();
         var symbols = Enumerable.Range(0, reader.ReadInt32()).Select(_ => new CpgSymbolLocation(
           ReadRequired(reader), reader.ReadInt32())).ToArray();
         var localIndexes = new HashSet<int>(nodes.Select(node => node.LocalIndex));
@@ -452,7 +457,7 @@ public sealed class CpgShardStore : ICpgShardStore
             }
 
             var edgeCount = reader.ReadCount();
-            var edgeTargets = formatVersion >= FormatVersion
+            var edgeTargets = formatVersion >= IncomingEdgeIndexFormatVersion
               ? ArrayPool<int>.Shared.Rent(edgeCount)
               : null;
             for (var index = 0; index < edgeCount; index += 1)
@@ -469,9 +474,13 @@ public sealed class CpgShardStore : ICpgShardStore
 
                 edgeTargets?[index] = targetLocalIndex;
                 ReadEdgePayload(reader);
+                if (formatVersion >= FormatVersion)
+                {
+                    ReadFlowSummaryLabel(reader);
+                }
             }
 
-            if (formatVersion >= FormatVersion)
+            if (formatVersion >= IncomingEdgeIndexFormatVersion)
             {
                 ValidateIncomingEdgeIndex(reader, nodeCount, edgeCount, edgeTargets!);
             }
@@ -482,6 +491,10 @@ public sealed class CpgShardStore : ICpgShardStore
                 reader.ReadUInt32();
                 reader.ReadUInt32();
                 ReadEdgePayload(reader);
+                if (formatVersion >= FormatVersion)
+                {
+                    ReadFlowSummaryLabel(reader);
+                }
             }
 
             var symbolCount = reader.ReadCount();
@@ -505,7 +518,7 @@ public sealed class CpgShardStore : ICpgShardStore
 
     private static bool IsSupportedFormatVersion(int formatVersion)
     {
-        return formatVersion == LegacyFormatVersion || formatVersion == FormatVersion;
+        return formatVersion is LegacyFormatVersion or IncomingEdgeIndexFormatVersion or FormatVersion;
     }
 
     private static void ValidateIncomingEdgeIndex(CpgShardPayloadReader reader, int nodeCount, int edgeCount, int[] edgeTargets)
@@ -593,6 +606,80 @@ public sealed class CpgShardStore : ICpgShardStore
         reader.ReadOptionalInt32();
         reader.ReadOptionalInt32();
         reader.ReadOptionalString();
+    }
+
+    private static void WriteFlowSummaryLabel(BinaryWriter writer, CpgFrozenFlowSummaryLabel? label)
+    {
+        writer.Write(label is not null);
+        if (label is null)
+        {
+            return;
+        }
+
+        writer.Write((int)label.BridgeKind);
+        writer.Write((int)label.Resolution);
+        WriteRequired(writer, label.MethodKey);
+        WriteFlowSummaryEndpoint(writer, label.Source);
+        WriteFlowSummaryEndpoint(writer, label.Target);
+    }
+
+    private static CpgFrozenFlowSummaryLabel? ReadFlowSummaryLabel(BinaryReader reader)
+    {
+        if (!reader.ReadBoolean())
+        {
+            return null;
+        }
+
+        var bridgeKind = (NLCPGInterproceduralBridgeKind)reader.ReadInt32();
+        var resolution = (FlowSummaryResolution)reader.ReadInt32();
+        var methodKey = ReadRequired(reader);
+        var source = ReadFlowSummaryEndpoint(reader);
+        var target = ReadFlowSummaryEndpoint(reader);
+        if (!Enum.IsDefined(bridgeKind) || !Enum.IsDefined(resolution))
+        {
+            throw new InvalidDataException("The CPG shard contains an invalid flow summary label.");
+        }
+
+        return new CpgFrozenFlowSummaryLabel(bridgeKind, resolution, methodKey, source, target);
+    }
+
+    private static void WriteFlowSummaryEndpoint(BinaryWriter writer, FlowSummaryEndpoint endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        writer.Write((int)endpoint.Kind);
+        writer.Write(endpoint.ParameterOrdinal);
+    }
+
+    private static FlowSummaryEndpoint ReadFlowSummaryEndpoint(BinaryReader reader)
+    {
+        var kind = (FlowSummaryEndpointKind)reader.ReadInt32();
+        var ordinal = reader.ReadInt32();
+        if (!Enum.IsDefined(kind))
+        {
+            throw new InvalidDataException("The CPG shard contains an invalid flow summary endpoint.");
+        }
+
+        return new FlowSummaryEndpoint(kind, ordinal);
+    }
+
+    private static void ReadFlowSummaryLabel(CpgShardPayloadReader reader)
+    {
+        if (!reader.ReadBoolean())
+        {
+            return;
+        }
+
+        reader.ReadInt32();
+        reader.ReadInt32();
+        reader.ReadRequiredString();
+        ReadFlowSummaryEndpoint(reader);
+        ReadFlowSummaryEndpoint(reader);
+    }
+
+    private static void ReadFlowSummaryEndpoint(CpgShardPayloadReader reader)
+    {
+        reader.ReadInt32();
+        reader.ReadInt32();
     }
 
     private static void WriteLookup(BinaryWriter writer, CpgShardLookup lookup)

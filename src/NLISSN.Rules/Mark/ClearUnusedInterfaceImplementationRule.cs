@@ -12,8 +12,12 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
   private static readonly RuleSemanticTag UnusedInterfaceImplementationSemanticTag = new("UnusedInterfaceImplementation");
 
   private static readonly RuleProducesContract UnusedInterfaceImplementationProduces =
-    RuleStructureContractFactories.CreateDeclarationHostProduces(
-      UnusedInterfaceImplementationSemanticTag);
+    new(new[]
+    {
+      new RuleProducedSyntax(
+        new[] { SyntaxKind.MethodDeclaration },
+        UnusedInterfaceImplementationSemanticTag)
+    });
 
   public override string CapabilityId { get; } = "mark.clear-unused-interface-implementation";
 

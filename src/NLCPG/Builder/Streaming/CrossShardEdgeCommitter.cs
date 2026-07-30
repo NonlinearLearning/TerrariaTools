@@ -18,6 +18,7 @@ internal static class CrossShardEdgeCommitter
       edge.CallSiteContext?.FilePath,
       edge.CallSiteContext?.SpanStart,
       edge.CallSiteContext?.SpanEnd,
-      edge.CallSiteContext?.DisplayName);
+      edge.CallSiteContext?.DisplayName,
+      CpgFrozenFlowSummaryLabel.From(edge.StructuredLabel));
   }
 }

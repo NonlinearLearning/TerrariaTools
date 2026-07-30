@@ -115,7 +115,8 @@ internal sealed class CpgShardBuildCoordinator
             edge.CallSiteContext?.FilePath,
             edge.CallSiteContext?.SpanStart,
             edge.CallSiteContext?.SpanEnd,
-            edge.CallSiteContext?.DisplayName))
+            edge.CallSiteContext?.DisplayName,
+            CpgFrozenFlowSummaryLabel.From(edge.StructuredLabel)))
           .ToArray();
         if (boundaryEdges.Length > 0)
         {

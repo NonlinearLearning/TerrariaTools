@@ -6,7 +6,7 @@ namespace NL.Caching;
 public sealed class WeakTypedCacheRegistry<TKey>
     where TKey : class
 {
-    private readonly ConditionalWeakTable<TKey, ConcurrentDictionary<Type, object>> _entries = new();
+    private readonly ConditionalWeakTable<TKey, ConcurrentDictionary<Type, Lazy<object>>> _entries = new();
 
     public TValue GetOrCreate<TValue>(TKey key, Func<TKey, TValue> factory)
         where TValue : class
@@ -16,7 +16,22 @@ public sealed class WeakTypedCacheRegistry<TKey>
 
         var values = _entries.GetValue(
             key,
-            static _ => new ConcurrentDictionary<Type, object>());
-        return (TValue)values.GetOrAdd(typeof(TValue), _ => factory(key));
+            static _ => new ConcurrentDictionary<Type, Lazy<object>>());
+        var type = typeof(TValue);
+        var value = new Lazy<object>(
+            () => factory(key),
+            LazyThreadSafetyMode.ExecutionAndPublication);
+        var cachedValue = values.GetOrAdd(type, value);
+
+        try
+        {
+            return (TValue)cachedValue.Value;
+        }
+        catch
+        {
+            ((ICollection<KeyValuePair<Type, Lazy<object>>>)values).Remove(
+                new KeyValuePair<Type, Lazy<object>>(type, cachedValue));
+            throw;
+        }
     }
 }

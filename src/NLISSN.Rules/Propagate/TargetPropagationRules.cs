@@ -54,7 +54,12 @@ public sealed class SObjectDefinitionInitializerPropagationRule : SObjectPropaga
       new("SObject.LocalDefinitionFromInitializer");
 
     private static readonly RuleProducesContract LocalDefinitionProduces =
-      RuleStructureContractFactories.CreateVariableDeclaratorProduces(LocalDefinitionSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.VariableDeclarator },
+          LocalDefinitionSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propagate.target.definition-initializer";
 
@@ -195,7 +200,12 @@ public sealed class SObjectLogicalOperandGroupPropagationRule : SObjectPropagati
     private static readonly RuleSemanticTag LogicalHostSemanticTag = new("SObject.LogicalHost");
 
     private static readonly RuleProducesContract LogicalHostProduces =
-      RuleStructureContractFactories.CreateLogicalBinaryProduces(LogicalHostSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
+          LogicalHostSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propagate.target.logical-operand-group";
 
@@ -276,7 +286,12 @@ public sealed class SObjectIfStructureCompletionPropagationRule : SObjectPropaga
     private static readonly RuleSemanticTag IfCompletionSemanticTag = new("SObject.IfCompletion");
 
     private static readonly RuleProducesContract IfCompletionProduces =
-      RuleStructureContractFactories.CreateIfCompletionProduces(IfCompletionSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          IfCompletionSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propagate.target.if-structure-completion";
 
@@ -305,9 +320,12 @@ public sealed class SObjectSymbolReferencePropagationRule : SObjectPropagationRu
       new("SObject.LocalDefinitionFromInitializer");
 
     private static readonly RuleConsumesContract LocalDefinitionConsumes =
-      RuleStructureContractFactories.CreateVariableDeclaratorConsumes(
-        LocalDefinitionSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.VariableDeclarator },
+          LocalDefinitionSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propagate.target.symbol-reference";
 

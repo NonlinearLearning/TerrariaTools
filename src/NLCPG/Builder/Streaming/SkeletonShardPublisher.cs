@@ -264,7 +264,8 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
         candidate.CallSiteContext?.FilePath,
         candidate.CallSiteContext?.SpanStart,
         candidate.CallSiteContext?.SpanEnd,
-        candidate.CallSiteContext?.DisplayName);
+        candidate.CallSiteContext?.DisplayName,
+        CpgFrozenFlowSummaryLabel.From(candidate.StructuredLabel));
       // 为源分片和目标分片各写一份索引，使任一端查询都无需扫描其他分片。
       await AppendBoundaryAsync(sourceOwner, CpgBoundaryAdjacencyDirection.Outgoing, boundary, source, cancellationToken);
       await AppendBoundaryAsync(targetOwner, CpgBoundaryAdjacencyDirection.Incoming, boundary, source, cancellationToken);

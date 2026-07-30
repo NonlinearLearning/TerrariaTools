@@ -8,13 +8,29 @@ namespace NLISSN.Rules;
 
 /// 为扩展方法的非接收者参数收集声明与映射调用点，
 /// 保持 receiver 绑定不变，只把可安全收缩的槽位继续传给提案阶段。
-public sealed class ClassExtensionMethodMappedCallsitePropagationRule : ClassPropagationRuleBase
+public sealed class ClassExtensionMethodMappedCallsitePropagationRule : RuleDefinitionPropagate
 {
+    private static readonly RuleConsumesContract TypeSyntaxConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.QualifiedName,
+          SyntaxKind.AliasQualifiedName,
+          SyntaxKind.GenericName
+        },
+        new RuleSemanticTag("Class.TypeSyntaxTarget"))
+    });
     private static readonly RuleSemanticTag ExtensionMethodParameterUsageSemanticTag = new("Class.ExtensionMethodParameterUsage");
 
     private static readonly RuleProducesContract ExtensionMethodParameterUsageProduces =
-      RuleStructureContractFactories.CreateExtensionMethodParameterUsageProduces(
-        ExtensionMethodParameterUsageSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression },
+          ExtensionMethodParameterUsageSemanticTag)
+      });
 
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
@@ -23,6 +39,8 @@ public sealed class ClassExtensionMethodMappedCallsitePropagationRule : ClassPro
     public override string RuleId { get; } = "DEL-CLASS-PROP-EXT-MAPPED-001";
 
     public override RuleProducesContract Produces => ExtensionMethodParameterUsageProduces;
+
+    public override RuleConsumesContract Consumes => TypeSyntaxConsumes;
 
 
     public override string Name { get; } = "Propagate delete-class extension-method parameter usage to mapped extension callsites";

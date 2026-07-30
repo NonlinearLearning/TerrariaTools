@@ -8,6 +8,12 @@ public sealed class ByteBudgetLruCache<TKey, TValue>
     private readonly Dictionary<TKey, LinkedListNode<CacheEntry>> _entries;
     private readonly LinkedList<CacheEntry> _recency = new();
     private long _cachedBytes;
+    private long _evictionCount;
+    private long _hitCount;
+    private long _insertCount;
+    private long _missCount;
+    private long _rejectedCount;
+    private long _replaceCount;
 
     public ByteBudgetLruCache(long maxCachedBytes, IEqualityComparer<TKey>? comparer = null)
     {
@@ -42,16 +48,34 @@ public sealed class ByteBudgetLruCache<TKey, TValue>
         }
     }
 
+    public CacheStatistics GetStatistics()
+    {
+        lock (_gate)
+        {
+            return new CacheStatistics(
+                _hitCount,
+                _missCount,
+                _insertCount,
+                _replaceCount,
+                _evictionCount,
+                _rejectedCount,
+                _cachedBytes,
+                _entries.Count);
+        }
+    }
+
     public bool TryGet(TKey key, out TValue value)
     {
         lock (_gate)
         {
             if (!_entries.TryGetValue(key, out var node))
             {
+                _missCount++;
                 value = default!;
                 return false;
             }
 
+            _hitCount++;
             MoveToMru(node);
             value = node.Value.Value;
             return true;
@@ -69,22 +93,30 @@ public sealed class ByteBudgetLruCache<TKey, TValue>
         {
             if (byteWeight == 0 || byteWeight > _maxCachedBytes)
             {
+                _rejectedCount++;
                 return false;
             }
 
+            var replaced = false;
             if (_entries.TryGetValue(key, out var existingNode))
             {
-                Remove(existingNode);
+                Remove(existingNode, isEviction: false);
+                _replaceCount++;
+                replaced = true;
             }
 
             while (_cachedBytes > _maxCachedBytes - byteWeight)
             {
-                Remove(_recency.First!);
+                Remove(_recency.First!, isEviction: true);
             }
 
             var node = _recency.AddLast(new CacheEntry(key, value, byteWeight));
             _entries.Add(key, node);
             _cachedBytes += byteWeight;
+            if (!replaced)
+            {
+                _insertCount++;
+            }
             return true;
         }
     }
@@ -105,11 +137,15 @@ public sealed class ByteBudgetLruCache<TKey, TValue>
         _recency.AddLast(node);
     }
 
-    private void Remove(LinkedListNode<CacheEntry> node)
+    private void Remove(LinkedListNode<CacheEntry> node, bool isEviction)
     {
         _entries.Remove(node.Value.Key);
         _recency.Remove(node);
         _cachedBytes -= node.Value.ByteWeight;
+        if (isEviction)
+        {
+            _evictionCount++;
+        }
     }
 
     private sealed record CacheEntry(TKey Key, TValue Value, long ByteWeight);

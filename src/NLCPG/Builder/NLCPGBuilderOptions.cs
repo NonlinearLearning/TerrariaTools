@@ -1,4 +1,5 @@
 using NLCPG.Contracts;
+using NLCPG.Analysis.FlowSummaries;
 
 namespace NLCPG.Builder;
 
@@ -25,6 +26,8 @@ public sealed record NLCPGBuilderOptions(
   IReadOnlyCollection<NLCPGCapability>? RequestedCapabilities = null,
   NLCPGDataFlowOptions? DataFlowOptions = null,
   NLCPGInterproceduralDataFlowOptions? InterproceduralDataFlowOptions = null,
+  ICallFlowResolver? CallFlowResolver = null,
+  NLCPGFlowSummaryOptions? FlowSummaryOptions = null,
   CpgPersistenceOptions? Persistence = null,
   bool UsePreallocatedNodeIds = false,
   int? OrderedResultReorderAllowance = null,
@@ -42,6 +45,9 @@ public sealed record NLCPGBuilderOptions(
 
     public NLCPGInterproceduralDataFlowOptions EffectiveInterproceduralDataFlowOptions =>
       InterproceduralDataFlowOptions ?? NLCPGInterproceduralDataFlowOptions.Default;
+
+    public NLCPGFlowSummaryOptions EffectiveFlowSummaryOptions =>
+      FlowSummaryOptions ?? NLCPGFlowSummaryOptions.Default;
 
     // 返回当前仓库推荐的默认构图参数。
     public static NLCPGBuilderOptions CreateDefault()
@@ -135,4 +141,31 @@ public sealed record NLCPGInterproceduralDataFlowOptions(
   int MaxBoundaryEdgesPerMethod = 10000)
 {
     public static NLCPGInterproceduralDataFlowOptions Default { get; } = new();
+}
+
+public sealed record NLCPGFlowSummaryOptions(
+  int MaxMappingsPerCallSite = 16,
+  int MaxMappingsPerMethod = 64,
+  int MaxMappingsPerBuild = 4096)
+{
+    public static NLCPGFlowSummaryOptions Default { get; } = new();
+
+    public void Validate()
+    {
+        if (MaxMappingsPerCallSite <= 0 || MaxMappingsPerMethod <= 0 || MaxMappingsPerBuild <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaxMappingsPerCallSite));
+        }
+    }
+}
+
+public sealed record NLCPGFlowSummaryMetrics(
+  int ResolvedMappings,
+  int UnknownCalls,
+  int SignatureMismatches,
+  int BlockedMappings,
+  int RejectedEndpoints,
+  int TruncatedMappings)
+{
+    public static NLCPGFlowSummaryMetrics Empty { get; } = new(0, 0, 0, 0, 0, 0);
 }

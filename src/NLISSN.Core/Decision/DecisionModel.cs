@@ -41,6 +41,12 @@ public sealed record RuleDecision
     /// 当动作是 Replace 时使用的替换目标节点；否则为空。
     public SyntaxNode? ReplacementNode { get; init; }
 
+    /// Stable root ID in the analysis evidence graph for this decision.
+    public string? EvidenceRootId { get; init; }
+
+    /// Immutable budget summary associated with the evidence root.
+    public DecisionEvidence? Evidence { get; init; }
+
     // 记录一条最终决策及其改写原因，供 rewrite 阶段直接消费。
     public RuleDecision(SyntaxNode originalNode, SyntaxNode finalNode, DecisionActionKind action, string reason, SyntaxNode? replacementNode = null)
     {
@@ -283,20 +289,20 @@ public sealed class RuleDecisionEngine
     // 兼容入口也按规则图执行。
     public IReadOnlyList<RuleDecision> Decide(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks, IReadOnlyList<RuleDefinitionPropose> rules)
     {
-        var consumedStructures = rules
-          .SelectMany(rule => rule.Consumes.Structures)
+        var consumedInputs = rules
+          .SelectMany(rule => rule.Consumes.Inputs)
           .ToList();
         var sourceNodes = CreateSourceNodes(
           seedMarks,
           propagatedMarks,
           liftedMarks,
-          consumedStructures);
+          consumedInputs);
         var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
           .Select(node => new RuleStructureContractGraphNode(
             node.NodeId,
             node.Kind,
             RuleConsumesContract.Empty,
-            new RuleProducesContract(node.ProducedStructures)))
+            new RuleProducesContract(node.ProducedSyntax)))
           .Concat(rules
             .Select(rule => new RuleStructureContractGraphNode(
               rule.NodeId,
@@ -309,8 +315,8 @@ public sealed class RuleDecisionEngine
           RuleKind.Propose,
           ResolveDependencies(rule, sourceNodes, contractGraph))
         {
-          ProducedStructures = rule.Produces.Structures,
-          ConsumedStructures = rule.Consumes.Structures
+          ProducedSyntax = rule.Produces.Outputs,
+          ConsumedSyntax = rule.Consumes.Inputs
         }).ToList();
         var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
         var executionNodes = sourceNodes
@@ -384,7 +390,7 @@ public sealed class RuleDecisionEngine
       IReadOnlyList<MarkRecord> seedMarks,
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
       IReadOnlyList<LiftedMarkRecord> liftedMarks,
-      IReadOnlyList<RuleConsumedStructure> consumedStructures)
+      IReadOnlyList<RuleConsumedSyntax> consumedInputs)
     {
         return seedMarks
           .GroupBy(mark => RuleNodeId.For(RuleKind.Mark, mark.RuleId))
@@ -392,21 +398,21 @@ public sealed class RuleDecisionEngine
             group.Key,
             RuleKind.Mark,
             group.ToList(),
-            consumedStructures))
+            consumedInputs))
           .Concat(propagatedMarks
             .GroupBy(mark => RuleNodeId.For(RuleKind.Propagate, mark.RuleId))
             .Select(group => CreateSourceNode(
               group.Key,
               RuleKind.Propagate,
               group.Select(mark => mark.Mark).ToList(),
-              consumedStructures)))
+              consumedInputs)))
           .Concat(liftedMarks
             .GroupBy(mark => RuleNodeId.For(RuleKind.Lift, mark.RuleId))
             .Select(group => CreateSourceNode(
               group.Key,
               RuleKind.Lift,
               group.Select(mark => mark.Mark).ToList(),
-              consumedStructures)))
+              consumedInputs)))
           .ToList();
     }
 
@@ -414,12 +420,12 @@ public sealed class RuleDecisionEngine
       RuleNodeId nodeId,
       RuleKind kind,
       IReadOnlyList<MarkRecord> marks,
-      IReadOnlyList<RuleConsumedStructure> consumedStructures)
+      IReadOnlyList<RuleConsumedSyntax> consumedInputs)
     {
-        var produces = RuleStructureContractValidator.CreateObservedProduces(marks, consumedStructures);
+        var produces = RuleSyntaxContractValidator.CreateObservedProduces(marks, consumedInputs);
         return new RuleGraphNode(nodeId, kind, Array.Empty<RuleDependency>())
         {
-            ProducedStructures = produces.Structures
+            ProducedSyntax = produces.Outputs
         };
     }
 
@@ -428,16 +434,9 @@ public sealed class RuleDecisionEngine
       IReadOnlyList<RuleGraphNode> sourceNodes,
       CompiledRuleStructureContractGraph contractGraph)
     {
-        if (rule.Consumes.Structures.Count == 0)
-        {
-            return sourceNodes
-              .Select(node => new RuleDependency(node.NodeId))
-              .ToList();
-        }
-
         return contractGraph.Edges
           .Where(edge => edge.Consumer == rule.NodeId)
-          .Select(edge => new RuleDependency(edge.Producer, edge.Selector))
+          .Select(edge => new RuleDependency(edge.Producer, edge.Input))
           .ToList();
     }
 
@@ -457,7 +456,7 @@ public sealed class RuleDecisionEngine
         };
         return RuleNodeResult.FromObservedValues(
           values.ToList(),
-          new RuleProducesContract(node.ProducedStructures));
+          new RuleProducesContract(node.ProducedSyntax));
     }
 
     private static RuleNodeResult CreateResult<T>(
@@ -471,9 +470,7 @@ public sealed class RuleDecisionEngine
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => dependency.RequiredStructure is { } selector
-            ? inputs.GetOutputs(dependency.Producer, selector)
-            : inputs.GetValues(dependency.Producer))
+          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredInput))
           .ToList();
     }
 

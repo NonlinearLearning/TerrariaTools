@@ -21,7 +21,11 @@ public sealed record NLCPGTraversalBudget(
     int MaxPaths,
     int MaxDefinitions,
     int MaxVisitedNodes,
-    int MaxVisitedEdges);
+    int MaxVisitedEdges,
+    int MaxCachedStates = 4096,
+    int MaxCallerFanout = int.MaxValue,
+    int MaxCallDepth = 0,
+    long MaxLoadedShardBytes = long.MaxValue);
 
 /// 表示 CPG 切片查询找到的一条稳定源到汇路径。
 public sealed record NLCPGSlicePath(

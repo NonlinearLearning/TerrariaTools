@@ -391,6 +391,51 @@ public sealed class NLCPGSliceQueryTests
     }
 
     [Theory]
+    [InlineData("node")]
+    [InlineData("edge")]
+    [InlineData("cache")]
+    [InlineData("fanout")]
+    public void MarkAnalysisSnapshot_DifferentTraversalBudget_DoesNotReuseSliceResult(string changedBudget)
+    {
+        // Arrange
+        const string source = "public sealed class Sample { public int Run(int value) { return value; } }";
+        var tree = CSharpSyntaxTree.ParseText(source, path: "slice-cache-budget.cs");
+        var compilation = CSharpCompilation.Create(
+            "SliceCacheBudgetTests",
+            new[] { tree },
+            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(source, "slice-cache-budget.cs");
+        var context = new CpgAnalysisContext(graph, compilation.GetSemanticModel(tree), tree.GetRoot());
+        var snapshot = new MarkAnalysisSnapshot(context);
+        var sinkNodeId = graph.Nodes.Single(node => node.Kind == NLCPGNodeKind.MethodReturn).NodeId!.Value;
+        var baseline = new NLCPGSliceQueryOptions(
+            new HashSet<NLCPGEdgeKind> { NLCPGEdgeKind.DataFlow },
+            MaxHops: 3,
+            MaxPaths: 10,
+            MaxDefinitions: 10,
+            MaxCallDepth: 1,
+            MaxVisitedNodes: 100,
+            MaxVisitedEdges: 100,
+            MaxCachedStates: 100,
+            MaxCallerFanout: 100);
+        var changed = changedBudget switch
+        {
+            "node" => baseline with { MaxVisitedNodes = 99 },
+            "edge" => baseline with { MaxVisitedEdges = 99 },
+            "cache" => baseline with { MaxCachedStates = 99 },
+            "fanout" => baseline with { MaxCallerFanout = 99 },
+            _ => throw new ArgumentOutOfRangeException(nameof(changedBudget)),
+        };
+
+        // Act
+        var first = snapshot.QuerySliceBackward(sinkNodeId, baseline);
+        var second = snapshot.QuerySliceBackward(sinkNodeId, changed);
+
+        // Assert
+        Assert.NotSame(first, second);
+    }
+
+    [Theory]
     [InlineData(1, 10, "maxPaths")]
     [InlineData(10, 1, "maxDefinitions")]
     public void QueryBackward_WhenResultBudgetIsReached_ReportsTheExhaustedBudget(int maxPaths, int maxDefinitions, string expectedReason)
@@ -681,6 +726,14 @@ public sealed class NLCPGSliceQueryTests
             Assert.Single(cachedFirst);
             await Assert.ThrowsAsync<FileNotFoundException>(() =>
               resolver.FindByNodeAsync(new NodeId(2), CancellationToken.None));
+
+            var statistics = resolver.CacheStatistics;
+
+            Assert.Equal(2, statistics.HitCount);
+            Assert.Equal(4, statistics.MissCount);
+            Assert.Equal(3, statistics.InsertCount);
+            Assert.Equal(1, statistics.EvictionCount);
+            Assert.Equal(2, statistics.Count);
         }
         finally
         {

@@ -42,7 +42,7 @@ public static class CpgFrozenShardGraphReader
                   sourceNodeId,
                   targetNodeId,
                   kind,
-                  ParseLabel(edge.Label),
+                  ParseLabel(edge.Label, edge.FlowSummaryLabel),
                   edge.ContextId is null ? null : new NLCPGContextId(edge.ContextId),
                   CreateCallSiteContext(edge)));
                 requiredNodeIds.Add(sourceNodeId);
@@ -69,7 +69,7 @@ public static class CpgFrozenShardGraphReader
                   sourceNodeId,
                   targetId,
                   kind,
-                  ParseLabel(edge.Label),
+                  ParseLabel(edge.Label, edge.FlowSummaryLabel),
                   edge.ContextId is null ? null : new NLCPGContextId(edge.ContextId),
                   CreateCallSiteContext(edge)));
                 requiredNodeIds.Add(sourceNodeId);
@@ -206,7 +206,7 @@ public static class CpgFrozenShardGraphReader
           nodeIdsByLocalIndex[edge.SourceLocalIndex],
           nodeIdsByLocalIndex[edge.TargetLocalIndex],
           Enum.Parse<NLCPGEdgeKind>(edge.Kind),
-          ParseLabel(edge.Label),
+          ParseLabel(edge.Label, edge.FlowSummaryLabel),
           edge.ContextId is null ? null : new NLCPGContextId(edge.ContextId),
           CreateCallSiteContext(edge))).ToArray();
         return NLCPGGraph.CreateFrozen(nodes, edges);
@@ -224,8 +224,13 @@ public static class CpgFrozenShardGraphReader
           .ToArray();
     }
 
-    private static NLCPGEdgeLabel? ParseLabel(string? label)
+    private static NLCPGEdgeLabel? ParseLabel(string? label, CpgFrozenFlowSummaryLabel? flowSummaryLabel)
     {
+        if (flowSummaryLabel is not null)
+        {
+            return flowSummaryLabel.ToEdgeLabel();
+        }
+
         if (label is null)
         {
             return null;
@@ -329,7 +334,7 @@ public static class CpgFrozenShardGraphReader
           new NodeId(edge.SourceNodeId),
           new NodeId(edge.TargetNodeId),
           Enum.Parse<NLCPGEdgeKind>(edge.Kind),
-          ParseLabel(edge.Label),
+          ParseLabel(edge.Label, edge.FlowSummaryLabel),
           edge.ContextId is null ? null : new NLCPGContextId(edge.ContextId),
           callSiteContext);
     }

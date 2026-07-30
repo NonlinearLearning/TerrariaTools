@@ -9,19 +9,14 @@ namespace NLISSN.Rules;
 /// 将传播后的完整控制结构标记转换为删除决策；只接收声明的冲突节点种类。
 public sealed class ControlStructureRemovalProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleTerminalConsumesContract AllSObjectFacts = new(
-      new[]
-      {
-        new RuleTerminalFactSelector(
-          RuleFactDomain.SObject,
-          new[] { RuleKind.Mark, RuleKind.Propagate, RuleKind.Lift })
-      });
+    private static readonly RuleConsumesContract SObjectFactsConsumes =
+      SObjectProposalContracts.CreateFactsConsumes();
 
     public override string CapabilityId { get; } = "propose.control-structure-removal";
 
     public override string RuleId { get; } = "DEL-SOBJ-PROPOSE-CTRL-001";
 
-    public override RuleTerminalConsumesContract TerminalConsumes => AllSObjectFacts;
+    public override RuleConsumesContract Consumes => SObjectFactsConsumes;
 
 
     public override string Name { get; } = "Match s-rooted control structure delete decisions";

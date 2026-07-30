@@ -4,6 +4,7 @@ using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Pipeline;
+using NLISSN.Core.Validation;
 
 namespace NLISSN.Core.Rewrite;
 
@@ -38,7 +39,11 @@ public sealed record PrototypeAnalysisResult(
   /// 规则图的 ready queue 与并发节点峰值；非图执行路径为空。
   RuleGraphExecutionMetrics? RuleGraphMetrics = null,
   /// 本次单文件分析构建的完整 CPG 规模；目录聚合结果为空。
-  CpgGraphMetrics? GraphMetrics = null)
+  CpgGraphMetrics? GraphMetrics = null,
+  /// 当前 analysis epoch 的不可变决策证据图；未走规则图的兼容路径为空。
+  AnalysisEvidenceGraph? Evidence = null,
+  /// 显式启用绑定校验时产生的稳定诊断；默认路径为空。
+  AnalysisValidationReport? ValidationReport = null)
 {
   public DiffSummary DiffSummary => Diff.Summary;
 }

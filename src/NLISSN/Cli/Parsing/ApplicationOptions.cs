@@ -71,6 +71,11 @@ internal static class  ApplicationOptions
         return ResolveRequiredPathOption(options, "rewrite-plan-in");
     }
 
+    internal static string? ResolveEvidenceJsonPath(IReadOnlyDictionary<string, string> options)
+    {
+        return ResolveRequiredFilePathOption(options, "evidence-json");
+    }
+
     internal static void ValidateRewritePlanOptions(IReadOnlyDictionary<string, string> options)
     {
         var outputPath = ResolveRewritePlanOutPath(options);

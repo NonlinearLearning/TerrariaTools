@@ -49,7 +49,8 @@ public static class CpgFrozenShardExporter
                   item.Candidate.CallSiteContext?.FilePath,
                   item.Candidate.CallSiteContext?.SpanStart,
                   item.Candidate.CallSiteContext?.SpanEnd,
-                  item.Candidate.CallSiteContext?.DisplayName));
+                  item.Candidate.CallSiteContext?.DisplayName,
+                  CpgFrozenFlowSummaryLabel.From(item.Candidate.StructuredLabel)));
             }
             else if (sourceIsLocal || targetIsLocal)
             {
@@ -62,7 +63,8 @@ public static class CpgFrozenShardExporter
                   item.Candidate.CallSiteContext?.FilePath,
                   item.Candidate.CallSiteContext?.SpanStart,
                   item.Candidate.CallSiteContext?.SpanEnd,
-                  item.Candidate.CallSiteContext?.DisplayName));
+                  item.Candidate.CallSiteContext?.DisplayName,
+                  CpgFrozenFlowSummaryLabel.From(item.Candidate.StructuredLabel)));
             }
         }
 
@@ -110,7 +112,8 @@ public static class CpgFrozenShardExporter
             edge.CallSiteContext?.FilePath,
             edge.CallSiteContext?.SpanStart,
             edge.CallSiteContext?.SpanEnd,
-            edge.CallSiteContext?.DisplayName))
+            edge.CallSiteContext?.DisplayName,
+            CpgFrozenFlowSummaryLabel.From(edge.StructuredLabel)))
           .ToArray();
         var (incomingEdgeOffsets, incomingEdgeIndexes) = CpgFrozenShardIncomingEdgeIndex.Build(
           frozenNodes,

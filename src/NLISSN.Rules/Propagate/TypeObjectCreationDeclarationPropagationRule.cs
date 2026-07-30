@@ -8,17 +8,41 @@ namespace NLISSN.Rules;
 
 /// 把 delete-class 对象创建命中收束到局部声明点，
 /// 让后续局部符号引用传播只依赖稳定 declarator，而不是具体 new 表达式形状。
-public sealed class ClassObjectCreationDeclarationPropagationRule : ClassPropagationRuleBase
+public sealed class ClassObjectCreationDeclarationPropagationRule : RuleDefinitionPropagate
 {
+    private static readonly RuleConsumesContract ObjectCreationConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.SimpleMemberAccessExpression,
+          SyntaxKind.MemberBindingExpression,
+          SyntaxKind.InvocationExpression,
+          SyntaxKind.ElementAccessExpression,
+          SyntaxKind.ConditionalAccessExpression,
+          SyntaxKind.ObjectCreationExpression,
+          SyntaxKind.ImplicitObjectCreationExpression
+        },
+        new RuleSemanticTag("Class.ExpressionTarget"))
+    });
+
     private static readonly RuleSemanticTag LocalDefinitionSemanticTag =
       new("Class.LocalDefinitionFromObjectCreation");
 
     private static readonly RuleProducesContract LocalDefinitionProduces =
-      RuleStructureContractFactories.CreateVariableDeclaratorProduces(LocalDefinitionSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.VariableDeclarator },
+          LocalDefinitionSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propagate.type.object-creation-declaration";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-NEW-DECL-001";
+
+    public override RuleConsumesContract Consumes => ObjectCreationConsumes;
 
     public override RuleProducesContract Produces => LocalDefinitionProduces;
 

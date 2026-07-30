@@ -7,13 +7,29 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 为 indexer 参数删除收集声明宿主和访问点，保证提案阶段能同时改声明与所有受影响的 element access。
-public sealed class ClassIndexerParameterUsagePropagationRule : ClassPropagationRuleBase
+public sealed class ClassIndexerParameterUsagePropagationRule : RuleDefinitionPropagate
 {
+    private static readonly RuleConsumesContract TypeSyntaxConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.QualifiedName,
+          SyntaxKind.AliasQualifiedName,
+          SyntaxKind.GenericName
+        },
+        new RuleSemanticTag("Class.TypeSyntaxTarget"))
+    });
     private static readonly RuleSemanticTag IndexerParameterUsageSemanticTag = new("Class.IndexerParameterUsage");
 
     private static readonly RuleProducesContract IndexerParameterUsageProduces =
-      RuleStructureContractFactories.CreateIndexerParameterUsageProduces(
-        IndexerParameterUsageSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.IndexerDeclaration, SyntaxKind.ElementAccessExpression },
+          IndexerParameterUsageSemanticTag)
+      });
 
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
@@ -22,6 +38,8 @@ public sealed class ClassIndexerParameterUsagePropagationRule : ClassPropagation
     public override string RuleId { get; } = "DEL-CLASS-PROP-INDEXER-PARAM-USAGE-001";
 
     public override RuleProducesContract Produces => IndexerParameterUsageProduces;
+
+    public override RuleConsumesContract Consumes => TypeSyntaxConsumes;
 
 
     public override string Name { get; } = "Propagate delete-class indexer parameter usage to indexers and mapped access sites";

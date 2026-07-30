@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using NLCPG.Analysis;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
@@ -18,14 +19,20 @@ public sealed class MarkLiftingEngine
       IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
     {
         var ruleContext = BuildRuleContext(context, seedMarks, propagatedMarks);
-        return rule.Lift(ruleContext, seedMarks, propagatedMarks, existingLiftedMarks)
+        var results = rule.Lift(ruleContext, seedMarks, propagatedMarks, existingLiftedMarks)
           .Select(candidate =>
           {
-              ValidateLiftNode(rule, candidate.Mark.SyntaxNode);
-              MarkingEngine.ValidateProducedStructure(rule.Produces, candidate.Mark);
-              return BindLiftedMarkRecord(ruleContext, candidate);
+              var tagged = candidate with
+              {
+                  Mark = MarkingEngine.BindDeclaredSemanticTag(rule.Produces, candidate.Mark)
+              };
+              ValidateLiftNode(rule, tagged.Mark.SyntaxNode);
+              MarkingEngine.ValidateProducedSyntax(rule.Produces, tagged.Mark);
+              return BindLiftedMarkRecord(ruleContext, tagged);
           })
           .ToList();
+        context.Evidence.RecordLift(rule.RuleId, seedMarks, propagatedMarks, results);
+        return results;
     }
 
     // 兼容入口也按规则图执行。
@@ -34,13 +41,13 @@ public sealed class MarkLiftingEngine
         var liftEligiblePropagatedMarks = propagatedMarks
           .Where(mark => mark.Payload is null)
           .ToList();
-        var consumedStructures = rules
-          .SelectMany(rule => rule.Consumes.Structures)
+        var consumedInputs = rules
+          .SelectMany(rule => rule.Consumes.Inputs)
           .ToList();
         var sourceNodes = CreateSourceNodes(
           seedMarks,
           liftEligiblePropagatedMarks,
-          consumedStructures);
+          consumedInputs);
         var sourceNodeIds = sourceNodes.Select(node => node.NodeId).ToHashSet();
         var liftNodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Lift, rule.RuleId)).ToHashSet();
         var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
@@ -48,7 +55,7 @@ public sealed class MarkLiftingEngine
             node.NodeId,
             node.Kind,
             RuleConsumesContract.Empty,
-            new RuleProducesContract(node.ProducedStructures)))
+            new RuleProducesContract(node.ProducedSyntax)))
           .Concat(rules
           .Select(rule => new RuleStructureContractGraphNode(
             rule.NodeId,
@@ -61,8 +68,8 @@ public sealed class MarkLiftingEngine
           RuleKind.Lift,
           ResolveDependencies(rule, sourceNodes, sourceNodeIds, liftNodeIds, contractGraph))
         {
-          ProducedStructures = rule.Produces.Structures,
-          ConsumedStructures = rule.Consumes.Structures
+          ProducedSyntax = rule.Produces.Outputs,
+          ConsumedSyntax = rule.Consumes.Inputs
         }).ToList();
         var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
         var executionNodes = sourceNodes
@@ -111,7 +118,7 @@ public sealed class MarkLiftingEngine
     private static IReadOnlyList<RuleGraphNode> CreateSourceNodes(
       IReadOnlyList<MarkRecord> seedMarks,
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
-      IReadOnlyList<RuleConsumedStructure> consumedStructures)
+      IReadOnlyList<RuleConsumedSyntax> consumedInputs)
     {
         return seedMarks
           .GroupBy(mark => RuleNodeId.For(RuleKind.Mark, mark.RuleId))
@@ -119,14 +126,14 @@ public sealed class MarkLiftingEngine
             group.Key,
             RuleKind.Mark,
             group.ToList(),
-            consumedStructures))
+            consumedInputs))
           .Concat(propagatedMarks
             .GroupBy(mark => RuleNodeId.For(RuleKind.Propagate, mark.RuleId))
             .Select(group => CreateSourceNode(
               group.Key,
               RuleKind.Propagate,
               group.Select(mark => mark.Mark).ToList(),
-              consumedStructures)))
+              consumedInputs)))
           .ToList();
     }
 
@@ -134,12 +141,12 @@ public sealed class MarkLiftingEngine
       RuleNodeId nodeId,
       RuleKind kind,
       IReadOnlyList<MarkRecord> marks,
-      IReadOnlyList<RuleConsumedStructure> consumedStructures)
+      IReadOnlyList<RuleConsumedSyntax> consumedInputs)
     {
-        var produces = RuleStructureContractValidator.CreateObservedProduces(marks, consumedStructures);
+        var produces = RuleSyntaxContractValidator.CreateObservedProduces(marks, consumedInputs);
         return new RuleGraphNode(nodeId, kind, Array.Empty<RuleDependency>())
         {
-            ProducedStructures = produces.Structures
+            ProducedSyntax = produces.Outputs
         };
     }
 
@@ -150,21 +157,12 @@ public sealed class MarkLiftingEngine
       IReadOnlySet<RuleNodeId> liftNodeIds,
       CompiledRuleStructureContractGraph contractGraph)
     {
-        IReadOnlyList<RuleDependency> declared = rule.Consumes.Structures.Count > 0
+        IReadOnlyList<RuleDependency> declared = rule.Consumes.Inputs.Count > 0
           ? contractGraph.Edges
             .Where(edge => edge.Consumer == rule.NodeId)
-            .Select(edge => new RuleDependency(
-              edge.Producer,
-              edge.Selector))
+            .Select(edge => new RuleDependency(edge.Producer, edge.Input))
             .ToList()
           : Array.Empty<RuleDependency>();
-        if (declared.Count == 0)
-        {
-            return sourceNodes
-              .Select(node => new RuleDependency(node.NodeId))
-              .ToList();
-        }
-
         return declared
           .Where(dependency => sourceNodeIds.Contains(dependency.Producer) || liftNodeIds.Contains(dependency.Producer))
           .Distinct()
@@ -181,7 +179,7 @@ public sealed class MarkLiftingEngine
           : propagatedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Propagate:".Length..], StringComparison.Ordinal)).Cast<object>();
         return RuleNodeResult.FromObservedValues(
           values.ToList(),
-          new RuleProducesContract(node.ProducedStructures));
+          new RuleProducesContract(node.ProducedSyntax));
     }
 
     private static RuleNodeResult CreateResult<T>(
@@ -195,9 +193,7 @@ public sealed class MarkLiftingEngine
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => dependency.RequiredStructure is { } selector
-            ? inputs.GetOutputs(dependency.Producer, selector)
-            : inputs.GetValues(dependency.Producer))
+          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredInput))
           .ToList();
     }
 
@@ -213,8 +209,17 @@ public sealed class MarkLiftingEngine
             return context;
         }
 
-        var structureView = context.StructureViews.BuildStructureView(fragments);
-        return context.StructureViews.WithStructureView(structureView);
+        var query = context.StructureViews.QueryStructureView(
+          fragments,
+          CpgRelationProfile.StructuralContainment,
+          CpgQueryDirection.Bidirectional,
+          new NLCPGTraversalBudget(16, 1, 1, 4096, 8192));
+        if (query.Status != CpgQueryStatus.Complete || query.View is null)
+        {
+            return context;
+        }
+
+        return context.StructureViews.WithStructureView(query.View);
     }
 
     internal static void ValidateLiftNode(RuleDefinitionLift rule, SyntaxNode syntaxNode)

@@ -7,21 +7,34 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 把已收束到局部 declarator 的 delete-class 事实继续传播到同一作用域内、且出现在定义之后的引用点。
-public sealed class ClassSymbolReferencePropagationRule : ClassPropagationRuleBase
+public sealed class ClassSymbolReferencePropagationRule : RuleDefinitionPropagate
 {
     private static readonly RuleSemanticTag LocalDefinitionSemanticTag =
       new("Class.LocalDefinitionFromObjectCreation");
 
     private static readonly RuleConsumesContract LocalDefinitionConsumes =
-      RuleStructureContractFactories.CreateVariableDeclaratorConsumes(
-        LocalDefinitionSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.VariableDeclarator },
+          LocalDefinitionSemanticTag)
+      });
+
+    private static readonly RuleProducesContract SymbolReferenceProduces = new(
+      new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.IdentifierName },
+          new RuleSemanticTag("Class.SymbolReference"))
+      });
 
     public override string CapabilityId { get; } = "propagate.type.symbol-reference";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-LOCAL-REF-001";
 
     public override RuleConsumesContract Consumes => LocalDefinitionConsumes;
+
+    public override RuleProducesContract Produces => SymbolReferenceProduces;
 
 
     public override string Name { get; } = "Propagate delete-class local declarators to same-scope references";

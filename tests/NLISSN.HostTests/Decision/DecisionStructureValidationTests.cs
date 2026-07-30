@@ -89,10 +89,9 @@ public sealed class DecisionStructureValidationTests
         var (context, root, rules) = CreateContextAndRules(source, "s");
         var proposalRules = rules.Proposers
           .Where(rule =>
-            rule.TerminalConsumes.Selectors.Any(selector =>
-              selector.Domain == RuleFactDomain.SObject) ||
-            rule.Consumes.Structures.Any(structure =>
-              structure.Selector.SemanticTag.Value.StartsWith("SObject.", StringComparison.Ordinal)))
+            rule.Consumes.Inputs.Any(input =>
+              input.SemanticTag.Value is "Target.Atomic" or "Target.Propagated" ||
+              input.SemanticTag.Value.StartsWith("SObject.", StringComparison.Ordinal)))
           .ToList();
         var seedMarks = RunDeleteSObjectMarks(context, root, rules);
         var propagatedMarks = RunDeleteSObjectPropagations(context, seedMarks, rules);
@@ -184,7 +183,7 @@ public sealed class DecisionStructureValidationTests
         return new MarkingEngine()
           .Run(context, root, rules.Markers)
           .Where(mark => rules.Markers.Any(rule =>
-            rule.FactDomain == RuleFactDomain.SObject &&
+            rule.Produces.Outputs.Any(output => output.SemanticTag.Value == "Target.Atomic") &&
             string.Equals(rule.RuleId, mark.RuleId, StringComparison.Ordinal)))
           .ToList();
     }
@@ -196,7 +195,7 @@ public sealed class DecisionStructureValidationTests
             context,
             seedMarks,
             rules.Propagators
-              .Where(rule => rule.FactDomain == RuleFactDomain.SObject)
+              .OfType<SObjectPropagationRuleBase>()
               .ToList())
           .ToList();
     }

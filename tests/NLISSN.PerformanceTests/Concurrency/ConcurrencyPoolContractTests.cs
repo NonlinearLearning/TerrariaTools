@@ -121,6 +121,47 @@ public sealed class ConcurrencyPoolContractTests
     }
 
     [Fact]
+    public async Task SelectOrderedAsync_WhenAdmissionIsOccupied_DoesNotStartWorkUntilTheLeaseIsReleased()
+    {
+        var admissionController = new ConcurrencyAdmissionController(new ConcurrencyAdmissionOptions(
+          MaxConcurrentOperations: 1,
+          MaxReservedItemCount: 2,
+          MaxReservedByteCount: 0));
+        var pool = new BoundedConcurrencyPool(telemetrySink: null, admissionController: admissionController);
+        var firstWorkStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstWork = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondWorkStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var firstOperation = pool.SelectOrderedAsync(
+          new[] { 0 },
+          maxDegreeOfParallelism: 1,
+          async (_, _, _) =>
+          {
+              firstWorkStarted.TrySetResult();
+              await releaseFirstWork.Task;
+              return 0;
+          });
+        await firstWorkStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var secondOperation = pool.SelectOrderedAsync(
+          new[] { 1 },
+          maxDegreeOfParallelism: 1,
+          (_, _, _) =>
+          {
+              secondWorkStarted.TrySetResult();
+              return Task.FromResult(1);
+          });
+
+        Assert.NotSame(
+          secondWorkStarted.Task,
+          await Task.WhenAny(secondWorkStarted.Task, Task.Delay(TimeSpan.FromMilliseconds(150))));
+
+        releaseFirstWork.TrySetResult();
+        await Task.WhenAll(firstOperation, secondOperation).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(secondWorkStarted.Task.IsCompleted);
+    }
+
+    [Fact]
     public async Task SelectCpuBoundOrdered_WhenWorkCompletesOutOfOrder_ReturnsInputOrder()
     {
         var pool = new BoundedConcurrencyPool();
@@ -320,6 +361,49 @@ public sealed class ConcurrencyPoolContractTests
           (result, _) => committed.Add(result));
 
         Assert.Equal(new[] { 0, 1, 2 }, committed);
+    }
+
+    [Fact]
+    public async Task CommitOrdered_WhenHeadIsBlocked_DoesNotStartWorkBeyondTheReorderWindow()
+    {
+        var pool = new BoundedConcurrencyPool();
+        var headWorkStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseHeadWork = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstLookAheadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var beyondWindowStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var operation = Task.Run(() => pool.CommitOrdered(
+          new[] { 0, 1, 2 },
+          new ConcurrencyWindowOptions(MaxDegreeOfParallelism: 3, ReorderAllowance: 1),
+          (source, _) =>
+          {
+              if (source == 0)
+              {
+                  headWorkStarted.TrySetResult();
+                  releaseHeadWork.Task.GetAwaiter().GetResult();
+              }
+              else if (source == 1)
+              {
+                  firstLookAheadStarted.TrySetResult();
+              }
+              else
+              {
+                  beyondWindowStarted.TrySetResult();
+              }
+
+              return source;
+          },
+          (_, _) => { }));
+
+        await headWorkStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await firstLookAheadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.NotSame(
+          beyondWindowStarted.Task,
+          await Task.WhenAny(beyondWindowStarted.Task, Task.Delay(TimeSpan.FromMilliseconds(150))));
+
+        releaseHeadWork.TrySetResult();
+        await operation.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(beyondWindowStarted.Task.IsCompleted);
     }
 
     [Fact]
@@ -563,6 +647,22 @@ public sealed class ConcurrencyPoolContractTests
 
         Assert.Equal(5, result.Results["C"]);
         Assert.Equal(2, result.PeakConcurrentWorkItemCount);
+    }
+
+    [Fact]
+    public async Task RunDependencyGraphAsync_WhenGraphContainsACycle_ThrowsAnInvalidOperationException()
+    {
+        var pool = new BoundedConcurrencyPool();
+        var workItems = new[]
+        {
+            new DependencyWorkItem<string, int>("A", new[] { "B" }, (_, _) => Task.FromResult(1)),
+            new DependencyWorkItem<string, int>("B", new[] { "A" }, (_, _) => Task.FromResult(2)),
+        };
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+          pool.RunDependencyGraphAsync(workItems, maxDegreeOfParallelism: 2, StringComparer.Ordinal));
+
+        Assert.Contains("cycle", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

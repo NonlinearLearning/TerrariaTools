@@ -1,7 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NL.Concurrency;
-using NLISSN.Core.Analysis.Structure;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -19,6 +18,13 @@ public sealed class RuleGraphCompilerTests
     private static readonly RuleSemanticTag TypedSeedTag = new("Test.TypedSeed");
     private static readonly RuleSemanticTag TypedOtherTag = new("Test.TypedOther");
     private static readonly RuleSemanticTag TypedUnmatchedTag = new("Test.TypedUnmatched");
+    private static readonly RuleSemanticTag GraphTag = new("Test.Graph");
+    private static readonly RuleConsumedSyntax GraphInput = new(
+      new[] { SyntaxKind.MethodDeclaration },
+      GraphTag);
+    private static readonly RuleProducedSyntax GraphOutput = new(
+      new[] { SyntaxKind.MethodDeclaration },
+      GraphTag);
 
     [Fact]
     public void Analyze_WithSObjectPipelineGraphExecution_PreservesLegacyStageResults()
@@ -27,11 +33,9 @@ public sealed class RuleGraphCompilerTests
           public sealed class Box { public int Value; }
           public sealed class Demo { int Run(Box s) { var value = s.Value; return value; } }
           """;
-        var rules = new SObjectRuleSet();
-        var legacy = new ApplicationService(new RulePipeline(
-          rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers));
-        var graph = new ApplicationService(new RulePipeline(
-          rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers));
+        var rules = CreateSObjectPipeline();
+        var legacy = new ApplicationService(rules);
+        var graph = new ApplicationService(rules);
         var options = new Dictionary<string, string> { ["target-name"] = "s", ["skip-rewrite"] = "true" };
 
         var legacyResult = legacy.Analyze(source, "graph-sobj.cs", options);
@@ -56,11 +60,9 @@ public sealed class RuleGraphCompilerTests
             void Run() { var input = new PlayerInput(); System.Console.Write(input); }
           }
           """;
-        var rules = new ClassRuleSet();
-        var legacy = new ApplicationService(new RulePipeline(
-          rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers));
-        var graph = new ApplicationService(new RulePipeline(
-          rules.Markers, rules.Propagators, rules.Lifters, rules.Proposers));
+        var rules = CreateClassPipeline();
+        var legacy = new ApplicationService(rules);
+        var graph = new ApplicationService(rules);
         var options = new Dictionary<string, string> { ["delete-class"] = "PlayerInput", ["skip-rewrite"] = "true" };
 
         var legacyResult = legacy.Analyze(source, "graph-class.cs", options);
@@ -151,6 +153,15 @@ public sealed class RuleGraphCompilerTests
           parallelResult.Decisions.Select(decision => $"{decision.Action}:{decision.FinalNode.SpanStart}:{decision.FinalNode.Span.Length}:{decision.Reason}"));
         Assert.Equal(singleThreadResult.RewrittenSource, parallelResult.RewrittenSource);
         Assert.Equal(singleThreadResult.Diff.ToString(), parallelResult.Diff.ToString());
+        Assert.NotNull(singleThreadResult.RuleGraphNodeStatuses);
+        Assert.NotNull(parallelResult.RuleGraphNodeStatuses);
+        Assert.Equal(
+          singleThreadResult.RuleGraphNodeStatuses!
+            .OrderBy(entry => entry.Key.Value)
+            .Select(entry => (entry.Key, entry.Value)),
+          parallelResult.RuleGraphNodeStatuses!
+            .OrderBy(entry => entry.Key.Value)
+            .Select(entry => (entry.Key, entry.Value)));
         Assert.NotNull(singleThreadResult.RuleGraphTelemetry);
         Assert.NotNull(parallelResult.RuleGraphTelemetry);
         Assert.Equal(
@@ -159,6 +170,11 @@ public sealed class RuleGraphCompilerTests
         Assert.Equal(
           singleThreadResult.RuleGraphTelemetry.Select(node => node.NodeId),
           parallelResult.RuleGraphTelemetry!.Select(node => node.NodeId));
+        Assert.Equal(
+          singleThreadResult.RuleGraphTelemetry
+            .Select(node => (node.NodeId, node.InputCount, node.OutputCount, node.Status)),
+          parallelResult.RuleGraphTelemetry
+            .Select(node => (node.NodeId, node.InputCount, node.OutputCount, node.Status)));
         Assert.All(singleThreadResult.RuleGraphTelemetry, node => Assert.True(node.InputCount >= 0 && node.OutputCount >= 0 && node.ElapsedMilliseconds >= 0));
     }
 
@@ -279,7 +295,7 @@ public sealed class RuleGraphCompilerTests
         var exception = Assert.Throws<InvalidOperationException>(pipeline.CompileRuleGraph);
 
         Assert.Equal(
-          "Rule node 'Lift:TEST-GRAPH-MISSING-PRODUCER-001' requires exactly one producer for '(DeclarationHost, Whole, Test.Missing)', but found none.",
+          "Rule node 'Lift:TEST-GRAPH-MISSING-PRODUCER-001' requires exactly one producer for syntax tag 'Test.Missing' and syntax kinds 'MethodDeclaration', but found none.",
           exception.Message);
     }
 
@@ -300,19 +316,17 @@ public sealed class RuleGraphCompilerTests
         Assert.Contains(
           sObjectReference.Dependencies,
            dependency => dependency.Producer.Value == "Propagate:DEL-SOBJ-PROP-DECL-INIT-001" &&
-            dependency.RequiredStructure is
+          dependency.RequiredInput is
             {
-              StructureKind: RuleSyntaxStructureKind.VariableDeclarator,
-              Role: RuleSyntaxStructureRole.Whole,
+              SyntaxKinds: [SyntaxKind.VariableDeclarator],
               SemanticTag.Value: "SObject.LocalDefinitionFromInitializer"
             });
         Assert.Contains(
           classReference.Dependencies,
            dependency => dependency.Producer.Value == "Propagate:DEL-CLASS-PROP-NEW-DECL-001" &&
-            dependency.RequiredStructure is
+            dependency.RequiredInput is
             {
-              StructureKind: RuleSyntaxStructureKind.VariableDeclarator,
-              Role: RuleSyntaxStructureRole.Whole,
+              SyntaxKinds: [SyntaxKind.VariableDeclarator],
               SemanticTag.Value: "Class.LocalDefinitionFromObjectCreation"
             });
         AssertSwitchLiftDependencies(
@@ -345,24 +359,25 @@ public sealed class RuleGraphCompilerTests
           new[] { "Propagate:DEL-SOBJ-PROP-LOGIC-GROUP-001" },
           logical.Dependencies.Select(dependency => dependency.Producer.Value));
         var logicalDependency = Assert.Single(logical.Dependencies);
-        Assert.Equal(RuleSyntaxStructureKind.LogicalBinary, logicalDependency.RequiredStructure!.StructureKind);
-        Assert.Equal(RuleSyntaxStructureRole.Whole, logicalDependency.RequiredStructure.Role);
-        Assert.Equal("SObject.LogicalHost", logicalDependency.RequiredStructure.SemanticTag.Value);
+        Assert.Equal(
+          new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
+          logicalDependency.RequiredInput!.SyntaxKinds);
+        Assert.Equal("SObject.LogicalHost", logicalDependency.RequiredInput.SemanticTag.Value);
         Assert.Equal(
           new[] { "Propagate:DEL-CLASS-PROP-DECL-HOST-001" },
           classReturn.Dependencies.Select(dependency => dependency.Producer.Value));
+        var classReturnDependency = Assert.Single(classReturn.Dependencies);
+        Assert.Equal("Class.DeclarationHost", classReturnDependency.RequiredInput!.SemanticTag.Value);
+        Assert.Contains(SyntaxKind.MethodDeclaration, classReturnDependency.RequiredInput.SyntaxKinds);
         Assert.Equal(
           new[]
           {
-            "Propagate:DEL-CLASS-PROP-METHOD-PARAM-USAGE-001",
             "Propagate:DEL-CLASS-PROP-METHOD-PARAM-USAGE-001"
           },
           privateParameter.Dependencies.Select(dependency => dependency.Producer.Value));
         Assert.Equal(
-          new[] { RuleSyntaxStructureRole.Declaration, RuleSyntaxStructureRole.Callsite },
-          privateParameter.Dependencies
-            .Select(dependency => dependency.RequiredStructure!.Role)
-            .OrderBy(role => role));
+          new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression },
+          Assert.Single(privateParameter.Dependencies).RequiredInput!.SyntaxKinds);
         AssertSwitchLiftDependencies(
           sObjectSwitch,
           "Lift:DEL-SOBJ-LIFT-HOST-001",
@@ -376,31 +391,20 @@ public sealed class RuleGraphCompilerTests
       string ifProducerId,
       string semanticTag)
     {
-        Assert.Equal(4, switchNode.Dependencies.Count);
+        Assert.Equal(2, switchNode.Dependencies.Count);
         Assert.Contains(switchNode.Dependencies, dependency =>
            dependency.Producer.Value == hostProducerId &&
-          dependency.RequiredStructure is
+          dependency.RequiredInput is
           {
-            StructureKind: RuleSyntaxStructureKind.ExpressionOrStatementHost,
-            Role: RuleSyntaxStructureRole.Whole,
             SemanticTag.Value: var tag
           } && tag.EndsWith(".ExpressionHost", StringComparison.Ordinal));
-        var ifDependencies = switchNode.Dependencies
-          .Where(dependency => dependency.Producer.Value == ifProducerId)
-          .ToList();
-        Assert.Equal(3, ifDependencies.Count);
+        var ifDependency = Assert.Single(switchNode.Dependencies, dependency =>
+          dependency.Producer.Value == ifProducerId);
+        Assert.NotNull(ifDependency.RequiredInput);
         Assert.Equal(
-          new[]
-          {
-            RuleSyntaxStructureRole.Whole,
-            RuleSyntaxStructureRole.ElseBranch,
-            RuleSyntaxStructureRole.ElseIf
-          },
-          ifDependencies
-            .Select(dependency => dependency.RequiredStructure!.Role)
-            .OrderBy(role => role));
-        Assert.All(ifDependencies, dependency =>
-          Assert.Equal(semanticTag, dependency.RequiredStructure!.SemanticTag.Value));
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          ifDependency.RequiredInput!.SyntaxKinds);
+        Assert.Equal(semanticTag, ifDependency.RequiredInput.SemanticTag.Value);
     }
 
     [Fact]
@@ -410,7 +414,7 @@ public sealed class RuleGraphCompilerTests
         var consumer = Node(
           "propagate-a",
           RuleKind.Propagate,
-          new RuleDependency(new RuleNodeId("mark-a")));
+          new RuleDependency(new RuleNodeId("mark-a"), GraphInput));
         var graph = new RuleGraphCompiler().Compile(new[] { producer, consumer });
         var consumerCalls = 0;
 
@@ -440,11 +444,14 @@ public sealed class RuleGraphCompilerTests
         var producer = new RuleGraphNode(
           new RuleNodeId("producer"),
           RuleKind.Mark,
-          Array.Empty<RuleDependency>());
+          Array.Empty<RuleDependency>())
+        {
+          ProducedSyntax = new[] { GraphOutput }
+        };
         var consumer = new RuleGraphNode(
           new RuleNodeId("consumer"),
           RuleKind.Propagate,
-          new RuleDependency(producer.NodeId));
+          new RuleDependency(producer.NodeId, GraphInput));
         var graph = new RuleGraphCompiler().Compile(new[] { producer, consumer });
 
         Assert.Equal(new[] { consumer.NodeId }, graph.DownstreamNodes[producer.NodeId]);
@@ -455,12 +462,18 @@ public sealed class RuleGraphCompilerTests
           {
               new RuleGraphExecutionNode(
                 producer,
-               (_, _) => Task.FromResult(new RuleNodeResult(new object[] { "seed", "reference" }))),
+               (_, _) => Task.FromResult(new RuleNodeResult(new object[] { "seed", "reference" })
+               {
+                   SyntaxOutputs = new Dictionary<RuleProducedSyntax, IReadOnlyList<object>>
+                   {
+                       [GraphOutput] = new object[] { "seed", "reference" }
+                   }
+               })),
               new RuleGraphExecutionNode(
                 consumer,
                 (inputs, _) =>
                 {
-                   Assert.Equal(new object[] { "seed", "reference" }, inputs.GetValues(producer.NodeId));
+                   Assert.Equal(new object[] { "seed", "reference" }, inputs.GetOutputs(producer.NodeId, GraphInput));
                     return Task.FromResult(RuleNodeResult.Empty);
                 })
           },
@@ -476,7 +489,7 @@ public sealed class RuleGraphCompilerTests
         var consumer = Node(
           "consumer",
           RuleKind.Propagate,
-          new RuleDependency(producer.NodeId));
+          new RuleDependency(producer.NodeId, GraphInput));
         var graph = new RuleGraphCompiler().Compile(new[] { producer, consumer });
 
         var result = await new RuleGraphExecutor().ExecuteAsync(
@@ -564,7 +577,7 @@ public sealed class RuleGraphCompilerTests
             Node(
               "propagate-a",
               RuleKind.Propagate,
-              new RuleDependency(new RuleNodeId("mark-a")))
+              new RuleDependency(new RuleNodeId("mark-a"), GraphInput))
         };
 
         var compiled = new RuleGraphCompiler().Compile(nodes);
@@ -580,7 +593,7 @@ public sealed class RuleGraphCompilerTests
         var node = Node(
           "propagate-a",
           RuleKind.Propagate,
-          new RuleDependency(new RuleNodeId("missing")));
+          new RuleDependency(new RuleNodeId("missing"), GraphInput));
 
         var exception = Assert.Throws<InvalidOperationException>(
           () => new RuleGraphCompiler().Compile(new[] { node }));
@@ -594,11 +607,11 @@ public sealed class RuleGraphCompilerTests
         var first = Node(
           "first",
           RuleKind.Mark,
-          new RuleDependency(new RuleNodeId("second")));
+          new RuleDependency(new RuleNodeId("second"), GraphInput));
         var second = Node(
           "second",
           RuleKind.Propagate,
-          new RuleDependency(new RuleNodeId("first")));
+          new RuleDependency(new RuleNodeId("first"), GraphInput));
 
         var exception = Assert.Throws<InvalidOperationException>(
           () => new RuleGraphCompiler().Compile(new[] { first, second }));
@@ -614,12 +627,39 @@ public sealed class RuleGraphCompilerTests
         return new RuleGraphNode(
           new RuleNodeId(nodeId),
           kind,
-          dependencies);
+          dependencies)
+        {
+          ProducedSyntax = new[] { GraphOutput }
+        };
     }
 
     private static IReadOnlyList<string> Project(IEnumerable<NLISSN.Core.Marking.MarkRecord> marks)
     {
         return marks.Select(mark => $"{mark.RuleId}:{mark.SyntaxNode.SpanStart}:{mark.SyntaxNode.Span.Length}").ToList();
+    }
+
+    private static RulePipeline CreateSObjectPipeline()
+    {
+        var defaults = RuleRegistry.CreateDefaultRules();
+        return new RulePipeline(
+          defaults.Markers.Where(rule => rule.GetType().Name.StartsWith("SObject", StringComparison.Ordinal)).ToList(),
+          defaults.Propagators.Where(rule => rule.GetType().Name.StartsWith("SObject", StringComparison.Ordinal)).ToList(),
+          defaults.Lifters.Where(rule => rule.GetType().Name.StartsWith("SObject", StringComparison.Ordinal)).ToList(),
+          defaults.Proposers.Where(rule => rule is
+            LogicalExpressionProposalRule or
+            IfStructureProposalRule or
+            ControlStructureRemovalProposalRule or
+            DefaultRemovalProposalRule).ToList());
+    }
+
+    private static RulePipeline CreateClassPipeline()
+    {
+        var defaults = RuleRegistry.CreateDefaultRules();
+        return new RulePipeline(
+          defaults.Markers.Where(rule => rule.GetType().Name.StartsWith("Class", StringComparison.Ordinal)).ToList(),
+          defaults.Propagators.Where(rule => rule.GetType().Name.StartsWith("Class", StringComparison.Ordinal)).ToList(),
+          defaults.Lifters.Where(rule => rule.GetType().Name.StartsWith("Class", StringComparison.Ordinal)).ToList(),
+          defaults.Proposers.Where(rule => rule.GetType().Name.StartsWith("Class", StringComparison.Ordinal)).ToList());
     }
 
     private sealed class CrossGroupMarker : RuleDefinitionMark
@@ -632,7 +672,7 @@ public sealed class RuleGraphCompilerTests
         public override string Name => "Create a graph test seed mark.";
 
         public override RuleProducesContract Produces =>
-          RuleStructureContractFactories.CreateDeclarationHostProduces(CrossGroupTag);
+          CreateMethodProduces(CrossGroupTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => new[] { SyntaxKind.MethodDeclaration };
 
@@ -772,7 +812,7 @@ public sealed class RuleGraphCompilerTests
         public override string Name => "Create a seed for typed output routing.";
 
         public override RuleProducesContract Produces =>
-          RuleStructureContractFactories.CreateDeclarationHostProduces(TypedSeedTag);
+          CreateMethodProduces(TypedSeedTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds =>
           new[] { SyntaxKind.MethodDeclaration };
@@ -796,10 +836,10 @@ public sealed class RuleGraphCompilerTests
         public override string Name => "Produce a generic propagated mark.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateDeclarationHostConsumes(TypedSeedTag, RuleInputCardinality.All);
+          CreateMethodConsumes(TypedSeedTag);
 
         public override RuleProducesContract Produces =>
-          RuleStructureContractFactories.CreateDeclarationHostProduces(TypedOtherTag);
+          CreateMethodProduces(TypedOtherTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds =>
           new[] { SyntaxKind.MethodDeclaration };
@@ -829,7 +869,7 @@ public sealed class RuleGraphCompilerTests
         public override string Name => "Consume only local-reference output.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateDeclarationHostConsumes(TypedUnmatchedTag, RuleInputCardinality.All);
+          CreateMethodConsumes(TypedUnmatchedTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds =>
           new[] { SyntaxKind.MethodDeclaration };
@@ -860,10 +900,10 @@ public sealed class RuleGraphCompilerTests
         public override string Name => "Lift the explicit graph dependency.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateDeclarationHostConsumes(CrossGroupTag, RuleInputCardinality.All);
+          CreateMethodConsumes(CrossGroupTag);
 
         public override RuleProducesContract Produces =>
-          RuleStructureContractFactories.CreateDeclarationHostProduces(CrossGroupLiftedTag);
+          CreateMethodProduces(CrossGroupLiftedTag);
 
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds => new[] { SyntaxKind.MethodDeclaration };
 
@@ -890,9 +930,9 @@ public sealed class RuleGraphCompilerTests
         public override string Name => "Require an unavailable graph producer.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateDeclarationHostConsumes(
-            new RuleSemanticTag("Test.Missing"),
-            RuleInputCardinality.ExactlyOne);
+          CreateMethodConsumes(new RuleSemanticTag("Test.Missing"));
+
+        public override RuleInputCardinality InputCardinality => RuleInputCardinality.ExactlyOne;
 
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
           new[] { SyntaxKind.ClassDeclaration };
@@ -919,9 +959,7 @@ public sealed class RuleGraphCompilerTests
         public override string Name => "Propose from the explicit graph dependency.";
 
         public override RuleConsumesContract Consumes =>
-          RuleStructureContractFactories.CreateDeclarationHostConsumes(
-            CrossGroupLiftedTag,
-            RuleInputCardinality.All);
+          CreateMethodConsumes(CrossGroupLiftedTag);
 
         public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds => new[] { SyntaxKind.MethodDeclaration };
 
@@ -939,5 +977,21 @@ public sealed class RuleGraphCompilerTests
             var lifted = Assert.Single(liftedMarks);
             yield return DeleteDecisionFactory.CreateDeleteDecision(RuleId, lifted.Mark.SyntaxNode, RuleId);
         }
+    }
+
+    private static RuleProducesContract CreateMethodProduces(RuleSemanticTag semanticTag)
+    {
+        return new RuleProducesContract(new[]
+        {
+            new RuleProducedSyntax(new[] { SyntaxKind.MethodDeclaration }, semanticTag)
+        });
+    }
+
+    private static RuleConsumesContract CreateMethodConsumes(RuleSemanticTag semanticTag)
+    {
+        return new RuleConsumesContract(new[]
+        {
+            new RuleConsumedSyntax(new[] { SyntaxKind.MethodDeclaration }, semanticTag)
+        });
     }
 }

@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.Text;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.Rewrite;
+using RoslynPrototype.Testing.TestInfrastructure;
 using Xunit;
 
 namespace RoslynPrototype.Tests.Rewrite;
@@ -85,6 +86,48 @@ public sealed class DiffModelTests
     Assert.Equal(direct.Diff.ToString(), replayed.Diff.ToString());
     Assert.Equal(2, operations.Count);
     Assert.Empty(errors);
+  }
+
+  [Fact]
+  public void PrototypeRewriter_Rewrite_WhenDeletedExpressionHasErrorType_ProducesSyntaxSafeDefault()
+  {
+    const string source = """
+      namespace Demo;
+
+      public sealed class Sample
+      {
+        public void Run()
+        {
+          var enabled = MissingInput.Enabled && true;
+        }
+      }
+      """;
+    var tree = CSharpSyntaxTree.ParseText(source, path: "sample.cs");
+    var root = tree.GetRoot();
+    var compilation = CreateCompilation(tree);
+    var semanticModel = compilation.GetSemanticModel(tree);
+    var target = root.DescendantNodes().OfType<BinaryExpressionSyntax>().Single();
+    Assert.Equal(TypeKind.Error, semanticModel.GetTypeInfo(target).Type?.TypeKind);
+    var result = new PrototypeRewriter().Rewrite(
+      root,
+      semanticModel,
+      new[]
+      {
+        new RuleDecision(
+          target,
+          target,
+          DecisionActionKind.Delete,
+          "Delete an expression with an unresolved type.")
+      });
+    var rewrittenSource = Assert.IsType<string>(result.RewrittenSource);
+    var syntaxErrors = CSharpSyntaxTree.ParseText(rewrittenSource, path: "sample.cs")
+      .GetDiagnostics()
+      .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+      .ToArray();
+
+    TextDiffAssert.Contains("var enabled = default;", rewrittenSource, result.Diff);
+    TextDiffAssert.DoesNotContain("default(?", rewrittenSource, result.Diff);
+    Assert.Empty(syntaxErrors);
   }
 
   [Fact]

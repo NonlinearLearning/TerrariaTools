@@ -54,7 +54,7 @@ public sealed class  CommandHost
                       replayPlanPath,
                       options,
                       runtime);
-                    await CompleteRuntimeLogAsync(runtimeLog, replayResult, runtime);
+                    await CompleteRuntimeLogAsync(options, runtimeLog, replayResult, runtime);
                     return replayResult;
                 }
 
@@ -68,7 +68,7 @@ public sealed class  CommandHost
                     CaptureRewritePlan(inputPath, capturePlanPath, directoryResult);
                 }
 
-                await CompleteRuntimeLogAsync(runtimeLog, directoryResult, runtime);
+                await CompleteRuntimeLogAsync(options, runtimeLog, directoryResult, runtime);
                 return directoryResult;
             }
 
@@ -85,7 +85,7 @@ public sealed class  CommandHost
 
             if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
             {
-                await CompleteRuntimeLogAsync(runtimeLog, result, runtime);
+                await CompleteRuntimeLogAsync(options, runtimeLog, result, runtime);
                 return result;
             }
 
@@ -96,7 +96,7 @@ public sealed class  CommandHost
 
             if (! ApplicationOptions.ShouldWriteDiff(options))
             {
-                await CompleteRuntimeLogAsync(runtimeLog, result, runtime);
+                await CompleteRuntimeLogAsync(options, runtimeLog, result, runtime);
                 return result;
             }
 
@@ -104,7 +104,7 @@ public sealed class  CommandHost
             var renderedDiff = _textDiffRenderer.Render(result.Diff, diffView);
             File.WriteAllText(diffPath, renderedDiff, Encoding.UTF8);
             result = result with { DiffFilePath = diffPath };
-            await CompleteRuntimeLogAsync(runtimeLog, result, runtime);
+            await CompleteRuntimeLogAsync(options, runtimeLog, result, runtime);
             return result;
         }
         catch (Exception exception)
@@ -119,10 +119,17 @@ public sealed class  CommandHost
     }
 
     private static async Task CompleteRuntimeLogAsync(
+        IReadOnlyDictionary<string, string> options,
         RuntimeMeasurementLog? runtimeLog,
         PrototypeAnalysisResult result,
         AnalysisRuntime runtime)
     {
+        var evidencePath = ApplicationOptions.ResolveEvidenceJsonPath(options);
+        if (evidencePath is not null && result.Evidence is not null)
+        {
+            AnalysisEvidenceArtifactService.Write(evidencePath, result.Evidence);
+        }
+
         if (runtimeLog is not null)
         {
             await runtimeLog.CompleteAsync(result, runtime);

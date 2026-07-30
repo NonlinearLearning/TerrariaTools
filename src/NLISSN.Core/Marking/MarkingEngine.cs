@@ -14,8 +14,8 @@ public sealed class MarkingEngine
           RuleKind.Mark,
           Array.Empty<RuleDependency>())
         {
-          ProducedStructures = rule.Produces.Structures,
-          ConsumedStructures = rule.Consumes.Structures
+          ProducedSyntax = rule.Produces.Outputs,
+          ConsumedSyntax = rule.Consumes.Inputs
         }).ToList();
         var graph = new RuleGraphCompiler().Compile(nodes);
         var executionNodes = rules.Select(rule =>
@@ -56,9 +56,15 @@ public sealed class MarkingEngine
         var producedMarks = new List<MarkRecord>();
         foreach (var mark in rule.Mark(context, root))
         {
-            ValidateMarkNode(rule, mark.SyntaxNode);
-            ValidateProducedStructure(rule.Produces, mark);
-            producedMarks.Add(BindMarkRecord(context, mark));
+            var taggedMark = BindDeclaredSemanticTag(rule.Produces, mark);
+            ValidateMarkNode(rule, taggedMark.SyntaxNode);
+              ValidateProducedSyntax(rule.Produces, taggedMark);
+            producedMarks.Add(BindMarkRecord(context, taggedMark));
+        }
+
+        foreach (var mark in producedMarks)
+        {
+            context.Evidence.RecordSeed(mark);
         }
 
         return producedMarks;
@@ -85,12 +91,32 @@ public sealed class MarkingEngine
           $"Rule '{rule.RuleId}' emitted unsupported mark node kind '{nodeKind}'. Allowed mark node kinds: {allowedKinds}.");
     }
 
-    internal static void ValidateProducedStructure(RuleProducesContract produces, MarkRecord mark)
+    internal static void ValidateProducedSyntax(RuleProducesContract produces, MarkRecord mark)
     {
-        if (produces.Structures.Count > 0 && mark.SemanticTag is not null)
+        if (produces.Outputs.Count > 0 && mark.SemanticTag is not null)
         {
-            RuleStructureContractValidator.RequireProducedMark(produces, mark);
+            RuleSyntaxContractValidator.RequireProducedMark(produces, mark);
         }
+    }
+
+    internal static MarkRecord BindDeclaredSemanticTag(
+      RuleProducesContract produces,
+      MarkRecord mark)
+    {
+        ArgumentNullException.ThrowIfNull(produces);
+        ArgumentNullException.ThrowIfNull(mark);
+
+        if (mark.SemanticTag is not null)
+        {
+            return mark;
+        }
+
+        var matches = produces.Outputs
+          .Where(output => output.SyntaxKinds.Contains((SyntaxKind)mark.SyntaxNode.RawKind))
+          .ToList();
+        return matches.Count == 1
+          ? mark with { SemanticTag = matches[0].SemanticTag }
+          : mark;
     }
 
     internal static MarkRecord BindMarkRecord(RuleContext context, MarkRecord candidate)

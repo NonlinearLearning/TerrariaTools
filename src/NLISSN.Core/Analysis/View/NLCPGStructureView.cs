@@ -1,3 +1,4 @@
+using NLCPG.Analysis;
 using NLCPG.Model;
 
 namespace NLISSN.Core.Analysis;
@@ -10,3 +11,9 @@ public sealed record NLCPGStructureView(
   IReadOnlyList<NLCPGNode> Nodes,
   /// 结构视图包含的全部边。
   IReadOnlyList<NLCPGEdge> Edges);
+
+/// Carries non-complete structure query states to callers that need conservative handling.
+public sealed record CpgStructureViewQueryResult(
+  NLCPGStructureView? View,
+  CpgQueryStatus Status,
+  string? TruncationReason);

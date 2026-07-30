@@ -1,6 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NLCPG.Builder;
+using NLCPG.Contracts;
+using NLCPG.Analysis.FlowSummaries;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
@@ -17,13 +19,15 @@ public sealed class ApplicationService
     private readonly RulePipeline _pipeline;
     private readonly CompiledRuleGraph _compiledRuleGraph;
     private readonly PrototypeRewriter _rewriter;
+    private readonly ICallFlowResolver? _callFlowResolver;
 
     // 用完整规则管道初始化单文件分析服务，并准备四个阶段的执行器和改写器。
-    public ApplicationService(RulePipeline pipeline)
+    public ApplicationService(RulePipeline pipeline, ICallFlowResolver? callFlowResolver = null)
     {
         _pipeline = pipeline;
         _compiledRuleGraph = pipeline.CompileRuleGraph();
         _rewriter = new PrototypeRewriter();
+        _callFlowResolver = callFlowResolver;
     }
 
     // 允许调用方直接注入四个阶段的规则列表，内部仍组装成统一规则管道。
@@ -95,9 +99,10 @@ public sealed class ApplicationService
         ruleGraphTelemetry = graphResult.Telemetry;
         ruleGraphNodeStatuses = graphResult.NodeStatuses;
         ruleGraphMetrics = graphResult.Metrics;
+        var validationReport = graphResult.ValidationReport;
 
         var filteredDecisions = FilterNestedDeleteDecisions(decisions);
-        var rewriteResult = ShouldSkipRewrite(analysisContext.RuleContext)
+        var rewriteResult = ShouldSkipRewrite(analysisContext.RuleContext) || validationReport is { IsValid: false }
           ? new PrototypeRewriteResult(
             null,
             Array.Empty<RewriteEdit>(),
@@ -124,7 +129,9 @@ public sealed class ApplicationService
           RuleGraphMetrics: ruleGraphMetrics,
           GraphMetrics: new CpgGraphMetrics(
             analysisContext.CpgAnalysisContext.Graph.Nodes.Count,
-            analysisContext.CpgAnalysisContext.Graph.Edges.Count));
+            analysisContext.CpgAnalysisContext.Graph.Edges.Count),
+          Evidence: graphResult.Evidence,
+          ValidationReport: validationReport);
     }
 
     private AnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
@@ -177,7 +184,8 @@ public sealed class ApplicationService
         var builderOptions = NLCPGBuilderOptions.CreateDefault() with
         {
             MaxDegreeOfParallelism = runtime.CurrentCpgBuildAdmissionLease!.GrantedDegree,
-            RequestedCapabilities = _pipeline.GetRequiredCapabilities()
+            RequestedCapabilities = _pipeline.GetRequiredCapabilities(),
+            CallFlowResolver = _callFlowResolver,
         };
         var builder = new NLCPGBuilder(builderOptions);
         var graph = builder.BuildFromSemanticModel(
@@ -185,7 +193,16 @@ public sealed class ApplicationService
           root,
           source,
           filePath);
-        var cpgAnalysisContext = new CpgAnalysisContext(graph, semanticModel, root);
+        var requestedCapabilities = builderOptions.RequestedCapabilities ?? new[] { NLCPGCapability.Default };
+        var availableCapabilities = requestedCapabilities.Aggregate(
+          NLCPGCapability.None,
+          static (current, capability) => current | capability);
+        var cpgAnalysisContext = new CpgAnalysisContext(
+          graph,
+          semanticModel,
+          root,
+          availableCapabilities,
+          CallFlowResolver: _callFlowResolver);
         var ruleContext = new RuleContext(cpgAnalysisContext, options, runtime: runtime);
 
         return new AnalysisContext(

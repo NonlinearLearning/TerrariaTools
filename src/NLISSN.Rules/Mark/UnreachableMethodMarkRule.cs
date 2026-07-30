@@ -15,7 +15,10 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
     private static readonly RuleSemanticTag UnreachableMethodSemanticTag = new("UnreachableMethod");
 
     private static readonly RuleProducesContract UnreachableMethodProduces =
-      RuleStructureContractFactories.CreateDeclarationHostProduces(UnreachableMethodSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnreachableMethodSemanticTag)
+      });
 
     /// 规则稳定标识。
     public override string CapabilityId { get; } = "mark.unreachable-method";

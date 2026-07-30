@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Core.Lifting;
-using NLISSN.Core.Analysis.Structure;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 
@@ -10,25 +9,34 @@ namespace NLISSN.Rules;
 public sealed class SObjectIfStructureLiftingRule : RuleDefinitionLift
 {
     private static readonly RuleSemanticTag IfStructureSemanticTag = new("SObject.IfStructure");
+    private static readonly RuleSemanticTag AtomicTargetSemanticTag = new("Target.Atomic");
+    private static readonly RuleSemanticTag PropagatedTargetSemanticTag = new("Target.Propagated");
+    private static readonly RuleSemanticTag LocalDefinitionSemanticTag = new("SObject.LocalDefinitionFromInitializer");
+    private static readonly RuleSemanticTag LogicalHostSemanticTag = new("SObject.LogicalHost");
+    private static readonly RuleSemanticTag IfCompletionSemanticTag = new("SObject.IfCompletion");
 
-    private static readonly RuleTerminalConsumesContract SObjectInputFacts = new(
+    private static readonly RuleConsumesContract SObjectFactsConsumes = new(new[]
+    {
+        new RuleConsumedSyntax(SObjectPropagationRuleBase.AtomicTargetNodeKinds, AtomicTargetSemanticTag),
+        new RuleConsumedSyntax(DeleteSObjectLiftingCommon.AllowedLiftNodeKinds, PropagatedTargetSemanticTag),
+        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, LocalDefinitionSemanticTag),
+        new RuleConsumedSyntax(new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression }, LogicalHostSemanticTag),
+        new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause }, IfCompletionSemanticTag)
+    });
+
+    private static readonly RuleProducesContract IfStructureProduces = new(
       new[]
       {
-        new RuleTerminalFactSelector(
-          RuleFactDomain.SObject,
-          new[] { RuleKind.Mark, RuleKind.Propagate })
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          IfStructureSemanticTag)
       });
-
-    private static readonly RuleProducesContract IfStructureProduces =
-      RuleStructureContractFactories.CreateIfStructureProduces(IfStructureSemanticTag);
 
     public override string CapabilityId { get; } = "lift.target.if-structure";
 
     public override string RuleId { get; } = "DEL-SOBJ-LIFT-IF-001";
 
-    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
-
-    public override RuleTerminalConsumesContract TerminalConsumes => SObjectInputFacts;
+    public override RuleConsumesContract Consumes => SObjectFactsConsumes;
 
     public override RuleProducesContract Produces => IfStructureProduces;
 
@@ -51,10 +59,15 @@ public sealed class SObjectIfStructureLiftingRule : RuleDefinitionLift
             Mark = mark.Mark with
             {
               OutputKind = RuleOutputKind.IfStructure,
-              SemanticTag = RuleSyntaxStructureCatalog.TryGetIfRole(mark.Mark.SyntaxNode, out _)
+              SemanticTag = IsIfStructureMember(mark.Mark.SyntaxNode)
                 ? IfStructureSemanticTag
                 : null
             }
           });
+    }
+
+    private static bool IsIfStructureMember(Microsoft.CodeAnalysis.SyntaxNode syntaxNode)
+    {
+        return syntaxNode.RawKind is (int)SyntaxKind.IfStatement or (int)SyntaxKind.ElseClause;
     }
 }

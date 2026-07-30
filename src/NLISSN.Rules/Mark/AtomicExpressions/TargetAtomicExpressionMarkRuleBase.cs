@@ -8,11 +8,15 @@ namespace NLISSN.Core.Marking;
 public abstract class SObjectAtomicExpressionMarkRuleBase : RuleDefinitionMark
 {
     private const string DeleteSObjectGroupKey = "DEL-SOBJ";
+    private static readonly RuleSemanticTag AtomicTargetSemanticTag = new("Target.Atomic");
 
-
-    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
 
     protected abstract SyntaxKind MarkKind { get; }
+
+    public override RuleProducesContract Produces => new(new[]
+    {
+        new RuleProducedSyntax(new[] { MarkKind }, AtomicTargetSemanticTag)
+    });
 
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => new[] { MarkKind };
 
@@ -23,6 +27,7 @@ public abstract class SObjectAtomicExpressionMarkRuleBase : RuleDefinitionMark
           context,
           root,
           RuleId,
-          AllowedMarkNodeKinds);
+          AllowedMarkNodeKinds)
+          .Select(mark => mark with { SemanticTag = AtomicTargetSemanticTag });
     }
 }

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Threading.Channels;
 using NLCPG.Persistence;
 using NLCPG.Persistence.Sqlite;
+using NLCPG.Validation;
 
 namespace NLCPG.Builder;
 //一次 CPG 持久化构建的事务边界。它把并行分片写盘、顺序 catalog 暂存、复用分片和最终可见性统一起来，确保查询端不会看到半成品
@@ -273,6 +274,13 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
         lock (_routingEntries)
         {
             routingEntries = _routingEntries.ToArray();
+        }
+
+        var validation = new CpgPersistedBuildValidator().Validate(routingEntries);
+        if (!validation.IsValid)
+        {
+            throw new InvalidOperationException(
+              $"Persisted CPG build validation failed: {string.Join(", ", validation.Issues.Select(issue => issue.Code))}.");
         }
 
         var routingIndexPath = Path.Combine(_stagingRoot, "routing.cpgidx");

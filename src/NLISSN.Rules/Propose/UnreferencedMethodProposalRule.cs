@@ -12,9 +12,10 @@ public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
   private static readonly RuleSemanticTag UnreferencedMethodSemanticTag = new("UnreferencedMethod");
 
   private static readonly RuleConsumesContract UnreferencedMethodConsumes =
-    RuleStructureContractFactories.CreateDeclarationHostConsumes(
-      UnreferencedMethodSemanticTag,
-      RuleInputCardinality.All);
+    new(new[]
+    {
+      new RuleConsumedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnreferencedMethodSemanticTag)
+    });
 
   public override string CapabilityId { get; } = "propose.unreferenced-method";
 

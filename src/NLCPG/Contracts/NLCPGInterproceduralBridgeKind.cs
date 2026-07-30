@@ -6,4 +6,5 @@ public enum NLCPGInterproceduralBridgeKind
     ArgumentToParameter,
     ReturnToMethodReturn,
     MethodReturnToCallResult,
+    SummaryMapping,
 }

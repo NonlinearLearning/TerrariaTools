@@ -7,7 +7,8 @@ public sealed class  LayoutArchitectureTests
   [Fact]
   public void ProductionProjects_UseTheNlissnProjectLayout()
   {
-    Assert.True(File.Exists(ProjectPath("src", "NL.Concurrency", "NL.Concurrency.csproj")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Infrastructure", "Concurrency", "NL.Concurrency.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Core", "NLISSN.Core.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Rules", "NLISSN.Rules.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Application", "NLISSN.Application.csproj")));
@@ -33,19 +34,19 @@ public sealed class  LayoutArchitectureTests
   {
     AssertProjectReferences(
       Array.Empty<string>(),
-      "src", "NL.Concurrency", "NL.Concurrency.csproj");
+      "src", "NLISSN.Infrastructure", "Concurrency", "NL.Concurrency.csproj");
     AssertProjectReferences(
       new[]
       {
-        "..\\NL.Caching\\NL.Caching.csproj",
-        "..\\NL.Concurrency\\NL.Concurrency.csproj",
+        "..\\NLISSN.Infrastructure\\Caching\\NL.Caching.csproj",
+        "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
         "..\\NLCPG\\NLCPG.csproj"
       },
       "src", "NLISSN.Core", "NLISSN.Core.csproj");
     AssertProjectReferences(
       new[]
       {
-        "..\\NL.Concurrency\\NL.Concurrency.csproj",
+        "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj"
       },
@@ -53,17 +54,18 @@ public sealed class  LayoutArchitectureTests
     AssertProjectReferences(
       new[]
       {
-        "..\\NL.Concurrency\\NL.Concurrency.csproj",
+        "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
-        "..\\NLCPG\\NLCPG.csproj"
+        "..\\NLCPG\\NLCPG.csproj",
+        "..\\NLISSN.Rules\\NLISSN.Rules.csproj"
       },
       "src", "NLISSN.Application", "NLISSN.Application.csproj");
     AssertProjectReferences(
       new[]
       {
-        "..\\NL.Concurrency\\NL.Concurrency.csproj",
+        "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
         "..\\NLISSN.Application\\NLISSN.Application.csproj",
-        "..\\NLISSN.Logging\\NLISSN.Logging.csproj",
+        "..\\NLISSN.Infrastructure\\Logging\\NLISSN.Logging.csproj",
         "..\\NLISSN.Rules\\NLISSN.Rules.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj"
@@ -77,7 +79,7 @@ public sealed class  LayoutArchitectureTests
     var expectedSources = new[]
     {
       (new[] { "src", "NLISSN.Application", "ExecutionRuntime.cs" }, "NLISSN.Core.Pipeline"),
-      (new[] { "src", "NLISSN.Core", "Pipeline", "IRuleOptions.cs" }, "NLISSN.Core.Pipeline"),
+      (new[] { "src", "NLISSN.Rule", "IRuleOptions.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Rule", "RuleContext.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Rule", "IRuleDefinition.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Core", "Analysis", "IRuleAnalysis.cs" }, "NLISSN.Core.Analysis"),
@@ -90,8 +92,8 @@ public sealed class  LayoutArchitectureTests
       (new[] { "src", "NLISSN.Rule", "RuleGraph.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Rule", "RuleGraphCompiler.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Rule", "RuleGraphExecutor.cs" }, "NLISSN.Core.Pipeline"),
-      (new[] { "src", "NLISSN.Core", "Pipeline", "RuleStructureContract.cs" }, "NLISSN.Core.Pipeline"),
-      (new[] { "src", "NLISSN.Core", "Pipeline", "RuleStructureContractGraphCompiler.cs" }, "NLISSN.Core.Pipeline"),
+      (new[] { "src", "NLISSN.Rule", "RuleStructureContract.cs" }, "NLISSN.Core.Pipeline"),
+      (new[] { "src", "NLISSN.Rule", "RuleStructureContractGraphCompiler.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Application", "Analysis", "RulePipeline.cs" }, "NLISSN.Application"),
       (new[] { "src", "NLISSN", "Cli", "Parsing", "ApplicationOptions.cs" }, "NLISSN.Cli.Parsing"),
       (new[] { "src", "NLISSN", "Cli", "Hosting", "CliRunner.cs" }, "NLISSN.Cli.Hosting"),
@@ -100,7 +102,7 @@ public sealed class  LayoutArchitectureTests
       (new[] { "src", "NLISSN", "Artifacts", "DiffPathResolver.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanArtifactService.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanReplayService.cs" }, "NLISSN.Artifacts"),
-      (new[] { "src", "NLISSN", "Composition", "RuleRegistry.cs" }, "NLISSN.Composition"),
+      (new[] { "src", "NLISSN.Application", "RuleRegistry.cs" }, "NLISSN.Composition"),
       (new[] { "src", "NLISSN", "Telemetry", "RuntimeMeasurementLog.cs" }, "NLISSN.Telemetry")
     };
 
@@ -142,7 +144,7 @@ public sealed class  LayoutArchitectureTests
 
   private static void AssertProjectReferences(IReadOnlyList<string> expected, params string[] projectParts)
   {
-    var references = File.ReadLines(ProjectPath(projectParts[0], projectParts[1], projectParts[2]))
+    var references = File.ReadLines(ProjectPath(projectParts))
       .Where(line => line.Contains("<ProjectReference", StringComparison.Ordinal))
       .Select(line => line.Split('"')[1])
       .ToArray();

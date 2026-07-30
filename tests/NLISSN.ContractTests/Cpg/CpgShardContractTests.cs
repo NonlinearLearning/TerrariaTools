@@ -1,3 +1,4 @@
+using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Persistence;
 using NLCPG.Contracts;
 using NLCPG.Builder;
@@ -24,7 +25,7 @@ public sealed class CpgShardContractTests
 
       Assert.True(File.Exists(result.ShardPath));
       Assert.Equal(CpgShardStatus.Complete, result.Status);
-      Assert.Equal(6, ReadFormatVersion(result.ShardPath));
+      Assert.Equal(7, ReadFormatVersion(result.ShardPath));
       Assert.NotNull(recovered.IncomingEdgeOffsets);
       Assert.NotNull(recovered.IncomingEdgeIndexes);
       Assert.Equal(recovered.Nodes.Count + 1, recovered.IncomingEdgeOffsets!.Count);
@@ -60,6 +61,51 @@ public sealed class CpgShardContractTests
       Assert.Equal((uint)7, boundary.SourceNodeId);
       Assert.Equal((uint)99, boundary.TargetNodeId);
       Assert.Equal("InterproceduralDataFlow", boundary.Kind);
+    }
+    finally
+    {
+      Directory.Delete(root, recursive: true);
+    }
+  }
+
+  [Fact]
+  public async Task WriteAsync_FlowSummaryBridge_PreservesTypedSummaryMetadata()
+  {
+    var root = CreateTemporaryDirectory();
+    try
+    {
+      var store = new CpgShardStore(root);
+      var label = new CpgFrozenFlowSummaryLabel(
+        NLCPGInterproceduralBridgeKind.SummaryMapping,
+        FlowSummaryResolution.Project,
+        "Demo|Helpers|Map|0|1|value|global::System.String",
+        FlowSummaryEndpoint.Parameter(0),
+        FlowSummaryEndpoint.Return);
+      var shard = CreateShard("source-a", "profile-a", "summary-metadata") with
+      {
+        Edges = new[]
+        {
+          new CpgFrozenEdge(
+            0,
+            0,
+            "InterproceduralDataFlow",
+            "interprocedural-summary:SummaryMapping:Project:Demo|Helpers|Map|0|1|value|global::System.String:Parameter { ParameterOrdinal = 0 }->Return { ParameterOrdinal = -1 }",
+            null,
+            FlowSummaryLabel: label),
+        },
+      };
+
+      var location = await store.WriteAsync(shard, CancellationToken.None);
+      var recovered = await store.ReadAsync(location, CancellationToken.None);
+      var graph = CpgFrozenShardGraphReader.ReadGraph(recovered);
+
+      var recoveredLabel = Assert.Single(recovered.Edges).FlowSummaryLabel;
+      Assert.Equal(label, recoveredLabel);
+      var restoredLabel = Assert.Single(graph.Edges).StructuredLabel;
+      Assert.Equal(FlowSummaryResolution.Project, restoredLabel!.FlowSummaryResolution);
+      Assert.Equal(label.MethodKey, restoredLabel.FlowSummaryMethodKey);
+      Assert.Equal(label.Source, restoredLabel.FlowSummarySource);
+      Assert.Equal(label.Target, restoredLabel.FlowSummaryTarget);
     }
     finally
     {

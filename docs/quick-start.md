@@ -55,6 +55,12 @@ dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> --target-name <n
 
 需要诊断目录并发与文件内 CPG 分片并发时，使用 `--cpg-max-degree-of-parallelism` 单独覆盖 CPG 值；三组测量命令与继承规则见 [CLI 参考](cli-reference.md#并发诊断)。
 
+需要检查冻结图、规则输出、语法绑定和决策 evidence 时，显式加入 `--validate-bindings`。该选项默认关闭；报告中的 Error 会阻止本次 rewrite：
+
+```powershell
+dotnet run --project .\src\NLISSN\NLISSN.csproj -- <input-path> --target-name <name> --validate-bindings --no-diff
+```
+
 ## 4. 运行回归测试
 
 ```powershell

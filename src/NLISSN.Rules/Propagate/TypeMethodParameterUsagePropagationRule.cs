@@ -7,12 +7,29 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 为方法参数删除汇总声明宿主与调用点，并把不同调用约束编码成 mode，供后续收缩提案选择正确改写策略。
-public sealed class ClassMethodParameterUsagePropagationRule : ClassPropagationRuleBase
+public sealed class ClassMethodParameterUsagePropagationRule : RuleDefinitionPropagate
 {
+    private static readonly RuleConsumesContract TypeSyntaxConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.QualifiedName,
+          SyntaxKind.AliasQualifiedName,
+          SyntaxKind.GenericName
+        },
+        new RuleSemanticTag("Class.TypeSyntaxTarget"))
+    });
     private static readonly RuleSemanticTag MethodParameterUsageSemanticTag = new("Class.MethodParameterUsage");
 
     private static readonly RuleProducesContract MethodParameterUsageProduces =
-      RuleStructureContractFactories.CreateMethodParameterUsageProduces(MethodParameterUsageSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression },
+          MethodParameterUsageSemanticTag)
+      });
 
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
@@ -21,6 +38,8 @@ public sealed class ClassMethodParameterUsagePropagationRule : ClassPropagationR
     public override string RuleId { get; } = "DEL-CLASS-PROP-METHOD-PARAM-USAGE-001";
 
     public override RuleProducesContract Produces => MethodParameterUsageProduces;
+
+    public override RuleConsumesContract Consumes => TypeSyntaxConsumes;
 
 
     public override string Name { get; } = "Propagate delete-class method parameter usage to owning methods and mapped callsites";

@@ -8,7 +8,7 @@ public sealed class CacheInfrastructureBoundaryTests
     [Fact]
     public void CacheProject_HasOnlyBclDependencies()
     {
-        var project = XDocument.Load(ProjectPath("src", "NL.Caching", "NL.Caching.csproj"));
+        var project = XDocument.Load(ProjectPath("src", "NLISSN.Infrastructure", "Caching", "NL.Caching.csproj"));
 
         Assert.Empty(project.Descendants("PackageReference"));
         Assert.Empty(project.Descendants("ProjectReference"));
@@ -17,7 +17,7 @@ public sealed class CacheInfrastructureBoundaryTests
     [Fact]
     public void CacheProject_SourceDoesNotReferenceDomainNamespaces()
     {
-        var sourceDirectory = ProjectPath("src", "NL.Caching");
+        var sourceDirectory = ProjectPath("src", "NLISSN.Infrastructure", "Caching");
         var forbiddenNamespaces = new[] { "Microsoft.CodeAnalysis", "NLCPG", "NLISSN" };
 
         foreach (var sourcePath in Directory.EnumerateFiles(sourceDirectory, "*.cs"))

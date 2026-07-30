@@ -100,6 +100,9 @@ public sealed class NLCPGFlowSummaryRegistry
 {
     private readonly IReadOnlyDictionary<string, NLCPGFlowSummary> _projectOverrides;
     private readonly IReadOnlyDictionary<string, NLCPGFlowSummary> _frameworkSummaries;
+    private readonly IReadOnlyDictionary<string, FlowSummary> _projectSummaries;
+    private readonly IReadOnlyDictionary<string, FlowSummary> _userSummaries;
+    private readonly IReadOnlyDictionary<string, FlowSummary> _frameworkFlowSummaries;
 
     /// <summary>
     /// 初始化流摘要注册表，并分别建立项目覆盖与框架摘要索引。
@@ -108,8 +111,27 @@ public sealed class NLCPGFlowSummaryRegistry
     /// <param name="frameworkSummaries">框架提供的默认摘要。</param>
     public NLCPGFlowSummaryRegistry(IEnumerable<NLCPGFlowSummary>? projectOverrides = null, IEnumerable<NLCPGFlowSummary>? frameworkSummaries = null)
     {
-        _projectOverrides = ToStableKeyIndex(projectOverrides);
-        _frameworkSummaries = ToStableKeyIndex(frameworkSummaries);
+        _projectOverrides = ToStableKeyIndex(projectOverrides, "Project", summary => summary.StableKey);
+        _frameworkSummaries = ToStableKeyIndex(frameworkSummaries, "Framework", summary => summary.StableKey);
+        _projectSummaries = new Dictionary<string, FlowSummary>(StringComparer.Ordinal);
+        _userSummaries = new Dictionary<string, FlowSummary>(StringComparer.Ordinal);
+        _frameworkFlowSummaries = new Dictionary<string, FlowSummary>(StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// Initializes a multi-mapping registry. Project summaries override user summaries,
+    /// which override framework summaries for the same complete method key.
+    /// </summary>
+    public NLCPGFlowSummaryRegistry(
+      IEnumerable<FlowSummary>? projectSummaries,
+      IEnumerable<FlowSummary>? userSummaries,
+      IEnumerable<FlowSummary>? frameworkSummaries)
+    {
+        _projectSummaries = CreateFlowSummaryIndex(projectSummaries, "Project");
+        _userSummaries = CreateFlowSummaryIndex(userSummaries, "User");
+        _frameworkFlowSummaries = CreateFlowSummaryIndex(frameworkSummaries, "Framework");
+        _projectOverrides = new Dictionary<string, NLCPGFlowSummary>(StringComparer.Ordinal);
+        _frameworkSummaries = new Dictionary<string, NLCPGFlowSummary>(StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -133,10 +155,83 @@ public sealed class NLCPGFlowSummaryRegistry
         return NLCPGFlowSummaryLookupResult.Unknown;
     }
 
-    private static IReadOnlyDictionary<string, NLCPGFlowSummary> ToStableKeyIndex(IEnumerable<NLCPGFlowSummary>? summaries)
+    public FlowSummaryLookupResult Resolve(FlowSummaryMethodKey methodKey)
     {
-        return (summaries ?? Array.Empty<NLCPGFlowSummary>())
-          .OrderBy(summary => summary.StableKey, StringComparer.Ordinal)
-          .ToDictionary(summary => summary.StableKey, StringComparer.Ordinal);
+        ArgumentNullException.ThrowIfNull(methodKey);
+        methodKey.Validate();
+        if (_projectSummaries.TryGetValue(methodKey.StableKey, out var project))
+        {
+            return new FlowSummaryLookupResult(FlowSummaryResolution.Project, project);
+        }
+
+        if (_userSummaries.TryGetValue(methodKey.StableKey, out var user))
+        {
+            return new FlowSummaryLookupResult(FlowSummaryResolution.User, user);
+        }
+
+        if (_frameworkFlowSummaries.TryGetValue(methodKey.StableKey, out var framework))
+        {
+            return new FlowSummaryLookupResult(FlowSummaryResolution.Framework, framework);
+        }
+
+        return FlowSummaryLookupResult.Unknown;
     }
+
+    private static IReadOnlyDictionary<string, FlowSummary> CreateFlowSummaryIndex(
+      IEnumerable<FlowSummary>? summaries,
+      string source)
+    {
+        var ordered = (summaries ?? Array.Empty<FlowSummary>()).ToList();
+        foreach (var summary in ordered)
+        {
+            ValidateFlowSummary(summary);
+        }
+
+        return ToStableKeyIndex(ordered, source, summary => summary.MethodKey.StableKey);
+    }
+
+    private static IReadOnlyDictionary<string, TSummary> ToStableKeyIndex<TSummary>(
+      IEnumerable<TSummary>? summaries,
+      string source,
+      Func<TSummary, string> keySelector)
+    {
+        var ordered = (summaries ?? Array.Empty<TSummary>())
+          .OrderBy(keySelector, StringComparer.Ordinal)
+          .ToList();
+        var duplicate = ordered
+          .GroupBy(keySelector, StringComparer.Ordinal)
+          .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+        {
+            throw new InvalidOperationException(
+              $"Flow summary source '{source}' contains duplicate method key '{duplicate.Key}'.");
+        }
+
+        return ordered.ToDictionary(keySelector, StringComparer.Ordinal);
+    }
+
+    private static void ValidateFlowSummary(FlowSummary summary)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        summary.MethodKey.Validate();
+        if (summary.Mappings.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Flow summary method key '{summary.MethodKey.StableKey}' does not contain any mappings.");
+        }
+
+        var mappings = new HashSet<FlowSummaryMapping>();
+        foreach (var mapping in summary.Mappings)
+        {
+            ArgumentNullException.ThrowIfNull(mapping);
+            mapping.Source.Validate(summary.MethodKey);
+            mapping.Target.Validate(summary.MethodKey);
+            if (!mappings.Add(mapping))
+            {
+                throw new InvalidOperationException(
+                    $"Flow summary method key '{summary.MethodKey.StableKey}' contains a duplicate mapping.");
+            }
+        }
+    }
+
 }

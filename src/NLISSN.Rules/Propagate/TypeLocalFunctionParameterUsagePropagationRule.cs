@@ -7,13 +7,29 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 为局部函数参数删除收集声明与调用点，把“删除哪个参数”变成可重放的结构化 payload。
-public sealed class ClassLocalFunctionParameterUsagePropagationRule : ClassPropagationRuleBase
+public sealed class ClassLocalFunctionParameterUsagePropagationRule : RuleDefinitionPropagate
 {
+    private static readonly RuleConsumesContract TypeSyntaxConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.QualifiedName,
+          SyntaxKind.AliasQualifiedName,
+          SyntaxKind.GenericName
+        },
+        new RuleSemanticTag("Class.TypeSyntaxTarget"))
+    });
     private static readonly RuleSemanticTag LocalFunctionParameterUsageSemanticTag = new("Class.LocalFunctionParameterUsage");
 
     private static readonly RuleProducesContract LocalFunctionParameterUsageProduces =
-      RuleStructureContractFactories.CreateLocalFunctionParameterUsageProduces(
-        LocalFunctionParameterUsageSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.LocalFunctionStatement, SyntaxKind.InvocationExpression },
+          LocalFunctionParameterUsageSemanticTag)
+      });
 
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
@@ -22,6 +38,8 @@ public sealed class ClassLocalFunctionParameterUsagePropagationRule : ClassPropa
     public override string RuleId { get; } = "DEL-CLASS-PROP-LOCALFUNC-PARAM-USAGE-001";
 
     public override RuleProducesContract Produces => LocalFunctionParameterUsageProduces;
+
+    public override RuleConsumesContract Consumes => TypeSyntaxConsumes;
 
 
     public override string Name { get; } = "Propagate delete-class local-function parameter usage to local functions and mapped callsites";

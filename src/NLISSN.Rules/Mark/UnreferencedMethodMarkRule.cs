@@ -14,7 +14,10 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
     private static readonly RuleSemanticTag UnreferencedMethodSemanticTag = new("UnreferencedMethod");
 
     private static readonly RuleProducesContract UnreferencedMethodProduces =
-      RuleStructureContractFactories.CreateDeclarationHostProduces(UnreferencedMethodSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnreferencedMethodSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "mark.unreferenced-method";
 

@@ -1,4 +1,6 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using NLCPG.Analysis;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using System.Collections.Concurrent;
@@ -6,226 +8,206 @@ using System.Runtime.CompilerServices;
 
 namespace NLISSN.Core.Analysis;
 
-/// 从主 CPG 图中复制与一个或多个代码片段相关的局部视图。
+/// Builds rule structure views only through declared CPG relation profiles.
 public sealed class NLCPGStructureViewBuilder
 {
-    private static readonly ConditionalWeakTable<NLCPGGraph, GraphCache> GraphCaches = new();
     private static readonly ConditionalWeakTable<CpgAnalysisContext, AnalysisRunCache> RunCaches = new();
 
-    // 为单个语法根节点构建局部结构视图，复用统一的片段集合入口。
+    // Compatibility entry point for one syntax anchor. Multi-fragment callers must declare a relation profile.
     public NLCPGStructureView Build(SyntaxNode root, CpgAnalysisContext context)
     {
-        return Build(new SyntaxNode[] { root }, context);
+        return Build(root, context, cacheScopeKey: null);
     }
 
-    // 为单个语法根节点构建局部结构视图，并把结果绑定到指定缓存作用域。
-    public NLCPGStructureView Build(SyntaxNode root, CpgAnalysisContext context, string cacheScopeKey)
+    public NLCPGStructureView Build(SyntaxNode root, CpgAnalysisContext context, string? cacheScopeKey)
     {
-        return Build(new SyntaxNode[] { root }, context, cacheScopeKey);
+        return Build(
+            new[] { root },
+            context,
+            CpgRelationProfile.StructuralContainment,
+            CpgQueryDirection.Incoming,
+            CreateCompatibilityBudget(),
+            cacheScopeKey);
     }
 
-    // 为多个语法片段构建局部结构视图，自动推导片段集合缓存键。
+    // The untyped multi-fragment entry is deliberately restricted to a single-fragment compatibility view.
     public NLCPGStructureView Build(IReadOnlyCollection<SyntaxNode> fragments, CpgAnalysisContext context)
     {
-        return Build(fragments, context, null);
+        return Build(fragments, context, cacheScopeKey: null);
     }
 
-    // 为多个语法片段裁剪最小连通子图，并按作用域键缓存视图结果。
-    public NLCPGStructureView Build(IReadOnlyCollection<SyntaxNode> fragments, CpgAnalysisContext context, string? cacheScopeKey)
+    public NLCPGStructureView Build(
+        IReadOnlyCollection<SyntaxNode> fragments,
+        CpgAnalysisContext context,
+        string? cacheScopeKey)
     {
+        if (fragments.Count != 1)
+        {
+            throw new ArgumentException(
+                "Multi-fragment structure views require an explicit relation profile and traversal budget.",
+                nameof(fragments));
+        }
+
+        return Build(
+            fragments,
+            context,
+            CpgRelationProfile.StructuralContainment,
+            CpgQueryDirection.Incoming,
+            CreateCompatibilityBudget(),
+            cacheScopeKey);
+    }
+
+    public NLCPGStructureView Build(
+        IReadOnlyCollection<SyntaxNode> fragments,
+        CpgAnalysisContext context,
+        CpgRelationProfile profile,
+        CpgQueryDirection direction,
+        NLCPGTraversalBudget budget,
+        string? cacheScopeKey = null)
+    {
+        var result = Query(fragments, context, profile, direction, budget, cacheScopeKey);
+        if (result.Status != CpgQueryStatus.Complete || result.View is null)
+        {
+            throw new InvalidOperationException(
+                $"Structure view query did not complete: {result.Status} ({result.TruncationReason ?? "no reason"}).");
+        }
+
+        return result.View;
+    }
+
+    public CpgStructureViewQueryResult Query(
+        IReadOnlyCollection<SyntaxNode> fragments,
+        CpgAnalysisContext context,
+        CpgRelationProfile profile,
+        CpgQueryDirection direction,
+        NLCPGTraversalBudget budget,
+        string? cacheScopeKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(fragments);
+        ArgumentNullException.ThrowIfNull(context);
         if (fragments.Count == 0)
         {
             throw new ArgumentException("At least one syntax fragment is required.", nameof(fragments));
         }
 
-        var fragmentList = fragments.ToList();
+        var fragmentList = fragments.ToArray();
+        var cacheKey = BuildCacheKey(fragmentList, profile, direction, budget, cacheScopeKey);
         var runCache = RunCaches.GetValue(context, static _ => new AnalysisRunCache());
-        var cacheKey = BuildFragmentSetKey(fragmentList, cacheScopeKey);
-        if (runCache.TryGetView(cacheKey, out var cachedView))
+        if (runCache.TryGetView(cacheKey, out var cached))
         {
-            return cachedView;
+            return new CpgStructureViewQueryResult(cached, CpgQueryStatus.Complete, null);
         }
 
-        var graphCache = GraphCaches.GetValue(
-            context.Graph,
-            static graph => new GraphCache(graph));
         var fragmentNodeSets = fragmentList
-            .Select(fragment => ResolveGraphNodesInside(graphCache, fragment))
-            .ToList();
-        var selectedNodeIds = fragmentNodeSets
-            .SelectMany(nodes => nodes.Select(node => node.NodeId))
-            .OfType<NodeId>()
-            .ToHashSet();
-        if (selectedNodeIds.Count == 0)
+            .Select(fragment => ResolveGraphNodesInside(context.Graph, fragment))
+            .ToArray();
+        if (fragmentNodeSets.Any(nodes => nodes.Count == 0))
         {
-            throw new InvalidOperationException("None of the syntax fragments are bound to graph nodes.");
+            return new CpgStructureViewQueryResult(null, CpgQueryStatus.Disconnected, null);
         }
 
+        var selectedNodeIds = fragmentNodeSets
+            .SelectMany(nodes => nodes)
+            .ToHashSet();
         var selectedEdges = new HashSet<NLCPGEdge>();
-        AddShortestConnectingPaths(graphCache, fragmentNodeSets, selectedNodeIds, selectedEdges);
+        var service = context.RelationQueryService ??
+            new CpgRelationQueryService(context.Graph, context.AvailableCapabilities);
+        for (var left = 0; left < fragmentNodeSets.Length; left += 1)
+        {
+            for (var right = left + 1; right < fragmentNodeSets.Length; right += 1)
+            {
+                var relation = service.Query(new CpgRelationQuery(
+                    profile,
+                    direction,
+                    new CpgNodeSelector(NodeIds: fragmentNodeSets[left]),
+                    new CpgNodeSelector(NodeIds: fragmentNodeSets[right]),
+                    budget,
+                    CpgRelationProfiles.GetRequiredCapabilities(profile),
+                    CpgQueryPurpose.StructureView));
+                if (relation.Status != CpgQueryStatus.Complete)
+                {
+                    return new CpgStructureViewQueryResult(
+                        null,
+                        relation.Status,
+                        relation.TruncationReason);
+                }
 
-        AddContainedEdges(graphCache, selectedNodeIds, selectedEdges);
+                selectedNodeIds.UnionWith(relation.Nodes.Select(node => node.NodeId!.Value));
+                selectedEdges.UnionWith(relation.Edges);
+            }
+        }
 
-        var nodes = context.Graph.Nodes
-            .Where(node => node.NodeId.HasValue && selectedNodeIds.Contains(node.NodeId.Value))
+        var allowedKinds = CpgRelationProfiles.GetAllowedEdgeKinds(profile);
+        foreach (var edge in context.Graph.Edges)
+        {
+            if (allowedKinds.Contains(edge.Kind) &&
+                selectedNodeIds.Contains(edge.SourceNodeId) &&
+                selectedNodeIds.Contains(edge.TargetNodeId))
+            {
+                selectedEdges.Add(edge);
+            }
+        }
+
+        var nodes = selectedNodeIds
+            .Select(context.Graph.GetNode)
+            .Where(node => node is not null)
+            .Select(node => node!)
             .OrderBy(node => node.SpanStart ?? int.MaxValue)
             .ThenBy(node => node.SpanEnd ?? int.MaxValue)
             .ThenBy(node => node.NodeId)
-            .ToList();
+            .ToArray();
+        var rootCandidates = nodes
+            .Where(node => node.Kind == NLCPGNodeKind.SyntaxNode &&
+                string.Equals(node.FilePath ?? string.Empty, fragmentList[0].SyntaxTree.FilePath ?? string.Empty, StringComparison.Ordinal) &&
+                node.SpanStart == fragmentList[0].SpanStart &&
+                node.SpanEnd == fragmentList[0].Span.End &&
+                string.Equals(node.DisplayKind, fragmentList[0].Kind().ToString(), StringComparison.Ordinal))
+            .ToArray();
+        if (rootCandidates.Length != 1)
+        {
+            return new CpgStructureViewQueryResult(null, CpgQueryStatus.Ambiguous, null);
+        }
+
         var edges = selectedEdges
-            .Where(edge =>
-                selectedNodeIds.Contains(edge.SourceNodeId) &&
-                selectedNodeIds.Contains(edge.TargetNodeId))
-            .OrderBy(edge => edge.SourceNodeId)
-            .ThenBy(edge => edge.Kind)
+            .OrderBy(edge => edge.Kind)
             .ThenBy(edge => edge.StructuredLabel?.StableKey, StringComparer.Ordinal)
+            .ThenBy(edge => edge.SourceNodeId)
             .ThenBy(edge => edge.TargetNodeId)
-            .ToList();
-        var view = new NLCPGStructureView(SelectRootNode(fragmentList[0], nodes), nodes, edges);
+            .ToArray();
+        var view = new NLCPGStructureView(rootCandidates[0], nodes, edges);
         runCache.RememberView(cacheKey, view);
-        return view;
+        return new CpgStructureViewQueryResult(view, CpgQueryStatus.Complete, null);
     }
 
-    private static IReadOnlyList<NLCPGNode> ResolveGraphNodesInside(GraphCache graphCache, SyntaxNode fragment)
+    private static IReadOnlySet<NodeId> ResolveGraphNodesInside(NLCPGGraph graph, SyntaxNode fragment)
     {
         var filePath = fragment.SyntaxTree.FilePath ?? string.Empty;
-        if (string.IsNullOrEmpty(filePath))
-        {
-            return graphCache.Graph.Nodes
-                .Where(node =>
-                    string.IsNullOrEmpty(node.FilePath) &&
-                    node.SpanStart >= fragment.SpanStart &&
-                    node.SpanEnd <= fragment.Span.End)
-                .OrderBy(node => node.SpanStart ?? int.MaxValue)
-                .ThenBy(node => node.SpanEnd ?? int.MaxValue)
-                .ThenBy(node => node.NodeId)
-                .ThenBy(node => node.FullName, StringComparer.Ordinal)
-                .ToList();
-        }
-
-        return graphCache.Graph
-            .GetNodesInFileSpan(filePath, fragment.SpanStart, fragment.Span.End)
-            .ToList();
+        return graph.Nodes
+            .Where(node => node.NodeId.HasValue &&
+                string.Equals(node.FilePath ?? string.Empty, filePath, StringComparison.Ordinal) &&
+                node.SpanStart >= fragment.SpanStart &&
+                node.SpanEnd <= fragment.Span.End)
+            .Select(node => node.NodeId!.Value)
+            .ToHashSet();
     }
 
-    private static void AddShortestConnectingPaths(GraphCache graphCache, IReadOnlyList<IReadOnlyList<NLCPGNode>> fragmentNodeSets, ISet<NodeId> selectedNodeIds, ISet<NLCPGEdge> selectedEdges)
-    {
-        if (fragmentNodeSets.Count < 2)
-        {
-            return;
-        }
-
-        for (var leftIndex = 0; leftIndex < fragmentNodeSets.Count; leftIndex += 1)
-        {
-            for (var rightIndex = leftIndex + 1; rightIndex < fragmentNodeSets.Count; rightIndex += 1)
-            {
-                var path = FindShortestPath(
-                    graphCache,
-                    fragmentNodeSets[leftIndex].Select(node => node.NodeId).OfType<NodeId>().ToHashSet(),
-                    fragmentNodeSets[rightIndex].Select(node => node.NodeId).OfType<NodeId>().ToHashSet());
-                if (path is null)
-                {
-                    continue;
-                }
-
-                foreach (var edge in path)
-                {
-                    selectedNodeIds.Add(edge.SourceNodeId);
-                    selectedNodeIds.Add(edge.TargetNodeId);
-                    selectedEdges.Add(edge);
-                }
-            }
-        }
-    }
-
-    private static string BuildFragmentSetKey(IReadOnlyList<SyntaxNode> fragments, string? cacheScopeKey)
+    private static string BuildCacheKey(
+        IReadOnlyList<SyntaxNode> fragments,
+        CpgRelationProfile profile,
+        CpgQueryDirection direction,
+        NLCPGTraversalBudget budget,
+        string? cacheScopeKey)
     {
         var fragmentKey = string.Join(
             "|",
-            fragments
-                .Select(fragment =>
-                    $"{fragment.SyntaxTree.FilePath}:{fragment.SpanStart}:{fragment.Span.Length}:{fragment.RawKind}"));
-        return string.IsNullOrWhiteSpace(cacheScopeKey)
-          ? fragmentKey
-          : $"{cacheScopeKey}|{fragmentKey}";
+            fragments.Select(fragment =>
+                $"{fragment.SyntaxTree.FilePath}:{fragment.SpanStart}:{fragment.Span.Length}:{fragment.RawKind}"));
+        return string.Join("|", cacheScopeKey ?? string.Empty, profile, direction, budget, fragmentKey);
     }
 
-    private static IReadOnlyList<NLCPGEdge>? FindShortestPath(GraphCache graphCache, ISet<NodeId> sourceNodeIds, ISet<NodeId> targetNodeIds)
+    private static NLCPGTraversalBudget CreateCompatibilityBudget()
     {
-        if (sourceNodeIds.Count == 0 || targetNodeIds.Count == 0)
-        {
-            return null;
-        }
-
-        if (sourceNodeIds.Overlaps(targetNodeIds))
-        {
-            return Array.Empty<NLCPGEdge>();
-        }
-
-        var queue = new Queue<NodeId>(sourceNodeIds);
-        var visited = sourceNodeIds.ToHashSet();
-        var previous = new Dictionary<NodeId, (NodeId PreviousId, NLCPGEdge Edge)>();
-        while (queue.Count > 0)
-        {
-            var currentId = queue.Dequeue();
-            foreach (var (neighborId, edge) in graphCache.GetUndirectedNeighbors(currentId))
-            {
-                if (!visited.Add(neighborId))
-                {
-                    continue;
-                }
-
-                previous[neighborId] = (currentId, edge);
-                if (targetNodeIds.Contains(neighborId))
-                {
-                    return ReconstructPath(previous, neighborId);
-                }
-
-                queue.Enqueue(neighborId);
-            }
-        }
-
-        return null;
-    }
-
-    private static IReadOnlyList<NLCPGEdge> ReconstructPath(IReadOnlyDictionary<NodeId, (NodeId PreviousId, NLCPGEdge Edge)> previous, NodeId targetNodeId)
-    {
-        var path = new List<NLCPGEdge>();
-        var currentId = targetNodeId;
-        while (previous.TryGetValue(currentId, out var step))
-        {
-            path.Add(step.Edge);
-            currentId = step.PreviousId;
-        }
-
-        path.Reverse();
-        return path;
-    }
-
-    private static void AddContainedEdges(GraphCache graphCache, IReadOnlySet<NodeId> selectedNodeIds, ISet<NLCPGEdge> selectedEdges)
-    {
-        foreach (var nodeId in selectedNodeIds)
-        {
-            foreach (var edge in graphCache.Graph.GetOutgoingEdges(nodeId))
-            {
-                if (selectedNodeIds.Contains(edge.TargetNodeId))
-                {
-                    selectedEdges.Add(edge);
-                }
-            }
-        }
-    }
-
-    private static NLCPGNode SelectRootNode(SyntaxNode firstFragment, IReadOnlyList<NLCPGNode> nodes)
-    {
-        return nodes
-            .Where(node =>
-                node.SpanStart == firstFragment.SpanStart &&
-                node.SpanEnd == firstFragment.Span.End)
-            .OrderBy(node => node.Kind == NLCPGNodeKind.SyntaxNode ? 0 : 1)
-            .ThenBy(node => node.NodeId)
-            .FirstOrDefault()
-            ?? nodes.First();
+        return new NLCPGTraversalBudget(16, 1, 1, 4096, 8192);
     }
 
     private sealed class AnalysisRunCache
@@ -240,35 +222,6 @@ public sealed class NLCPGStructureViewBuilder
         public void RememberView(string cacheKey, NLCPGStructureView view)
         {
             _views.TryAdd(cacheKey, view);
-        }
-    }
-
-    private sealed class GraphCache
-    {
-        public GraphCache(NLCPGGraph graph)
-        {
-            graph.FreezeQueryIndex();
-            Graph = graph;
-            _undirectedNeighborsByNodeId = new ConcurrentDictionary<NodeId, IReadOnlyList<(NodeId NeighborId, NLCPGEdge Edge)>>();
-        }
-
-        private readonly ConcurrentDictionary<NodeId, IReadOnlyList<(NodeId NeighborId, NLCPGEdge Edge)>> _undirectedNeighborsByNodeId;
-
-        public NLCPGGraph Graph { get; }
-
-        public IReadOnlyList<(NodeId NeighborId, NLCPGEdge Edge)> GetUndirectedNeighbors(NodeId nodeId)
-        {
-            return _undirectedNeighborsByNodeId.GetOrAdd(nodeId, BuildUndirectedNeighbors);
-        }
-
-        private IReadOnlyList<(NodeId NeighborId, NLCPGEdge Edge)> BuildUndirectedNeighbors(NodeId nodeId)
-        {
-            var neighbors = new List<(NodeId NeighborId, NLCPGEdge Edge)>();
-            neighbors.AddRange(Graph.GetOutgoingEdges(nodeId)
-                .Select(edge => (edge.TargetNodeId, edge)));
-            neighbors.AddRange(Graph.GetIncomingEdges(nodeId)
-                .Select(edge => (edge.SourceNodeId, edge)));
-            return neighbors;
         }
     }
 }

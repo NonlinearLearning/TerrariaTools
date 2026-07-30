@@ -14,9 +14,24 @@ public abstract class ClassDeclarationHostProposalRuleBase : RuleDefinitionPropo
     private static readonly RuleSemanticTag DeclarationHostSemanticTag = new("Class.DeclarationHost");
 
     private static readonly RuleConsumesContract DeclarationHostConsumes =
-      RuleStructureContractFactories.CreateDeclarationHostConsumes(
-        DeclarationHostSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[]
+          {
+            SyntaxKind.BaseList,
+            SyntaxKind.DelegateDeclaration,
+            SyntaxKind.EventDeclaration,
+            SyntaxKind.EventFieldDeclaration,
+            SyntaxKind.FieldDeclaration,
+            SyntaxKind.IndexerDeclaration,
+            SyntaxKind.LocalDeclarationStatement,
+            SyntaxKind.MethodDeclaration,
+            SyntaxKind.PropertyDeclaration,
+            SyntaxKind.SimpleBaseType
+          },
+          DeclarationHostSemanticTag)
+      });
 
     public override RuleConsumesContract Consumes => DeclarationHostConsumes;
 }
@@ -26,9 +41,12 @@ public abstract class ClassMethodParameterUsageProposalRuleBase : RuleDefinition
     private static readonly RuleSemanticTag MethodParameterUsageSemanticTag = new("Class.MethodParameterUsage");
 
     private static readonly RuleConsumesContract MethodParameterUsageConsumes =
-      RuleStructureContractFactories.CreateMethodParameterUsageConsumes(
-        MethodParameterUsageSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression },
+          MethodParameterUsageSemanticTag)
+      });
 
     public override RuleConsumesContract Consumes => MethodParameterUsageConsumes;
 }
@@ -38,9 +56,12 @@ public abstract class ClassLocalFunctionParameterUsageProposalRuleBase : RuleDef
     private static readonly RuleSemanticTag LocalFunctionParameterUsageSemanticTag = new("Class.LocalFunctionParameterUsage");
 
     private static readonly RuleConsumesContract LocalFunctionParameterUsageConsumes =
-      RuleStructureContractFactories.CreateLocalFunctionParameterUsageConsumes(
-        LocalFunctionParameterUsageSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.LocalFunctionStatement, SyntaxKind.InvocationExpression },
+          LocalFunctionParameterUsageSemanticTag)
+      });
 
     public override RuleConsumesContract Consumes => LocalFunctionParameterUsageConsumes;
 }
@@ -50,9 +71,12 @@ public abstract class ClassIndexerParameterUsageProposalRuleBase : RuleDefinitio
     private static readonly RuleSemanticTag IndexerParameterUsageSemanticTag = new("Class.IndexerParameterUsage");
 
     private static readonly RuleConsumesContract IndexerParameterUsageConsumes =
-      RuleStructureContractFactories.CreateIndexerParameterUsageConsumes(
-        IndexerParameterUsageSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.IndexerDeclaration, SyntaxKind.ElementAccessExpression },
+          IndexerParameterUsageSemanticTag)
+      });
 
     public override RuleConsumesContract Consumes => IndexerParameterUsageConsumes;
 }
@@ -62,9 +86,21 @@ public abstract class ClassDelegateUsageProposalRuleBase : RuleDefinitionPropose
     private static readonly RuleSemanticTag DelegateUsageSemanticTag = new("Class.DelegateUsage");
 
     private static readonly RuleConsumesContract DelegateUsageConsumes =
-      RuleStructureContractFactories.CreateDelegateUsageConsumes(
-        DelegateUsageSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[]
+          {
+            SyntaxKind.DelegateDeclaration,
+            SyntaxKind.MethodDeclaration,
+            SyntaxKind.LocalFunctionStatement,
+            SyntaxKind.ParenthesizedLambdaExpression,
+            SyntaxKind.SimpleLambdaExpression,
+            SyntaxKind.AnonymousMethodExpression,
+            SyntaxKind.InvocationExpression
+          },
+          DelegateUsageSemanticTag)
+      });
 
     public override RuleConsumesContract Consumes => DelegateUsageConsumes;
 }
@@ -74,9 +110,12 @@ public abstract class ClassExtensionMethodParameterUsageProposalRuleBase : RuleD
     private static readonly RuleSemanticTag ExtensionMethodParameterUsageSemanticTag = new("Class.ExtensionMethodParameterUsage");
 
     private static readonly RuleConsumesContract ExtensionMethodParameterUsageConsumes =
-      RuleStructureContractFactories.CreateExtensionMethodParameterUsageConsumes(
-        ExtensionMethodParameterUsageSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression },
+          ExtensionMethodParameterUsageSemanticTag)
+      });
 
     public override RuleConsumesContract Consumes => ExtensionMethodParameterUsageConsumes;
 }
@@ -84,19 +123,14 @@ public abstract class ClassExtensionMethodParameterUsageProposalRuleBase : RuleD
 /// 默认处理未被专门规则接管的类删除标记，避免与结构或声明宿主决策重叠。
 public sealed class ClassDefaultRemovalProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleTerminalConsumesContract AllClassFacts = new(
-      new[]
-      {
-        new RuleTerminalFactSelector(
-          RuleFactDomain.Class,
-          new[] { RuleKind.Mark, RuleKind.Propagate, RuleKind.Lift })
-      });
+    private static readonly RuleConsumesContract ClassFactsConsumes =
+      ClassLiftContracts.CreateProposalFactsConsumes();
 
     public override string CapabilityId { get; } = "propose.type.default-removal";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-DEFAULT-001";
 
-    public override RuleTerminalConsumesContract TerminalConsumes => AllClassFacts;
+    public override RuleConsumesContract Consumes => ClassFactsConsumes;
 
 
     public override string Name { get; } = "Match delete-class default delete decisions";
@@ -166,19 +200,14 @@ public sealed class ClassDefaultRemovalProposalRule : RuleDefinitionPropose
 /// 仅为传播确认的控制结构宿主生成删除决策。
 public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleTerminalConsumesContract AllClassFacts = new(
-      new[]
-      {
-        new RuleTerminalFactSelector(
-          RuleFactDomain.Class,
-          new[] { RuleKind.Mark, RuleKind.Propagate, RuleKind.Lift })
-      });
+    private static readonly RuleConsumesContract ClassFactsConsumes =
+      ClassLiftContracts.CreateProposalFactsConsumes();
 
     public override string CapabilityId { get; } = "propose.type.control-structure-removal";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-CTRL-001";
 
-    public override RuleTerminalConsumesContract TerminalConsumes => AllClassFacts;
+    public override RuleConsumesContract Consumes => ClassFactsConsumes;
 
 
     public override string Name { get; } = "Match delete-class control structure delete decisions";
@@ -1675,9 +1704,12 @@ public sealed class ClassIfStructureProposalRule : RuleDefinitionPropose
     private static readonly RuleSemanticTag IfCompletionSemanticTag = new("Class.IfCompletion");
 
     private static readonly RuleConsumesContract IfCompletionConsumes =
-      RuleStructureContractFactories.CreateIfCompletionConsumes(
-        IfCompletionSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          IfCompletionSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propose.type.if-structure";
 

@@ -1,11 +1,14 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 using NLCPG.Contracts;
 using NLCPG.Analysis;
+using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Model;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Analysis.View;
+using NLISSN.Core.Decision;
 
 namespace NLISSN.Core.Pipeline;
 
@@ -20,14 +23,16 @@ public sealed class RuleContext :
     private readonly IReadOnlyDictionary<string, string> _options;
     private readonly  AnalysisRuntime _runtime;
     private readonly MarkAnalysisSnapshot _markAnalysisSnapshot;
+    private readonly AnalysisEvidenceCollector _evidence;
 
     // 绑定本次分析的源码上下文、运行时和可选结构视图，供规则阶段统一访问。
-    public RuleContext(CpgAnalysisContext analysisContext, IReadOnlyDictionary<string, string> options, NLCPGStructureView? structureView = null,  AnalysisRuntime? runtime = null, MarkAnalysisSnapshot? markAnalysisSnapshot = null)
+    public RuleContext(CpgAnalysisContext analysisContext, IReadOnlyDictionary<string, string> options, NLCPGStructureView? structureView = null,  AnalysisRuntime? runtime = null, MarkAnalysisSnapshot? markAnalysisSnapshot = null, AnalysisEvidenceCollector? evidence = null)
     {
         _analysisContext = analysisContext;
         _options = options;
         _runtime = runtime ??  AnalysisRuntime.CreateDefault();
-        _markAnalysisSnapshot = markAnalysisSnapshot ?? new MarkAnalysisSnapshot(analysisContext);
+        _evidence = evidence ?? new AnalysisEvidenceCollector();
+        _markAnalysisSnapshot = markAnalysisSnapshot ?? new MarkAnalysisSnapshot(analysisContext, _evidence);
         StructureView = structureView;
     }
 
@@ -42,6 +47,8 @@ public sealed class RuleContext :
     public NLCPGStructureView? StructureView { get; }
 
     public  AnalysisRuntime Runtime => _runtime;
+
+    public AnalysisEvidenceCollector Evidence => _evidence;
 
     // 解析并返回标准化后的目标名列表，供规则按同一名称集合匹配。
     public IReadOnlyList<string> GetNormalizedTargetNames()
@@ -80,15 +87,38 @@ public sealed class RuleContext :
     // 在复用当前运行时和分析快照的前提下替换结构视图，供下游规则局部收敛结构事实。
     public RuleContext WithStructureView(NLCPGStructureView structureView)
     {
-        return new RuleContext(_analysisContext, _options, structureView, _runtime, _markAnalysisSnapshot);
+        return new RuleContext(_analysisContext, _options, structureView, _runtime, _markAnalysisSnapshot, _evidence);
     }
 
     // 根据一组语法片段从主图中构建局部结构视图，并携带当前缓存作用域键。
-    public NLCPGStructureView BuildStructureView(IReadOnlyCollection<SyntaxNode> fragments)
+    public NLCPGStructureView BuildStructureView(
+      IReadOnlyCollection<SyntaxNode> fragments,
+      CpgRelationProfile profile,
+      CpgQueryDirection direction,
+      NLCPGTraversalBudget budget)
     {
         return new NLCPGStructureViewBuilder().Build(
           fragments,
           _analysisContext,
+          profile,
+          direction,
+          budget,
+          _runtime.CacheScopeKey);
+    }
+
+    // Returns a non-complete query state to stage orchestration so it can stay conservative.
+    public CpgStructureViewQueryResult QueryStructureView(
+      IReadOnlyCollection<SyntaxNode> fragments,
+      CpgRelationProfile profile,
+      CpgQueryDirection direction,
+      NLCPGTraversalBudget budget)
+    {
+        return new NLCPGStructureViewBuilder().Query(
+          fragments,
+          _analysisContext,
+          profile,
+          direction,
+          budget,
           _runtime.CacheScopeKey);
     }
 
@@ -124,6 +154,25 @@ public sealed class RuleContext :
     public NLCPGSliceResult QuerySliceBackward(NodeId sinkNodeId, NLCPGSliceQueryOptions options)
     {
         return _markAnalysisSnapshot.QuerySliceBackward(sinkNodeId, options);
+    }
+
+    // 执行规则显式声明的有界、带类型 CPG 关系查询。
+    public CpgRelationQueryResult QueryRelation(CpgRelationQuery query)
+    {
+        return _markAnalysisSnapshot.QueryRelation(query);
+    }
+
+    public ResolvedCallFlow ResolveCallFlow(
+      IInvocationOperation invocation,
+      FlowSummaryEndpoint source,
+      FlowSummaryEndpoint target)
+    {
+        ArgumentNullException.ThrowIfNull(invocation);
+        var result = _analysisContext.CallFlowResolver?.Resolve(invocation, source, target) ??
+          new ResolvedCallFlow(ResolvedCallFlowStatus.Unknown, FlowSummaryResolution.Unknown,
+            FlowSummaryMethodKey.From(invocation.TargetMethod), null, "No call flow resolver is configured.");
+        _evidence.RecordFlowSummary(invocation.Syntax, result);
+        return result;
     }
 
     // 判断一个表达式是否位于当前支持的逻辑条件结构内。

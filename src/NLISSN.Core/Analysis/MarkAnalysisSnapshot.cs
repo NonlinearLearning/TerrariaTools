@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.Operations;
 using NLCPG.Analysis;
 using NLCPG.Contracts;
 using NLCPG.Model;
+using NLISSN.Core.Decision;
 
 namespace NLISSN.Core.Analysis;
 
@@ -13,6 +14,8 @@ namespace NLISSN.Core.Analysis;
 public sealed class MarkAnalysisSnapshot
 {
     private readonly CpgAnalysisContext _analysisContext;
+    private readonly ICpgRelationQueryService _relationQueryService;
+    private readonly AnalysisEvidenceCollector? _evidence;
     private readonly IReadOnlyDictionary<GraphBindingKey, NLCPGNode> _graphBindings;
     private readonly ConcurrentDictionary<SyntaxNode, Lazy<AtomicCandidateFacts>> _atomicCandidates = new();
     private readonly ConcurrentDictionary<SyntaxNode, Lazy<IOperation?>> _operations = new();
@@ -23,10 +26,13 @@ public sealed class MarkAnalysisSnapshot
       new(StringComparer.Ordinal);
 
     // 为一次分析运行建立共享快照，并预先索引语法到图节点的稳定绑定。
-    public MarkAnalysisSnapshot(CpgAnalysisContext analysisContext)
+    public MarkAnalysisSnapshot(CpgAnalysisContext analysisContext, AnalysisEvidenceCollector? evidence = null)
     {
         _analysisContext = analysisContext;
+        _evidence = evidence;
         _graphBindings = BuildGraphBindingIndex(analysisContext.Graph.Nodes);
+        _relationQueryService = analysisContext.RelationQueryService ??
+          new CpgRelationQueryService(analysisContext.Graph, analysisContext.AvailableCapabilities);
     }
 
     // 返回目标名描述里的展示名称列表，供规则做顺序稳定的目标名遍历。
@@ -119,7 +125,18 @@ public sealed class MarkAnalysisSnapshot
         var created = new Lazy<NLCPGSliceResult>(
           () => new NLCPGSliceQuery(_analysisContext.Graph).QueryBackward(sinkNodeId, options),
           LazyThreadSafetyMode.ExecutionAndPublication);
-        return _sliceQueries.GetOrAdd(key, created).Value;
+        var wasCacheHit = _sliceQueries.ContainsKey(key);
+        var result = _sliceQueries.GetOrAdd(key, created).Value;
+        _evidence?.RecordQuery(sinkNodeId, options, result, wasCacheHit);
+        return result;
+    }
+
+    // 执行规则声明的固定 profile 查询，并保留 capability 与预算状态。
+    public CpgRelationQueryResult QueryRelation(CpgRelationQuery query)
+    {
+        var result = _relationQueryService.Query(query);
+        _evidence?.RecordRelationQuery(query, result);
+        return result;
     }
 
     private AtomicCandidateFacts GetAtomicCandidateFacts(SyntaxNode root)
@@ -196,7 +213,11 @@ public sealed class MarkAnalysisSnapshot
       int MaxHops,
       int MaxPaths,
       int MaxDefinitions,
-      int MaxCallDepth)
+      int MaxCallDepth,
+      int MaxVisitedNodes,
+      int MaxVisitedEdges,
+      int MaxCachedStates,
+      int MaxCallerFanout)
     {
         public static SliceQueryKey Create(NodeId sinkNodeId, NLCPGSliceQueryOptions options)
         {
@@ -206,7 +227,11 @@ public sealed class MarkAnalysisSnapshot
               options.MaxHops,
               options.MaxPaths,
               options.MaxDefinitions,
-              options.MaxCallDepth);
+              options.MaxCallDepth,
+              options.MaxVisitedNodes,
+              options.MaxVisitedEdges,
+              options.MaxCachedStates,
+              options.MaxCallerFanout);
         }
     }
 

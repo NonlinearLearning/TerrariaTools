@@ -16,13 +16,11 @@ public abstract class RuleDefinitionMark : IRuleDefinition
 
     public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Mark, RuleId);
 
+    public virtual RuleInputCardinality InputCardinality => RuleInputCardinality.All;
+
     public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
 
     public virtual RuleProducesContract Produces => RuleProducesContract.Empty;
-
-    public virtual RuleFactDomain FactDomain => RuleFactDomain.None;
-
-    public virtual RuleTerminalConsumesContract TerminalConsumes => RuleTerminalConsumesContract.Empty;
 
     public abstract string Name { get; }
 

@@ -16,9 +16,12 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
     private static readonly RuleSemanticTag InternalOnlyPublicMethodSemanticTag = new("InternalOnlyPublicMethod");
 
     private static readonly RuleConsumesContract InternalOnlyPublicMethodConsumes =
-      RuleStructureContractFactories.CreateDeclarationHostConsumes(
-        InternalOnlyPublicMethodSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.MethodDeclaration },
+          InternalOnlyPublicMethodSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propose.privatize-internal-only-public-method";
 

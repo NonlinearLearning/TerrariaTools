@@ -546,7 +546,8 @@ public sealed class DirectoryAnalysisUseCase
           new DiffBuilder().Combine(results.Where(result => result.Diff.Files.Count > 0).Select(result => result.Diff).ToList()),
           null,
           new AnalysisStats(fileCount, analyzedFileCount, 0, 0),
-          RewritePlans: rewritePlans);
+          RewritePlans: rewritePlans,
+          Evidence: CombineEvidence(results));
     }
 
     private static PrototypeAnalysisResult CreateEmptyResult()
@@ -563,6 +564,21 @@ public sealed class DirectoryAnalysisUseCase
           new AnalysisStats(0, 0, 0, 0),
           Diagnostics: Array.Empty<AnalysisDiagnostic>(),
           RewritePlans: Array.Empty<PrototypeFileRewritePlan>());
+    }
+
+    private static AnalysisEvidenceGraph? CombineEvidence(IReadOnlyList<PrototypeAnalysisResult> results)
+    {
+        var graphs = results
+          .Select(result => result.Evidence)
+          .Where(graph => graph is not null)
+          .Cast<AnalysisEvidenceGraph>()
+          .ToList();
+        if (graphs.Count == 0)
+        {
+            return null;
+        }
+
+        return AnalysisEvidenceGraph.Combine(graphs);
     }
 
     private static bool IsTrue(IReadOnlyDictionary<string, string> options, string key)

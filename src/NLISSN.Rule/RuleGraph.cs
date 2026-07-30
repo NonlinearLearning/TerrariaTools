@@ -33,20 +33,15 @@ public sealed record RuleNodeId
     }
 }
 
-public sealed record RuleDependency(
-  RuleNodeId Producer,
-  MarkedStructureSelector? RequiredStructure = null,
-  RuleTerminalFactSelector? RequiredTerminalFact = null);
+public sealed record RuleDependency(RuleNodeId Producer, RuleConsumedSyntax RequiredInput);
 
 public sealed record RuleGraphNode(RuleNodeId NodeId, RuleKind Kind, IReadOnlyList<RuleDependency> Dependencies)
 {
-    public IReadOnlyList<MarkedStructureSelector> ProducedStructures { get; init; } =
-      Array.Empty<MarkedStructureSelector>();
+    public IReadOnlyList<RuleProducedSyntax> ProducedSyntax { get; init; } =
+      Array.Empty<RuleProducedSyntax>();
 
-    public IReadOnlyList<RuleConsumedStructure> ConsumedStructures { get; init; } =
-      Array.Empty<RuleConsumedStructure>();
-
-    public RuleFactDomain FactDomain { get; init; } = RuleFactDomain.None;
+    public IReadOnlyList<RuleConsumedSyntax> ConsumedSyntax { get; init; } =
+      Array.Empty<RuleConsumedSyntax>();
 
     public RuleGraphNode(
       RuleNodeId nodeId,

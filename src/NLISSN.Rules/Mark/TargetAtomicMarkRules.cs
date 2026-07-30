@@ -34,17 +34,22 @@ public sealed class SObjectBaseExpressionMarkRule : SObjectAtomicExpressionMarkR
 
 public sealed class SObjectVariableDeclaratorMarkRule : RuleDefinitionMark
 {
-    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
+    private static readonly RuleSemanticTag AtomicTargetSemanticTag = new("Target.Atomic");
     public override string CapabilityId { get; } = "mark.target.variable-declarator";
 
     public override string RuleId { get; } = "DEL-SOBJ-MARK-DECL-001";
     public override string Name { get; } = "Match s-rooted variable declarators";
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } = new[] { SyntaxKind.VariableDeclarator };
+    public override RuleProducesContract Produces { get; } = new(new[]
+    {
+        new RuleProducedSyntax(new[] { SyntaxKind.VariableDeclarator }, AtomicTargetSemanticTag)
+    });
 
     // 把命中目标名称的变量定义点收束为 declarator，供后续符号传播沿定义继续扩展。
     public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
     {
-        return DeleteSObjectMarkRuleHelpers.BuildDefinitionLeftValueMarks(context, root, RuleId);
+        return DeleteSObjectMarkRuleHelpers.BuildDefinitionLeftValueMarks(context, root, RuleId)
+          .Select(mark => mark with { SemanticTag = AtomicTargetSemanticTag });
     }
 }
 

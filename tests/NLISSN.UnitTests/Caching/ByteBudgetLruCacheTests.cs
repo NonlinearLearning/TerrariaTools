@@ -72,6 +72,30 @@ public sealed class ByteBudgetLruCacheTests
     }
 
     [Fact]
+    public void GetStatistics_OperationsOccur_ReturnsConsistentSnapshot()
+    {
+        var cache = new ByteBudgetLruCache<string, string>(10);
+        cache.Set("first", "first", 5);
+        cache.TryGet("missing", out _);
+        cache.TryGet("first", out _);
+        cache.Set("first", "replacement", 4);
+        cache.Set("second", "second", 7);
+        cache.Set("zero", "zero", 0);
+        cache.Set("oversized", "oversized", 11);
+
+        var statistics = cache.GetStatistics();
+
+        Assert.Equal(1, statistics.HitCount);
+        Assert.Equal(1, statistics.MissCount);
+        Assert.Equal(2, statistics.InsertCount);
+        Assert.Equal(1, statistics.ReplaceCount);
+        Assert.Equal(1, statistics.EvictionCount);
+        Assert.Equal(2, statistics.RejectedCount);
+        Assert.Equal(7, statistics.CachedBytes);
+        Assert.Equal(1, statistics.Count);
+    }
+
+    [Fact]
     public void Set_ParallelReadsAndWrites_PreservesBudgetInvariant()
     {
         var cache = new ByteBudgetLruCache<int, int>(32);

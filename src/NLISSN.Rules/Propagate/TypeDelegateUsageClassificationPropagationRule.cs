@@ -8,12 +8,38 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 先把 delegate 参数删除影响分类成单一改写通道，再把同一份 payload 发给声明、method group、lambda 或调用链。
-public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropagationRuleBase
+public sealed class ClassDelegateUsageClassificationPropagationRule : RuleDefinitionPropagate
 {
+    private static readonly RuleConsumesContract TypeSyntaxConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.QualifiedName,
+          SyntaxKind.AliasQualifiedName,
+          SyntaxKind.GenericName
+        },
+        new RuleSemanticTag("Class.TypeSyntaxTarget"))
+    });
     private static readonly RuleSemanticTag DelegateUsageSemanticTag = new("Class.DelegateUsage");
 
     private static readonly RuleProducesContract DelegateUsageProduces =
-      RuleStructureContractFactories.CreateDelegateUsageProduces(DelegateUsageSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[]
+          {
+            SyntaxKind.DelegateDeclaration,
+            SyntaxKind.MethodDeclaration,
+            SyntaxKind.LocalFunctionStatement,
+            SyntaxKind.ParenthesizedLambdaExpression,
+            SyntaxKind.SimpleLambdaExpression,
+            SyntaxKind.AnonymousMethodExpression,
+            SyntaxKind.InvocationExpression
+          },
+          DelegateUsageSemanticTag)
+      });
 
     private readonly DeleteClassParameterShrinkAnalyzer _analyzer = new();
 
@@ -22,6 +48,8 @@ public sealed class ClassDelegateUsageClassificationPropagationRule : ClassPropa
     public override string RuleId { get; } = "DEL-CLASS-PROP-DELEGATE-USAGE-001";
 
     public override RuleProducesContract Produces => DelegateUsageProduces;
+
+    public override RuleConsumesContract Consumes => TypeSyntaxConsumes;
 
 
     public override string Name { get; } = "Propagate delete-class delegate parameter usage to delegate declarations and mapped bindings";

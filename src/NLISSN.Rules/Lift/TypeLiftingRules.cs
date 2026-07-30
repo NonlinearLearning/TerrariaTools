@@ -1,5 +1,4 @@
 using Microsoft.CodeAnalysis.CSharp;
-using NLISSN.Core.Analysis.Structure;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
@@ -11,24 +10,21 @@ public sealed class ClassExpressionHostLiftingRule : RuleDefinitionLift
 {
     private static readonly RuleSemanticTag ExpressionHostSemanticTag = new("Class.ExpressionHost");
 
-    private static readonly RuleTerminalConsumesContract ClassInputFacts = new(
+    private static readonly RuleConsumesContract ClassFactsConsumes = ClassLiftContracts.CreateFactsConsumes();
+
+    private static readonly RuleProducesContract ExpressionHostProduces = new(
       new[]
       {
-        new RuleTerminalFactSelector(
-          RuleFactDomain.Class,
-          new[] { RuleKind.Mark, RuleKind.Propagate })
+        new RuleProducedSyntax(
+          DeleteSObjectLiftingCommon.AllowedLiftNodeKinds,
+          ExpressionHostSemanticTag)
       });
-
-    private static readonly RuleProducesContract ExpressionHostProduces =
-      RuleStructureContractFactories.CreateExpressionOrStatementHostProduces(ExpressionHostSemanticTag);
 
     public override string CapabilityId { get; } = "lift.type.expression-host";
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-HOST-001";
 
-    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
-
-    public override RuleTerminalConsumesContract TerminalConsumes => ClassInputFacts;
+    public override RuleConsumesContract Consumes => ClassFactsConsumes;
 
     public override RuleProducesContract Produces => ExpressionHostProduces;
 
@@ -62,24 +58,21 @@ public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
 {
     private static readonly RuleSemanticTag IfStructureSemanticTag = new("Class.IfStructure");
 
-    private static readonly RuleTerminalConsumesContract ClassInputFacts = new(
+    private static readonly RuleConsumesContract ClassFactsConsumes = ClassLiftContracts.CreateFactsConsumes();
+
+    private static readonly RuleProducesContract IfStructureProduces = new(
       new[]
       {
-        new RuleTerminalFactSelector(
-          RuleFactDomain.Class,
-          new[] { RuleKind.Mark, RuleKind.Propagate })
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          IfStructureSemanticTag)
       });
-
-    private static readonly RuleProducesContract IfStructureProduces =
-      RuleStructureContractFactories.CreateIfStructureProduces(IfStructureSemanticTag);
 
     public override string CapabilityId { get; } = "lift.type.if-structure";
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-IF-001";
 
-    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
-
-    public override RuleTerminalConsumesContract TerminalConsumes => ClassInputFacts;
+    public override RuleConsumesContract Consumes => ClassFactsConsumes;
 
     public override RuleProducesContract Produces => IfStructureProduces;
 
@@ -102,11 +95,75 @@ public sealed class ClassIfStructureLiftingRule : RuleDefinitionLift
             Mark = mark.Mark with
             {
               OutputKind = RuleOutputKind.IfStructure,
-              SemanticTag = RuleSyntaxStructureCatalog.TryGetIfRole(mark.Mark.SyntaxNode, out _)
+              SemanticTag = IsIfStructureMember(mark.Mark.SyntaxNode)
                 ? IfStructureSemanticTag
                 : null
             }
           });
+    }
+
+    private static bool IsIfStructureMember(Microsoft.CodeAnalysis.SyntaxNode syntaxNode)
+    {
+        return syntaxNode.RawKind is (int)SyntaxKind.IfStatement or (int)SyntaxKind.ElseClause;
+    }
+}
+
+internal static class ClassLiftContracts
+{
+    public static RuleConsumesContract CreateFactsConsumes()
+    {
+        return new RuleConsumesContract(new[]
+        {
+          new RuleConsumedSyntax(new[] { SyntaxKind.ClassDeclaration }, new RuleSemanticTag("Class.DeclarationTarget")),
+        new RuleConsumedSyntax(
+          new[]
+          {
+            SyntaxKind.IdentifierName, SyntaxKind.SimpleMemberAccessExpression,
+            SyntaxKind.MemberBindingExpression, SyntaxKind.InvocationExpression,
+            SyntaxKind.ElementAccessExpression, SyntaxKind.ConditionalAccessExpression,
+            SyntaxKind.ObjectCreationExpression, SyntaxKind.ImplicitObjectCreationExpression
+          },
+          new RuleSemanticTag("Class.ExpressionTarget")),
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.IdentifierName, SyntaxKind.QualifiedName, SyntaxKind.AliasQualifiedName, SyntaxKind.GenericName },
+          new RuleSemanticTag("Class.TypeSyntaxTarget")),
+        new RuleConsumedSyntax(
+          new[]
+          {
+            SyntaxKind.BaseList, SyntaxKind.DelegateDeclaration, SyntaxKind.EventDeclaration,
+            SyntaxKind.EventFieldDeclaration, SyntaxKind.FieldDeclaration, SyntaxKind.IndexerDeclaration,
+            SyntaxKind.LocalDeclarationStatement, SyntaxKind.MethodDeclaration,
+            SyntaxKind.PropertyDeclaration, SyntaxKind.SimpleBaseType
+          },
+          new RuleSemanticTag("Class.DeclarationHost")),
+        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, new RuleSemanticTag("Class.LocalDefinitionFromObjectCreation")),
+        new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, new RuleSemanticTag("Class.SymbolReference")),
+        new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause }, new RuleSemanticTag("Class.IfCompletion")),
+        new RuleConsumedSyntax(new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression }, new RuleSemanticTag("Class.MethodParameterUsage")),
+        new RuleConsumedSyntax(new[] { SyntaxKind.LocalFunctionStatement, SyntaxKind.InvocationExpression }, new RuleSemanticTag("Class.LocalFunctionParameterUsage")),
+        new RuleConsumedSyntax(new[] { SyntaxKind.IndexerDeclaration, SyntaxKind.ElementAccessExpression }, new RuleSemanticTag("Class.IndexerParameterUsage")),
+        new RuleConsumedSyntax(new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression }, new RuleSemanticTag("Class.ExtensionMethodParameterUsage")),
+        new RuleConsumedSyntax(
+          new[]
+          {
+            SyntaxKind.DelegateDeclaration, SyntaxKind.MethodDeclaration, SyntaxKind.LocalFunctionStatement,
+            SyntaxKind.ParenthesizedLambdaExpression, SyntaxKind.SimpleLambdaExpression,
+            SyntaxKind.AnonymousMethodExpression, SyntaxKind.InvocationExpression
+          },
+          new RuleSemanticTag("Class.DelegateUsage"))
+        });
+    }
+
+    public static RuleConsumesContract CreateProposalFactsConsumes()
+    {
+        var inputs = CreateFactsConsumes().Inputs.ToList();
+        inputs.Add(new RuleConsumedSyntax(
+          DeleteSObjectLiftingCommon.AllowedLiftNodeKinds,
+          new RuleSemanticTag("Class.ExpressionHost")));
+        inputs.Add(new RuleConsumedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          new RuleSemanticTag("Class.IfStructure")));
+        return new RuleConsumesContract(inputs);
     }
 }
 
@@ -118,21 +175,19 @@ public sealed class ClassSwitchStructureLiftingRule : RuleDefinitionLift
     private static readonly RuleSemanticTag ExpressionHostSemanticTag = new("Class.ExpressionHost");
 
     private static readonly RuleConsumesContract SwitchConsumes = new(
-      RuleStructureContractFactories.CreateExpressionOrStatementHostConsumes(
-        ExpressionHostSemanticTag,
-        RuleInputCardinality.All)
-        .Structures
-        .Concat(RuleStructureContractFactories.CreateIfStructureConsumes(
-          IfStructureSemanticTag,
-          RuleInputCardinality.All)
-          .Structures)
-        .ToList());
+      new[]
+      {
+        new RuleConsumedSyntax(
+          DeleteSObjectLiftingCommon.AllowedLiftNodeKinds,
+          ExpressionHostSemanticTag),
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          IfStructureSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "lift.type.switch-structure";
 
     public override string RuleId { get; } = "DEL-CLASS-LIFT-SWITCH-001";
-
-    public override RuleFactDomain FactDomain => RuleFactDomain.Class;
 
     public override RuleConsumesContract Consumes => SwitchConsumes;
 

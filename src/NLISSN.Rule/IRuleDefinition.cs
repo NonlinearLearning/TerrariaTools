@@ -8,11 +8,10 @@ public interface IRuleDefinition
 
     RuleNodeId NodeId { get; }
 
+    RuleInputCardinality InputCardinality { get; }
+
     RuleConsumesContract Consumes { get; }
 
     RuleProducesContract Produces { get; }
 
-    RuleFactDomain FactDomain { get; }
-
-    RuleTerminalConsumesContract TerminalConsumes { get; }
 }

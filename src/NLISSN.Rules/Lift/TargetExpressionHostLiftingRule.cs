@@ -9,25 +9,34 @@ namespace NLISSN.Rules;
 public sealed class SObjectExpressionHostLiftingRule : RuleDefinitionLift
 {
     private static readonly RuleSemanticTag ExpressionHostSemanticTag = new("SObject.ExpressionHost");
+    private static readonly RuleSemanticTag AtomicTargetSemanticTag = new("Target.Atomic");
+    private static readonly RuleSemanticTag PropagatedTargetSemanticTag = new("Target.Propagated");
+    private static readonly RuleSemanticTag LocalDefinitionSemanticTag = new("SObject.LocalDefinitionFromInitializer");
+    private static readonly RuleSemanticTag LogicalHostSemanticTag = new("SObject.LogicalHost");
+    private static readonly RuleSemanticTag IfCompletionSemanticTag = new("SObject.IfCompletion");
 
-    private static readonly RuleTerminalConsumesContract SObjectInputFacts = new(
+    private static readonly RuleConsumesContract SObjectFactsConsumes = new(new[]
+    {
+        new RuleConsumedSyntax(SObjectPropagationRuleBase.AtomicTargetNodeKinds, AtomicTargetSemanticTag),
+        new RuleConsumedSyntax(DeleteSObjectLiftingCommon.AllowedLiftNodeKinds, PropagatedTargetSemanticTag),
+        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, LocalDefinitionSemanticTag),
+        new RuleConsumedSyntax(new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression }, LogicalHostSemanticTag),
+        new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause }, IfCompletionSemanticTag)
+    });
+
+    private static readonly RuleProducesContract ExpressionHostProduces = new(
       new[]
       {
-        new RuleTerminalFactSelector(
-          RuleFactDomain.SObject,
-          new[] { RuleKind.Mark, RuleKind.Propagate })
+        new RuleProducedSyntax(
+          DeleteSObjectLiftingCommon.AllowedLiftNodeKinds,
+          ExpressionHostSemanticTag)
       });
-
-    private static readonly RuleProducesContract ExpressionHostProduces =
-      RuleStructureContractFactories.CreateExpressionOrStatementHostProduces(ExpressionHostSemanticTag);
 
     public override string CapabilityId { get; } = "lift.target.expression-host";
 
     public override string RuleId { get; } = "DEL-SOBJ-LIFT-HOST-001";
 
-    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
-
-    public override RuleTerminalConsumesContract TerminalConsumes => SObjectInputFacts;
+    public override RuleConsumesContract Consumes => SObjectFactsConsumes;
 
     public override RuleProducesContract Produces => ExpressionHostProduces;
 

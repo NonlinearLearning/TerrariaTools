@@ -113,10 +113,18 @@ public static class DeleteSObjectProposalHelpers
         .DistinctBy(mark => BuildNodeKey(mark.SyntaxNode))
         .ToList();
         var coveredSeedKeys = BuildCoveredSeedKeys(seedMarks, derivedMarks);
+        var protectedSeedKeys = propagatedMarks
+          .Where(mark => mark.Payload is ExternalSummaryFlowPayload
+          {
+            IsParameterToReturn: true
+          })
+          .Select(mark => BuildNodeKey(mark.Mark.SyntaxNode))
+          .ToHashSet();
 
         foreach (var seedMark in seedMarks)
         {
-            if (coveredSeedKeys.Contains(BuildNodeKey(seedMark.SyntaxNode)))
+            var seedKey = BuildNodeKey(seedMark.SyntaxNode);
+            if (coveredSeedKeys.Contains(seedKey) || protectedSeedKeys.Contains(seedKey))
             {
                 continue;
             }
@@ -583,6 +591,7 @@ public static class DeleteSObjectProposalHelpers
     {
         return payload is MethodParameterUsagePayload or
           LogicalHostPayload or
-          IfStructureCompletionPayload;
+          IfStructureCompletionPayload or
+          ExternalSummaryFlowPayload;
     }
 }

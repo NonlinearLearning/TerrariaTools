@@ -14,8 +14,8 @@ public enum RuleGraphNodeStatus
 
 public sealed record RuleNodeResult(IReadOnlyList<object> Values)
 {
-    public IReadOnlyDictionary<MarkedStructureSelector, IReadOnlyList<object>> StructureOutputs { get; init; } =
-      new Dictionary<MarkedStructureSelector, IReadOnlyList<object>>();
+    public IReadOnlyDictionary<RuleProducedSyntax, IReadOnlyList<object>> SyntaxOutputs { get; init; } =
+      new Dictionary<RuleProducedSyntax, IReadOnlyList<object>>();
 
     public static RuleNodeResult Empty { get; } = new(Array.Empty<object>());
 
@@ -26,41 +26,36 @@ public sealed record RuleNodeResult(IReadOnlyList<object> Values)
         ArgumentNullException.ThrowIfNull(produces);
 
         var result = new RuleNodeResult(values);
-        if (produces.Structures.Count == 0)
+        if (produces.Outputs.Count > 0)
         {
-            return result;
+            var syntaxOutputs = new Dictionary<RuleProducedSyntax, List<object>>();
+            foreach (var value in values)
+            {
+                var mark = GetMarkedRecord(value);
+                if (mark?.SemanticTag is null)
+                {
+                    continue;
+                }
+
+                var output = RuleSyntaxContractValidator.RequireProducedMark(produces, mark);
+                if (!syntaxOutputs.TryGetValue(output, out var outputValues))
+                {
+                    outputValues = new List<object>();
+                    syntaxOutputs.Add(output, outputValues);
+                }
+
+                outputValues.Add(value);
+            }
+
+            result = result with
+            {
+                SyntaxOutputs = syntaxOutputs.ToDictionary(
+                  entry => entry.Key,
+                  entry => (IReadOnlyList<object>)entry.Value)
+            };
         }
 
-        var structureOutputs = new Dictionary<MarkedStructureSelector, List<object>>();
-        foreach (var value in values)
-        {
-            var mark = GetMarkedRecord(value);
-            if (mark is null)
-            {
-                continue;
-            }
-
-            if (mark.SemanticTag is null)
-            {
-                continue;
-            }
-
-            var selector = RuleStructureContractValidator.RequireProducedMark(produces, mark);
-            if (!structureOutputs.TryGetValue(selector, out var selectorValues))
-            {
-                selectorValues = new List<object>();
-                structureOutputs.Add(selector, selectorValues);
-            }
-
-            selectorValues.Add(value);
-        }
-
-        return result with
-        {
-            StructureOutputs = structureOutputs.ToDictionary(
-            entry => entry.Key,
-            entry => (IReadOnlyList<object>)entry.Value)
-        };
+        return result;
     }
 
     /// <summary>
@@ -73,12 +68,12 @@ public sealed record RuleNodeResult(IReadOnlyList<object> Values)
         ArgumentNullException.ThrowIfNull(observedProduces);
 
         var result = new RuleNodeResult(values);
-        if (observedProduces.Structures.Count == 0)
+        if (observedProduces.Outputs.Count == 0)
         {
             return result;
         }
 
-        var structureOutputs = new Dictionary<MarkedStructureSelector, List<object>>();
+        var syntaxOutputs = new Dictionary<RuleProducedSyntax, List<object>>();
         foreach (var value in values)
         {
             var mark = GetMarkedRecord(value);
@@ -87,35 +82,38 @@ public sealed record RuleNodeResult(IReadOnlyList<object> Values)
                 continue;
             }
 
-            if (!RuleStructureContractValidator.TryGetObservedProducedMark(
+            if (!RuleSyntaxContractValidator.TryGetObservedProducedMark(
                   observedProduces,
                   mark,
-                  out var selector) ||
-                selector is null)
+                  out var output) ||
+                output is null)
             {
                 continue;
             }
 
-            if (!structureOutputs.TryGetValue(selector, out var selectorValues))
+            if (!syntaxOutputs.TryGetValue(output, out var outputValues))
             {
-                selectorValues = new List<object>();
-                structureOutputs.Add(selector, selectorValues);
+                outputValues = new List<object>();
+                syntaxOutputs.Add(output, outputValues);
             }
 
-            selectorValues.Add(value);
+            outputValues.Add(value);
         }
 
         return result with
         {
-            StructureOutputs = structureOutputs.ToDictionary(
+            SyntaxOutputs = syntaxOutputs.ToDictionary(
               entry => entry.Key,
               entry => (IReadOnlyList<object>)entry.Value)
         };
     }
 
-    public IReadOnlyList<object> GetOutputs(MarkedStructureSelector selector)
+    public IReadOnlyList<object> GetOutputs(RuleConsumedSyntax input)
     {
-        return StructureOutputs.TryGetValue(selector, out var values) ? values : Array.Empty<object>();
+        return SyntaxOutputs
+          .Where(entry => RuleSyntaxContractMatcher.IsCompatible(entry.Key, input))
+          .SelectMany(entry => entry.Value)
+          .ToList();
     }
 
     private static MarkRecord? GetMarkedRecord(object value)
@@ -146,10 +144,10 @@ public sealed class RuleNodeInputs
           : Array.Empty<object>();
     }
 
-    public IReadOnlyList<object> GetOutputs(RuleNodeId producer, MarkedStructureSelector selector)
+    public IReadOnlyList<object> GetOutputs(RuleNodeId producer, RuleConsumedSyntax input)
     {
         return _producerResults.TryGetValue(producer, out var result)
-          ? result.Result.GetOutputs(selector)
+          ? result.Result.GetOutputs(input)
           : Array.Empty<object>();
     }
 

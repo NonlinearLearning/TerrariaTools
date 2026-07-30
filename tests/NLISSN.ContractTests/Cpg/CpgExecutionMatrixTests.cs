@@ -1,6 +1,7 @@
 using NLCPG.Builder;
 using NLCPG.Model;
 using NLISSN.Application;
+using NLISSN.Composition;
 using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
 using RoslynPrototype.Testing.TestInfrastructure;
@@ -84,12 +85,7 @@ public sealed class CpgExecutionMatrixTests
 
   private static  ApplicationService CreateApplication()
   {
-    var ruleSets = DefaultRuleSets.Create();
-    return new  ApplicationService(
-      ruleSets.SelectMany(ruleSet => ruleSet.Markers).ToList(),
-      ruleSets.SelectMany(ruleSet => ruleSet.Propagators).ToList(),
-      ruleSets.SelectMany(ruleSet => ruleSet.Lifters).ToList(),
-      ruleSets.SelectMany(ruleSet => ruleSet.Proposers).ToList());
+    return new ApplicationService(RuleRegistry.CreateDefaultRules());
   }
 
   private static CpgExecutionSnapshot CreateSnapshot(NLCPGGraph graph, PrototypeAnalysisResult analysis)

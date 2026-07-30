@@ -510,7 +510,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
         return new MarkingEngine()
             .Run(context, root, rules.Markers)
             .Where(mark => rules.Markers.Any(rule =>
-              rule.FactDomain == RuleFactDomain.SObject &&
+              rule.Produces.Outputs.Any(output => output.SemanticTag.Value == "Target.Atomic") &&
               string.Equals(rule.RuleId, mark.RuleId, StringComparison.Ordinal)))
             .ToList();
     }
@@ -523,7 +523,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
                 context,
                 marks,
                 rules.Propagators
-                    .Where(rule => rule.FactDomain == RuleFactDomain.SObject)
+                    .OfType<SObjectPropagationRuleBase>()
                     .ToList())
             .ToList();
     }

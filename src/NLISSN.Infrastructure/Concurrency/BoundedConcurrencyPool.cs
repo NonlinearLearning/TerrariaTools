@@ -84,16 +84,23 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             return Array.Empty<TResult>();
         }
 
-        using var workItemCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var results = new TResult[sources.Count];
-        var nextIndex = -1;
-        ExceptionDispatchInfo? workItemFailure = null;
-        var workItemStartGate = new object();
-        var workerCount = Math.Min(sources.Count, Math.Max(1, maxDegreeOfParallelism));
-        var workers = new Task[workerCount];
-        for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
+        try
         {
-            workers[workerIndex] = Task.Run(
+            using var admissionLease = await AcquireAdmissionAsync(
+              new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput),
+              cancellationToken,
+              telemetry).ConfigureAwait(false);
+            using var admissionScope = PushAdmissionLease(admissionLease);
+            using var workItemCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var results = new TResult[sources.Count];
+            var nextIndex = -1;
+            ExceptionDispatchInfo? workItemFailure = null;
+            var workItemStartGate = new object();
+            var workerCount = Math.Min(sources.Count, Math.Max(1, maxDegreeOfParallelism));
+            var workers = new Task[workerCount];
+            for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
+            {
+                workers[workerIndex] = Task.Run(
               async () =>
               {
                   while (true)
@@ -162,10 +169,8 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                   }
               },
               cancellationToken);
-        }
+            }
 
-        try
-        {
             await Task.WhenAll(workers);
             Volatile.Read(ref workItemFailure)?.Throw();
             return results;
@@ -205,6 +210,11 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                 return Array.Empty<TResult>();
             }
 
+            using var admissionLease = await AcquireAdmissionAsync(
+              new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput),
+              cancellationToken,
+              telemetry).ConfigureAwait(false);
+            using var admissionScope = PushAdmissionLease(admissionLease);
             using var workItemCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             var results = new TResult[sources.Count];
             var nextIndex = -1;
@@ -323,18 +333,24 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
 
         try
         {
-        var activeWorkers = new List<Task<CompletedWorkItem<TResult>>>(options.EffectiveMaxDegreeOfParallelism);
-        var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
-        var nextOrderToSchedule = 0;
-        var nextOrderToCommit = 0;
-        var completedRecordCount = 0;
+            using var admissionLease = AcquireAdmissionAsync(
+              options.CreateAdmissionRequest(sources.Count),
+              cancellationToken,
+              telemetry).GetAwaiter().GetResult();
+            using var admissionScope = PushAdmissionLease(admissionLease);
+            var activeWorkers = new List<Task<CompletedWorkItem<TResult>>>(options.EffectiveMaxDegreeOfParallelism);
+            var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
+            var nextOrderToSchedule = 0;
+            var nextOrderToCommit = 0;
+            var completedRecordCount = 0;
 
-        while (nextOrderToCommit < sources.Count)
-        {
+            while (nextOrderToCommit < sources.Count)
+            {
             while (nextOrderToSchedule < sources.Count &&
                    activeWorkers.Count < options.EffectiveMaxDegreeOfParallelism &&
                    completedResults.Count < options.EffectiveReorderAllowance &&
-                   completedRecordCount < options.EffectiveMaxCompletedRecordCount)
+                   completedRecordCount < options.EffectiveMaxCompletedRecordCount &&
+                   CanScheduleWithinWindow(nextOrderToSchedule, nextOrderToCommit, options))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var order = nextOrderToSchedule;
@@ -433,21 +449,27 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
 
         try
         {
-        var activeCollections = new List<ActiveWorkItem<TCollected>>(options.EffectiveMaxDegreeOfParallelism);
-        var activeSolves = new List<ActiveWorkItem<TResult>>(options.EffectiveMaxDegreeOfParallelism);
-        var completedCollections = new Dictionary<int, CompletedWorkItem<TCollected>>();
-        var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
-        var nextOrderToSchedule = 0;
-        var nextOrderToPrepare = 0;
-        var nextOrderToCommit = 0;
-        var completedRecordCount = 0;
+            using var admissionLease = AcquireAdmissionAsync(
+              options.CreateAdmissionRequest(sources.Count),
+              cancellationToken,
+              telemetry).GetAwaiter().GetResult();
+            using var admissionScope = PushAdmissionLease(admissionLease);
+            var activeCollections = new List<ActiveWorkItem<TCollected>>(options.EffectiveMaxDegreeOfParallelism);
+            var activeSolves = new List<ActiveWorkItem<TResult>>(options.EffectiveMaxDegreeOfParallelism);
+            var completedCollections = new Dictionary<int, CompletedWorkItem<TCollected>>();
+            var completedResults = new Dictionary<int, CompletedWorkItem<TResult>>();
+            var nextOrderToSchedule = 0;
+            var nextOrderToPrepare = 0;
+            var nextOrderToCommit = 0;
+            var completedRecordCount = 0;
 
-        while (nextOrderToCommit < sources.Count)
-        {
+            while (nextOrderToCommit < sources.Count)
+            {
             while (nextOrderToSchedule < sources.Count &&
                    activeCollections.Count + activeSolves.Count < options.EffectiveMaxDegreeOfParallelism &&
                    completedCollections.Count + completedResults.Count < options.EffectiveReorderAllowance &&
-                   completedRecordCount < options.EffectiveMaxCompletedRecordCount)
+                   completedRecordCount < options.EffectiveMaxCompletedRecordCount &&
+                   CanScheduleWithinWindow(nextOrderToSchedule, nextOrderToCommit, options))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var order = nextOrderToSchedule;
@@ -620,15 +642,22 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             return;
         }
 
-        using var workItemCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var nextIndex = -1;
-        ExceptionDispatchInfo? workItemFailure = null;
-        var workItemStartGate = new object();
-        var workerCount = Math.Min(sources.Count, Math.Max(1, maxDegreeOfParallelism));
-        var workers = new Task[workerCount];
-        for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
+        try
         {
-            workers[workerIndex] = Task.Run(
+            using var admissionLease = await AcquireAdmissionAsync(
+              new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput),
+              cancellationToken,
+              telemetry).ConfigureAwait(false);
+            using var admissionScope = PushAdmissionLease(admissionLease);
+            using var workItemCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var nextIndex = -1;
+            ExceptionDispatchInfo? workItemFailure = null;
+            var workItemStartGate = new object();
+            var workerCount = Math.Min(sources.Count, Math.Max(1, maxDegreeOfParallelism));
+            var workers = new Task[workerCount];
+            for (var workerIndex = 0; workerIndex < workerCount; workerIndex++)
+            {
+                workers[workerIndex] = Task.Run(
               async () =>
               {
                   while (true)
@@ -685,10 +714,8 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
                   }
               },
               CancellationToken.None);
-        }
+            }
 
-        try
-        {
             await Task.WhenAll(workers).ConfigureAwait(false);
             Volatile.Read(ref workItemFailure)?.Throw();
             cancellationToken.ThrowIfCancellationRequested();
@@ -832,6 +859,17 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             }
         }
 
+        if (results.Count != workItems.Count)
+        {
+            var incompleteNodes = workItemsByNode.Keys
+              .Where(node => !results.ContainsKey(node))
+              .OrderBy(node => node, readyOrder)
+              .Select(node => node.ToString())
+              .ToArray();
+            throw new InvalidOperationException(
+              $"Dependency work graph contains a cycle involving: {string.Join(", ", incompleteNodes)}.");
+        }
+
         return new DependencyExecutionResult<TNode, TResult>(
           results,
           peakReadyWorkItemCount,
@@ -854,6 +892,17 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
 
     private sealed record DependencyCompletion<TNode, TResult>(TNode Node, TResult Result)
         where TNode : notnull;
+
+    private static bool CanScheduleWithinWindow(
+        int nextOrderToSchedule,
+        int nextOrderToCommit,
+        ConcurrencyWindowOptions options)
+    {
+        var maximumOutstandingWorkItemCount = Math.Min(
+          (long)options.EffectiveReorderAllowance + 1,
+          (long)options.EffectiveMaxCompletedRecordCount + 1);
+        return (long)nextOrderToSchedule - nextOrderToCommit < maximumOutstandingWorkItemCount;
+    }
 
     /// <summary>
     /// 为一次并发操作创建遥测跟踪器。

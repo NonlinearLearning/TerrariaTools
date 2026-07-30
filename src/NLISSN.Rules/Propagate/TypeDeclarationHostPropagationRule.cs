@@ -9,18 +9,49 @@ namespace NLISSN.Rules;
 
 /// 把 delete-class 的 TypeSyntax 命中收束到稳定声明宿主，
 /// 让后续提案直接对字段、属性、方法、接口成员等可改写边界做决策。
-public sealed class ClassDeclarationHostPropagationRule : ClassPropagationRuleBase
+public sealed class ClassDeclarationHostPropagationRule : RuleDefinitionPropagate
 {
+    private static readonly RuleConsumesContract TypeSyntaxConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.QualifiedName,
+          SyntaxKind.AliasQualifiedName,
+          SyntaxKind.GenericName
+        },
+        new RuleSemanticTag("Class.TypeSyntaxTarget"))
+    });
     private static readonly RuleSemanticTag DeclarationHostSemanticTag = new("Class.DeclarationHost");
 
     private static readonly RuleProducesContract DeclarationHostProduces =
-      RuleStructureContractFactories.CreateDeclarationHostProduces(DeclarationHostSemanticTag);
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[]
+          {
+            SyntaxKind.BaseList,
+            SyntaxKind.DelegateDeclaration,
+            SyntaxKind.EventDeclaration,
+            SyntaxKind.EventFieldDeclaration,
+            SyntaxKind.FieldDeclaration,
+            SyntaxKind.IndexerDeclaration,
+            SyntaxKind.LocalDeclarationStatement,
+            SyntaxKind.MethodDeclaration,
+            SyntaxKind.PropertyDeclaration,
+            SyntaxKind.SimpleBaseType
+          },
+          DeclarationHostSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propagate.type.declaration-host";
 
     public override string RuleId { get; } = "DEL-CLASS-PROP-DECL-HOST-001";
 
     public override RuleProducesContract Produces => DeclarationHostProduces;
+
+    public override RuleConsumesContract Consumes => TypeSyntaxConsumes;
 
 
     public override string Name { get; } = "Propagate delete-class type syntax marks to stable declaration hosts";

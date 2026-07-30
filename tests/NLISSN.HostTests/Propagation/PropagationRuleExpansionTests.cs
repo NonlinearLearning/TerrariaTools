@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLISSN.Core.Marking;
+using NLISSN.Core.Pipeline;
 using NLISSN.Application;
 using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.Propagation;
@@ -145,7 +146,7 @@ public sealed class PropagationRuleExpansionTests
         var application = new  ApplicationService(
           new RuleDefinitionMark[] { new ExactSyntaxSeedRule(seeds) },
           RuleRegistry.CreateDefaultRules().Propagators
-            .Where(rule => rule.FactDomain == RuleFactDomain.SObject)
+            .OfType<SObjectPropagationRuleBase>()
             .ToList(),
           new RuleDefinitionLift[]
           {
@@ -198,6 +199,7 @@ public sealed class PropagationRuleExpansionTests
 
     private sealed class ExactSyntaxSeedRule : RuleDefinitionMark
     {
+        private static readonly RuleSemanticTag AtomicTargetSemanticTag = new("Target.Atomic");
         private readonly IReadOnlyList<(SyntaxKind Kind, string Text)> _seeds;
 
         public ExactSyntaxSeedRule(IReadOnlyList<(SyntaxKind Kind, string Text)> seeds)
@@ -207,13 +209,16 @@ public sealed class PropagationRuleExpansionTests
 
     public override string RuleId { get; } = "DEL-SOBJ-MARK-MEMBER-001";
 
-    public override RuleFactDomain FactDomain => RuleFactDomain.SObject;
-
 
         public override string Name { get; } = "Exact syntax seed for propagation tests";
 
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds =>
           _seeds.Select(seed => seed.Kind).Distinct().ToList();
+
+        public override RuleProducesContract Produces { get; } = new(new[]
+        {
+          new RuleProducedSyntax(SObjectPropagationRuleBase.AtomicTargetNodeKinds, AtomicTargetSemanticTag)
+        });
 
         public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
         {
@@ -229,7 +234,8 @@ public sealed class PropagationRuleExpansionTests
                       node,
                       null,
                       null,
-                      $"Test seed '{seed.Text}'.");
+                      $"Test seed '{seed.Text}'.",
+                      SemanticTag: AtomicTargetSemanticTag);
                 }
             }
         }

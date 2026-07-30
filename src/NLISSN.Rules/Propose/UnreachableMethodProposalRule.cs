@@ -12,9 +12,10 @@ public sealed class UnreachableMethodProposalRule : RuleDefinitionPropose
     private static readonly RuleSemanticTag UnreachableMethodSemanticTag = new("UnreachableMethod");
 
     private static readonly RuleConsumesContract UnreachableMethodConsumes =
-      RuleStructureContractFactories.CreateDeclarationHostConsumes(
-        UnreachableMethodSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnreachableMethodSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propose.unreachable-method";
 

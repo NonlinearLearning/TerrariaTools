@@ -1009,7 +1009,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
 
     private async Task<IReadOnlyList<CpgShardLocation>?> FindByNodeRoutingIndexAsync(uint nodeId, CancellationToken cancellationToken)
     {
-        foreach (var candidate in await ReadRoutingIndexCandidatesAsync(cancellationToken))
+        await foreach (var candidate in ReadRoutingIndexCandidatesAsync(cancellationToken))
         {
             var primaryRoutes = candidate.Index.FindPrimaryNode(nodeId);
             var boundaryRoutes = candidate.Index.FindBoundaryNode(nodeId);
@@ -1045,7 +1045,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
 
     private async Task<IReadOnlyList<CpgShardLocation>?> FindBySymbolRoutingIndexAsync(CpgSymbolLookup lookup, CancellationToken cancellationToken)
     {
-        foreach (var candidate in await ReadRoutingIndexCandidatesAsync(cancellationToken))
+        await foreach (var candidate in ReadRoutingIndexCandidatesAsync(cancellationToken))
         {
             var shardIds = candidate.Index.FindBySymbol(lookup)
               .Select(route => route.ShardId)
@@ -1061,7 +1061,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
 
     private async Task<IReadOnlyList<CpgShardLocation>?> FindBySpanRoutingIndexAsync(CpgSpanLookup lookup, CancellationToken cancellationToken)
     {
-        foreach (var candidate in await ReadRoutingIndexCandidatesAsync(cancellationToken))
+        await foreach (var candidate in ReadRoutingIndexCandidatesAsync(cancellationToken))
         {
             var shardIds = candidate.Index.FindBySpan(lookup)
               .Select(route => route.ShardId)
@@ -1075,7 +1075,8 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
         return null;
     }
 
-    private async Task<IReadOnlyList<CpgRoutingIndexCandidate>> ReadRoutingIndexCandidatesAsync(CancellationToken cancellationToken)
+    private async IAsyncEnumerable<CpgRoutingIndexCandidate> ReadRoutingIndexCandidatesAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         await using var connection = await OpenAsync(cancellationToken);
         await using var command = connection.CreateCommand();
@@ -1086,7 +1087,6 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
       WHERE b.status = 'Complete'
       ORDER BY b.completed_at_utc DESC, b.build_id DESC;
       """;
-        var candidates = new List<CpgRoutingIndexCandidate>();
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
@@ -1104,10 +1104,8 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
             var cacheKey = new RoutingIndexCacheKey(buildId, relativePath, formatVersion, byteLength, payloadHash);
             var index = await GetVerifiedRoutingIndexAsync(cacheKey, path, cancellationToken);
 
-            candidates.Add(new CpgRoutingIndexCandidate(buildId, index));
+            yield return new CpgRoutingIndexCandidate(buildId, index);
         }
-
-        return candidates;
     }
 
     private async Task<CpgBuildRoutingIndex> GetVerifiedRoutingIndexAsync(RoutingIndexCacheKey cacheKey, string path, CancellationToken cancellationToken)

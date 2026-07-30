@@ -33,6 +33,49 @@ public sealed class WeakTypedCacheRegistryTests
         Assert.NotSame(firstA, secondA);
     }
 
+    [Fact]
+    public async Task GetOrCreate_ConcurrentSameKeyAndValueType_InvokesFactoryOnce()
+    {
+        var registry = new WeakTypedCacheRegistry<object>();
+        var key = new object();
+        using var start = new ManualResetEventSlim(false);
+        var factoryCallCount = 0;
+
+        var requests = Enumerable.Range(0, 32)
+            .Select(_ => Task.Run(() =>
+            {
+                start.Wait();
+                return registry.GetOrCreate(key, _ =>
+                {
+                    Interlocked.Increment(ref factoryCallCount);
+                    Thread.Sleep(100);
+                    return new CacheA("value");
+                });
+            }))
+            .ToArray();
+
+        start.Set();
+        var values = await Task.WhenAll(requests);
+
+        Assert.Equal(1, Volatile.Read(ref factoryCallCount));
+        Assert.All(values, value => Assert.Same(values[0], value));
+    }
+
+    [Fact]
+    public void GetOrCreate_FactoryFails_SubsequentRequestCanRetry()
+    {
+        var registry = new WeakTypedCacheRegistry<object>();
+        var key = new object();
+
+        Assert.Throws<InvalidOperationException>(() => registry.GetOrCreate<CacheA>(
+            key,
+            _ => throw new InvalidOperationException("expected")));
+
+        var value = registry.GetOrCreate(key, _ => new CacheA("retry"));
+
+        Assert.Equal("retry", value.Value);
+    }
+
     private sealed record CacheA(string Value);
 
     private sealed record CacheB(string Value);

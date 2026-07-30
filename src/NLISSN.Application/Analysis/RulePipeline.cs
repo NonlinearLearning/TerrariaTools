@@ -40,12 +40,12 @@ public sealed record RulePipeline(
             declaration.Kind,
             declaration.Rule.Consumes,
             declaration.Rule.Produces,
-            declaration.IsEnabled))
+            declaration.IsEnabled,
+            declaration.Rule.InputCardinality))
           .ToList());
         var declaredNodes = declarations
           .Select(declaration => ToNode(
             declaration,
-            declarations,
             contractGraph))
           .ToList();
         return new RuleGraphCompiler().Compile(declaredNodes);
@@ -75,57 +75,24 @@ public sealed record RulePipeline(
 
     private static RuleGraphNode ToNode(
       RuleGraphRuleDeclaration declaration,
-      IReadOnlyList<RuleGraphRuleDeclaration> declarations,
       CompiledRuleStructureContractGraph contractGraph)
     {
         var rule = declaration.Rule;
-        IReadOnlyList<RuleDependency> dependencies = rule.Consumes.Structures.Count > 0
+        IReadOnlyList<RuleDependency> dependencies =
+          rule.Consumes.Inputs.Count > 0
           ? contractGraph.Edges
             .Where(edge => edge.Consumer == rule.NodeId)
-            .Select(edge => new RuleDependency(
-              edge.Producer,
-              edge.Selector))
+            .Select(edge => new RuleDependency(edge.Producer, edge.Input))
             .ToList()
           : Array.Empty<RuleDependency>();
-        dependencies = dependencies
-          .Concat(CreateTerminalDependencies(rule.TerminalConsumes, declarations))
-          .Distinct()
-          .ToList();
         return new RuleGraphNode(
           rule.NodeId,
           declaration.Kind,
           dependencies)
         {
-            ProducedStructures = rule.Produces.Structures,
-            ConsumedStructures = rule.Consumes.Structures,
-            FactDomain = rule.FactDomain
+            ProducedSyntax = rule.Produces.Outputs,
+            ConsumedSyntax = rule.Consumes.Inputs
         };
-    }
-
-    private static IReadOnlyList<RuleDependency> CreateTerminalDependencies(
-      RuleTerminalConsumesContract terminalConsumes,
-      IReadOnlyList<RuleGraphRuleDeclaration> declarations)
-    {
-        var dependencies = new List<RuleDependency>();
-        foreach (var selector in terminalConsumes.Selectors)
-        {
-            if (selector.Domain == RuleFactDomain.None || selector.SourceStages.Count == 0)
-            {
-                throw new InvalidOperationException("A terminal rule fact selector requires a domain and at least one source stage.");
-            }
-
-            dependencies.AddRange(declarations
-              .Where(declaration =>
-                declaration.Rule.FactDomain == selector.Domain &&
-                selector.SourceStages.Contains(declaration.Kind))
-              .Select(declaration => new RuleDependency(
-                declaration.Rule.NodeId,
-                RequiredTerminalFact: selector)));
-        }
-
-        return dependencies
-          .Distinct()
-          .ToList();
     }
 
     private sealed record RuleGraphRuleDeclaration(

@@ -13,9 +13,12 @@ public sealed class IfStructureProposalRule : RuleDefinitionPropose
     private static readonly RuleSemanticTag IfCompletionSemanticTag = new("SObject.IfCompletion");
 
     private static readonly RuleConsumesContract IfCompletionConsumes =
-      RuleStructureContractFactories.CreateIfCompletionConsumes(
-        IfCompletionSemanticTag,
-        RuleInputCardinality.All);
+      new(new[]
+      {
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
+          IfCompletionSemanticTag)
+      });
 
     public override string CapabilityId { get; } = "propose.if-structure";
 

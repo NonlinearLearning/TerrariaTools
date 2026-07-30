@@ -17,13 +17,11 @@ public abstract class RuleDefinitionPropagate : IRuleDefinition
 
     public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Propagate, RuleId);
 
+    public virtual RuleInputCardinality InputCardinality => RuleInputCardinality.All;
+
     public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
 
     public virtual RuleProducesContract Produces => RuleProducesContract.Empty;
-
-    public virtual RuleFactDomain FactDomain => RuleFactDomain.None;
-
-    public virtual RuleTerminalConsumesContract TerminalConsumes => RuleTerminalConsumesContract.Empty;
 
     public abstract string Name { get; }
 
