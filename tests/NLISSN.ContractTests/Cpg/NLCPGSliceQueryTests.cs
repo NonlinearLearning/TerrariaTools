@@ -366,7 +366,7 @@ public sealed class NLCPGSliceQueryTests
             compilation.GetSemanticModel(tree),
             tree.GetRoot());
         var snapshot = new MarkAnalysisSnapshot(analysisContext);
-        var ruleContext = new RuleContext(
+        var session = new AnalysisSession(
             analysisContext,
             new Dictionary<string, string>(),
             markAnalysisSnapshot: snapshot);
@@ -378,15 +378,15 @@ public sealed class NLCPGSliceQueryTests
             MaxDefinitions: 10);
 
         var sinkNodeId = sinkNode.NodeId!.Value;
-        var first = ruleContext.QuerySliceBackward(sinkNodeId, options);
-        var second = ruleContext.QuerySliceBackward(sinkNodeId, options);
+        var first = session.QuerySliceBackward(sinkNodeId, options);
+        var second = session.QuerySliceBackward(sinkNodeId, options);
 
         Assert.Same(first, second);
         Assert.Equal(
             graph.Edges
                 .Where(edge => edge.SourceNodeId == sinkNodeId && edge.Kind == NLCPGEdgeKind.DataFlow)
                 .OrderBy(edge => edge.TargetNodeId),
-            ruleContext.GetGraphEdgesByKind(sinkNodeId, NLCPGEdgeKind.DataFlow)
+            session.GetGraphEdgesByKind(sinkNodeId, NLCPGEdgeKind.DataFlow)
                 .OrderBy(edge => edge.TargetNodeId));
     }
 

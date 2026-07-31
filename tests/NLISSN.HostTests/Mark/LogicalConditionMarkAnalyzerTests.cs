@@ -451,7 +451,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
         Assert.False(string.IsNullOrWhiteSpace(caseName));
     }
 
-    private static IReadOnlyList<MarkRecord> BuildEffectiveMarks(RuleContext context, IReadOnlyList<MarkRecord> marks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    private static IReadOnlyList<MarkRecord> BuildEffectiveMarks(AnalysisSession session, IReadOnlyList<MarkRecord> marks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var liftedMarks = new RuleDefinitionLift[]
             {
@@ -460,7 +460,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
                 new IfStructureLiftingRule(),
                 new SwitchStructureLiftingRule()
             }
-            .SelectMany(rule => rule.Lift(context.CreateLiftRuleContext(), marks, propagatedMarks))
+            .SelectMany(rule => rule.Lift(session.CreateLiftContext(marks, propagatedMarks), marks, propagatedMarks))
             .Select(mark => mark.Mark);
         return marks
             .Concat(propagatedMarks.Select(mark => mark.Mark))
@@ -499,17 +499,17 @@ public sealed class LogicalConditionMarkAnalyzerTests
         return (new CpgAnalysisContext(graph, semanticModel, root), root);
     }
 
-    private static (RuleContext Context, SyntaxNode Root) CreateRuleContext(string source, string filePath, string targetName)
+    private static (AnalysisSession Context, SyntaxNode Root) CreateRuleContext(string source, string filePath, string targetName)
     {
         var (analysisContext, root) = CreateAnalysisContext(source, filePath);
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["target-name"] = targetName
         };
-        return (new RuleContext(analysisContext, options), root);
+        return (new AnalysisSession(analysisContext, options), root);
     }
 
-    private static List<MarkRecord> RunAtomicMarks(RuleContext context, SyntaxNode root)
+    private static List<MarkRecord> RunAtomicMarks(AnalysisSession context, SyntaxNode root)
     {
         var rules = RuleRegistry.CreateDefaultRules();
         return new MarkingEngine()
@@ -520,7 +520,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
             .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunAtomicPropagations(RuleContext context, IReadOnlyList<MarkRecord> marks)
+    private static List<PropagatedMarkRecord> RunAtomicPropagations(AnalysisSession context, IReadOnlyList<MarkRecord> marks)
     {
         var rules = RuleRegistry.CreateDefaultRules();
         return new PropagationEngine()

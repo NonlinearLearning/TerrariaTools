@@ -78,7 +78,8 @@ public sealed class  LayoutArchitectureTests
     var expectedSources = new[]
     {
       (new[] { "src", "NLISSN.Application", "ExecutionRuntime.cs" }, "NLISSN.Core.Pipeline"),
-      (new[] { "src", "NLISSN.Rule", "RuleContext.cs" }, "NLISSN.Core.Pipeline"),
+      (new[] { "src", "NLISSN.Rule", "AnalysisSession.cs" }, "NLISSN.Core.Pipeline"),
+      (new[] { "src", "NLISSN.Rule", "StageRuleContexts.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Rule", "IRuleDefinition.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Core", "Marking", "RuleDefinitionMark.cs" }, "NLISSN.Core.Marking"),
       (new[] { "src", "NLISSN.Core", "Propagation", "RuleDefinitionPropagate.cs" }, "NLISSN.Core.Propagation"),
@@ -114,6 +115,7 @@ public sealed class  LayoutArchitectureTests
 
     Assert.False(File.Exists(ProjectPath("src", "NLISSN.Core", "Pipeline", "RulePipeline.cs")));
     Assert.False(File.Exists(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleContext.cs")));
+    Assert.False(File.Exists(ProjectPath("src", "NLISSN.Rule", "RuleContext.cs")));
     Assert.False(File.Exists(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleContextServices.cs")));
     Assert.False(File.Exists(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleDefinition.cs")));
     Assert.False(File.Exists(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleGraph.cs")));

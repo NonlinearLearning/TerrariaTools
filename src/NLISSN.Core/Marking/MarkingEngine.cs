@@ -8,7 +8,7 @@ namespace NLISSN.Core.Marking;
 public sealed class MarkingEngine
 {
     // 执行所有标记规则，补齐图绑定后按规则节点和语法位置去重返回种子标记。
-    public IReadOnlyList<MarkRecord> Run(RuleContext context, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
+    internal IReadOnlyList<MarkRecord> Run(AnalysisSession session, SyntaxNode root, IReadOnlyList<RuleDefinitionMark> rules)
     {
         var nodes = rules.Select(rule => new RuleGraphNode(
           RuleNodeId.For(RuleKind.Mark, rule.RuleId),
@@ -25,16 +25,16 @@ public sealed class MarkingEngine
               node,
               (_, _) => Task.FromResult(CreateResult(
                 rule.Produces,
-                ExecuteRule(context, root, rule))));
+                ExecuteRule(session, root, rule))));
         }).ToList();
         var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
-          context.Runtime.ExecutionOptions.EnableGroupParallelism,
-          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
+          session.Runtime.ExecutionOptions.EnableGroupParallelism,
+          session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
+        var execution = new RuleGraphExecutor(session.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             graphDegree,
-            context.Runtime.ExecutionOptions.CancellationToken)
+            session.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
         var seedMarks = execution.Nodes
@@ -51,20 +51,20 @@ public sealed class MarkingEngine
         .ToList();
     }
 
-    public static List<MarkRecord> ExecuteRule(RuleContext context, SyntaxNode root, RuleDefinitionMark rule)
+    internal static List<MarkRecord> ExecuteRule(AnalysisSession session, SyntaxNode root, RuleDefinitionMark rule)
     {
         var producedMarks = new List<MarkRecord>();
-        foreach (var mark in rule.Mark(context.CreateMarkRuleContext(), root))
+        foreach (var mark in rule.Mark(session.CreateMarkContext(), root))
         {
             var taggedMark = BindDeclaredSemanticTag(rule.Produces, mark);
             ValidateMarkNode(rule, taggedMark.SyntaxNode);
               ValidateProducedSyntax(rule.Produces, taggedMark);
-            producedMarks.Add(BindMarkRecord(context, taggedMark));
+            producedMarks.Add(BindMarkRecord(session, taggedMark));
         }
 
         foreach (var mark in producedMarks)
         {
-            context.Evidence.RecordSeed(mark);
+            session.Evidence.RecordSeed(mark);
         }
 
         return producedMarks;
@@ -119,13 +119,13 @@ public sealed class MarkingEngine
           : mark;
     }
 
-    internal static MarkRecord BindMarkRecord(RuleContext context, MarkRecord candidate)
+    internal static MarkRecord BindMarkRecord(AnalysisSession session, MarkRecord candidate)
     {
         var annotation = candidate.Annotation ?? new SyntaxAnnotation("RuleHitNode", Guid.NewGuid().ToString("N"));
         var primaryGraphNode = candidate.PrimaryGraphNode;
         if (primaryGraphNode is null)
         {
-            context.TryResolvePrimaryGraphNode(candidate.SyntaxNode, out primaryGraphNode);
+            session.TryResolvePrimaryGraphNode(candidate.SyntaxNode, out primaryGraphNode);
         }
 
         if (primaryGraphNode is null)

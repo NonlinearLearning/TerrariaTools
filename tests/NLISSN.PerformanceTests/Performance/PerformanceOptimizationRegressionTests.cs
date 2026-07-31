@@ -77,7 +77,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildNamedArgumentMethodPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindParameterTypeSyntax("Game.cs", "Apply", "input"),
           out var plan);
 
@@ -107,7 +107,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildOptionalParameterMethodPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindParameterTypeSyntax("Game.cs", "Apply", "input"),
           out var plan);
 
@@ -133,7 +133,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildParamsMethodPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindParameterTypeSyntax("Game.cs", "Apply", "inputs"),
           out var plan);
 
@@ -154,7 +154,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildParamsMethodPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindParameterTypeSyntax("Game.cs", "Apply", "inputs"),
           out _);
 
@@ -170,7 +170,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildNamedArgumentIndexerPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindIndexerParameterTypeSyntax("Buffer.cs", "input"),
           out var plan);
 
@@ -199,7 +199,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegateMethodGroupPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out var plan);
 
@@ -234,7 +234,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegateLambdaPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out var plan);
 
@@ -263,7 +263,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegateInvocationChainPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out var plan);
 
@@ -294,7 +294,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildExtensionReceiverNonFirstParameterPlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindParameterTypeSyntax("InputExtensions.cs", "Score", "input"),
           out var plan);
 
@@ -324,7 +324,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegatePlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out _);
 
@@ -340,7 +340,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegatePlan(
-          context.RuleContext.CreateSemanticRuleContext(),
+          context.ProposeContext,
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out var plan);
 
@@ -563,7 +563,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           .Single(file => string.Equals(file.FilePath, declarationFilePath, StringComparison.Ordinal))
           .Source;
         var graph = new NLCPGBuilder().BuildFromSource(declarationSource, declarationFilePath);
-        var ruleContext = new RuleContext(
+        var session = new AnalysisSession(
           new CpgAnalysisContext(graph, declarationSemanticModel, declarationRoot),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
@@ -573,7 +573,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           pair => pair.Key,
           pair => pair.Value.GetRoot(),
           StringComparer.Ordinal);
-        return new AnalyzerTestContext(ruleContext, roots);
+        return new AnalyzerTestContext(session.CreateProposeContext(), roots);
     }
 
     private static CSharpCompilation CreateCompilation(IEnumerable<SyntaxTree> trees)
@@ -710,13 +710,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     {
         private readonly IReadOnlyDictionary<string, SyntaxNode> _rootsByPath;
 
-        public AnalyzerTestContext(RuleContext ruleContext, IReadOnlyDictionary<string, SyntaxNode> rootsByPath)
+        public AnalyzerTestContext(IProposeRuleContext ruleContext, IReadOnlyDictionary<string, SyntaxNode> rootsByPath)
         {
-            RuleContext = ruleContext;
+            ProposeContext = ruleContext;
             _rootsByPath = rootsByPath;
         }
 
-        public RuleContext RuleContext { get; }
+        public IProposeRuleContext ProposeContext { get; }
 
         public TypeSyntax FindParameterTypeSyntax(string filePath, string methodName, string parameterName)
         {

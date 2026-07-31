@@ -10,13 +10,12 @@ namespace NLISSN.Core.Propagation;
 public sealed class PropagationEngine
 {
     // 为规则图执行器执行一个已准备好显式输入的传播节点。
-    public static IReadOnlyList<PropagatedMarkRecord> ExecuteRule(
-      RuleContext context,
+    internal static IReadOnlyList<PropagatedMarkRecord> ExecuteRule(
+      AnalysisSession session,
       RuleDefinitionPropagate rule,
       IReadOnlyList<MarkRecord> inputMarks)
     {
-        var ruleContext = BuildRuleContext(context, inputMarks);
-        var results = rule.Propagate(ruleContext.CreatePropagationRuleContext(), inputMarks)
+        var results = rule.Propagate(session.CreatePropagationContext(inputMarks), inputMarks)
           .Select(candidate =>
           {
               var tagged = candidate with
@@ -26,15 +25,15 @@ public sealed class PropagationEngine
               ValidatePropagateNode(rule, tagged.Mark.SyntaxNode);
               ValidatePropagationPayload(rule, tagged.Payload);
               MarkingEngine.ValidateProducedSyntax(rule.Produces, tagged.Mark);
-              return BindPropagatedMarkRecord(ruleContext, tagged);
+              return BindPropagatedMarkRecord(session, tagged);
           })
           .ToList();
-        context.Evidence.RecordPropagation(rule.RuleId, inputMarks, results);
+        session.Evidence.RecordPropagation(rule.RuleId, inputMarks, results);
         return results;
     }
 
     // 兼容入口也按规则图执行，并按产生规则和语法位置去重。
-    public IReadOnlyList<PropagatedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<RuleDefinitionPropagate> rules)
+    internal IReadOnlyList<PropagatedMarkRecord> Run(AnalysisSession session, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<RuleDefinitionPropagate> rules)
     {
         var consumedInputs = rules
           .SelectMany(rule => rule.Consumes.Inputs)
@@ -94,17 +93,17 @@ public sealed class PropagationEngine
                 node,
                 (inputs, _) => Task.FromResult(CreateResult(
                   rule.Produces,
-                  ExecuteRule(context, rule, GetInputMarks(node, inputs)))));
+                  ExecuteRule(session, rule, GetInputMarks(node, inputs)))));
           }))
           .ToList();
         var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
-          context.Runtime.ExecutionOptions.EnableGroupParallelism,
-          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
+          session.Runtime.ExecutionOptions.EnableGroupParallelism,
+          session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
+        var execution = new RuleGraphExecutor(session.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             graphDegree,
-            context.Runtime.ExecutionOptions.CancellationToken)
+            session.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
 
@@ -120,13 +119,13 @@ public sealed class PropagationEngine
           .ToList();
     }
 
-    private static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate)
+    private static PropagatedMarkRecord BindPropagatedMarkRecord(AnalysisSession session, PropagatedMarkRecord candidate)
     {
         var origins = candidate.Mark.Origins | candidate.SourceMark.Origins;
         return candidate with
         {
-            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark with { Origins = origins }),
-            SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark)
+            Mark = MarkingEngine.BindMarkRecord(session, candidate.Mark with { Origins = origins }),
+            SourceMark = MarkingEngine.BindMarkRecord(session, candidate.SourceMark)
         };
     }
 
@@ -152,30 +151,6 @@ public sealed class PropagationEngine
 
         throw new InvalidOperationException(
           $"Rule '{rule.RuleId}' emitted a Lift-owned structural payload from Propagate.");
-    }
-
-    private static RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> marks)
-    {
-        var fragments = marks
-          .Select(mark => mark.SyntaxNode)
-          .Distinct()
-          .ToList();
-        if (fragments.Count == 0)
-        {
-            return context;
-        }
-
-        var query = context.QueryStructureView(
-          fragments,
-          CpgRelationProfile.StructuralContainment,
-          CpgQueryDirection.Bidirectional,
-          new NLCPGTraversalBudget(16, 1, 1, 4096, 8192));
-        if (query.Status != CpgQueryStatus.Complete || query.View is null)
-        {
-            return context;
-        }
-
-        return context.WithStructureView(query.View);
     }
 
     private static RuleNodeResult CreateSourceResult(RuleGraphNode node, IReadOnlyList<MarkRecord> seedMarks)

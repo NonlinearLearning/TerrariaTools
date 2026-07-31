@@ -1,5 +1,7 @@
 # 阶段独立 Rule Context 执行计划
 
+> 执行状态：已完成本计划的阶段 Context 迁移与回归验证；`flow-summary-2-execution` 仍保持 `in_progress`，外部边界删除候选规则不在本计划范围内。
+
 > **For Codex:** REQUIRED SKILL: Use `executing-plans` to implement this plan task-by-task.
 
 **目标：** 将规则执行从一个公开、同时实现四个阶段接口的 `RuleContext` 迁移为一个内部 `AnalysisSession` 和四个阶段独立的 Context 实例，同时保持规则图输入、输出、缓存、证据、并发和 DOP 行为稳定。
@@ -8,7 +10,7 @@
 
 **技术栈：** .NET 10、Microsoft.CodeAnalysis.CSharp、xUnit、`NLISSN.Core.Pipeline`、`NL.Concurrency`。
 
-**执行前置条件：** 在包含当前规则-DAG迁移的干净工作树执行；不要在现有共享脏工作树中按目录暂存或提交。2026-07-31 的 `check-harness-consistency.ps1` 当前被并行迁移中的 `src/NLISSN/Composition/RuleRegistry.cs` 阻塞，报 `CS0246`：四个 `RuleDefinition*` 类型无法解析。先完成或隔离该组合根迁移，再将 harness 结果作为本计划验收证据。
+**执行前置条件：** 在包含当前规则-DAG迁移的共享工作树中顺序构建，避免共享 Build 输出并发写入；不要按目录暂存或提交并行迁移的无关改动。当前 `check-harness-consistency.ps1` 已复查通过。
 
 ---
 
@@ -339,3 +341,15 @@ git commit -m "docs: record stage context verification"
 - Flow Summary 解析只可由 Propagate Context 调用，解析结果以传播 payload 进入规则图，Propose 不直接解析外部调用。
 - 规则图合约、禁用节点、证据、决策合并、CLI 和 DOP 1/16 输出保持既有行为。
 - 所有 Task 5 构建、测试和静态检查通过，或将独立验证结果与可复现的外部阻塞明确记录在 `progress.md`。
+
+## 实际执行结果
+
+- `AnalysisSession`、四个阶段适配器和 `InternalsVisibleTo` 已落地；旧 `RuleContext.cs` 与 `WithStructureView` 已删除。
+- Propagate 独占 `ResolveCallFlow`；Propagate/Lift 的结构查询保持惰性并在单节点内只计算一次。
+- 顺序构建 `NLISSN.Core`、`NLISSN.Rules`、`NLISSN.Application`、`NLISSN`：均为 0 警告、0 错误。
+- 完整 Host `501/501`、Contract `259/259`、Unit `49/49`、阶段相关 Performance `16/16` 通过。
+- Task 5 阶段筛选 Host `177/177`、Contract `47/47` 通过；目录 DOP 1/2/16 决策与字节级 diff 对比 `2/2` 通过。
+- Flow Summary 测试覆盖 `Resolved`、`Unknown`、`Blocked` 与“truncated”拒绝原因；只有 `Resolved` payload 可以进入 Propose 并生成候选。
+- CLI 无写入路径 `src/NLISSN/Program.cs --target-name NotPresent --skip-rewrite --no-diff` 退出码为 0。
+- `pwsh -File .\\scripts\\check-harness-consistency.ps1` 与 `git diff --check` 通过；完整 Performance 测试未在 5 分钟命令上限内结束，未计为通过。
+- 当前工作树含并行规则 DAG 迁移，因此未暂存或提交任何文件；这是共享工作树约束，不影响已验证的实现状态。

@@ -32,7 +32,7 @@ public sealed class MarkRuleRegistryCoverageTests
       Assert.IsAssignableFrom<IInstanceReferenceOperation>(context.GetCachedOperation(expectedSyntax));
     }
 
-    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
+    var marks = rule.Mark(context.CreateMarkContext(), root).ToArray();
 
     var mark = Assert.Single(marks);
     Assert.Equal(scenario.RuleId, mark.RuleId);
@@ -52,7 +52,7 @@ public sealed class MarkRuleRegistryCoverageTests
     var (context, root) = CreateRuleContext(scenario.Source, options);
     var rule = GetMarker(scenario.RuleId);
 
-    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
+    var marks = rule.Mark(context.CreateMarkContext(), root).ToArray();
 
     Assert.Empty(marks);
   }
@@ -64,7 +64,7 @@ public sealed class MarkRuleRegistryCoverageTests
     var (context, root) = CreateRuleContext(scenario.Source, scenario.Options);
     var rule = GetMarker(scenario.RuleId);
 
-    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
+    var marks = rule.Mark(context.CreateMarkContext(), root).ToArray();
 
     var mark = Assert.Single(marks);
     var expectedSyntax = root.DescendantNodes()
@@ -85,7 +85,7 @@ public sealed class MarkRuleRegistryCoverageTests
     var (context, root) = CreateRuleContext(scenario.Source, scenario.Options);
     var rule = GetMarker(scenario.RuleId);
 
-    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
+    var marks = rule.Mark(context.CreateMarkContext(), root).ToArray();
 
     Assert.Empty(marks);
   }
@@ -97,7 +97,7 @@ public sealed class MarkRuleRegistryCoverageTests
     var (context, root) = CreateRuleContext(source, "target");
     var rule = GetMarker("DEL-SOBJ-MARK-ID-001");
 
-    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
+    var marks = rule.Mark(context.CreateMarkContext(), root).ToArray();
 
     Assert.Equal(2, marks.Length);
     AssertMarksAreUniqueAndInStableOrder(marks);
@@ -110,7 +110,7 @@ public sealed class MarkRuleRegistryCoverageTests
     var (context, root) = CreateRuleContext(source, "target");
     var rule = GetMarker("DEL-SOBJ-MARK-ID-001");
 
-    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
+    var marks = rule.Mark(context.CreateMarkContext(), root).ToArray();
 
     Assert.Empty(marks);
   }
@@ -561,12 +561,12 @@ public sealed class MarkRuleRegistryCoverageTests
     return RuleRegistry.CreateDefaultRules().Markers.Single(rule => rule.RuleId == ruleId);
   }
 
-  private static (RuleContext Context, SyntaxNode Root) CreateRuleContext(string source, string targetName)
+  private static (AnalysisSession Context, SyntaxNode Root) CreateRuleContext(string source, string targetName)
   {
     return CreateRuleContext(source, Options(("target-name", targetName)));
   }
 
-  private static (RuleContext Context, SyntaxNode Root) CreateRuleContext(string source, IReadOnlyDictionary<string, string> options)
+  private static (AnalysisSession Context, SyntaxNode Root) CreateRuleContext(string source, IReadOnlyDictionary<string, string> options)
   {
     const string filePath = "MarkRuleRegistryCoverage.cs";
     var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
@@ -582,6 +582,6 @@ public sealed class MarkRuleRegistryCoverageTests
       });
     var semanticModel = compilation.GetSemanticModel(tree);
     var graph = new NLCPGBuilder().BuildFromSource(source, filePath);
-    return (new RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options), root);
+    return (new AnalysisSession(new CpgAnalysisContext(graph, semanticModel, root), options), root);
   }
 }

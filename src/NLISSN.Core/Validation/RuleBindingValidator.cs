@@ -15,12 +15,12 @@ namespace NLISSN.Core.Validation;
 /// </summary>
 public sealed class RuleBindingValidator
 {
-  public AnalysisValidationReport Validate(
-    RuleContext context,
+  internal AnalysisValidationReport Validate(
+    AnalysisSession session,
     CompiledRuleGraph graph,
     RuleGraphExecutionResult execution)
   {
-    ArgumentNullException.ThrowIfNull(context);
+    ArgumentNullException.ThrowIfNull(session);
     ArgumentNullException.ThrowIfNull(graph);
     ArgumentNullException.ThrowIfNull(execution);
 
@@ -51,7 +51,7 @@ public sealed class RuleBindingValidator
         }
 
         ValidateProducedMark(node, mark, issues);
-        ValidatePrimaryBinding(context, mark, issues);
+        ValidatePrimaryBinding(session, mark, issues);
       }
     }
 
@@ -191,7 +191,7 @@ public sealed class RuleBindingValidator
   }
 
   private static void ValidatePrimaryBinding(
-    RuleContext context,
+    AnalysisSession session,
     MarkRecord mark,
     ICollection<ValidationIssue> issues)
   {
@@ -211,7 +211,7 @@ public sealed class RuleBindingValidator
       return;
     }
 
-    var bound = context.FindGraphNodeById(graphNode.NodeId ?? default);
+    var bound = session.FindGraphNodeById(graphNode.NodeId ?? default);
     if (graphNode.NodeId is null || bound is null)
     {
       issues.Add(CreateIssue(

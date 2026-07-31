@@ -62,11 +62,11 @@ public sealed class StructureViewBuilderTests
         var (context, _) = CreateAnalysisContext(
             "public sealed class Sample { public int Run(int value) => value + 1; }",
             "rule-context-nodes-by-kind.cs");
-        var ruleContext = new RuleContext(
+        var session = new AnalysisSession(
             context,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
 
-        var nodes = ruleContext.GetGraphNodesByKind(NLCPGNodeKind.Operation);
+        var nodes = session.GetGraphNodesByKind(NLCPGNodeKind.Operation);
 
         Assert.Equal(
             context.Graph.GetNodes(NLCPGNodeKind.Operation).Select(node => node.NodeId),
@@ -222,21 +222,21 @@ public sealed class StructureViewBuilderTests
             .OfType<MemberAccessExpressionSyntax>()
             .Single(node => node.ToString() == "s.Seed");
         var runtime =  AnalysisRuntime.CreateDefault();
-        var firstRuleContext = new RuleContext(
+        var firstSession = new AnalysisSession(
             context,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             runtime: runtime);
-        var secondRuleContext = new RuleContext(
+        var secondSession = new AnalysisSession(
             context,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             runtime: runtime.InvalidateCaches());
 
-        var firstView = firstRuleContext.BuildStructureView(
+        var firstView = firstSession.BuildStructureView(
             new SyntaxNode[] { declarator, memberAccess },
             CpgRelationProfile.StructuralContainment,
             CpgQueryDirection.Bidirectional,
             new NLCPGTraversalBudget(16, 1, 1, 4096, 8192));
-        var secondView = secondRuleContext.BuildStructureView(
+        var secondView = secondSession.BuildStructureView(
             new SyntaxNode[] { declarator, memberAccess },
             CpgRelationProfile.StructuralContainment,
             CpgQueryDirection.Bidirectional,

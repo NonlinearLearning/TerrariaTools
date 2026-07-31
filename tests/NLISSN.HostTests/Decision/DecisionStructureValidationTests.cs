@@ -27,9 +27,9 @@ public sealed class DecisionStructureValidationTests
         var (context, root, rules) = CreateContextAndRules(source);
         var markRule = rules.Markers.OfType<UnreachableMethodMarkRule>().Single();
         var proposalRule = rules.Proposers.OfType<UnreachableMethodProposalRule>().Single();
-        var seedMarks = markRule.Mark(context.CreateMarkRuleContext(), root).ToList();
+        var seedMarks = markRule.Mark(context.CreateMarkContext(), root).ToList();
         var proposals = proposalRule.Propose(
-          context.CreateProposeRuleContext(),
+          context.CreateProposeContext(),
           seedMarks,
           Array.Empty<PropagatedMarkRecord>(),
           Array.Empty<LiftedMarkRecord>()).ToList();
@@ -95,15 +95,11 @@ public sealed class DecisionStructureValidationTests
         var propagatedMarks = RunAtomicPropagations(context, seedMarks, rules);
         var liftedMarks = Lift(context, seedMarks, propagatedMarks, rules);
         var proposals = proposalRules
-          .SelectMany(rule => rule.Propose(
-            context.CreateProposeRuleContext(),
-            seedMarks,
-            propagatedMarks,
-            liftedMarks))
+          .SelectMany(rule => rule.Propose(context.CreateProposeContext(), seedMarks, propagatedMarks, liftedMarks))
           .ToList();
         var policy = new DefaultDecisionPolicy();
 
-        var resolved = policy.Resolve(context, proposals);
+        var resolved = policy.Resolve(proposals);
 
         Assert.Equal(DecisionActionKind.Replace, resolved.Action);
         Assert.Equal(SyntaxKind.LogicalAndExpression, (SyntaxKind)resolved.FinalNode.RawKind);
@@ -112,7 +108,7 @@ public sealed class DecisionStructureValidationTests
             unit.SyntaxBindings.TryGetValue(unit.Fragments[0].NodeId!.Value, out var node) &&
             node.IsKind(SyntaxKind.LogicalAndExpression));
 
-        var merged = ResolveMergedUnit(policy, context, logicalProposal);
+        var merged = ResolveMergedUnit(policy, logicalProposal);
 
         Assert.Contains(merged.Fragments, fragment =>
             fragment.NodeId.HasValue &&
@@ -139,7 +135,7 @@ public sealed class DecisionStructureValidationTests
         Assert.Equal("Delete", dispatchKind.ToString());
     }
 
-    private static (NLISSN.Core.Pipeline.RuleContext Context, SyntaxNode Root,  RulePipeline Rules) CreateContextAndRules(string source, string? targetName = null)
+    private static (AnalysisSession Context, SyntaxNode Root,  RulePipeline Rules) CreateContextAndRules(string source, string? targetName = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "test.cs");
         var root = tree.GetRoot();
@@ -160,27 +156,27 @@ public sealed class DecisionStructureValidationTests
             options["target-name"] = targetName;
         }
 
-        var context = new NLISSN.Core.Pipeline.RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options);
+        var context = new AnalysisSession(new CpgAnalysisContext(graph, semanticModel, root), options);
         var rules = RuleRegistry.CreateDefaultRules();
         return (context, root, rules);
     }
 
-    private static DecisionUnit ResolveMergedUnit(DefaultDecisionPolicy policy, NLISSN.Core.Pipeline.RuleContext context, params DecisionUnit[] units)
+    private static DecisionUnit ResolveMergedUnit(DefaultDecisionPolicy policy, params DecisionUnit[] units)
     {
         var method = typeof(DefaultDecisionPolicy).GetMethod(
           "ResolveToUnitForTesting",
           BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
-        var merged = method!.Invoke(policy, new object[] { context, units });
+        var merged = method!.Invoke(policy, new object[] { units });
         return Assert.IsType<DecisionUnit>(merged);
     }
 
-    private static IReadOnlyList<LiftedMarkRecord> Lift(NLISSN.Core.Pipeline.RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks,  RulePipeline rules)
+    private static IReadOnlyList<LiftedMarkRecord> Lift(AnalysisSession context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks,  RulePipeline rules)
     {
         return new MarkLiftingEngine().Run(context, seedMarks, propagatedMarks, rules.Lifters);
     }
 
-    private static List<MarkRecord> RunAtomicMarks(NLISSN.Core.Pipeline.RuleContext context, SyntaxNode root,  RulePipeline rules)
+    private static List<MarkRecord> RunAtomicMarks(AnalysisSession context, SyntaxNode root,  RulePipeline rules)
     {
         return new MarkingEngine()
           .Run(context, root, rules.Markers)
@@ -190,7 +186,7 @@ public sealed class DecisionStructureValidationTests
           .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunAtomicPropagations(NLISSN.Core.Pipeline.RuleContext context, IReadOnlyList<MarkRecord> seedMarks,  RulePipeline rules)
+    private static List<PropagatedMarkRecord> RunAtomicPropagations(AnalysisSession context, IReadOnlyList<MarkRecord> seedMarks,  RulePipeline rules)
     {
         return new PropagationEngine()
           .Run(

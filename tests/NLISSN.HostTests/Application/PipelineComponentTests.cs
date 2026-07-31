@@ -893,7 +893,7 @@ public sealed class PipelineComponentTests : IDisposable
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-method-propagation.cs");
-        var context = new RuleContext(
+        var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
@@ -933,7 +933,7 @@ public sealed class PipelineComponentTests : IDisposable
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-local-function-propagation.cs");
-        var context = new RuleContext(
+        var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
@@ -973,7 +973,7 @@ public sealed class PipelineComponentTests : IDisposable
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-indexer-propagation.cs");
-        var context = new RuleContext(
+        var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
@@ -1012,7 +1012,7 @@ public sealed class PipelineComponentTests : IDisposable
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-delegate-propagation.cs");
-        var context = new RuleContext(
+        var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
@@ -1055,7 +1055,7 @@ public sealed class PipelineComponentTests : IDisposable
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-extension-propagation.cs");
-        var context = new RuleContext(
+        var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
@@ -1094,7 +1094,7 @@ public sealed class PipelineComponentTests : IDisposable
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-declaration-host-propagation.cs");
-        var context = new RuleContext(
+        var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
@@ -1239,7 +1239,7 @@ public sealed class PipelineComponentTests : IDisposable
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(
           source,
           "delete-class-if-structure-propagation.cs");
-        var context = new RuleContext(
+        var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
@@ -4888,6 +4888,65 @@ public sealed class PipelineComponentTests : IDisposable
             .Count());
     }
 
+    [Fact]
+    public void PropagationContext_WhenRuleDoesNotReadStructureView_DoesNotRunStructureQuery()
+    {
+        var (session, _) = CreateContext("class C { void M() { } }");
+
+        var results = PropagationEngine.ExecuteRule(
+            session,
+            new NoViewPropagationRule(),
+            Array.Empty<MarkRecord>());
+
+        Assert.Empty(results);
+        Assert.Equal(0, session.StructureViewQueryCount);
+    }
+
+    [Fact]
+    public void PropagationContext_WhenStructureViewIsRead_ReusesOneQueryResult()
+    {
+        var (session, root) = CreateContext("class C { void M() { } }");
+        var context = session.CreatePropagationContext(
+            new[] { new MarkRecord("TEST", root, null, null, "Test input.") });
+
+        var first = context.StructureViewQuery;
+        var second = context.StructureViewQuery;
+
+        Assert.Same(first, second);
+        Assert.Equal(1, session.StructureViewQueryCount);
+    }
+
+    [Fact]
+    public void LiftContext_WhenRuleDoesNotReadStructureView_DoesNotRunStructureQuery()
+    {
+        var (session, _) = CreateContext("class C { void M() { } }");
+
+        var results = MarkLiftingEngine.ExecuteRule(
+            session,
+            new NoViewLiftRule(),
+            Array.Empty<MarkRecord>(),
+            Array.Empty<PropagatedMarkRecord>(),
+            Array.Empty<LiftedMarkRecord>());
+
+        Assert.Empty(results);
+        Assert.Equal(0, session.StructureViewQueryCount);
+    }
+
+    [Fact]
+    public void LiftContext_WhenInputsAreAbsent_PreservesDisconnectedQueryStatus()
+    {
+        var (session, _) = CreateContext("class C { void M() { } }");
+        var context = session.CreateLiftContext(
+            Array.Empty<MarkRecord>(),
+            Array.Empty<PropagatedMarkRecord>());
+
+        var query = context.StructureViewQuery;
+
+        Assert.Equal(NLCPG.Analysis.CpgQueryStatus.Disconnected, query.Status);
+        Assert.Null(query.View);
+        Assert.Equal(0, session.StructureViewQueryCount);
+    }
+
     public void Dispose()
     {
         try
@@ -4907,7 +4966,7 @@ public sealed class PipelineComponentTests : IDisposable
         return new  CommandHost(RuleRegistry.CreateDefaultRules());
     }
 
-    private static (RuleContext Context, SyntaxNode Root) CreateContext(string source, string? targetName = null,  AnalysisRuntime? runtime = null)
+    private static (AnalysisSession Context, SyntaxNode Root) CreateContext(string source, string? targetName = null,  AnalysisRuntime? runtime = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "component-test.cs");
         var root = tree.GetRoot();
@@ -4920,7 +4979,7 @@ public sealed class PipelineComponentTests : IDisposable
             options["target-name"] = targetName;
         }
 
-        return (new RuleContext(new CpgAnalysisContext(graph, semanticModel, root), options, runtime: runtime), root);
+        return (new AnalysisSession(new CpgAnalysisContext(graph, semanticModel, root), options, runtime: runtime), root);
     }
 
     private static  AnalysisRuntime CreateParallelRuntime(RecordingConcurrencyPool scheduler)
@@ -5502,9 +5561,10 @@ public sealed class PipelineComponentTests : IDisposable
 
         public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
-            var structureView = context.StructureView;
-            Assert.NotNull(structureView);
-            var viewNodeIds = structureView!.Nodes.Select(node => node.NodeId).ToHashSet();
+            var query = context.StructureViewQuery;
+            Assert.Equal(NLCPG.Analysis.CpgQueryStatus.Complete, query.Status);
+            var structureView = Assert.IsType<NLCPGStructureView>(query.View);
+            var viewNodeIds = structureView.Nodes.Select(node => node.NodeId).ToHashSet();
             Assert.NotEmpty(seedMarks);
             Assert.All(
               seedMarks,
@@ -5543,9 +5603,10 @@ public sealed class PipelineComponentTests : IDisposable
 
         public override IEnumerable<LiftedMarkRecord> Lift(ILiftRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
         {
-            var structureView = context.StructureView;
-            Assert.NotNull(structureView);
-            var viewNodeIds = structureView!.Nodes.Select(node => node.NodeId).ToHashSet();
+            var query = context.StructureViewQuery;
+            Assert.Equal(NLCPG.Analysis.CpgQueryStatus.Complete, query.Status);
+            var structureView = Assert.IsType<NLCPGStructureView>(query.View);
+            var viewNodeIds = structureView.Nodes.Select(node => node.NodeId).ToHashSet();
             Assert.NotEmpty(seedMarks);
             Assert.NotEmpty(propagatedMarks);
             Assert.All(
@@ -5565,6 +5626,46 @@ public sealed class PipelineComponentTests : IDisposable
               new MarkRecord(RuleId, returnStatement, null, null, "rule-scoped view is available during lifting"),
               propagatedMarks[0].Mark,
               propagatedMarks[0].Depth + 1);
+        }
+    }
+
+    private sealed class NoViewPropagationRule : RuleDefinitionPropagate
+    {
+        public override string RuleId { get; } = "TEST-NO-VIEW-PROP-001";
+
+        public override string Name { get; } = "Does not read a structure view.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+          Array.Empty<SyntaxKind>();
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(
+          IPropagationRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks)
+        {
+            _ = context;
+            _ = seedMarks;
+            yield break;
+        }
+    }
+
+    private sealed class NoViewLiftRule : RuleDefinitionLift
+    {
+        public override string RuleId { get; } = "TEST-NO-VIEW-LIFT-001";
+
+        public override string Name { get; } = "Does not read a structure view.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
+            Array.Empty<SyntaxKind>();
+
+        public override IEnumerable<LiftedMarkRecord> Lift(
+            ILiftRuleContext context,
+            IReadOnlyList<MarkRecord> seedMarks,
+            IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+        {
+            _ = context;
+            _ = seedMarks;
+            _ = propagatedMarks;
+            yield break;
         }
     }
 

@@ -1,7 +1,9 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
 using NLCPG.Analysis;
+using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using NLISSN.Core.Analysis;
@@ -40,13 +42,17 @@ public interface ISemanticRuleContext
 public interface IPropagationRuleContext : ISemanticRuleContext
 {
   SyntaxNode Root { get; }
-  NLCPGStructureView? StructureView { get; }
+  CpgStructureViewQueryResult StructureViewQuery { get; }
+  ResolvedCallFlow ResolveCallFlow(
+    IInvocationOperation invocation,
+    FlowSummaryEndpoint source,
+    FlowSummaryEndpoint target);
 }
 
 public interface ILiftRuleContext
 {
   SyntaxNode Root { get; }
-  NLCPGStructureView? StructureView { get; }
+  CpgStructureViewQueryResult StructureViewQuery { get; }
   IfStructureAnalysis AnalyzeIfStructure(IfStatementSyntax ifStatement);
   bool TryFindContainingIf(ExpressionSyntax expression, out IfStructureAnalysis? analysis);
   SyntaxNode? FindLogicalHost(ExpressionSyntax expression);

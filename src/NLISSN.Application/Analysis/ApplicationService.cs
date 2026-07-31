@@ -88,7 +88,7 @@ public sealed class ApplicationService
         IReadOnlyDictionary<RuleNodeId, RuleGraphNodeStatus>? ruleGraphNodeStatuses;
         RuleGraphExecutionMetrics? ruleGraphMetrics;
         var graphResult = new RuleGraphAnalysisExecutor().Run(
-          analysisContext.RuleContext,
+          analysisContext.Session,
           analysisContext.Root,
           _pipeline,
           _compiledRuleGraph);
@@ -102,7 +102,7 @@ public sealed class ApplicationService
         var validationReport = graphResult.ValidationReport;
 
         var filteredDecisions = FilterNestedDeleteDecisions(decisions);
-        var rewriteResult = ShouldSkipRewrite(analysisContext.RuleContext) || validationReport is { IsValid: false }
+        var rewriteResult = ShouldSkipRewrite(analysisContext.Session) || validationReport is { IsValid: false }
           ? new PrototypeRewriteResult(
             null,
             Array.Empty<RewriteEdit>(),
@@ -203,12 +203,12 @@ public sealed class ApplicationService
           root,
           availableCapabilities,
           CallFlowResolver: _callFlowResolver);
-        var ruleContext = new RuleContext(cpgAnalysisContext, options, runtime: runtime);
+        var session = new AnalysisSession(cpgAnalysisContext, options, runtime: runtime);
 
         return new AnalysisContext(
           root,
           semanticModel,
-          ruleContext,
+          session,
           cpgAnalysisContext);
     }
 
@@ -246,9 +246,9 @@ public sealed class ApplicationService
         return filtered;
     }
 
-    private static bool ShouldSkipRewrite(RuleContext ruleContext)
+    private static bool ShouldSkipRewrite(AnalysisSession session)
     {
-        return ruleContext.TryGetOption("skip-rewrite", out var rawValue) &&
+        return session.TryGetOption("skip-rewrite", out var rawValue) &&
           string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -262,6 +262,6 @@ public sealed class ApplicationService
     private sealed record AnalysisContext(
       SyntaxNode Root,
       SemanticModel SemanticModel,
-      RuleContext RuleContext,
+      AnalysisSession Session,
       CpgAnalysisContext CpgAnalysisContext);
 }

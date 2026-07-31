@@ -1,4 +1,9 @@
 using System.Diagnostics;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using NLCPG.Model;
+using NLISSN.Core.Analysis;
+using NLISSN.Core.Pipeline;
 using Xunit;
 
 namespace NLISSN.Tests.Architecture;
@@ -17,15 +22,12 @@ public sealed class ArchitectureBoundaryTests
   [Fact]
   public void RuleContexts_ExposeOnlyStageCapabilitiesToRules()
   {
-    var contextText = File.ReadAllText(ProjectPath("src", "NLISSN.Rule", "RuleContext.cs"));
     var stageContextText = File.ReadAllText(ProjectPath("src", "NLISSN.Rule", "RuleExecutionContexts.cs"));
-    Assert.DoesNotContain("public CpgAnalysisContext AnalysisContext", contextText, StringComparison.Ordinal);
-    Assert.DoesNotContain("public NLCPGGraph Graph", contextText, StringComparison.Ordinal);
-    Assert.DoesNotContain("public sealed class RuleContext :", contextText, StringComparison.Ordinal);
-    Assert.Contains("private sealed class MarkRuleContext : IMarkRuleContext", contextText, StringComparison.Ordinal);
-    Assert.Contains("private sealed class PropagationRuleContext : IPropagationRuleContext", contextText, StringComparison.Ordinal);
-    Assert.Contains("private sealed class LiftRuleContext : ILiftRuleContext", contextText, StringComparison.Ordinal);
-    Assert.Contains("private sealed class ProposeRuleContext : IProposeRuleContext", contextText, StringComparison.Ordinal);
+    var sessionPath = ProjectPath("src", "NLISSN.Rule", "AnalysisSession.cs");
+    var assemblyInfoPath = ProjectPath("src", "NLISSN.Core", "Properties", "AssemblyInfo.cs");
+    Assert.False(File.Exists(ProjectPath("src", "NLISSN.Rule", "RuleContext.cs")));
+    Assert.True(File.Exists(sessionPath));
+    Assert.DoesNotContain("InternalsVisibleTo(\"NLISSN.Rules\")", File.ReadAllText(assemblyInfoPath), StringComparison.Ordinal);
     Assert.Contains("public interface IMarkRuleContext", stageContextText, StringComparison.Ordinal);
     Assert.Contains("public interface IPropagationRuleContext", stageContextText, StringComparison.Ordinal);
     Assert.Contains("public interface ILiftRuleContext", stageContextText, StringComparison.Ordinal);
@@ -35,6 +37,26 @@ public sealed class ArchitectureBoundaryTests
     AssertRuleDefinitionUsesStageContext("NLISSN.Core", "Propagation", "RuleDefinitionPropagate.cs", "IPropagationRuleContext");
     AssertRuleDefinitionUsesStageContext("NLISSN.Core", "Lifting", "RuleDefinitionLift.cs", "ILiftRuleContext");
     AssertRuleDefinitionUsesStageContext("NLISSN.Core", "Decision", "RuleDefinitionPropose.cs", "IProposeRuleContext");
+  }
+
+  [Fact]
+  public void StageContexts_CannotBeCastAcrossRuleStages()
+  {
+    var tree = CSharpSyntaxTree.ParseText("class C { void M() { } }", path: "stage-contexts.cs");
+    var compilation = CSharpCompilation.Create(
+      "StageContextArchitecture",
+      new[] { tree },
+      new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+    var session = new AnalysisSession(
+      new CpgAnalysisContext(new NLCPGGraph(), compilation.GetSemanticModel(tree), tree.GetRoot()),
+      new Dictionary<string, string>());
+
+    AssertExclusive(session.CreateMarkContext(), typeof(IPropagationRuleContext), typeof(ILiftRuleContext), typeof(IProposeRuleContext));
+    AssertExclusive(session.CreatePropagationContext(Array.Empty<NLISSN.Core.Marking.MarkRecord>()), typeof(IMarkRuleContext), typeof(ILiftRuleContext), typeof(IProposeRuleContext));
+    AssertExclusive(session.CreateLiftContext(Array.Empty<NLISSN.Core.Marking.MarkRecord>(), Array.Empty<NLISSN.Core.Propagation.PropagatedMarkRecord>()), typeof(IMarkRuleContext), typeof(IPropagationRuleContext), typeof(IProposeRuleContext));
+    AssertExclusive(session.CreateProposeContext(), typeof(IMarkRuleContext), typeof(IPropagationRuleContext), typeof(ILiftRuleContext));
+    Assert.NotNull(typeof(IPropagationRuleContext).GetMethod("ResolveCallFlow"));
+    Assert.Null(typeof(IProposeRuleContext).GetMethod("ResolveCallFlow"));
   }
 
   [Fact]
@@ -135,5 +157,13 @@ public sealed class ArchitectureBoundaryTests
     var definitionText = File.ReadAllText(ProjectPath("src", project, directory, fileName));
     Assert.Contains(stageContextName, definitionText, StringComparison.Ordinal);
     Assert.DoesNotMatch(@"\bRuleContext\s+context\b", definitionText);
+  }
+
+  private static void AssertExclusive(object context, params Type[] forbiddenInterfaces)
+  {
+    foreach (var forbiddenInterface in forbiddenInterfaces)
+    {
+      Assert.False(forbiddenInterface.IsInstanceOfType(context), $"Context unexpectedly exposes {forbiddenInterface.Name}.");
+    }
   }
 }

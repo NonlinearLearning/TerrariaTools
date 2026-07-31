@@ -108,7 +108,7 @@ public sealed record DecisionUnit
 public interface DecisionPolicy
 {
     // 在同一冲突域内解析出唯一最终决策。
-    RuleDecision Resolve(RuleContext context, IReadOnlyList<DecisionUnit> units);
+    RuleDecision Resolve(IReadOnlyList<DecisionUnit> units);
 }
 
 /// 默认决策策略。
@@ -116,7 +116,7 @@ public interface DecisionPolicy
 public sealed class DefaultDecisionPolicy : DecisionPolicy
 {
     // 在同一冲突域内解析出唯一最终决策，并在 Replace 场景下保留替换节点绑定。
-    public RuleDecision Resolve(RuleContext context, IReadOnlyList<DecisionUnit> units)
+    public RuleDecision Resolve(IReadOnlyList<DecisionUnit> units)
     {
         if (units.Count == 0)
         {
@@ -139,9 +139,8 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
         return new RuleDecision(node, node, winner.Action, winner.Reason);
     }
 
-    internal DecisionUnit ResolveToUnitForTesting(RuleContext context, IReadOnlyList<DecisionUnit> units)
+    internal DecisionUnit ResolveToUnitForTesting(IReadOnlyList<DecisionUnit> units)
     {
-        _ = context;
         return ResolveUnit(units);
     }
 
@@ -288,7 +287,7 @@ public sealed class RuleDecisionEngine
     }
 
     // 兼容入口也按规则图执行。
-    public IReadOnlyList<RuleDecision> Decide(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks, IReadOnlyList<RuleDefinitionPropose> rules)
+    internal IReadOnlyList<RuleDecision> Decide(AnalysisSession session, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks, IReadOnlyList<RuleDefinitionPropose> rules)
     {
         var consumedInputs = rules
           .SelectMany(rule => rule.Consumes.Inputs)
@@ -330,7 +329,7 @@ public sealed class RuleDecisionEngine
                 {
                     var values = GetValues(node, inputs);
                     var units = rule.Propose(
-                        context.CreateProposeRuleContext(),
+                         session.CreateProposeContext(),
                         values.OfType<MarkRecord>().ToList(),
                         values.OfType<PropagatedMarkRecord>().ToList(),
                         values.OfType<LiftedMarkRecord>().ToList())
@@ -340,13 +339,13 @@ public sealed class RuleDecisionEngine
           }))
           .ToList();
         var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
-          context.Runtime.ExecutionOptions.EnableGroupParallelism,
-          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
+          session.Runtime.ExecutionOptions.EnableGroupParallelism,
+          session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
+        var execution = new RuleGraphExecutor(session.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             graphDegree,
-            context.Runtime.ExecutionOptions.CancellationToken)
+            session.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
         var units = execution.Nodes
@@ -355,12 +354,12 @@ public sealed class RuleDecisionEngine
           .OfType<DecisionUnit>()
           .ToList();
 
-        return ResolveUnits(context, units, rules);
+        return ResolveUnits(session, units, rules);
     }
 
     // 在所有相关 Proposal 节点完成后按冲突域收口，供规则图终端节点复用。
-    public IReadOnlyList<RuleDecision> ResolveUnits(
-      RuleContext context,
+    internal IReadOnlyList<RuleDecision> ResolveUnits(
+      AnalysisSession session,
       IReadOnlyList<DecisionUnit> units,
       IReadOnlyList<RuleDefinitionPropose> rules)
     {
@@ -373,17 +372,17 @@ public sealed class RuleDecisionEngine
             return Array.Empty<RuleDecision>();
         }
 
-        var resolved = context.Runtime.ConcurrencyPool.SelectOrderedAsync(
+        var resolved = session.Runtime.ConcurrencyPool.SelectOrderedAsync(
             conflictDomains.Count,
             ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
-              context.Runtime.ExecutionOptions.EnableGroupParallelism,
-              context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism),
+               session.Runtime.ExecutionOptions.EnableGroupParallelism,
+               session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism),
             (index, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                return Task.FromResult(_policy.Resolve(context, FilterCompetingAncestors(conflictDomains[index])));
+                return Task.FromResult(_policy.Resolve(FilterCompetingAncestors(conflictDomains[index])));
             },
-            context.Runtime.ExecutionOptions.CancellationToken)
+            session.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
         return FilterCoveredDecisions(resolved);

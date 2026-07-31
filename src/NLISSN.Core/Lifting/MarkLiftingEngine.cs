@@ -12,19 +12,15 @@ namespace NLISSN.Core.Lifting;
 public sealed class MarkLiftingEngine
 {
     // 为规则图执行器执行一个已准备好显式输入的提升节点。
-    public static IReadOnlyList<LiftedMarkRecord> ExecuteRule(
-      RuleContext context,
+    internal static IReadOnlyList<LiftedMarkRecord> ExecuteRule(
+      AnalysisSession session,
       RuleDefinitionLift rule,
       IReadOnlyList<MarkRecord> seedMarks,
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
       IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
     {
-        var ruleContext = BuildRuleContext(context, seedMarks, propagatedMarks);
-        var results = rule.Lift(
-          ruleContext.CreateLiftRuleContext(),
-          seedMarks,
-          propagatedMarks,
-          existingLiftedMarks)
+        var ruleContext = session.CreateLiftContext(seedMarks, propagatedMarks);
+        var results = rule.Lift(ruleContext, seedMarks, propagatedMarks, existingLiftedMarks)
           .Select(candidate =>
           {
               var tagged = candidate with
@@ -35,19 +31,19 @@ public sealed class MarkLiftingEngine
               ValidateStructureKind(rule, tagged);
               MarkingEngine.ValidateProducedSyntax(rule.Produces, tagged.Mark);
               return BindLiftedMarkRecord(
-                ruleContext,
+                session,
                 tagged,
                 seedMarks,
                 propagatedMarks,
                 existingLiftedMarks);
           })
           .ToList();
-        context.Evidence.RecordLift(rule.RuleId, seedMarks, propagatedMarks, results);
+        session.Evidence.RecordLift(rule.RuleId, seedMarks, propagatedMarks, results);
         return results;
     }
 
     // 兼容入口也按规则图执行。
-    public IReadOnlyList<LiftedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<RuleDefinitionLift> rules)
+    internal IReadOnlyList<LiftedMarkRecord> Run(AnalysisSession session, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<RuleDefinitionLift> rules)
     {
         var propagatedInputs = propagatedMarks.ToList();
         var consumedInputs = rules
@@ -93,7 +89,7 @@ public sealed class MarkLiftingEngine
                     return Task.FromResult(CreateResult(
                       rule.Produces,
                       ExecuteRule(
-                        context,
+                        session,
                         rule,
                         values.OfType<MarkRecord>().ToList(),
                         values.OfType<PropagatedMarkRecord>().ToList(),
@@ -102,13 +98,13 @@ public sealed class MarkLiftingEngine
           }))
           .ToList();
         var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
-          context.Runtime.ExecutionOptions.EnableGroupParallelism,
-          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
+          session.Runtime.ExecutionOptions.EnableGroupParallelism,
+          session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
+        var execution = new RuleGraphExecutor(session.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
             graphDegree,
-            context.Runtime.ExecutionOptions.CancellationToken)
+            session.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
 
@@ -206,31 +202,6 @@ public sealed class MarkLiftingEngine
           .ToList();
     }
 
-    private static RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
-    {
-        var fragments = seedMarks
-          .Select(mark => mark.SyntaxNode)
-          .Concat(propagatedMarks.Select(mark => mark.Mark.SyntaxNode))
-          .Distinct()
-          .ToList();
-        if (fragments.Count == 0)
-        {
-            return context;
-        }
-
-        var query = context.QueryStructureView(
-          fragments,
-          CpgRelationProfile.StructuralContainment,
-          CpgQueryDirection.Bidirectional,
-          new NLCPGTraversalBudget(16, 1, 1, 4096, 8192));
-        if (query.Status != CpgQueryStatus.Complete || query.View is null)
-        {
-            return context;
-        }
-
-        return context.WithStructureView(query.View);
-    }
-
     internal static void ValidateLiftNode(RuleDefinitionLift rule, SyntaxNode syntaxNode)
     {
         var nodeKind = (SyntaxKind)syntaxNode.RawKind;
@@ -276,7 +247,7 @@ public sealed class MarkLiftingEngine
     }
 
     internal static LiftedMarkRecord BindLiftedMarkRecord(
-      RuleContext context,
+      AnalysisSession session,
       LiftedMarkRecord candidate,
       IReadOnlyList<MarkRecord> seedMarks,
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
@@ -291,8 +262,8 @@ public sealed class MarkLiftingEngine
             existingLiftedMarks);
         return candidate with
         {
-            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark with { Origins = origins }),
-            SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark)
+            Mark = MarkingEngine.BindMarkRecord(session, candidate.Mark with { Origins = origins }),
+            SourceMark = MarkingEngine.BindMarkRecord(session, candidate.SourceMark)
         };
     }
 
