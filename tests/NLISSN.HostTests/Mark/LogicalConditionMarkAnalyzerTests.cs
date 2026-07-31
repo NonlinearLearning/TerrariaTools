@@ -5,6 +5,7 @@ using NLISSN.Core.Analysis;
 using NLCPG.Builder;
 using NLISSN.Application;
 using NLISSN.Core.Marking;
+using NLISSN.Core.Pipeline;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 using Xunit;
@@ -16,31 +17,31 @@ public sealed class LogicalConditionMarkAnalyzerTests
     public static IEnumerable<object[]> LargeParenthesizedLogicalCases()
     {
         yield return CreateCase(
-            nameof(TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase1Source),
-            TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase1Source,
+            nameof(TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase1Source),
+            TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase1Source,
             "(a && b) || (c && d) || !b || e || (f && g) || h || i || j || k || l");
         yield return CreateCase(
-            nameof(TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase2Source),
-            TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase2Source,
+            nameof(TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase2Source),
+            TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase2Source,
             "((a || b) && (c || !b)) || d || e || (f && g) || h || i || j || k || l || m");
         yield return CreateCase(
-            nameof(TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase3Source),
-            TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase3Source,
+            nameof(TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase3Source),
+            TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase3Source,
             "(a && b) || c || d || (!b && e) || f || g || h || (i && j) || k || l");
         yield return CreateCase(
-            nameof(TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase4Source),
-            TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase4Source,
+            nameof(TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase4Source),
+            TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase4Source,
             "((a && b) || c) || d || e || ((f || !b) && g) || h || i || j || k || l");
         yield return CreateCase(
-            nameof(TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase5Source),
-            TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceLargeCase5Source,
+            nameof(TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase5Source),
+            TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceLargeCase5Source,
             "(a && (b || c)) || d || e || !b || (f && g) || h || i || j || k || l");
     }
 
     [Fact]
     public void Analyze_CollectsDirectAndNegatedHitsForSameVariable()
     {
-        var source = TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceSource;
+        var source = TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceSource;
         var (context, root) = CreateAnalysisContext(source, "logical-mixed-precedence.cs");
         var directIdentifier = root.DescendantNodes()
             .OfType<IdentifierNameSyntax>()
@@ -51,7 +52,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
         var analysis = new LogicalConditionMarkAnalyzer().Analyze(
             directIdentifier,
             "b",
-            context);
+            context,
+            new MarkAnalysisSnapshot(context));
 
         Assert.Equal("b", analysis.TargetSymbol.Name);
         Assert.Equal(2, analysis.Hits.Count);
@@ -67,10 +69,10 @@ public sealed class LogicalConditionMarkAnalyzerTests
     [Fact]
     public void Mark_EmitsAtomicSeedsAndPropagateLiftsLogicalOrForDirectAndNegatedSameVariableHits()
     {
-        var source = TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceSource;
+        var source = TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceSource;
         var (context, root) = CreateRuleContext(source, "logical-mixed-precedence.cs", "b");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         Assert.Equal(2, marks.Count);
@@ -81,13 +83,13 @@ public sealed class LogicalConditionMarkAnalyzerTests
     [Fact]
     public void Mark_WithParenthesizedLogicalOperand_StillPropagatesLogicalOr()
     {
-        var source = TestCodeSet.SObject.SObjectLogicalSources.LogicalMixedPrecedenceWithParenthesesSource;
+        var source = TestCodeSet.Target.AtomicLogicalSources.LogicalMixedPrecedenceWithParenthesesSource;
         var (context, root) = CreateRuleContext(
             source,
             "logical-mixed-precedence-parenthesized.cs",
             "b");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         Assert.Equal(2, marks.Count);
@@ -98,7 +100,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
     [Fact]
     public void Analyze_MultiTargetGroupWithFiveHits_CollectsAllTargetVariables()
     {
-        var source = TestCodeSet.SObject.SObjectLogicalSources.LogicalMultiTargetGroupFiveHitsSource;
+        var source = TestCodeSet.Target.AtomicLogicalSources.LogicalMultiTargetGroupFiveHitsSource;
         var (context, root) = CreateAnalysisContext(source, "logical-multi-target-group.cs");
         var directIdentifier = root.DescendantNodes()
             .OfType<IdentifierNameSyntax>()
@@ -107,7 +109,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
         var analysis = new LogicalConditionMarkAnalyzer().Analyze(
             directIdentifier,
             "b,c,d,e,f",
-            context);
+            context,
+            new MarkAnalysisSnapshot(context));
 
         Assert.Equal(5, analysis.Hits.Count);
         Assert.Equal(
@@ -121,13 +124,13 @@ public sealed class LogicalConditionMarkAnalyzerTests
     [Fact]
     public void Mark_MultiTargetGroupWithFiveHits_EmitsAtomicSeedsAndPropagatesLogicalOr()
     {
-        var source = TestCodeSet.SObject.SObjectLogicalSources.LogicalMultiTargetGroupFiveHitsSource;
+        var source = TestCodeSet.Target.AtomicLogicalSources.LogicalMultiTargetGroupFiveHitsSource;
         var (context, root) = CreateRuleContext(
             source,
             "logical-multi-target-group.cs",
             "b,c,d,e,f");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         Assert.Equal(5, marks.Count);
@@ -160,8 +163,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
           }
           """;
         var (context, root) = CreateRuleContext(source, "logical-member-access.cs", "c");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         var seedMark = Assert.Single(marks);
@@ -192,8 +195,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
           }
           """;
         var (context, root) = CreateRuleContext(source, "logical-this-member-access.cs", "this");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         var seedMark = Assert.Single(marks);
@@ -227,8 +230,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
           }
           """;
         var (context, root) = CreateRuleContext(source, "logical-base-member-access.cs", "base");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         var seedMark = Assert.Single(marks);
@@ -262,8 +265,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
           }
           """;
         var (context, root) = CreateRuleContext(source, "logical-invocation.cs", "fun");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         var seedMark = Assert.Single(marks);
@@ -292,8 +295,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
           }
           """;
         var (context, root) = CreateRuleContext(source, "logical-nested-operands.cs", "x");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         var seedMark = Assert.Single(marks);
@@ -323,8 +326,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
           }
           """;
         var (context, root) = CreateRuleContext(source, "logical-literal.cs", "2");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var exception = Record.Exception(() => RunDeleteSObjectPropagations(context, marks));
+        var marks = RunAtomicMarks(context, root);
+        var exception = Record.Exception(() => RunAtomicPropagations(context, marks));
 
         Assert.Null(exception);
         Assert.Equal(2, marks.Count);
@@ -354,7 +357,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
           """;
         var (context, root) = CreateRuleContext(source, "logical-object-creation.cs", "Box");
 
-        var marks = RunDeleteSObjectMarks(context, root);
+        var marks = RunAtomicMarks(context, root);
 
         var seedMark = Assert.Single(marks);
         Assert.Equal(SyntaxKind.ObjectCreationExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -364,10 +367,10 @@ public sealed class LogicalConditionMarkAnalyzerTests
     [Fact]
     public void Mark_ConditionalAccessProperty_EmitsConditionalAccessSeed()
     {
-        var source = TestCodeSet.SObject.SObjectExpressionSources.ConditionalAccessPropertySource;
+        var source = TestCodeSet.Target.AtomicExpressionSources.ConditionalAccessPropertySource;
         var (context, root) = CreateRuleContext(source, "conditional-access-property.cs", "s");
 
-        var marks = RunDeleteSObjectMarks(context, root);
+        var marks = RunAtomicMarks(context, root);
 
         var seedMark = Assert.Single(marks);
         Assert.Equal(SyntaxKind.ConditionalAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -377,10 +380,10 @@ public sealed class LogicalConditionMarkAnalyzerTests
     [Fact]
     public void Mark_ConditionalAccessInvoke_EmitsMemberBindingAndInvocationSeeds()
     {
-        var source = TestCodeSet.SObject.SObjectExpressionSources.ConditionalAccessInvokeSource;
+        var source = TestCodeSet.Target.AtomicExpressionSources.ConditionalAccessInvokeSource;
         var (context, root) = CreateRuleContext(source, "conditional-access-invoke.cs", "Invoke");
 
-        var marks = RunDeleteSObjectMarks(context, root);
+        var marks = RunAtomicMarks(context, root);
 
         Assert.Equal(2, marks.Count);
         Assert.Contains(marks, mark =>
@@ -394,10 +397,10 @@ public sealed class LogicalConditionMarkAnalyzerTests
     [Fact]
     public void Mark_ConditionalAccessChain_EmitsOutermostConditionalAccessSeed()
     {
-        var source = TestCodeSet.SObject.SObjectExpressionSources.ConditionalAccessChainSource;
+        var source = TestCodeSet.Target.AtomicExpressionSources.ConditionalAccessChainSource;
         var (context, root) = CreateRuleContext(source, "conditional-access-chain.cs", "s");
 
-        var marks = RunDeleteSObjectMarks(context, root);
+        var marks = RunAtomicMarks(context, root);
 
         var seedMark = Assert.Single(marks);
         Assert.Equal(SyntaxKind.ConditionalAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
@@ -418,7 +421,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
         var analysis = new LogicalConditionMarkAnalyzer().Analyze(
             directIdentifier,
             "b",
-            context);
+            context,
+            new MarkAnalysisSnapshot(context));
 
         Assert.Equal("b", analysis.TargetSymbol.Name);
         Assert.True(analysis.Hits.Count >= 2);
@@ -437,8 +441,8 @@ public sealed class LogicalConditionMarkAnalyzerTests
             source,
             "logical-large-parenthesized.cs",
             "b");
-        var marks = RunDeleteSObjectMarks(context, root);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, marks);
+        var marks = RunAtomicMarks(context, root);
+        var propagatedMarks = RunAtomicPropagations(context, marks);
         var effectiveMarks = BuildEffectiveMarks(context, marks, propagatedMarks);
 
         Assert.True(marks.Count >= 2);
@@ -451,11 +455,12 @@ public sealed class LogicalConditionMarkAnalyzerTests
     {
         var liftedMarks = new RuleDefinitionLift[]
             {
-                new SObjectExpressionHostLiftingRule(),
-                new SObjectIfStructureLiftingRule(),
-                new SObjectSwitchStructureLiftingRule()
+                new ExpressionHostLiftingRule(),
+                new LogicalExpressionLiftingRule(),
+                new IfStructureLiftingRule(),
+                new SwitchStructureLiftingRule()
             }
-            .SelectMany(rule => rule.Lift(context, marks, propagatedMarks))
+            .SelectMany(rule => rule.Lift(context.CreateLiftRuleContext(), marks, propagatedMarks))
             .Select(mark => mark.Mark);
         return marks
             .Concat(propagatedMarks.Select(mark => mark.Mark))
@@ -504,18 +509,18 @@ public sealed class LogicalConditionMarkAnalyzerTests
         return (new RuleContext(analysisContext, options), root);
     }
 
-    private static List<MarkRecord> RunDeleteSObjectMarks(RuleContext context, SyntaxNode root)
+    private static List<MarkRecord> RunAtomicMarks(RuleContext context, SyntaxNode root)
     {
         var rules = RuleRegistry.CreateDefaultRules();
         return new MarkingEngine()
             .Run(context, root, rules.Markers)
-            .Where(mark => rules.Markers.Any(rule =>
-              rule.Produces.Outputs.Any(output => output.SemanticTag.Value == "Target.Atomic") &&
-              string.Equals(rule.RuleId, mark.RuleId, StringComparison.Ordinal)))
+            .Where(mark =>
+              mark.SemanticTag == RuleFactPorts.TargetExpression &&
+              mark.Origins == RuleEvidenceOrigin.AtomicExpression)
             .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(RuleContext context, IReadOnlyList<MarkRecord> marks)
+    private static List<PropagatedMarkRecord> RunAtomicPropagations(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var rules = RuleRegistry.CreateDefaultRules();
         return new PropagationEngine()
@@ -523,7 +528,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
                 context,
                 marks,
                 rules.Propagators
-                    .OfType<SObjectPropagationRuleBase>()
+                    .OfType<ExpressionFlowPropagationRuleBase>()
                     .ToList())
             .ToList();
     }

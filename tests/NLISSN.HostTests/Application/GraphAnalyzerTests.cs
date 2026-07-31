@@ -8,7 +8,7 @@ using NLISSN.Core.Propagation;
 using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Reachability;
-using RoslynPrototype.Tests.TestCodeSet.SObject;
+using RoslynPrototype.Tests.TestCodeSet.Target;
 using NLISSN.Rules;
 using Xunit;
 
@@ -22,7 +22,7 @@ public sealed class GraphAnalyzerTests
     {
         _graphAnalyzerDiffFilePath = BuildDiffArtifactWriter.GetDiffFilePath(
           "GraphAnalyzerTests.cs",
-          "SObject");
+          "Target");
         BuildDiffArtifactWriter.InitializeDiffFile(_graphAnalyzerDiffFilePath);
     }
 
@@ -30,7 +30,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_TargetNameSample_DeletesLiftedSeedMarks()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.TargetNameSource;
+        var source = AtomicExpressionSources.AtomicNameSource;
 
         var result = application.Analyze(source, "delete-s-object-sample.cs", CreateOptions("s"));
 
@@ -58,7 +58,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_DefinitionAssignment_DeletesLocalDeclarationStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.DefinitionAssignmentSource;
+        var source = AtomicExpressionSources.DefinitionAssignmentSource;
 
         var result = application.Analyze(source, "definition-assignment.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_DefinitionAssignment_DeletesLocalDeclarationStatement), result.Diff);
@@ -78,7 +78,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_AssignmentStatement_DeletesExpressionStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.AssignmentStatementSource;
+        var source = AtomicExpressionSources.AssignmentStatementSource;
 
         var result = application.Analyze(source, "assignment-statement.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_AssignmentStatement_DeletesExpressionStatement), result.Diff);
@@ -98,7 +98,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_ComplexDefinitionAssignment_DeletesLocalDeclarationStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.ComplexDefinitionAssignmentSource;
+        var source = AtomicExpressionSources.ComplexDefinitionAssignmentSource;
 
         var result = application.Analyze(source, "complex-definition-assignment.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_ComplexDefinitionAssignment_DeletesLocalDeclarationStatement), result.Diff);
@@ -117,7 +117,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_ChainedAssignmentStatement_DeletesExpressionStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.ChainedAssignmentStatementSource;
+        var source = AtomicExpressionSources.ChainedAssignmentStatementSource;
 
         var result = application.Analyze(source, "chained-assignment-statement.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_ChainedAssignmentStatement_DeletesExpressionStatement), result.Diff);
@@ -136,7 +136,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_DeconstructionAssignmentStatement_DeletesExpressionStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.DeconstructionAssignmentStatementSource;
+        var source = AtomicExpressionSources.DeconstructionAssignmentStatementSource;
 
         var result = application.Analyze(source, "deconstruction-assignment-statement.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_DeconstructionAssignmentStatement_DeletesExpressionStatement), result.Diff);
@@ -155,7 +155,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_ObjectInitializerDefinitionAssignment_DeletesLocalDeclarationStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.ObjectInitializerDefinitionAssignmentSource;
+        var source = AtomicExpressionSources.ObjectInitializerDefinitionAssignmentSource;
 
         var result = application.Analyze(source, "object-initializer-definition-assignment.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_ObjectInitializerDefinitionAssignment_DeletesLocalDeclarationStatement), result.Diff);
@@ -175,7 +175,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_ComplexCompoundAssignmentStatement_DeletesExpressionStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.ComplexCompoundAssignmentStatementSource;
+        var source = AtomicExpressionSources.ComplexCompoundAssignmentStatementSource;
 
         var result = application.Analyze(source, "complex-compound-assignment-statement.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_ComplexCompoundAssignmentStatement_DeletesExpressionStatement), result.Diff);
@@ -194,7 +194,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_AssignmentLeftOperand_DeletesExpressionStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.AssignmentLeftOperandSource;
+        var source = AtomicExpressionSources.AssignmentLeftOperandSource;
 
         var result = application.Analyze(source, "assignment-left-operand.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_AssignmentLeftOperand_DeletesExpressionStatement), result.Diff);
@@ -213,7 +213,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_DefinitionLeftOperand_DeletesLocalDeclarationStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.DefinitionLeftOperandSource;
+        var source = AtomicExpressionSources.DefinitionLeftOperandSource;
 
         var result = application.Analyze(source, "definition-left-operand.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_DefinitionLeftOperand_DeletesLocalDeclarationStatement), result.Diff);
@@ -232,7 +232,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_CallArgumentStatement_DeletesExpressionStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.CallArgumentStatementSource;
+        var source = AtomicExpressionSources.CallArgumentStatementSource;
 
         var result = application.Analyze(source, "call-argument-statement.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_CallArgumentStatement_DeletesExpressionStatement), result.Diff);
@@ -251,7 +251,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_PropertyAccessDefinition_WhenPropertyNameMatches_DeletesLocalDeclarationStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.PropertyAccessDefinitionSource;
+        var source = AtomicExpressionSources.PropertyAccessDefinitionSource;
 
         var result = application.Analyze(source, "property-access-definition.cs", CreateOptions("Seed"));
         AppendUnitTestDiff(nameof(Analyze_PropertyAccessDefinition_WhenPropertyNameMatches_DeletesLocalDeclarationStatement), result.Diff);
@@ -270,7 +270,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_IndexAccessDefinition_WhenBaseOrIndexMatches_DeletesLocalDeclarationStatement()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.IndexAccessDefinitionSource;
+        var source = AtomicExpressionSources.IndexAccessDefinitionSource;
 
         var result = application.Analyze(source, "index-access-definition.cs", CreateOptions("values"));
         AppendUnitTestDiff(nameof(Analyze_IndexAccessDefinition_WhenBaseOrIndexMatches_DeletesLocalDeclarationStatement), result.Diff);
@@ -315,7 +315,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_LogicalAndCondition_RewritesToRemainingOperand()
     {
         var application = CreateApplication();
-        var source = SObjectLogicalSources.LogicalAndConditionSource;
+        var source = AtomicLogicalSources.LogicalAndConditionSource;
 
         var result = application.Analyze(source, "logical-and-sample.cs", CreateOptions("s"));
 
@@ -331,7 +331,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_WhileCondition_DeletesLoopHost()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.WhileConditionSource;
+        var source = AtomicControlFlowSources.WhileConditionSource;
 
         var result = application.Analyze(source, "while-host-sample.cs", CreateOptions("s"));
 
@@ -344,19 +344,18 @@ public sealed class GraphAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_WhileBody_DeletesLoopHost()
+    public void Analyze_WhileBody_DoesNotDeleteLoopWhenConditionIsUncovered()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.WhileBodySource;
+        var source = AtomicControlFlowSources.WhileBodySource;
 
         var result = application.Analyze(source, "while-body-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_WhileBody_DeletesLoopHost), result.Diff);
+        AppendUnitTestDiff(nameof(Analyze_WhileBody_DoesNotDeleteLoopWhenConditionIsUncovered), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.WhileStatement);
-        Assert.Single(result.Decisions);
-        Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.WhileStatement));
-        TextDiffAssert.DoesNotContain("while (offset > 0)", result.RewrittenSource, result.Diff);
+        Assert.DoesNotContain(result.Decisions, decision => IsNodeKind(decision.FinalNode, SyntaxKind.WhileStatement));
+        TextDiffAssert.Contains("while (offset > 0)", result.RewrittenSource, result.Diff);
         TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
@@ -364,7 +363,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_DoCondition_DeletesLoopHost()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.DoConditionSource;
+        var source = AtomicControlFlowSources.DoConditionSource;
 
         var result = application.Analyze(source, "do-host-sample.cs", CreateOptions("s"));
 
@@ -377,42 +376,40 @@ public sealed class GraphAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_DoBody_DeletesLoopHost()
+    public void Analyze_DoBody_DoesNotDeleteLoopWhenConditionIsUncovered()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.DoBodySource;
+        var source = AtomicControlFlowSources.DoBodySource;
 
         var result = application.Analyze(source, "do-body-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_DoBody_DeletesLoopHost), result.Diff);
+        AppendUnitTestDiff(nameof(Analyze_DoBody_DoesNotDeleteLoopWhenConditionIsUncovered), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.DoStatement);
-        Assert.Single(result.Decisions);
-        Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.DoStatement));
-        TextDiffAssert.DoesNotContain("while (offset > 0)", result.RewrittenSource, result.Diff);
+        Assert.DoesNotContain(result.Decisions, decision => IsNodeKind(decision.FinalNode, SyntaxKind.DoStatement));
+        TextDiffAssert.Contains("while (offset > 0)", result.RewrittenSource, result.Diff);
         TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
-    public void Analyze_SwitchCondition_DeletesSwitchHost()
+    public void Analyze_SwitchCondition_DoesNotDeleteSwitchWithoutSectionCoverage()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.SwitchConditionSource;
+        var source = AtomicControlFlowSources.SwitchConditionSource;
 
         var result = application.Analyze(source, "switch-condition-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_SwitchCondition_DeletesSwitchHost), result.Diff);
+        AppendUnitTestDiff(nameof(Analyze_SwitchCondition_DoesNotDeleteSwitchWithoutSectionCoverage), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.SwitchStatement);
-        Assert.Single(result.Decisions);
-        Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.SwitchStatement));
+        Assert.DoesNotContain(result.Decisions, decision => IsNodeKind(decision.FinalNode, SyntaxKind.SwitchStatement));
     }
 
     [Fact]
     public void Analyze_SwitchCaseSingleStatement_DeletesSwitchSection()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.SwitchCaseSingleStatementSource;
+        var source = AtomicControlFlowSources.SwitchCaseSingleStatementSource;
 
         var result = application.Analyze(source, "switch-case-single-statement.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_SwitchCaseSingleStatement_DeletesSwitchSection), result.Diff);
@@ -424,7 +421,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_SwitchCaseBlockStatement_DeletesSwitchSection()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.SwitchCaseBlockStatementSource;
+        var source = AtomicControlFlowSources.SwitchCaseBlockStatementSource;
 
         var result = application.Analyze(source, "switch-case-block-statement.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_SwitchCaseBlockStatement_DeletesSwitchSection), result.Diff);
@@ -436,7 +433,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_SwitchCaseWithoutBreak_DoesNotDeleteSwitchSectionWhenNotFullyMarked()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.SwitchCaseWithoutBreakSource;
+        var source = AtomicControlFlowSources.SwitchCaseWithoutBreakSource;
 
         var result = application.Analyze(source, "switch-case-without-break.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_SwitchCaseWithoutBreak_DoesNotDeleteSwitchSectionWhenNotFullyMarked), result.Diff);
@@ -448,7 +445,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_SwitchCaseWithoutBreakFullyMarked_DeletesSwitchSection()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.SwitchCaseWithoutBreakFullyMarkedSource;
+        var source = AtomicControlFlowSources.SwitchCaseWithoutBreakFullyMarkedSource;
 
         var result = application.Analyze(source, "switch-case-without-break-fully-marked.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_SwitchCaseWithoutBreakFullyMarked_DeletesSwitchSection), result.Diff);
@@ -460,7 +457,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_SwitchAllNonDefaultCasesMarked_DeletesWholeSwitch()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.SwitchAllNonDefaultCasesMarkedSource;
+        var source = AtomicControlFlowSources.SwitchAllNonDefaultCasesMarkedSource;
 
         var result = application.Analyze(source, "switch-all-non-default-cases.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_SwitchAllNonDefaultCasesMarked_DeletesWholeSwitch), result.Diff);
@@ -469,53 +466,50 @@ public sealed class GraphAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_ForCondition_DeletesLoopHost()
+    public void Analyze_ForCondition_DoesNotDeleteLoopWhenIncrementorIsUncovered()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.ForConditionSource;
+        var source = AtomicControlFlowSources.ForConditionSource;
 
         var result = application.Analyze(source, "for-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ForCondition_DeletesLoopHost), result.Diff);
+        AppendUnitTestDiff(nameof(Analyze_ForCondition_DoesNotDeleteLoopWhenIncrementorIsUncovered), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.ForStatement);
-        Assert.Single(result.Decisions);
-        Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
-        TextDiffAssert.DoesNotContain("for (; s.IsReady;", result.RewrittenSource, result.Diff);
+        Assert.DoesNotContain(result.Decisions, decision => IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
+        TextDiffAssert.Contains("for (; s.IsReady;", result.RewrittenSource, result.Diff);
         TextDiffAssert.Contains("return offset;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
-    public void Analyze_ForInitializerDeclaration_DeletesLoopHost()
+    public void Analyze_ForInitializerDeclaration_DoesNotDeleteLoopWhenConditionIsUncovered()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.ForInitializerDeclarationSource;
+        var source = AtomicControlFlowSources.ForInitializerDeclarationSource;
 
         var result = application.Analyze(source, "for-initializer-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ForInitializerDeclaration_DeletesLoopHost), result.Diff);
+        AppendUnitTestDiff(nameof(Analyze_ForInitializerDeclaration_DoesNotDeleteLoopWhenConditionIsUncovered), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.ForStatement);
-        Assert.Single(result.Decisions);
-        Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
-        TextDiffAssert.DoesNotContain("for (var value = s.Seed;", result.RewrittenSource, result.Diff);
+        Assert.DoesNotContain(result.Decisions, decision => IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
+        TextDiffAssert.Contains("for (var value = s.Seed;", result.RewrittenSource, result.Diff);
         TextDiffAssert.Contains("return 0;", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
-    public void Analyze_ForIncrementor_DeletesLoopHost()
+    public void Analyze_ForIncrementor_DoesNotDeleteLoopWhenInitializerAndConditionAreUncovered()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.ForIncrementorSource;
+        var source = AtomicControlFlowSources.ForIncrementorSource;
 
         var result = application.Analyze(source, "for-incrementor-host-sample.cs", CreateOptions("s"));
-        AppendUnitTestDiff(nameof(Analyze_ForIncrementor_DeletesLoopHost), result.Diff);
+        AppendUnitTestDiff(nameof(Analyze_ForIncrementor_DoesNotDeleteLoopWhenInitializerAndConditionAreUncovered), result.Diff);
 
         Assert.Single(result.SeedMarks);
         AssertContainsPropagatedKind(result, SyntaxKind.ForStatement);
-        Assert.Single(result.Decisions);
-        Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Delete && IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
-        TextDiffAssert.DoesNotContain("value += s.Seed", result.RewrittenSource, result.Diff);
+        Assert.DoesNotContain(result.Decisions, decision => IsNodeKind(decision.FinalNode, SyntaxKind.ForStatement));
+        TextDiffAssert.Contains("value += s.Seed", result.RewrittenSource, result.Diff);
         TextDiffAssert.Contains("return 0;", result.RewrittenSource, result.Diff);
     }
 
@@ -523,7 +517,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_ReturnExpression_DeletesReturnStatementHost()
     {
         var application = CreateApplication();
-        var source = SObjectExpressionSources.ReturnExpressionSource;
+        var source = AtomicExpressionSources.ReturnExpressionSource;
 
         var result = application.Analyze(source, "return-host-sample.cs", CreateOptions("s"));
 
@@ -538,7 +532,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_LogicalOrCondition_RewritesToRemainingOperand()
     {
         var application = CreateApplication();
-        var source = SObjectLogicalSources.LogicalOrConditionSource;
+        var source = AtomicLogicalSources.LogicalOrConditionSource;
 
         var result = application.Analyze(source, "logical-or-sample.cs", CreateOptions("s"));
 
@@ -553,7 +547,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_IfWithElse_RewritesToElseBody()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.IfElseOnlySource;
+        var source = AtomicControlFlowSources.IfElseOnlySource;
 
         var result = application.Analyze(source, "if-else-only.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_IfWithElse_RewritesToElseBody), result.Diff);
@@ -578,7 +572,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_IfWithElseIfElse_RewritesToRemainingElseIfChain()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.IfElseIfElseSource;
+        var source = AtomicControlFlowSources.IfElseIfElseSource;
 
         var result = application.Analyze(source, "if-elseif-else.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_IfWithElseIfElse_RewritesToRemainingElseIfChain), result.Diff);
@@ -596,7 +590,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_ElseIfWithElse_RewritesElseIfToElse()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.ElseIfElseSource;
+        var source = AtomicControlFlowSources.ElseIfElseSource;
 
         var exception = Record.Exception(() => application.Analyze(source, "elseif-else.cs", CreateOptions("s")));
         Assert.Null(exception);
@@ -620,7 +614,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_ElseIfWithoutTail_DeletesOwningElseClause()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.ElseIfWithoutTailSource;
+        var source = AtomicControlFlowSources.ElseIfWithoutTailSource;
 
         var result = application.Analyze(source, "elseif-no-tail.cs", CreateOptions("s"));
         AppendUnitTestDiff(nameof(Analyze_ElseIfWithoutTail_DeletesOwningElseClause), result.Diff);
@@ -706,7 +700,7 @@ public sealed class GraphAnalyzerTests
     public void Analyze_UnrelatedConflictDomains_KeepMultipleFinalDecisions()
     {
         var application = CreateApplication();
-        var source = SObjectControlFlowSources.MultipleDomainsSource;
+        var source = AtomicControlFlowSources.MultipleDomainsSource;
 
         var result = application.Analyze(source, "multiple-domains.cs", CreateOptions("s"));
 
@@ -841,7 +835,7 @@ public sealed class GraphAnalyzerTests
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
           new[] { SyntaxKind.MethodDeclaration };
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             var node = root.DescendantNodes().OfType<IfStatementSyntax>().Single();
             yield return new MarkRecord(

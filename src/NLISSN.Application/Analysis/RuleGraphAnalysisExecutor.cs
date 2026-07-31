@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using NL.Concurrency;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -34,9 +35,9 @@ internal sealed class RuleGraphAnalysisExecutor
           .Concat(pipeline.Proposers.Select(rule => CreateProposerNode(context, rule, graph)))
           .Concat(CreateDisabledNodes(graph, pipeline))
           .ToList();
-        var graphDegree = context.Runtime.ExecutionOptions.EnableGroupParallelism
-          ? context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism
-          : 1;
+        var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
+          context.Runtime.ExecutionOptions.EnableGroupParallelism,
+          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
         var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
@@ -149,9 +150,7 @@ internal sealed class RuleGraphAnalysisExecutor
                   context,
                   rule,
                   values.OfType<MarkRecord>().ToList(),
-                  values.OfType<PropagatedMarkRecord>()
-                    .Where(mark => mark.Payload is null)
-                    .ToList(),
+                  values.OfType<PropagatedMarkRecord>().ToList(),
                   values.OfType<LiftedMarkRecord>().ToList())));
           });
     }
@@ -168,7 +167,7 @@ internal sealed class RuleGraphAnalysisExecutor
           {
               var values = GetValues(node, inputs);
               var units = rule.Propose(
-                  context,
+                  context.CreateProposeRuleContext(),
                   values.OfType<MarkRecord>().ToList(),
                   values.OfType<PropagatedMarkRecord>().ToList(),
                   values.OfType<LiftedMarkRecord>().ToList())

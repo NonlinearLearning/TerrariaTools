@@ -9,9 +9,10 @@ using NLISSN.Rules;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
+using NLISSN.Core.Pipeline;
 using NLISSN.Core.Propagation;
 using RoslynPrototype.Tests.TestCodeSet.Common;
-using RoslynPrototype.Tests.TestCodeSet.SObject;
+using RoslynPrototype.Tests.TestCodeSet.Target;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -26,9 +27,9 @@ public sealed class DecisionStructureValidationTests
         var (context, root, rules) = CreateContextAndRules(source);
         var markRule = rules.Markers.OfType<UnreachableMethodMarkRule>().Single();
         var proposalRule = rules.Proposers.OfType<UnreachableMethodProposalRule>().Single();
-        var seedMarks = markRule.Mark(context, root).ToList();
+        var seedMarks = markRule.Mark(context.CreateMarkRuleContext(), root).ToList();
         var proposals = proposalRule.Propose(
-          context,
+          context.CreateProposeRuleContext(),
           seedMarks,
           Array.Empty<PropagatedMarkRecord>(),
           Array.Empty<LiftedMarkRecord>()).ToList();
@@ -48,11 +49,11 @@ public sealed class DecisionStructureValidationTests
     [Fact]
     public void RuleDecisionEngine_CollapsesSeedAndStructuralHostInsideSameConflictDomain()
     {
-        var source = SObjectControlFlowSources.IfHostConflictSource;
+        var source = AtomicControlFlowSources.IfHostConflictSource;
 
         var (context, root, rules) = CreateContextAndRules(source, "s");
-        var seedMarks = RunDeleteSObjectMarks(context, root, rules);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, seedMarks, rules);
+        var seedMarks = RunAtomicMarks(context, root, rules);
+        var propagatedMarks = RunAtomicPropagations(context, seedMarks, rules);
         var liftedMarks = Lift(context, seedMarks, propagatedMarks, rules);
         var engine = new RuleDecisionEngine();
 
@@ -66,11 +67,11 @@ public sealed class DecisionStructureValidationTests
     [Fact]
     public void RuleDecisionEngine_PrefersReducibleLogicalHostInsideSameConflictDomain()
     {
-        var source = SObjectLogicalSources.LogicalAndConflictSource;
+        var source = AtomicLogicalSources.LogicalAndConflictSource;
 
         var (context, root, rules) = CreateContextAndRules(source, "s");
-        var seedMarks = RunDeleteSObjectMarks(context, root, rules);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, seedMarks, rules);
+        var seedMarks = RunAtomicMarks(context, root, rules);
+        var propagatedMarks = RunAtomicPropagations(context, seedMarks, rules);
         var liftedMarks = Lift(context, seedMarks, propagatedMarks, rules);
         var engine = new RuleDecisionEngine();
 
@@ -84,20 +85,21 @@ public sealed class DecisionStructureValidationTests
     [Fact]
     public void DefaultDecisionPolicy_WhenLogicalHostIsMarked_ResolvesReplaceDecision()
     {
-        var source = SObjectLogicalSources.LogicalAndConflictSource;
+        var source = AtomicLogicalSources.LogicalAndConflictSource;
 
         var (context, root, rules) = CreateContextAndRules(source, "s");
         var proposalRules = rules.Proposers
-          .Where(rule =>
-            rule.Consumes.Inputs.Any(input =>
-              input.SemanticTag.Value is "Target.Atomic" or "Target.Propagated" ||
-              input.SemanticTag.Value.StartsWith("SObject.", StringComparison.Ordinal)))
+          .OfType<LogicalExpressionProposalRule>()
           .ToList();
-        var seedMarks = RunDeleteSObjectMarks(context, root, rules);
-        var propagatedMarks = RunDeleteSObjectPropagations(context, seedMarks, rules);
+        var seedMarks = RunAtomicMarks(context, root, rules);
+        var propagatedMarks = RunAtomicPropagations(context, seedMarks, rules);
         var liftedMarks = Lift(context, seedMarks, propagatedMarks, rules);
         var proposals = proposalRules
-          .SelectMany(rule => rule.Propose(context, seedMarks, propagatedMarks, liftedMarks))
+          .SelectMany(rule => rule.Propose(
+            context.CreateProposeRuleContext(),
+            seedMarks,
+            propagatedMarks,
+            liftedMarks))
           .ToList();
         var policy = new DefaultDecisionPolicy();
 
@@ -178,24 +180,24 @@ public sealed class DecisionStructureValidationTests
         return new MarkLiftingEngine().Run(context, seedMarks, propagatedMarks, rules.Lifters);
     }
 
-    private static List<MarkRecord> RunDeleteSObjectMarks(NLISSN.Core.Pipeline.RuleContext context, SyntaxNode root,  RulePipeline rules)
+    private static List<MarkRecord> RunAtomicMarks(NLISSN.Core.Pipeline.RuleContext context, SyntaxNode root,  RulePipeline rules)
     {
         return new MarkingEngine()
           .Run(context, root, rules.Markers)
-          .Where(mark => rules.Markers.Any(rule =>
-            rule.Produces.Outputs.Any(output => output.SemanticTag.Value == "Target.Atomic") &&
-            string.Equals(rule.RuleId, mark.RuleId, StringComparison.Ordinal)))
+          .Where(mark =>
+            mark.SemanticTag == RuleFactPorts.TargetExpression &&
+            mark.Origins == RuleEvidenceOrigin.AtomicExpression)
           .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunDeleteSObjectPropagations(NLISSN.Core.Pipeline.RuleContext context, IReadOnlyList<MarkRecord> seedMarks,  RulePipeline rules)
+    private static List<PropagatedMarkRecord> RunAtomicPropagations(NLISSN.Core.Pipeline.RuleContext context, IReadOnlyList<MarkRecord> seedMarks,  RulePipeline rules)
     {
         return new PropagationEngine()
           .Run(
             context,
             seedMarks,
             rules.Propagators
-              .OfType<SObjectPropagationRuleBase>()
+              .OfType<ExpressionFlowPropagationRuleBase>()
               .ToList())
           .ToList();
     }

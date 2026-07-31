@@ -71,6 +71,27 @@ public sealed class DecisionEvidenceTests
   }
 
   [Fact]
+  public void Complete_WhenBudgetIsExceeded_RetainsDecisionEvidenceRoot()
+  {
+    var tree = CSharpSyntaxTree.ParseText("class C { void First() { } void Second() { } }");
+    var methods = tree.GetRoot().DescendantNodes()
+      .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>()
+      .ToArray();
+    var collector = new AnalysisEvidenceCollector(new EvidenceBudget(MaxNodes: 1, MaxEdges: 1));
+    foreach (var method in methods)
+    {
+      collector.RecordSeed(new MarkRecord("seed", method, null, null, "seed"));
+    }
+
+    var result = collector.Complete(methods
+      .Select(method => new RuleDecision(method, method, DecisionActionKind.Delete, "delete"))
+      .ToArray());
+
+    Assert.All(result.Decisions, decision => Assert.Contains(result.Graph.Nodes, node =>
+      node.Id == decision.EvidenceRootId && node.Kind == AnalysisEvidenceKind.Decision));
+  }
+
+  [Fact]
   public void Collector_WhenPropagationAndLiftUseMultipleInputs_RecordsAllDerivedEdges()
   {
     var tree = CSharpSyntaxTree.ParseText("class C { void M() { int first = 1; int second = 2; } }");

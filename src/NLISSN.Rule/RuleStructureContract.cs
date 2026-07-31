@@ -22,6 +22,55 @@ public sealed record RuleSemanticTag
 }
 
 /// <summary>
+/// Identifies the proof domains contributing to a fact without participating in graph routing.
+/// </summary>
+[Flags]
+public enum RuleEvidenceOrigin
+{
+  None = 0,
+  AtomicExpression = 1,
+  DeclarationExpression = 2,
+  DeclarationType = 4,
+  DeclarationName = 8
+}
+
+/// <summary>
+/// Owns the stable semantic ports used by the fact-composed rule graph.
+/// </summary>
+public static class RuleFactPorts
+{
+  public static RuleSemanticTag TargetExpression { get; } = new("Target.Expression");
+
+  public static RuleSemanticTag TargetTypeSyntax { get; } = new("Target.TypeSyntax");
+
+  public static RuleSemanticTag TargetDeclaration { get; } = new("Target.Declaration");
+
+  public static RuleSemanticTag FlowLocalDefinition { get; } = new("Flow.LocalDefinition");
+
+  public static RuleSemanticTag FlowSymbolReference { get; } = new("Flow.SymbolReference");
+
+  public static RuleSemanticTag FlowAssignmentTarget { get; } = new("Flow.AssignmentTarget");
+
+  public static RuleSemanticTag RelationDeclarationHost { get; } = new("Relation.DeclarationHost");
+
+  public static RuleSemanticTag RelationParameterUsage { get; } = new("Relation.ParameterUsage");
+
+  public static RuleSemanticTag RelationDelegateUsage { get; } = new("Relation.DelegateUsage");
+
+  public static RuleSemanticTag RelationExtensionUsage { get; } = new("Relation.ExtensionUsage");
+
+  public static RuleSemanticTag LiftExpressionHost { get; } = new("Lift.ExpressionHost");
+
+  public static RuleSemanticTag LiftLogicalReduction { get; } = new("Lift.LogicalReduction");
+
+  public static RuleSemanticTag LiftIfStructure { get; } = new("Lift.IfStructure");
+
+  public static RuleSemanticTag LiftSwitchStructure { get; } = new("Lift.SwitchStructure");
+
+  public static RuleSemanticTag LiftControlStructure { get; } = new("Lift.ControlStructure");
+}
+
+/// <summary>
 /// Specifies how a rule accepts the producers of each declared syntax input.
 /// </summary>
 public enum RuleInputCardinality

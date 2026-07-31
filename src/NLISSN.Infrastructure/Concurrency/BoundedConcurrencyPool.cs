@@ -87,7 +87,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         try
         {
             using var admissionLease = await AcquireAdmissionAsync(
-              new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput),
+              new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput),
               cancellationToken,
               telemetry).ConfigureAwait(false);
             using var admissionScope = PushAdmissionLease(admissionLease);
@@ -211,7 +211,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             }
 
             using var admissionLease = await AcquireAdmissionAsync(
-              new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput),
+              new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput),
               cancellationToken,
               telemetry).ConfigureAwait(false);
             using var admissionScope = PushAdmissionLease(admissionLease);
@@ -324,7 +324,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
           ConcurrencyOperationKind.OrderedCommit,
           sources.Count,
           options.EffectiveMaxDegreeOfParallelism,
-          options.WorkClass);
+          options.WorkType);
         if (sources.Count == 0)
         {
             telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
@@ -440,7 +440,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
           ConcurrencyOperationKind.TwoStageOrderedCommit,
           sources.Count,
           options.EffectiveMaxDegreeOfParallelism,
-          options.WorkClass);
+          options.WorkType);
         if (sources.Count == 0)
         {
             telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
@@ -645,7 +645,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         try
         {
             using var admissionLease = await AcquireAdmissionAsync(
-              new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput),
+              new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput),
               cancellationToken,
               telemetry).ConfigureAwait(false);
             using var admissionScope = PushAdmissionLease(admissionLease);
@@ -748,13 +748,13 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
           ConcurrencyOperationKind.DependencyGraph,
           workItems.Count,
           maxDegreeOfParallelism,
-          ConcurrencyWorkClass.LatencySensitive);
+          ConcurrencyWorkType.LatencySensitive);
         var failureDrainElapsed = TimeSpan.Zero;
         try
         {
         using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using var admissionLease = await AcquireAdmissionAsync(
-          new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.LatencySensitive),
+          new ConcurrencyAdmissionRequest(ConcurrencyWorkType.LatencySensitive),
           cancellationToken,
           telemetry).ConfigureAwait(false);
         using var admissionScope = PushAdmissionLease(admissionLease);
@@ -911,14 +911,14 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         ConcurrencyOperationKind operationKind,
         int sourceCount,
         int requestedMaxDegreeOfParallelism,
-        ConcurrencyWorkClass workClass = ConcurrencyWorkClass.Throughput)
+        ConcurrencyWorkType workType = ConcurrencyWorkType.Throughput)
     {
         return new OperationTelemetryTracker(
           _telemetrySink,
           operationKind,
           sourceCount,
           requestedMaxDegreeOfParallelism,
-          workClass);
+          workType);
     }
 
     /// <summary>
@@ -973,7 +973,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         private int _peakRetainedRecordCount;
         private long _peakReservedByteCount;
         private long _queueWaitTicks;
-        private int _workClass;
+        private int _workType;
         private int _admissionReason = -1;
         private int _wasCanceled;
 
@@ -985,13 +985,13 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
             ConcurrencyOperationKind operationKind,
             int sourceCount,
             int requestedMaxDegreeOfParallelism,
-            ConcurrencyWorkClass workClass)
+            ConcurrencyWorkType workType)
         {
             _telemetrySink = telemetrySink;
             _operationKind = operationKind;
             _sourceCount = sourceCount;
             _requestedMaxDegreeOfParallelism = requestedMaxDegreeOfParallelism;
-            _workClass = (int)workClass;
+            _workType = (int)workType;
         }
 
         /// <summary>
@@ -1048,7 +1048,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
         /// </summary>
         public void AdmissionGranted(ConcurrencyAdmissionController.ConcurrencyAdmissionLease lease)
         {
-            Volatile.Write(ref _workClass, (int)lease.Request.WorkClass);
+            Volatile.Write(ref _workType, (int)lease.Request.WorkType);
             Volatile.Write(ref _peakReservedByteCount, lease.Request.ReservedByteCount);
             Volatile.Write(ref _queueWaitTicks, lease.QueueWait.Ticks);
             Volatile.Write(ref _admissionReason, (int)lease.AdmissionReason);
@@ -1068,7 +1068,7 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
               Volatile.Read(ref _peakReadyWorkItemCount),
               Volatile.Read(ref _peakCompletedBufferItemCount),
               Volatile.Read(ref _peakRetainedRecordCount),
-              (ConcurrencyWorkClass)Volatile.Read(ref _workClass),
+              (ConcurrencyWorkType)Volatile.Read(ref _workType),
               Volatile.Read(ref _peakReservedByteCount),
               TimeSpan.FromTicks(Volatile.Read(ref _queueWaitTicks)),
               Volatile.Read(ref _admissionReason) is var admissionReason && admissionReason >= 0

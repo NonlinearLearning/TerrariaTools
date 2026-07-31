@@ -32,14 +32,14 @@ public sealed class TestProjectBoundaryTests
   }
 
   [Fact]
-  public void PerformanceTests_DeleteClassSampleHelperLivesWithPerformanceSupport()
+  public void PerformanceTests_DeclarationSampleHelperLivesWithPerformanceSupport()
   {
     var misplacedHelperPath = Path.Combine(
       ResolveRepositoryRoot(),
       "tests",
       "RoslynDeletionPrototype.PerformanceTests",
       "TestInfrastructure",
-      "DeleteClassRandomSampleHelper.cs");
+      "RandomSampleHelper.cs");
 
     Assert.False(File.Exists(misplacedHelperPath));
   }
@@ -48,13 +48,13 @@ public sealed class TestProjectBoundaryTests
   public void ProjectFiles_KeepSharedAssetsAndTestProjectsSeparated()
   {
     var projectRoot = ResolveRepositoryRoot();
-    var testingProject = ReadProject(projectRoot, "RoslynDeletionPrototype.Testing");
+    var testingProject = ReadProject(projectRoot, "NLISSN.Testing", "RoslynDeletionPrototype.Testing");
     var testProjects = new[]
     {
-      ReadProject(projectRoot, "RoslynDeletionPrototype.UnitTests"),
-      ReadProject(projectRoot, "RoslynDeletionPrototype.ContractTests"),
-      ReadProject(projectRoot, "RoslynDeletionPrototype.HostTests"),
-      ReadProject(projectRoot, "RoslynDeletionPrototype.PerformanceTests"),
+      ReadProject(projectRoot, "NLISSN.UnitTests", "RoslynDeletionPrototype.UnitTests"),
+      ReadProject(projectRoot, "NLISSN.ContractTests", "RoslynDeletionPrototype.ContractTests"),
+      ReadProject(projectRoot, "NLISSN.HostTests", "RoslynDeletionPrototype.HostTests"),
+      ReadProject(projectRoot, "NLISSN.PerformanceTests", "RoslynDeletionPrototype.PerformanceTests"),
     };
 
     Assert.Empty(ProjectReferences(testingProject)
@@ -122,9 +122,12 @@ public sealed class TestProjectBoundaryTests
       .ToArray();
   }
 
-  private static XDocument ReadProject(string repositoryRoot, string projectName)
+  private static XDocument ReadProject(
+    string repositoryRoot,
+    string directoryName,
+    string projectName)
   {
-    var path = Path.Combine(repositoryRoot, "tests", projectName, $"{projectName}.csproj");
+    var path = Path.Combine(repositoryRoot, "tests", directoryName, $"{projectName}.csproj");
     return XDocument.Load(path);
   }
 

@@ -35,7 +35,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
       new[] { SyntaxKind.MethodDeclaration };
 
     // 从入口点沿调用图寻找可达方法，并把剩余方法声明标记为不可达删除候选。
-    public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+    public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
     {
         if (context.SemanticModel.Compilation.GetEntryPoint(CancellationToken.None) is null)
         {
@@ -68,7 +68,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
         }
     }
 
-    private static HashSet<NodeId> FindReachableMethodIds(RuleContext context, IReadOnlyDictionary<NodeId, MethodDeclarationSyntax> methodSyntaxById)
+    private static HashSet<NodeId> FindReachableMethodIds(IMarkRuleContext context, IReadOnlyDictionary<NodeId, MethodDeclarationSyntax> methodSyntaxById)
     {
         var reachable = new HashSet<NodeId>();
         var worklist = new Queue<NLCPGNode>();
@@ -133,7 +133,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
     }
 
     /// 把方法符号节点映射回对应的方法抽象节点，便于沿调用目标回到方法级可达性。
-    private static IReadOnlyDictionary<NodeId, NLCPGNode> BuildSymbolMethodMap(RuleContext context, IReadOnlyList<NLCPGNode> methodNodes)
+    private static IReadOnlyDictionary<NodeId, NLCPGNode> BuildSymbolMethodMap(IMarkRuleContext context, IReadOnlyList<NLCPGNode> methodNodes)
     {
         var methodByLocation = methodNodes
           .Where(node => node.NodeId.HasValue && node.FilePath is not null && node.SpanStart is not null && node.SpanEnd is not null)
@@ -146,7 +146,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
           .ToDictionary(item => item.SymbolNode.NodeId!.Value, item => item.MethodNode!);
     }
 
-    private static IEnumerable<NLCPGNode> GetCallSitesForMethod(RuleContext context, MethodDeclarationSyntax methodSyntax)
+    private static IEnumerable<NLCPGNode> GetCallSitesForMethod(IMarkRuleContext context, MethodDeclarationSyntax methodSyntax)
     {
         foreach (var callSite in context.GetGraphNodesByKind(NLCPGNodeKind.CallSite))
         {
@@ -157,7 +157,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
         }
     }
 
-    private static IEnumerable<NLCPGNode> GetOutgoingTargets(RuleContext context, NodeId sourceNodeId, NLCPGEdgeKind edgeKind)
+    private static IEnumerable<NLCPGNode> GetOutgoingTargets(IMarkRuleContext context, NodeId sourceNodeId, NLCPGEdgeKind edgeKind)
     {
         var targetIds = context.GetGraphEdgesByKind(sourceNodeId, edgeKind)
           .Select(edge => edge.TargetNodeId)
@@ -199,7 +199,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
           string.Equals(node.Name, "Main", StringComparison.Ordinal);
     }
 
-    private static NLCPGNode? FindMethodNodeBySymbol(RuleContext context, IMethodSymbol methodSymbol)
+    private static NLCPGNode? FindMethodNodeBySymbol(IMarkRuleContext context, IMethodSymbol methodSymbol)
     {
         var location = methodSymbol.Locations.FirstOrDefault(location => location.IsInSource);
         if (location is null || location.SourceTree?.FilePath is not string filePath)
@@ -216,7 +216,7 @@ public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
     }
 
     /// 为每个方法抽象节点建立到源码方法声明的映射。
-    private static IReadOnlyDictionary<NodeId, MethodDeclarationSyntax> BuildMethodSyntaxMap(RuleContext context, SyntaxNode root)
+    private static IReadOnlyDictionary<NodeId, MethodDeclarationSyntax> BuildMethodSyntaxMap(IMarkRuleContext context, SyntaxNode root)
     {
         var map = new Dictionary<NodeId, MethodDeclarationSyntax>();
         foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())

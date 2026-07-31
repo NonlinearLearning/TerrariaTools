@@ -111,7 +111,7 @@ public static class PipelineSources
     }
     """;
 
-  public const string DeleteClassMethodParameterUsageSource =
+  public const string MethodParameterUsageSource =
     """
     namespace Demo;
 
@@ -133,7 +133,7 @@ public static class PipelineSources
     }
     """;
 
-  public const string DeleteClassLocalFunctionParameterUsageSource =
+  public const string LocalFunctionParameterUsageSource =
     """
     namespace Demo;
 
@@ -155,7 +155,7 @@ public static class PipelineSources
     }
     """;
 
-  public const string DeleteClassIndexerParameterUsageSource =
+  public const string IndexerParameterUsageSource =
     """
     namespace Demo;
 
@@ -183,7 +183,7 @@ public static class PipelineSources
     }
     """;
 
-  public const string DeleteClassDelegateUsageSource =
+  public const string DelegateUsageSource =
     """
     namespace Demo;
 
@@ -208,7 +208,7 @@ public static class PipelineSources
     }
     """;
 
-  public const string DeleteClassExtensionMethodSource =
+  public const string ExtensionMethodUsageSource =
     """
     namespace Demo;
 
@@ -233,7 +233,7 @@ public static class PipelineSources
     }
     """;
 
-  public const string DeleteClassDeclarationHostSource =
+  public const string DeclarationHostSource =
     """
     namespace Demo;
 
@@ -298,7 +298,7 @@ public static class PipelineSources
     }
     """;
 
-  public const string SObjectIfStructureCompletionSource =
+  public const string AtomicIfStructureCompletionSource =
     """
     namespace Demo;
 
@@ -338,7 +338,7 @@ public static class PipelineSources
     }
     """;
 
-  public const string DeleteClassIfStructureCompletionSource =
+  public const string DeclarationIfStructureCompletionSource =
     """
     namespace Demo;
 

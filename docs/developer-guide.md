@@ -44,7 +44,7 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 - 运行时：`src/NLISSN.Core/Pipeline/ExecutionRuntime.cs`
 - 规则：`src/NLISSN.Rules/`
 
-删除规则遵循“标记 → 传播 → 提升 → 决策 → 改写”。改动此链路前读取对应局部约束和 [删除规则流水线](../设计docs/目前设计/deletion-pipeline.md)。
+删除规则遵循“标记 → 传播 → 提升 → 决策 → 改写”。规则图以 `Target.*`、`Flow.*`、`Lift.*` 与 `Relation.*` 端口和语法契约连接；Atomic/Declaration provenance 仅用于证据与声明安全检查，不划分独立运行链。改动此链路前读取对应局部约束和 [删除规则流水线](../设计docs/目前设计/deletion-pipeline.md)。
 
 ## 测试与验证
 

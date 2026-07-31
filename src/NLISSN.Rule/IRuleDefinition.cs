@@ -6,8 +6,6 @@ public interface IRuleDefinition
 
     string RuleId { get; }
 
-    RuleNodeId NodeId { get; }
-
     RuleInputCardinality InputCardinality { get; }
 
     RuleConsumesContract Consumes { get; }

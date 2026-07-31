@@ -150,58 +150,8 @@ internal static class  ApplicationOptions
           string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
     }
 
-    internal static bool ShouldUseUnreferencedMethodFastPath(IReadOnlyDictionary<string, string> options)
-    {
-        return IsTrueOption(options, "delete-unreferenced-methods") &&
-          !options.ContainsKey("target-name") &&
-          !options.ContainsKey("delete-class") &&
-          !options.ContainsKey("unreachable-methods") &&
-          !IsTrueOption(options, "clear-unused-interface-implementations") &&
-          !IsTrueOption(options, "privatize-internal-only-public-methods");
-    }
-
-    internal static bool ShouldUseDeleteClassUsingCleanup(IReadOnlyDictionary<string, string> options)
-    {
-        return options.ContainsKey("delete-class") &&
-          !IsTrueOption(options, "fast-delete-class-directory");
-    }
-
-    internal static bool ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(IReadOnlyDictionary<string, string> options)
-    {
-        return options.ContainsKey("delete-class") &&
-          IsTrueOption(options, "fast-delete-class-directory");
-    }
-
-    internal static bool ShouldFilterDeleteClassFilesByTargetName(IReadOnlyDictionary<string, string> options)
-    {
-        return options.ContainsKey("delete-class") &&
-          IsTrueOption(options, "fast-delete-class-directory") &&
-          IsTrueOption(options, "filter-delete-class-files-by-target-name");
-    }
-
-    internal static int ResolveMaxDegreeOfParallelism(IReadOnlyDictionary<string, string> options)
-    {
-        if (!options.TryGetValue("max-degree-of-parallelism", out var rawValue) ||
-            string.IsNullOrWhiteSpace(rawValue))
-        {
-            return Math.Max(1, Environment.ProcessorCount);
-        }
-
-        if (!int.TryParse(rawValue, out var parsedValue))
-        {
-            return Math.Max(1, Environment.ProcessorCount);
-        }
-
-        return Math.Max(1, parsedValue);
-    }
-
-    internal static RoslynPrototypeExecutionOptions CreateExecutionOptions(IReadOnlyDictionary<string, string> options)
-    {
-        return  AnalysisRuntime.CreateExecutionOptions(options);
-    }
-
     internal static  AnalysisRuntime CreateRuntime(IReadOnlyDictionary<string, string> options)
     {
-        return  AnalysisRuntime.CreateFromOptions(options);
+        return AnalysisRuntimeFactory.CreateFromOptions(options);
     }
 }

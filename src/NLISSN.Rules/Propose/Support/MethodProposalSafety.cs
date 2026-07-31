@@ -3,10 +3,10 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Linq;
 
-namespace NLISSN.Core.Decision;
+namespace NLISSN.Rules;
 
 /// 集中定义参数收缩允许改变的方法形状，排除可能发生继承或重载重绑定的成员。
-public static class DeleteClassMethodProposalSafety
+public static class MethodProposalSafety
 {
     // 判断私有普通方法是否满足参数收缩的安全前提，避免继承和接口绑定漂移。
     public static bool IsSafePrivateMethod(MethodDeclarationSyntax method)

@@ -11,14 +11,14 @@ namespace NLISSN.Rules;
 /// 为逻辑表达式的可删操作数选择保持短路语义的规约决策。
 public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleSemanticTag LogicalHostSemanticTag = new("SObject.LogicalHost");
+    private static readonly RuleSemanticTag LogicalReductionSemanticTag = RuleFactPorts.LiftLogicalReduction;
 
     private static readonly RuleConsumesContract LogicalHostConsumes =
       new(new[]
       {
         new RuleConsumedSyntax(
           new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
-          LogicalHostSemanticTag)
+          LogicalReductionSemanticTag)
       });
 
     public override string CapabilityId { get; } = "propose.logical-expression";
@@ -31,26 +31,24 @@ public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
     public override string Name { get; } = "Match s-rooted logical expression reductions";
 
     public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds =>
-      DeleteSObjectProposalHelpers.LogicalConflictNodeKinds;
+      ProposalHelpers.LogicalConflictNodeKinds;
 
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
-      DeleteSObjectProposalHelpers.MergeableNodeKinds;
+      ProposalHelpers.MergeableNodeKinds;
 
     // 根据逻辑宿主 payload 生成保持短路语义的 Replace 决策。
-    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
-        _ = liftedMarks;
-
-        foreach (var payload in DeleteSObjectProposalHelpers.EnumerateLogicalHostPayloads(
-                     propagatedMarks))
+        foreach (var payload in ProposalHelpers.EnumerateLogicalReductionLiftPayloads(
+                     liftedMarks))
         {
-            var replacementNode = DeleteSObjectProposalHelpers.BuildLogicalReplacement(
+            var replacementNode = ProposalHelpers.BuildLogicalReplacement(
               payload);
             if (replacementNode is not null)
             {
-                yield return DeleteSObjectProposalHelpers.CreateLogicalReplaceDecision(
+                yield return ProposalHelpers.CreateLogicalReplaceDecision(
                   RuleId,
                   payload.Host,
                   replacementNode);

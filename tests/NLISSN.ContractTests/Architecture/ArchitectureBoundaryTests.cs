@@ -15,11 +15,26 @@ public sealed class ArchitectureBoundaryTests
   }
 
   [Fact]
-  public void CoreRuleContext_DoesNotExposeTheFullGraph()
+  public void RuleContexts_ExposeOnlyStageCapabilitiesToRules()
   {
-    var contextText = File.ReadAllText(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleContext.cs"));
+    var contextText = File.ReadAllText(ProjectPath("src", "NLISSN.Rule", "RuleContext.cs"));
+    var stageContextText = File.ReadAllText(ProjectPath("src", "NLISSN.Rule", "RuleExecutionContexts.cs"));
     Assert.DoesNotContain("public CpgAnalysisContext AnalysisContext", contextText, StringComparison.Ordinal);
     Assert.DoesNotContain("public NLCPGGraph Graph", contextText, StringComparison.Ordinal);
+    Assert.DoesNotContain("public sealed class RuleContext :", contextText, StringComparison.Ordinal);
+    Assert.Contains("private sealed class MarkRuleContext : IMarkRuleContext", contextText, StringComparison.Ordinal);
+    Assert.Contains("private sealed class PropagationRuleContext : IPropagationRuleContext", contextText, StringComparison.Ordinal);
+    Assert.Contains("private sealed class LiftRuleContext : ILiftRuleContext", contextText, StringComparison.Ordinal);
+    Assert.Contains("private sealed class ProposeRuleContext : IProposeRuleContext", contextText, StringComparison.Ordinal);
+    Assert.Contains("public interface IMarkRuleContext", stageContextText, StringComparison.Ordinal);
+    Assert.Contains("public interface IPropagationRuleContext", stageContextText, StringComparison.Ordinal);
+    Assert.Contains("public interface ILiftRuleContext", stageContextText, StringComparison.Ordinal);
+    Assert.Contains("public interface IProposeRuleContext", stageContextText, StringComparison.Ordinal);
+
+    AssertRuleDefinitionUsesStageContext("NLISSN.Core", "Marking", "RuleDefinitionMark.cs", "IMarkRuleContext");
+    AssertRuleDefinitionUsesStageContext("NLISSN.Core", "Propagation", "RuleDefinitionPropagate.cs", "IPropagationRuleContext");
+    AssertRuleDefinitionUsesStageContext("NLISSN.Core", "Lifting", "RuleDefinitionLift.cs", "ILiftRuleContext");
+    AssertRuleDefinitionUsesStageContext("NLISSN.Core", "Decision", "RuleDefinitionPropose.cs", "IProposeRuleContext");
   }
 
   [Fact]
@@ -109,5 +124,16 @@ public sealed class ArchitectureBoundaryTests
 
     Assert.Empty(Directory.EnumerateFiles(path, "*.cs", SearchOption.AllDirectories));
     Assert.Empty(Directory.EnumerateFiles(path, "*.csproj", SearchOption.AllDirectories));
+  }
+
+  private static void AssertRuleDefinitionUsesStageContext(
+    string project,
+    string directory,
+    string fileName,
+    string stageContextName)
+  {
+    var definitionText = File.ReadAllText(ProjectPath("src", project, directory, fileName));
+    Assert.Contains(stageContextName, definitionText, StringComparison.Ordinal);
+    Assert.DoesNotMatch(@"\bRuleContext\s+context\b", definitionText);
   }
 }

@@ -6,13 +6,13 @@ namespace NL.Concurrency;
 /// <param name="MaxDegreeOfParallelism">请求的最大并发度。</param>
 /// <param name="ReorderAllowance">允许乱序完成后暂存的结果数量上限。</param>
 /// <param name="MaxCompletedRecordCount">允许保留的已完成记录数量上限。</param>
-/// <param name="WorkClass">本次工作的准入类别。</param>
+/// <param name="WorkType">本次工作的准入类别。</param>
 /// <param name="EstimatedRetainedBytesPerItem">每个保留项的预估字节数。</param>
 public sealed record ConcurrencyWindowOptions(
     int MaxDegreeOfParallelism,
     int? ReorderAllowance = null,
     int MaxCompletedRecordCount = int.MaxValue,
-    ConcurrencyWorkClass WorkClass = ConcurrencyWorkClass.Throughput,
+    ConcurrencyWorkType WorkType = ConcurrencyWorkType.Throughput,
     long EstimatedRetainedBytesPerItem = 0)
 {
     /// <summary>
@@ -42,7 +42,7 @@ public sealed record ConcurrencyWindowOptions(
 
         var reservedItemCount = Math.Min(Math.Max(1, sourceCount), EffectiveReorderAllowance);
         var reservedByteCount = checked(EstimatedRetainedBytesPerItem * reservedItemCount);
-        return new ConcurrencyAdmissionRequest(WorkClass, reservedItemCount, reservedByteCount);
+        return new ConcurrencyAdmissionRequest(WorkType, reservedItemCount, reservedByteCount);
     }
 
     /// <summary>

@@ -4,14 +4,14 @@ using NLISSN.Application;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Common;
 using RoslynPrototype.Tests.TestCodeSet.Cpg;
-using RoslynPrototype.Tests.TestCodeSet.DeleteClass;
+using RoslynPrototype.Tests.TestCodeSet.Large;
 using RoslynPrototype.Tests.TestCodeSet.Decision;
 using RoslynPrototype.Tests.TestCodeSet.Performance;
 using RoslynPrototype.Tests.TestCodeSet.Pipeline;
 using RoslynPrototype.Tests.TestCodeSet.Propagation;
 using RoslynPrototype.Tests.TestCodeSet.Reachability;
 using RoslynPrototype.Tests.TestCodeSet.Rewrite;
-using RoslynPrototype.Tests.TestCodeSet.SObject;
+using RoslynPrototype.Tests.TestCodeSet.Target;
 using NLISSN.Rules;
 using Xunit;
 
@@ -54,7 +54,7 @@ public sealed class TestCodeSetCoverageTests
   {
     yield return typeof(CliInputSources);
     yield return typeof(CpgBuilderSources);
-    yield return typeof(DeleteClassLargeSources);
+    yield return typeof(LargeSources);
     yield return typeof(MinimalSources);
     yield return typeof(DecisionComplexSources);
     yield return typeof(ReachabilitySources);
@@ -62,9 +62,9 @@ public sealed class TestCodeSetCoverageTests
     yield return typeof(PerformanceSources);
     yield return typeof(PipelineSources);
     yield return typeof(PropagationSources);
-    yield return typeof(SObjectControlFlowSources);
-    yield return typeof(SObjectExpressionSources);
-    yield return typeof(SObjectLogicalSources);
+    yield return typeof(AtomicControlFlowSources);
+    yield return typeof(AtomicExpressionSources);
+    yield return typeof(AtomicLogicalSources);
   }
 
   private static IEnumerable<TestSourceCase> EnumerateSourceCases(Type sourceType)
@@ -142,8 +142,15 @@ public sealed class TestCodeSetCoverageTests
 
   private static IReadOnlyDictionary<string, string> CreateOptions(string caseName)
   {
-    if (caseName.StartsWith("DeleteClassLargeSources.", StringComparison.Ordinal) ||
-        caseName.StartsWith("PipelineSources.DeleteClass", StringComparison.Ordinal))
+    if (caseName.StartsWith("LargeSources.", StringComparison.Ordinal) ||
+        caseName is
+          "PipelineSources.MethodParameterUsageSource" or
+          "PipelineSources.LocalFunctionParameterUsageSource" or
+          "PipelineSources.IndexerParameterUsageSource" or
+          "PipelineSources.DelegateUsageSource" or
+          "PipelineSources.ExtensionMethodUsageSource" or
+          "PipelineSources.DeclarationHostSource" or
+          "PipelineSources.DeclarationIfStructureCompletionSource")
     {
       return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
       {
@@ -161,16 +168,16 @@ public sealed class TestCodeSetCoverageTests
   {
     return caseName switch
     {
-      "SObjectLogicalSources.LogicalMixedPrecedenceSource" => "b",
-      "SObjectLogicalSources.LogicalMixedPrecedenceWithParenthesesSource" => "b",
-      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase1Source" => "b",
-      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase2Source" => "b",
-      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase3Source" => "b",
-      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase4Source" => "b",
-      "SObjectLogicalSources.LogicalMixedPrecedenceLargeCase5Source" => "b",
-      "SObjectLogicalSources.LogicalMultiTargetGroupFiveHitsSource" => "b,c,d,e,f",
-      "SObjectExpressionSources.ConditionalAccessInvokeSource" => "Invoke",
-      "SObjectExpressionSources.PropertyAccessDefinitionSource" => "Seed",
+      "AtomicLogicalSources.LogicalMixedPrecedenceSource" => "b",
+      "AtomicLogicalSources.LogicalMixedPrecedenceWithParenthesesSource" => "b",
+      "AtomicLogicalSources.LogicalMixedPrecedenceLargeCase1Source" => "b",
+      "AtomicLogicalSources.LogicalMixedPrecedenceLargeCase2Source" => "b",
+      "AtomicLogicalSources.LogicalMixedPrecedenceLargeCase3Source" => "b",
+      "AtomicLogicalSources.LogicalMixedPrecedenceLargeCase4Source" => "b",
+      "AtomicLogicalSources.LogicalMixedPrecedenceLargeCase5Source" => "b",
+      "AtomicLogicalSources.LogicalMultiTargetGroupFiveHitsSource" => "b,c,d,e,f",
+      "AtomicExpressionSources.ConditionalAccessInvokeSource" => "Invoke",
+      "AtomicExpressionSources.PropertyAccessDefinitionSource" => "Seed",
       "PipelineSources.RuntimeConfiguredDopSource" => "value",
       "PipelineSources.ConcurrentMarkingSource" => "First",
       "PipelineSources.RuntimeAwareSource" => "RuntimeAware",
@@ -198,6 +205,12 @@ public sealed class TestCodeSetCoverageTests
       "MinimalSources.EmptyMainSource" => 0,
       "RewriteSources.ReplaceAndDeleteSource" => 0,
       "RewriteSources.NoDecisionSource" => 0,
+      "AtomicControlFlowSources.DoBodySource" => 0,
+      "AtomicControlFlowSources.ForConditionSource" => 0,
+      "AtomicControlFlowSources.ForIncrementorSource" => 0,
+      "AtomicControlFlowSources.ForInitializerDeclarationSource" => 0,
+      "AtomicControlFlowSources.SwitchConditionSource" => 0,
+      "AtomicControlFlowSources.WhileBodySource" => 0,
       var cpgBuilderCase when cpgBuilderCase.StartsWith("CpgBuilderSources.", StringComparison.Ordinal) => 0,
       _ => GetMinimumSeedMarks(caseName)
     };

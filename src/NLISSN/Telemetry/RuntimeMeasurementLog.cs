@@ -206,7 +206,7 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
               new[]
               {
                 new TextLogField("poolOperation", operation.OperationKind),
-                new TextLogField("workClass", operation.WorkClass),
+                new TextLogField("workType", operation.WorkType),
                 new TextLogField("queueWaitMs", operation.QueueWait.TotalMilliseconds),
                 new TextLogField("peakActive", operation.PeakActiveWorkItemCount),
                 new TextLogField("peakReady", operation.PeakReadyWorkItemCount),

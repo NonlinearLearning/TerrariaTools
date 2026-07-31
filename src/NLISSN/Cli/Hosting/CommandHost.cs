@@ -81,7 +81,7 @@ public sealed class  CommandHost
             result =  PostRewriteDiagnostics.AddSingleFileDiagnostics(
               result,
               filePath,
-               ApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options));
+                PostRewriteDiagnostics.ShouldSkipDeclarationDiagnostics(options));
 
             if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
             {

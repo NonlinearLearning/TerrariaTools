@@ -39,7 +39,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
     Array.Empty<SyntaxKind>();
 
   // 把已确认无引用的接口实现方法改写成编译安全的空壳实现，而不是直接删除签名。
-  public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
+  public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
   {
     _ = propagatedMarks;
     _ = liftedMarks;
@@ -54,11 +54,12 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
         continue;
       }
 
-      yield return CreateMethodReplaceDecision(
+      yield return ReplaceDecisionFactory.CreateMethodReplaceDecision(
         RuleId,
         method,
         replacementMethod,
-        "Clear unused interface implementation body and keep a compile-safe stub.");
+        "Clear unused interface implementation body and keep a compile-safe stub.",
+        NLCPGDecisionRelationKind.ClearedTo);
     }
   }
 
@@ -136,49 +137,4 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
         member.DeclaredAccessibility == Accessibility.Public);
   }
 
-  private static DecisionUnit CreateMethodReplaceDecision(string ruleId, MethodDeclarationSyntax anchorNode, MethodDeclarationSyntax replacementNode, string reason)
-  {
-    var anchorFragment = CreateFragment(anchorNode, "anchor", DecisionActionKind.Replace);
-    var replacementFragment = CreateFragment(
-      replacementNode.WithoutTrivia(),
-      "replacement",
-      DecisionActionKind.Replace);
-    var unitNode = DecisionCpgFactory.CreateUnit(
-      ruleId,
-      DecisionActionKind.Replace,
-      anchorFragment,
-      reason: reason,
-      conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
-      mergeKey: DecisionCpgFactory.BuildNodeKey(anchorNode));
-
-    return new DecisionUnit(
-      ruleId,
-      DecisionActionKind.Replace,
-      unitNode,
-      new[] { anchorFragment, replacementFragment },
-      new[]
-      {
-        DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
-        DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-        DecisionCpgFactory.CreateRelation(
-          NLCPGDecisionRelationKind.ClearedTo,
-          anchorFragment,
-          replacementFragment)
-      },
-      DecisionCpgFactory.CreateSyntaxBindings(
-        (anchorFragment, anchorNode),
-        (replacementFragment, replacementNode.WithoutTrivia())),
-      conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
-      mergeKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
-      reason: reason);
-  }
-
-  private static NLCPGNode CreateFragment(SyntaxNode node, string role, DecisionActionKind action)
-  {
-    return DecisionCpgFactory.CreateFragment(
-      $"frag:{DecisionCpgFactory.BuildNodeKey(node)}",
-      node,
-      role,
-      action);
-  }
 }

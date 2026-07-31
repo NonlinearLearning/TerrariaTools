@@ -5,10 +5,8 @@ namespace NLISSN.Core.Pipeline;
 /// </summary>
 public sealed record RuleStructureContractGraphNode(
   RuleNodeId NodeId,
-  RuleKind Kind,
   RuleConsumesContract Consumes,
   RuleProducesContract Produces,
-  bool IsEnabled = true,
   RuleInputCardinality InputCardinality = RuleInputCardinality.All);
 
 /// <summary>
@@ -24,21 +22,12 @@ public sealed record RuleStructureContractEdge(
 /// </summary>
 public sealed class CompiledRuleStructureContractGraph
 {
-  public CompiledRuleStructureContractGraph(
-    IReadOnlyList<RuleStructureContractGraphNode> nodes,
-    IReadOnlyList<RuleStructureContractEdge> edges,
-    IReadOnlyDictionary<RuleNodeId, int> nodeIndexes)
+  public CompiledRuleStructureContractGraph(IReadOnlyList<RuleStructureContractEdge> edges)
   {
-    Nodes = nodes;
     Edges = edges;
-    NodeIndexes = nodeIndexes;
   }
 
-  public IReadOnlyList<RuleStructureContractGraphNode> Nodes { get; }
-
   public IReadOnlyList<RuleStructureContractEdge> Edges { get; }
-
-  public IReadOnlyDictionary<RuleNodeId, int> NodeIndexes { get; }
 
   public IReadOnlyList<RuleNodeId> GetProducers(
     RuleNodeId consumer,
@@ -111,8 +100,8 @@ public sealed class RuleStructureContractGraphCompiler
       }
     }
 
-    var orderedNodes = OrderNodes(declaredNodes, edges, declarationIndexes);
-    return new CompiledRuleStructureContractGraph(orderedNodes, edges, declarationIndexes);
+    ValidateAcyclic(declaredNodes, edges, declarationIndexes);
+    return new CompiledRuleStructureContractGraph(edges);
   }
 
   private static void ValidateDistinctInputs(RuleStructureContractGraphNode consumer)
@@ -156,7 +145,7 @@ public sealed class RuleStructureContractGraphCompiler
       $"but found{(producers.Count == 0 ? " " : ": ")}{producerList}.");
   }
 
-  private static IReadOnlyList<RuleStructureContractGraphNode> OrderNodes(
+  private static void ValidateAcyclic(
     IReadOnlyList<RuleStructureContractGraphNode> declaredNodes,
     IReadOnlyList<RuleStructureContractEdge> edges,
     IReadOnlyDictionary<RuleNodeId, int> declarationIndexes)
@@ -178,11 +167,10 @@ public sealed class RuleStructureContractGraphCompiler
       }
     }
 
-    var ordered = new List<RuleStructureContractGraphNode>(declaredNodes.Count);
-    var nodesById = declaredNodes.ToDictionary(node => node.NodeId);
+    var visitedCount = 0;
     while (ready.TryDequeue(out var nodeId, out _))
     {
-      ordered.Add(nodesById[nodeId]);
+      visitedCount++;
       foreach (var consumer in downstream[nodeId].OrderBy(id => declarationIndexes[id]))
       {
         indegrees[consumer]--;
@@ -193,7 +181,7 @@ public sealed class RuleStructureContractGraphCompiler
       }
     }
 
-    if (ordered.Count != declaredNodes.Count)
+    if (visitedCount != declaredNodes.Count)
     {
       var cycleNodeIds = declaredNodes
         .Where(node => indegrees[node.NodeId] > 0)
@@ -202,6 +190,5 @@ public sealed class RuleStructureContractGraphCompiler
         $"Rule contract graph contains a cycle: {string.Join(", ", cycleNodeIds)}.");
     }
 
-    return ordered;
   }
 }

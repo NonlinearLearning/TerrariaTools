@@ -1,4 +1,5 @@
 using NLISSN.Core.Marking;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Lifting;
 
@@ -7,4 +8,9 @@ public sealed record LiftedMarkRecord(
   string RuleId,
   MarkRecord Mark,
   MarkRecord SourceMark,
-  int Depth);
+  int Depth,
+  StructuralKind? StructureKind = null,
+  object? Payload = null)
+{
+  public RuleEvidenceOrigin Origins => Mark.Origins | SourceMark.Origins;
+}

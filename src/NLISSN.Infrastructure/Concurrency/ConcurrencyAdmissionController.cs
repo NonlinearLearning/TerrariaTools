@@ -11,8 +11,8 @@ public sealed class ConcurrencyAdmissionController
     private readonly ConcurrencyAdmissionOptions _options;
     private readonly Queue<Waiter> _latencySensitiveWaiters = new();
     private readonly Queue<Waiter> _throughputWaiters = new();
-    private ConcurrencyWorkClass _nextClass = ConcurrencyWorkClass.LatencySensitive;
-    private int _remainingClassCredit;
+    private ConcurrencyWorkType _nextType = ConcurrencyWorkType.LatencySensitive;
+    private int _remainingTypeCredit;
     private int _activeOperationCount;
     private int _reservedItemCount;
     private long _reservedByteCount;
@@ -26,7 +26,7 @@ public sealed class ConcurrencyAdmissionController
         ArgumentNullException.ThrowIfNull(options);
         options.Validate();
         _options = options;
-        _remainingClassCredit = options.LatencySensitiveWeight;
+        _remainingTypeCredit = options.LatencySensitiveWeight;
     }
 
     /// <summary>
@@ -74,7 +74,7 @@ public sealed class ConcurrencyAdmissionController
     /// <param name="waiter">要入队的排队项。</param>
     private void Enqueue(Waiter waiter)
     {
-        GetQueue(waiter.Request.WorkClass).Enqueue(waiter);
+        GetQueue(waiter.Request.WorkType).Enqueue(waiter);
     }
 
     /// <summary>
@@ -95,7 +95,7 @@ public sealed class ConcurrencyAdmissionController
                 return;
             }
 
-            var queue = GetQueue(waiter.Request.WorkClass);
+            var queue = GetQueue(waiter.Request.WorkType);
             if (!ReferenceEquals(queue.Peek(), waiter))
             {
                 throw new InvalidOperationException("Admission queue order was corrupted.");
@@ -105,7 +105,7 @@ public sealed class ConcurrencyAdmissionController
             _activeOperationCount++;
             _reservedItemCount += waiter.Request.ReservedItemCount;
             _reservedByteCount += waiter.Request.ReservedByteCount;
-            ConsumeCredit(waiter.Request.WorkClass);
+            ConsumeCredit(waiter.Request.WorkType);
             var lease = new ConcurrencyAdmissionLease(
               this,
               waiter.Request,
@@ -134,14 +134,14 @@ public sealed class ConcurrencyAdmissionController
 
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            var queue = GetQueue(_nextClass);
+            var queue = GetQueue(_nextType);
             if (queue.TryPeek(out var waiter) && Fits(waiter.Request))
             {
                 waiter.AdmissionReason = ConcurrencyAdmissionReason.WeightedTurn;
                 return waiter;
             }
 
-            SwitchClassWithoutSpendingCredit();
+            SwitchTypeWithoutSpendingCredit();
         }
 
         return null;
@@ -150,30 +150,30 @@ public sealed class ConcurrencyAdmissionController
     /// <summary>
     /// 消耗一次当前工作类别的轮转配额，并在配额用尽后切换到另一类别。
     /// </summary>
-    /// <param name="admittedClass">本次实际获准入的工作类别。</param>
-    private void ConsumeCredit(ConcurrencyWorkClass admittedClass)
+    /// <param name="admittedType">本次实际获准入的工作类别。</param>
+    private void ConsumeCredit(ConcurrencyWorkType admittedType)
     {
-        if (admittedClass != _nextClass)
+        if (admittedType != _nextType)
         {
-            _nextClass = admittedClass;
-            _remainingClassCredit = WeightFor(admittedClass);
+            _nextType = admittedType;
+            _remainingTypeCredit = WeightFor(admittedType);
         }
 
-        _remainingClassCredit--;
-        if (_remainingClassCredit == 0)
+        _remainingTypeCredit--;
+        if (_remainingTypeCredit == 0)
         {
-            _nextClass = Other(_nextClass);
-            _remainingClassCredit = WeightFor(_nextClass);
+            _nextType = Other(_nextType);
+            _remainingTypeCredit = WeightFor(_nextType);
         }
     }
 
     /// <summary>
     /// 在不消耗当前配额的前提下切换轮转类别。
     /// </summary>
-    private void SwitchClassWithoutSpendingCredit()
+    private void SwitchTypeWithoutSpendingCredit()
     {
-        _nextClass = Other(_nextClass);
-        _remainingClassCredit = WeightFor(_nextClass);
+        _nextType = Other(_nextType);
+        _remainingTypeCredit = WeightFor(_nextType);
     }
 
     /// <summary>
@@ -190,11 +190,11 @@ public sealed class ConcurrencyAdmissionController
     /// <summary>
     /// 根据工作类别返回对应的等待队列。
     /// </summary>
-    /// <param name="workClass">要查询的工作类别。</param>
+    /// <param name="workType">要查询的工作类别。</param>
     /// <returns>该类别使用的等待队列。</returns>
-    private Queue<Waiter> GetQueue(ConcurrencyWorkClass workClass)
+    private Queue<Waiter> GetQueue(ConcurrencyWorkType workType)
     {
-        return workClass == ConcurrencyWorkClass.LatencySensitive
+        return workType == ConcurrencyWorkType.LatencySensitive
           ? _latencySensitiveWaiters
           : _throughputWaiters;
     }
@@ -202,11 +202,11 @@ public sealed class ConcurrencyAdmissionController
     /// <summary>
     /// 返回指定工作类别的轮转权重。
     /// </summary>
-    /// <param name="workClass">要查询的工作类别。</param>
+    /// <param name="workType">要查询的工作类别。</param>
     /// <returns>该类别对应的轮转权重。</returns>
-    private int WeightFor(ConcurrencyWorkClass workClass)
+    private int WeightFor(ConcurrencyWorkType workType)
     {
-        return workClass == ConcurrencyWorkClass.LatencySensitive
+        return workType == ConcurrencyWorkType.LatencySensitive
           ? _options.LatencySensitiveWeight
           : _options.ThroughputWeight;
     }
@@ -214,13 +214,13 @@ public sealed class ConcurrencyAdmissionController
     /// <summary>
     /// 返回与当前类别相对的另一种工作类别。
     /// </summary>
-    /// <param name="workClass">当前工作类别。</param>
+    /// <param name="workType">当前工作类别。</param>
     /// <returns>另一种工作类别。</returns>
-    private static ConcurrencyWorkClass Other(ConcurrencyWorkClass workClass)
+    private static ConcurrencyWorkType Other(ConcurrencyWorkType workType)
     {
-        return workClass == ConcurrencyWorkClass.LatencySensitive
-          ? ConcurrencyWorkClass.Throughput
-          : ConcurrencyWorkClass.LatencySensitive;
+        return workType == ConcurrencyWorkType.LatencySensitive
+          ? ConcurrencyWorkType.Throughput
+          : ConcurrencyWorkType.LatencySensitive;
     }
 
     /// <summary>

@@ -6,19 +6,19 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 
-namespace NLISSN.Core.Lifting;
+namespace NLISSN.Rules;
 
 /// 从已验证的表达式标记向上寻找最小可改写宿主，并在宿主语义不明确时停止提升。
-public static class DeleteSObjectHostLiftingHelpers
+public static class ExpressionHostLiftingHelpers
 {
     // 沿表达式、声明和控制结构向上寻找最小可改写宿主，并为每一步提升保留来源深度。
-    public static IEnumerable<LiftedMarkRecord> BuildHostLiftedMarks(RuleContext context, string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    public static IEnumerable<LiftedMarkRecord> BuildHostLiftedMarks(ILiftRuleContext context, string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var liftedMarks = new List<LiftedMarkRecord>();
         var knownKeys = seedMarks
-          .Select(mark => DeleteSObjectLiftingCommon.BuildNodeKey(mark.SyntaxNode))
+          .Select(mark => LiftingCommon.BuildNodeKey(mark.SyntaxNode))
           .Concat(propagatedMarks.Select(mark =>
-            DeleteSObjectLiftingCommon.BuildNodeKey(mark.Mark.SyntaxNode)))
+            LiftingCommon.BuildNodeKey(mark.Mark.SyntaxNode)))
           .ToHashSet();
         var worklist = seedMarks
           .Select(mark => (Current: mark, Source: mark, Depth: 0))
@@ -29,7 +29,7 @@ public static class DeleteSObjectHostLiftingHelpers
         for (var index = 0; index < worklist.Count; index++)
         {
             var item = worklist[index];
-            if (DeleteSObjectLiftingCommon.IsSymbolReferencePropagation(item.Current))
+            if (LiftingCommon.IsSymbolReferencePropagation(item.Current))
             {
                 continue;
             }
@@ -40,7 +40,7 @@ public static class DeleteSObjectHostLiftingHelpers
                 continue;
             }
 
-            var key = DeleteSObjectLiftingCommon.BuildNodeKey(liftedNode);
+            var key = LiftingCommon.BuildNodeKey(liftedNode);
             if (!knownKeys.Add(key))
             {
                 continue;
@@ -61,7 +61,7 @@ public static class DeleteSObjectHostLiftingHelpers
         return liftedMarks;
     }
 
-    private static SyntaxNode? TryLift(SyntaxNode markedNode, RuleContext context)
+    private static SyntaxNode? TryLift(SyntaxNode markedNode, ILiftRuleContext context)
     {
         if (markedNode is ExpressionSyntax expression)
         {
@@ -100,7 +100,7 @@ public static class DeleteSObjectHostLiftingHelpers
         return null;
     }
 
-    private static SyntaxNode? TryLiftExpression(ExpressionSyntax expression, RuleContext context)
+    private static SyntaxNode? TryLiftExpression(ExpressionSyntax expression, ILiftRuleContext context)
     {
         if (expression is BinaryExpressionSyntax logicalExpression &&
             (logicalExpression.IsKind(SyntaxKind.LogicalAndExpression) ||
@@ -301,7 +301,7 @@ public static class DeleteSObjectHostLiftingHelpers
         return host is not null;
     }
 
-    private static SyntaxNode? TryLiftLogicalExpression(BinaryExpressionSyntax expression, RuleContext context)
+    private static SyntaxNode? TryLiftLogicalExpression(BinaryExpressionSyntax expression, ILiftRuleContext context)
     {
         var logicalHost = context.FindLogicalHost(expression);
         if (logicalHost is not null &&
@@ -350,7 +350,7 @@ public static class DeleteSObjectHostLiftingHelpers
         return null;
     }
 
-    private static bool TryLiftControlHeaderExpression(ExpressionSyntax expression, SyntaxNode ancestor, RuleContext context, out SyntaxNode? host)
+    private static bool TryLiftControlHeaderExpression(ExpressionSyntax expression, SyntaxNode ancestor, ILiftRuleContext context, out SyntaxNode? host)
     {
         host = null;
 

@@ -211,7 +211,7 @@ namespace NLCPG.Builder
             }
 
             // 补上同签名的父类回退候选，覆盖 Roslyn 未直接给出的上层实现。
-            foreach (var superMethod in ResolveSuperClassFallbackCandidates(targetMethod, receiverType))
+            foreach (var superMethod in ResolveSuperTypeFallbackCandidates(targetMethod, receiverType))
             {
                 candidates[SymbolId(superMethod)] = superMethod;
             }
@@ -265,7 +265,7 @@ namespace NLCPG.Builder
             }
         }
 
-        private IEnumerable<IMethodSymbol> ResolveSuperClassFallbackCandidates(IMethodSymbol targetMethod, ITypeSymbol receiverType)
+        private IEnumerable<IMethodSymbol> ResolveSuperTypeFallbackCandidates(IMethodSymbol targetMethod, ITypeSymbol receiverType)
         {
             foreach (var superType in EnumerateBaseTypes(receiverType))
             {
@@ -375,7 +375,7 @@ namespace NLCPG.Builder
             }
 
             // 最后再补同签名父类访问器回退。
-            foreach (var superMethod in ResolveSuperClassFallbackCandidates(accessorMethod, receiverType))
+            foreach (var superMethod in ResolveSuperTypeFallbackCandidates(accessorMethod, receiverType))
             {
                 candidates[SymbolId(superMethod)] = superMethod;
             }

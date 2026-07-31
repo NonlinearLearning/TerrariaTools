@@ -15,11 +15,11 @@ using NLISSN.Core.Rewrite;
 using NLISSN.Rules;
 using RoslynPrototype.Tests.TestCodeSet.Cli;
 using RoslynPrototype.Tests.TestCodeSet.Common;
-using RoslynPrototype.Tests.TestCodeSet.DeleteClass;
-using RoslynPrototype.Tests.TestCodeSet.DeleteClassDirectory;
+using RoslynPrototype.Tests.TestCodeSet.Large;
+using RoslynPrototype.Tests.TestCodeSet.DirectoryFixtures;
 using RoslynPrototype.Tests.TestCodeSet.Pipeline;
 using RoslynPrototype.Tests.TestCodeSet.Rewrite;
-using RoslynPrototype.Tests.TestCodeSet.SObject;
+using RoslynPrototype.Tests.TestCodeSet.Target;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -52,22 +52,6 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Equal(NLCPGFlowSummaryResolution.Project, resolved.Resolution);
         Assert.Same(project, resolved.Summary);
         Assert.Equal(NLCPGFlowSummaryResolution.Unknown, registry.Resolve("missing").Resolution);
-    }
-
-    [Fact]
-    public void  RulePipeline_HelperReturnSlicePilot_IsOptInAndDoesNotChangeRuleResults()
-    {
-        var pipeline = new  RulePipeline(
-          Array.Empty<RuleDefinitionMark>(),
-          new RuleDefinitionPropagate[] { new ClassSymbolReferencePropagationRule() },
-          Array.Empty<RuleDefinitionLift>(),
-          Array.Empty<RuleDefinitionPropose>());
-
-        var disabled = pipeline.GetRequiredCapabilities();
-        var enabled = (pipeline with { EnableHelperReturnSlicePilot = true }).GetRequiredCapabilities();
-
-        Assert.DoesNotContain(NLCPGCapability.InterproceduralDataFlow, disabled);
-        Assert.Contains(NLCPGCapability.InterproceduralDataFlow, enabled);
     }
 
     [Fact]
@@ -122,7 +106,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void CreateFromOptions_WithCpgDopOverride_UsesExplicitCpgValue()
     {
-        var runtime =  AnalysisRuntime.CreateFromOptions(
+        var runtime = AnalysisRuntimeFactory.CreateFromOptions(
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
             ["max-degree-of-parallelism"] = "12",
@@ -136,7 +120,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void CreateFromOptions_WithoutCpgDopOverride_InheritsGlobalValue()
     {
-        var runtime =  AnalysisRuntime.CreateFromOptions(
+        var runtime = AnalysisRuntimeFactory.CreateFromOptions(
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
             ["max-degree-of-parallelism"] = "12"
@@ -182,7 +166,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void CreateFromOptions_WithInvalidCpgDopOverride_ThrowsArgumentException(string value)
     {
         var exception = Assert.Throws<ArgumentException>(() =>
-           AnalysisRuntime.CreateFromOptions(
+           AnalysisRuntimeFactory.CreateFromOptions(
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
               ["cpg-max-degree-of-parallelism"] = value
@@ -204,8 +188,8 @@ public sealed class PipelineComponentTests : IDisposable
         var probe = new ConcurrentRuleProbe(expectedConcurrentRules: 2);
         var rules = new RuleDefinitionMark[]
         {
-          new ConcurrentClassMarkRule("TEST-CONCURRENT-MARK-001", "First", probe),
-          new ConcurrentClassMarkRule("TEST-CONCURRENT-MARK-002", "Second", probe)
+          new ConcurrentTypeMarkRule("TEST-CONCURRENT-MARK-001", "First", probe),
+          new ConcurrentTypeMarkRule("TEST-CONCURRENT-MARK-002", "Second", probe)
         };
 
         var marks = new MarkingEngine().Run(context, root, rules);
@@ -229,8 +213,8 @@ public sealed class PipelineComponentTests : IDisposable
           releaseWait: TimeSpan.FromMilliseconds(250));
         var rules = new RuleDefinitionMark[]
         {
-          new ConcurrentClassMarkRule("TEST-CONCURRENT-MARK-001", "First", probe),
-          new ConcurrentClassMarkRule("TEST-CONCURRENT-MARK-002", "Second", probe)
+          new ConcurrentTypeMarkRule("TEST-CONCURRENT-MARK-001", "First", probe),
+          new ConcurrentTypeMarkRule("TEST-CONCURRENT-MARK-002", "Second", probe)
         };
 
         // Act
@@ -244,7 +228,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void MarkingEngine_Run_DeduplicatesSameRuleAndSyntaxSpan()
     {
-        var source = SObjectExpressionSources.MarkingDedupSource;
+        var source = AtomicExpressionSources.MarkingDedupSource;
 
         var (context, root) = CreateContext(source, "s");
         var engine = new MarkingEngine();
@@ -259,7 +243,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void MarkingEngine_Run_SObjectRules_PreservesSeedMarksAcrossGroupParallelismAndReusesCachedOperation()
+    public void MarkingEngine_Run_TargetRules_PreservesSeedMarksAcrossGroupParallelismAndReusesCachedOperation()
     {
         var source = PipelineSources.SnapshotCacheSource;
         var (serialContext, serialRoot) = CreateContext(source, "s");
@@ -271,8 +255,8 @@ public sealed class PipelineComponentTests : IDisposable
         var (parallelContext, parallelRoot) = CreateContext(source, "s", parallelRuntime);
         var engine = new MarkingEngine();
 
-        var serialMarks = engine.Run(serialContext, serialRoot, GetDeleteSObjectMarkRules());
-        var parallelMarks = engine.Run(parallelContext, parallelRoot, GetDeleteSObjectMarkRules());
+        var serialMarks = engine.Run(serialContext, serialRoot, GetAtomicMarkRules());
+        var parallelMarks = engine.Run(parallelContext, parallelRoot, GetAtomicMarkRules());
         var targetIdentifier = parallelRoot.DescendantNodes()
           .OfType<IdentifierNameSyntax>()
           .First(identifier => identifier.Identifier.ValueText == "s");
@@ -459,10 +443,10 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void PropagationEngine_Run_DeduplicatesSamePropagatedSpan()
     {
-        var source = SObjectControlFlowSources.PropagationDedupSource;
+        var source = AtomicControlFlowSources.PropagationDedupSource;
 
         var (context, root) = CreateContext(source, "s");
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
         var engine = new PropagationEngine();
         var rules = new RuleDefinitionPropagate[] { new DuplicatePropagationRule() };
 
@@ -479,7 +463,7 @@ public sealed class PipelineComponentTests : IDisposable
         var source = PipelineSources.ChainedPropagationSource;
 
         var (context, root) = CreateContext(source, "s");
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
         var engine = new PropagationEngine();
         var rules = new RuleDefinitionPropagate[]
         {
@@ -504,10 +488,10 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void PropagationEngine_Run_ExposesDeclaredProducerOutputToConsumer()
     {
-        var source = SObjectControlFlowSources.PropagationDedupSource;
+        var source = AtomicControlFlowSources.PropagationDedupSource;
 
         var (context, root) = CreateContext(source, "s");
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
         var engine = new PropagationEngine();
 
         var propagatedMarks = engine.Run(
@@ -526,7 +510,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void ClassSymbolReferencePropagationRule_SameScopeReference_ExcludesNestedShadowedLocal()
+    public void DeclarationSymbolReferencePropagationRule_SameScopeReference_ExcludesNestedShadowedLocal()
     {
         var (context, root) = CreateContext("""
           namespace Demo;
@@ -560,12 +544,12 @@ public sealed class PipelineComponentTests : IDisposable
           null,
           "This diagnostic text is intentionally unrelated.",
           RuleOutputKind.LocalDefinitionFromObjectCreation,
-          new RuleSemanticTag("Class.LocalDefinitionFromObjectCreation"));
+          RuleFactPorts.FlowLocalDefinition);
 
         var propagatedMarks = new PropagationEngine().Run(
           context,
           new[] { seedMark },
-          new RuleDefinitionPropagate[] { new ClassSymbolReferencePropagationRule() });
+          new RuleDefinitionPropagate[] { new DeclarationSymbolReferencePropagationRule() });
 
         var propagated = Assert.Single(propagatedMarks);
         Assert.Equal("input", Assert.IsType<IdentifierNameSyntax>(propagated.Mark.SyntaxNode).Identifier.ValueText);
@@ -573,7 +557,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void SObjectSymbolReferencePropagationRule_SameScopeReference_ExcludesNestedShadowedLocal()
+    public void SymbolReferencePropagationRule_SameScopeReference_ExcludesNestedShadowedLocal()
     {
         var (context, root) = CreateContext("""
           namespace Demo;
@@ -609,12 +593,12 @@ public sealed class PipelineComponentTests : IDisposable
           null,
           "This diagnostic text is intentionally unrelated.",
           RuleOutputKind.LocalDefinitionFromInitializer,
-          new RuleSemanticTag("SObject.LocalDefinitionFromInitializer"));
+          RuleFactPorts.FlowLocalDefinition);
 
         var propagatedMarks = new PropagationEngine().Run(
           context,
           new[] { seedMark },
-          new RuleDefinitionPropagate[] { new SObjectSymbolReferencePropagationRule() });
+          new RuleDefinitionPropagate[] { new SymbolReferencePropagationRule() });
 
         var propagated = Assert.Single(propagatedMarks);
         Assert.Equal("value", Assert.IsType<IdentifierNameSyntax>(propagated.Mark.SyntaxNode).Identifier.ValueText);
@@ -624,10 +608,10 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void PropagationEngine_Run_BuildsRuleScopedStructureViewForEachRule()
     {
-        var source = SObjectControlFlowSources.PropagationDedupSource;
+        var source = AtomicControlFlowSources.PropagationDedupSource;
 
         var (context, root) = CreateContext(source, "s");
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
         var engine = new PropagationEngine();
 
         var propagatedMarks = engine.Run(
@@ -728,8 +712,8 @@ public sealed class PipelineComponentTests : IDisposable
           root,
           new RuleDefinitionMark[]
           {
-            new ParallelClassMarkRule("TEST-PARALLEL-MARK-A", "Alpha"),
-            new ParallelClassMarkRule("TEST-PARALLEL-MARK-B", "Beta")
+            new ParallelTypeMarkRule("TEST-PARALLEL-MARK-A", "Alpha"),
+            new ParallelTypeMarkRule("TEST-PARALLEL-MARK-B", "Beta")
           });
 
         Assert.Equal(0, scheduler.InvocationCount);
@@ -751,8 +735,8 @@ public sealed class PipelineComponentTests : IDisposable
           root,
           new RuleDefinitionMark[]
           {
-            new ParallelClassMarkRule("TEST-PROP-SEED-A", "Alpha"),
-            new ParallelClassMarkRule("TEST-PROP-SEED-B", "Beta")
+            new ParallelTypeMarkRule("TEST-PROP-SEED-A", "Alpha"),
+            new ParallelTypeMarkRule("TEST-PROP-SEED-B", "Beta")
           });
         scheduler.Reset();
         var engine = new PropagationEngine();
@@ -785,8 +769,8 @@ public sealed class PipelineComponentTests : IDisposable
           root,
           new RuleDefinitionMark[]
           {
-            new ParallelClassMarkRule("TEST-LIFT-SEED-A", "Alpha"),
-            new ParallelClassMarkRule("TEST-LIFT-SEED-B", "Beta")
+            new ParallelTypeMarkRule("TEST-LIFT-SEED-A", "Alpha"),
+            new ParallelTypeMarkRule("TEST-LIFT-SEED-B", "Beta")
           });
         scheduler.Reset();
         var engine = new MarkLiftingEngine();
@@ -821,8 +805,8 @@ public sealed class PipelineComponentTests : IDisposable
           root,
           new RuleDefinitionMark[]
           {
-            new ParallelClassMarkRule("TEST-DECIDE-SEED-A", "Alpha"),
-            new ParallelClassMarkRule("TEST-DECIDE-SEED-B", "Beta")
+            new ParallelTypeMarkRule("TEST-DECIDE-SEED-A", "Alpha"),
+            new ParallelTypeMarkRule("TEST-DECIDE-SEED-B", "Beta")
           });
         scheduler.Reset();
         var engine = new RuleDecisionEngine();
@@ -834,9 +818,9 @@ public sealed class PipelineComponentTests : IDisposable
           Array.Empty<LiftedMarkRecord>(),
           new RuleDefinitionPropose[]
           {
-            new ClassDecisionRule("TEST-DECIDE-A1", "TEST-DECIDE-SEED-A"),
-            new ClassDecisionRule("TEST-DECIDE-A2", "TEST-DECIDE-SEED-A"),
-            new ClassDecisionRule("TEST-DECIDE-B", "TEST-DECIDE-SEED-B")
+            new DeclarationDecisionRule("TEST-DECIDE-A1", "TEST-DECIDE-SEED-A"),
+            new DeclarationDecisionRule("TEST-DECIDE-A2", "TEST-DECIDE-SEED-A"),
+            new DeclarationDecisionRule("TEST-DECIDE-B", "TEST-DECIDE-SEED-B")
           });
 
         Assert.Equal(1, scheduler.InvocationCount);
@@ -847,9 +831,60 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteClassMethodParameterUsageRule_ProducesStructuredPayload()
+    public void CompatibilityStageEngines_WhenGroupParallelismIsDisabled_RequestSingleDependencyGraphWorker()
     {
-        var source = PipelineSources.DeleteClassMethodParameterUsageSource;
+        var source = PipelineSources.ParallelPropagationSource;
+        var scheduler = new RecordingConcurrencyPool();
+        var runtime = new AnalysisRuntime(
+          new RoslynPrototypeExecutionOptions(4, EnableGroupParallelism: false),
+          new AnalysisEpoch(0, 0, 0),
+          scheduler);
+        var (context, root) = CreateContext(source, runtime: runtime);
+
+        var seedMarks = new MarkingEngine().Run(
+          context,
+          root,
+          new RuleDefinitionMark[]
+          {
+            new ParallelTypeMarkRule("TEST-COMPAT-SEED-A", "Alpha"),
+            new ParallelTypeMarkRule("TEST-COMPAT-SEED-B", "Beta")
+          });
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[]
+          {
+            new MethodPropagationRule("TEST-COMPAT-PROP-A", "TEST-COMPAT-SEED-A"),
+            new MethodPropagationRule("TEST-COMPAT-PROP-B", "TEST-COMPAT-SEED-B")
+          });
+        var liftedMarks = new MarkLiftingEngine().Run(
+          context,
+          seedMarks,
+          Array.Empty<PropagatedMarkRecord>(),
+          new RuleDefinitionLift[]
+          {
+            new NamespaceLiftRule("TEST-COMPAT-LIFT-A", "TEST-COMPAT-SEED-A"),
+            new NamespaceLiftRule("TEST-COMPAT-LIFT-B", "TEST-COMPAT-SEED-B")
+          });
+        _ = new RuleDecisionEngine().Decide(
+          context,
+          seedMarks,
+          Array.Empty<PropagatedMarkRecord>(),
+          liftedMarks,
+          new RuleDefinitionPropose[]
+          {
+            new DeclarationDecisionRule("TEST-COMPAT-DECIDE-A", "TEST-COMPAT-SEED-A"),
+            new DeclarationDecisionRule("TEST-COMPAT-DECIDE-B", "TEST-COMPAT-SEED-B")
+          });
+
+        Assert.Equal(new[] { 1, 1, 1, 1 }, scheduler.DependencyGraphMaxDegrees);
+        Assert.Equal(new[] { 1 }, scheduler.SelectOrderedMaxDegrees);
+    }
+
+    [Fact]
+    public void PropagationEngine_Run_DeclarationMethodParameterUsageRule_ProducesStructuredPayload()
+    {
+        var source = PipelineSources.MethodParameterUsageSource;
 
         var tree = CSharpSyntaxTree.ParseText(source, path: "delete-class-method-propagation.cs");
         var root = tree.GetRoot();
@@ -864,13 +899,13 @@ public sealed class PipelineComponentTests : IDisposable
           {
             ["delete-class"] = "PlayerInput"
           });
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteClassMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new ClassMethodParameterUsagePropagationRule() });
+          new RuleDefinitionPropagate[] { new MethodParameterUsagePropagationRule() });
 
         var methodPropagation = Assert.Single(
           propagatedMarks,
@@ -887,9 +922,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteClassLocalFunctionParameterUsageRule_ProducesStructuredPayload()
+    public void PropagationEngine_Run_DeclarationLocalFunctionParameterUsageRule_ProducesStructuredPayload()
     {
-        var source = PipelineSources.DeleteClassLocalFunctionParameterUsageSource;
+        var source = PipelineSources.LocalFunctionParameterUsageSource;
 
         var tree = CSharpSyntaxTree.ParseText(source, path: "delete-class-local-function-propagation.cs");
         var root = tree.GetRoot();
@@ -904,13 +939,13 @@ public sealed class PipelineComponentTests : IDisposable
           {
             ["delete-class"] = "PlayerInput"
           });
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteClassMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new ClassLocalFunctionParameterUsagePropagationRule() });
+          new RuleDefinitionPropagate[] { new LocalFunctionParameterUsagePropagationRule() });
 
         var functionPropagation = Assert.Single(
           propagatedMarks,
@@ -927,9 +962,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteClassIndexerParameterUsageRule_ProducesStructuredPayload()
+    public void PropagationEngine_Run_DeclarationIndexerParameterUsageRule_ProducesStructuredPayload()
     {
-        var source = PipelineSources.DeleteClassIndexerParameterUsageSource;
+        var source = PipelineSources.IndexerParameterUsageSource;
 
         var tree = CSharpSyntaxTree.ParseText(source, path: "delete-class-indexer-propagation.cs");
         var root = tree.GetRoot();
@@ -944,13 +979,13 @@ public sealed class PipelineComponentTests : IDisposable
           {
             ["delete-class"] = "PlayerInput"
           });
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteClassMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new ClassIndexerParameterUsagePropagationRule() });
+          new RuleDefinitionPropagate[] { new IndexerParameterUsagePropagationRule() });
 
         var indexerPropagation = Assert.Single(
           propagatedMarks,
@@ -966,9 +1001,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteClassDelegateUsageClassificationRule_ProducesStructuredPayload()
+    public void PropagationEngine_Run_DeclarationDelegateUsageTypeificationRule_ProducesStructuredPayload()
     {
-        var source = PipelineSources.DeleteClassDelegateUsageSource;
+        var source = PipelineSources.DelegateUsageSource;
 
         var tree = CSharpSyntaxTree.ParseText(source, path: "delete-class-delegate-propagation.cs");
         var root = tree.GetRoot();
@@ -983,13 +1018,13 @@ public sealed class PipelineComponentTests : IDisposable
           {
             ["delete-class"] = "PlayerInput"
           });
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteClassMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new ClassDelegateUsageClassificationPropagationRule() });
+          new RuleDefinitionPropagate[] { new DelegateUsageClassificationPropagationRule() });
 
         var delegatePropagation = Assert.Single(
           propagatedMarks,
@@ -1009,9 +1044,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteClassExtensionMethodMappedCallsiteRule_ProducesStructuredPayload()
+    public void PropagationEngine_Run_DeclarationExtensionMethodMappedCallsiteRule_ProducesStructuredPayload()
     {
-        var source = PipelineSources.DeleteClassExtensionMethodSource;
+        var source = PipelineSources.ExtensionMethodUsageSource;
 
         var tree = CSharpSyntaxTree.ParseText(source, path: "delete-class-extension-propagation.cs");
         var root = tree.GetRoot();
@@ -1026,13 +1061,13 @@ public sealed class PipelineComponentTests : IDisposable
           {
             ["delete-class"] = "PlayerInput"
           });
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteClassMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new ClassExtensionMethodMappedCallsitePropagationRule() });
+          new RuleDefinitionPropagate[] { new ExtensionMethodMappedCallsitePropagationRule() });
 
         var methodPropagation = Assert.Single(
           propagatedMarks,
@@ -1048,9 +1083,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteClassDeclarationHostRule_ProducesStructuredPayloads()
+    public void PropagationEngine_Run_DeclarationDeclarationHostRule_ProducesStructuredPayloads()
     {
-        var source = PipelineSources.DeleteClassDeclarationHostSource;
+        var source = PipelineSources.DeclarationHostSource;
 
         var tree = CSharpSyntaxTree.ParseText(source, path: "delete-class-declaration-host-propagation.cs");
         var root = tree.GetRoot();
@@ -1065,13 +1100,13 @@ public sealed class PipelineComponentTests : IDisposable
           {
             ["delete-class"] = "PlayerInput"
           });
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteClassMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
         var propagatedMarks = engine.Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new ClassDeclarationHostPropagationRule() });
+          new RuleDefinitionPropagate[] { new DeclarationHostPropagationRule() });
 
         Assert.Contains(
           propagatedMarks,
@@ -1137,24 +1172,24 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteSObjectLogicalOperandGroupRule_ProducesStructuredPayload()
+    public void MarkLiftingEngine_Run_AtomicLogicalExpressionRule_ProducesLiftPayload()
     {
         var source = PipelineSources.LogicalOperandGroupSource;
 
         var (context, root) = CreateContext(source, "s, unused");
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
-        var engine = new PropagationEngine();
-
-        var propagatedMarks = engine.Run(
+        var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
+        var liftedMarks = new MarkLiftingEngine().Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new SObjectLogicalOperandGroupPropagationRule() });
+          Array.Empty<PropagatedMarkRecord>(),
+          new RuleDefinitionLift[] { new LogicalExpressionLiftingRule() });
 
-        var logicalPropagation = Assert.Single(
-          propagatedMarks,
+        var logicalLift = Assert.Single(
+          liftedMarks,
           mark => mark.Mark.SyntaxNode is BinaryExpressionSyntax binaryExpression &&
             string.Equals(binaryExpression.ToString(), "s.IsReady && ready && fallback", StringComparison.Ordinal));
-        var payload = Assert.IsType<LogicalHostPayload>(logicalPropagation.Payload);
+        Assert.Null(logicalLift.StructureKind);
+        var payload = Assert.IsType<LogicalExpressionReductionPayload>(logicalLift.Payload);
         Assert.Single(payload.RemovableOperands);
         Assert.Equal("s.IsReady", payload.RemovableOperands[0].ToString());
         Assert.Equal(2, payload.SurvivorOperands.Count);
@@ -1163,38 +1198,39 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteSObjectIfStructureCompletionRule_ProducesStructuredPayloads()
+    public void MarkLiftingEngine_Run_AtomicIfStructureRule_ProducesStructuralLiftPayloads()
     {
-        var source = PipelineSources.SObjectIfStructureCompletionSource;
+        var source = PipelineSources.AtomicIfStructureCompletionSource;
 
         var (context, root) = CreateContext(source, "s");
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
-        var engine = new PropagationEngine();
-
-        var propagatedMarks = engine.Run(
+        var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
+        var liftedMarks = new MarkLiftingEngine().Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new SObjectIfStructureCompletionPropagationRule() });
+          Array.Empty<PropagatedMarkRecord>(),
+          new RuleDefinitionLift[] { new IfStructureLiftingRule() });
 
         Assert.Contains(
-          propagatedMarks,
+          liftedMarks,
           mark => mark.Mark.SyntaxNode is IfStatementSyntax ifStatement &&
             string.Equals(ifStatement.Condition.ToString(), "s.IsReady", StringComparison.Ordinal) &&
-            mark.Payload is IfStructureCompletionPayload payload &&
-            payload.Kind == IfStructureCompletionKind.ReplaceIfWithElseIfTail &&
+            mark.StructureKind == StructuralKind.If &&
+            mark.Payload is IfStructureLiftPayload payload &&
+            payload.Kind == IfStructureLiftKind.ReplaceIfWithElseIfTail &&
             payload.TailNode is IfStatementSyntax);
         Assert.Contains(
-          propagatedMarks,
-          mark => mark.Mark.SyntaxNode is ElseClauseSyntax &&
-            mark.Payload is IfStructureCompletionPayload payload &&
-            payload.Kind == IfStructureCompletionKind.DeleteOwningElseClause &&
+          liftedMarks,
+          mark => mark.Mark.SyntaxNode is IfStatementSyntax &&
+            mark.StructureKind == StructuralKind.If &&
+            mark.Payload is IfStructureLiftPayload payload &&
+            payload.Kind == IfStructureLiftKind.DeleteOwningElseClause &&
             payload.ParentElseClause is not null);
     }
 
     [Fact]
-    public void PropagationEngine_Run_DeleteClassIfStructureCompletionRule_ProducesStructuredPayload()
+    public void MarkLiftingEngine_Run_SharedIfStructureRule_ProducesStructuralLiftPayload()
     {
-        var source = PipelineSources.DeleteClassIfStructureCompletionSource;
+        var source = PipelineSources.DeclarationIfStructureCompletionSource;
 
         var tree = CSharpSyntaxTree.ParseText(source, path: "delete-class-if-structure-propagation.cs");
         var root = tree.GetRoot();
@@ -1209,30 +1245,30 @@ public sealed class PipelineComponentTests : IDisposable
           {
             ["delete-class"] = "PlayerInput"
           });
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteClassMarkRules());
-        var engine = new PropagationEngine();
-
-        var propagatedMarks = engine.Run(
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
+        var liftedMarks = new MarkLiftingEngine().Run(
           context,
           seedMarks,
-          new RuleDefinitionPropagate[] { new ClassIfStructureCompletionPropagationRule() });
+          Array.Empty<PropagatedMarkRecord>(),
+          new RuleDefinitionLift[] { new IfStructureLiftingRule() });
 
-        var ifPropagation = Assert.Single(
-          propagatedMarks,
+        var ifLift = Assert.Single(
+          liftedMarks,
           mark => mark.Mark.SyntaxNode is IfStatementSyntax ifStatement &&
             string.Equals(ifStatement.Condition.ToString(), "input.IsReady", StringComparison.Ordinal));
-        var payload = Assert.IsType<IfStructureCompletionPayload>(ifPropagation.Payload);
-        Assert.Equal(IfStructureCompletionKind.ReplaceIfWithElseIfTail, payload.Kind);
+        Assert.Equal(StructuralKind.If, ifLift.StructureKind);
+        var payload = Assert.IsType<IfStructureLiftPayload>(ifLift.Payload);
+        Assert.Equal(IfStructureLiftKind.ReplaceIfWithElseIfTail, payload.Kind);
         Assert.IsType<IfStatementSyntax>(payload.TailNode);
     }
 
     [Fact]
     public void MarkLiftingEngine_Run_BuildsRuleScopedStructureViewForEachRule()
     {
-        var source = SObjectControlFlowSources.PropagationDedupSource;
+        var source = AtomicControlFlowSources.PropagationDedupSource;
 
         var (context, root) = CreateContext(source, "s");
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
         var propagatedMarks = new PropagationEngine().Run(
           context,
           seedMarks,
@@ -1253,9 +1289,9 @@ public sealed class PipelineComponentTests : IDisposable
     public void MultiFragmentStructureView_RuleOutputDecisionRewriteAndDiff_RemainConnected()
     {
         // ViewAwareLiftRule verifies that both seed and propagated graph anchors are selected.
-        var source = SObjectControlFlowSources.PropagationDedupSource;
+        var source = AtomicControlFlowSources.PropagationDedupSource;
         var (context, root) = CreateContext(source, "s");
-        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
         var propagatedMarks = new PropagationEngine().Run(
           context,
           seedMarks,
@@ -1506,7 +1542,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_RewritesMultipleFilesAndKeepsCompilationValid()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_RewritesMultipleFilesAndKeepsCompilationValid()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-project");
         Directory.CreateDirectory(projectDirectory);
@@ -1562,16 +1598,16 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotNull(result.DiffFilePath);
         Assert.True(Directory.Exists(result.DiffFilePath));
 
-        var rewrittenClassSource = File.ReadAllText(classFilePath);
+        var rewrittenTypeSource = File.ReadAllText(classFilePath);
         var rewrittenConsumerSource = File.ReadAllText(consumerFilePath);
-        Assert.DoesNotContain("class PlayerInput", rewrittenClassSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("class PlayerInput", rewrittenTypeSource, StringComparison.Ordinal);
         Assert.DoesNotContain("PlayerInput.", rewrittenConsumerSource, StringComparison.Ordinal);
         Assert.DoesNotContain("if (PlayerInput.Enabled)", rewrittenConsumerSource, StringComparison.Ordinal);
         Assert.DoesNotContain("PlayerInput.Ping();", rewrittenConsumerSource, StringComparison.Ordinal);
 
         var rewrittenTrees = new[]
         {
-            CSharpSyntaxTree.ParseText(rewrittenClassSource, path: classFilePath),
+            CSharpSyntaxTree.ParseText(rewrittenTypeSource, path: classFilePath),
             CSharpSyntaxTree.ParseText(rewrittenConsumerSource, path: consumerFilePath)
         };
         var compilation = CreateCompilation(rewrittenTrees);
@@ -1582,7 +1618,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_SeparateDirectoryAndCpgDop_KeepsStableResults()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_SeparateDirectoryAndCpgDop_KeepsStableResults()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-parallelism-project");
         Directory.CreateDirectory(projectDirectory);
@@ -1716,7 +1752,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DisableHelperParallelism_KeepsStableResults()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DisableHelperParallelism_KeepsStableResults()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-helper-parallelism-project");
         Directory.CreateDirectory(projectDirectory);
@@ -1839,7 +1875,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_WritesPerFileDiffsUnderConfiguredRoot()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_WritesPerFileDiffsUnderConfiguredRoot()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-project-diff");
         var nestedDirectory = Path.Combine(projectDirectory, "Gameplay");
@@ -1893,7 +1929,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ConcurrentDiffWrites_PreserveResultsAndDiffBytes()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ConcurrentDiffWrites_PreserveResultsAndDiffBytes()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-concurrent-diff-project");
         var gameplayDirectory = Path.Combine(projectDirectory, "Gameplay");
@@ -1902,13 +1938,13 @@ public sealed class PipelineComponentTests : IDisposable
         Directory.CreateDirectory(systemsDirectory);
         File.WriteAllText(
           Path.Combine(projectDirectory, "PlayerInput.cs"),
-          DirectoryDeleteClassSources.PlayerInputEnabledSource);
+          DirectorySources.PlayerInputEnabledSource);
         File.WriteAllText(
           Path.Combine(gameplayDirectory, "Game.cs"),
-          DirectoryDeleteClassSources.GameUsingPlayerInputSource);
+          DirectorySources.GameUsingPlayerInputSource);
         File.WriteAllText(
           Path.Combine(systemsDirectory, "Renderer.cs"),
-          DirectoryDeleteClassSources.RendererWithBlockBodyUsingPlayerInputSource);
+          DirectorySources.RendererWithBlockBodyUsingPlayerInputSource);
         var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
         var diffRootPath = Path.Combine(_tempDirectory, "concurrent-diff-output");
         var resultsByDegree = new Dictionary<int, PrototypeAnalysisResult>();
@@ -1953,10 +1989,10 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_RewritesLargeAssetProjectAndKeepsCompilationValid()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_RewritesLargeAssetProjectAndKeepsCompilationValid()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-large-asset-project");
-        DeleteClassLargeSources.WriteLargeProject(projectDirectory);
+        LargeSources.WriteLargeProject(projectDirectory);
         var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
@@ -1991,7 +2027,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_MarksTypeSyntaxReferencesAsAtomicComponents()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_MarksTypeSyntaxReferencesAsAtomicComponents()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-type-syntax-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2047,7 +2083,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesFieldAndPropertyDeclarationsWithTargetType()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesFieldAndPropertyDeclarationsWithTargetType()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-type-declaration-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2099,7 +2135,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_PropagatesObjectCreationToLocalDeclaration()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_PropagatesObjectCreationToLocalDeclaration()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-object-creation-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2145,7 +2181,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_PropagatesLocalDeclarationToSameScopeReferences()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_PropagatesLocalDeclarationToSameScopeReferences()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-local-reference-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2189,7 +2225,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesPrivateMethodsReturningTargetType()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesPrivateMethodsReturningTargetType()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-method-return-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2245,7 +2281,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesPublicMethodsReturningTargetType()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesPublicMethodsReturningTargetType()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-public-method-return-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2302,7 +2338,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksPrivateMethodsWithTargetTypeParameterAndSyncsCallsites()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksPrivateMethodsWithTargetTypeParameterAndSyncsCallsites()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-method-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2374,7 +2410,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksPrivateMethodParameter_ForNamedArguments()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksPrivateMethodParameter_ForNamedArguments()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-method-parameter-named-argument-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2435,7 +2471,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DoesNotShrinkPrivateMethodParameter_WhenNamedAndPositionalCallsitesAreMixed()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DoesNotShrinkPrivateMethodParameter_WhenNamedAndPositionalCallsitesAreMixed()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-method-parameter-mixed-callsite-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2488,7 +2524,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksOptionalMethodParameter_AndKeepsOmittedCallsites()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksOptionalMethodParameter_AndKeepsOmittedCallsites()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-optional-method-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2554,7 +2590,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksParamsMethodParameter_WhenAllCallsitesOmitParamsSlot()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksParamsMethodParameter_WhenAllCallsitesOmitParamsSlot()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-params-method-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2610,7 +2646,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksPublicMethodsWithTargetTypeParameterAndSyncsCallsites()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksPublicMethodsWithTargetTypeParameterAndSyncsCallsites()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-public-method-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2681,7 +2717,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksLocalFunctionParameterAndSyncsCallsites()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksLocalFunctionParameterAndSyncsCallsites()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-local-function-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2741,7 +2777,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksNamedArgumentLocalFunctionParameter()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksNamedArgumentLocalFunctionParameter()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-local-function-named-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2802,7 +2838,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksOptionalLocalFunctionParameter_AndKeepsOmittedCallsites()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksOptionalLocalFunctionParameter_AndKeepsOmittedCallsites()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-local-function-optional-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2868,7 +2904,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksIndexerParameterAndSyncsElementAccesses()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksIndexerParameterAndSyncsElementAccesses()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-indexer-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2927,7 +2963,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksNamedArgumentIndexerParameter()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksNamedArgumentIndexerParameter()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-indexer-named-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -2987,7 +3023,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksDelegateMethodGroupBindingsAndInvocations()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksDelegateMethodGroupBindingsAndInvocations()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-delegate-method-group-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3047,7 +3083,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksDelegateLambdaBindingsAndInvocations()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksDelegateLambdaBindingsAndInvocations()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-delegate-lambda-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3100,7 +3136,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksDelegateInvocationChainWithoutBindingRewrite()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksDelegateInvocationChainWithoutBindingRewrite()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-delegate-invocation-chain-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3148,7 +3184,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksExtensionMethodNonReceiverParameter()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksExtensionMethodNonReceiverParameter()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-extension-nonreceiver-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3201,7 +3237,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ShrinksUnusedDelegateParameter()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ShrinksUnusedDelegateParameter()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-delegate-parameter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3249,7 +3285,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesInterfaceMethodsWithTargetTypeSignature()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesInterfaceMethodsWithTargetTypeSignature()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-interface-method-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3311,7 +3347,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesInterfacePropertiesWithTargetTypeSignature()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesInterfacePropertiesWithTargetTypeSignature()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-interface-property-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3362,7 +3398,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesInterfaceEventsWithTargetTypeSignature()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesInterfaceEventsWithTargetTypeSignature()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-interface-event-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3418,7 +3454,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesInterfaceIndexersWithTargetTypeSignature()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesInterfaceIndexersWithTargetTypeSignature()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-interface-indexer-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3459,7 +3495,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesExtensionMethodsWithTargetReceiverType()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesExtensionMethodsWithTargetReceiverType()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-extension-method-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3514,7 +3550,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_RemovesTargetBaseTypes()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_RemovesTargetBaseTypes()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-base-type-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3579,7 +3615,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesLocalDeclarationsWithTargetGenericTypeArgument()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesLocalDeclarationsWithTargetGenericTypeArgument()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-generic-type-argument-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3630,7 +3666,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_ReportsDiagnosticsForResidualPublicSignatures()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_ReportsDiagnosticsForResidualPublicSignatures()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-diagnostic-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3673,7 +3709,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_DeletesDelegatesWithTargetTypeSignature()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_DeletesDelegatesWithTargetTypeSignature()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-delegate-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3726,7 +3762,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_RemovesUnusedUsingsAfterRewrite()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_RemovesUnusedUsingsAfterRewrite()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-using-cleanup-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3788,7 +3824,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_KeepsExtensionMethodUsings()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_KeepsExtensionMethodUsings()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-using-keep-extension-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3870,7 +3906,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_RemovesEmptyNamespaceBlocks()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_RemovesEmptyNamespaceBlocks()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-empty-namespace-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3904,7 +3940,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_KeepsNamespaceWhenEmptyPublicClassRemains()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_KeepsNamespaceWhenEmptyPublicTypeRemains()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-keep-empty-public-class-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3949,7 +3985,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_FastDirectoryMode_SkipsUsingAndNamespaceCleanup()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_FastDirectoryMode_SkipsUsingAndNamespaceCleanup()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-fast-directory-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3999,13 +4035,13 @@ public sealed class PipelineComponentTests : IDisposable
         TextDiffAssert.Contains("namespace Demo;", rewrittenConsumerSource, result.Diff);
         Assert.DoesNotContain("PlayerInput.Enabled", rewrittenConsumerSource, StringComparison.Ordinal);
 
-        var rewrittenClassSource = File.ReadAllText(classFilePath);
-        TextDiffAssert.Contains("namespace Demo.Input;", rewrittenClassSource, result.Diff);
-        Assert.DoesNotContain("class PlayerInput", rewrittenClassSource, StringComparison.Ordinal);
+        var rewrittenTypeSource = File.ReadAllText(classFilePath);
+        TextDiffAssert.Contains("namespace Demo.Input;", rewrittenTypeSource, result.Diff);
+        Assert.DoesNotContain("class PlayerInput", rewrittenTypeSource, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_FastDirectoryMode_TargetNameFilter_ReducesAnalyzedFiles()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_FastDirectoryMode_TargetNameFilter_ReducesAnalyzedFiles()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-fast-directory-target-filter-project");
         Directory.CreateDirectory(projectDirectory);
@@ -4058,7 +4094,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteClass_FastDirectoryMode_WithoutTargetNameFilter_KeepsAllFilesAnalyzed()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_FastDirectoryMode_WithoutTargetNameFilter_KeepsAllFilesAnalyzed()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-fast-directory-target-filter-disabled-project");
         Directory.CreateDirectory(projectDirectory);
@@ -4649,32 +4685,19 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var rules = RuleRegistry.CreateDefaultRules();
         var contractAssembly = typeof(RuleDefinitionMark).Assembly;
-        var implementationAssembly = typeof(SObjectIdentifierNameMarkRule).Assembly;
+        var implementationAssembly = typeof(AtomicIdentifierNameMarkRule).Assembly;
         var markRuleType = contractAssembly.GetType("NLISSN.Core.Marking.RuleDefinitionMark");
         var propagateRuleType = contractAssembly.GetType("NLISSN.Core.Propagation.RuleDefinitionPropagate");
         var liftRuleType = contractAssembly.GetType("NLISSN.Core.Lifting.RuleDefinitionLift");
         var proposeRuleType = contractAssembly.GetType("NLISSN.Core.Decision.RuleDefinitionPropose");
-        var analysisType = contractAssembly.GetType("NLISSN.Core.Analysis.IRuleAnalysis");
-        var graphBindingType = contractAssembly.GetType("NLISSN.Core.Analysis.IRuleGraphBinding");
-        var structureViewType = contractAssembly.GetType("NLISSN.Core.Analysis.View.IRuleStructureView");
-
         Assert.NotNull(markRuleType);
         Assert.NotNull(propagateRuleType);
         Assert.NotNull(liftRuleType);
         Assert.NotNull(proposeRuleType);
-        Assert.NotNull(analysisType);
-        Assert.NotNull(graphBindingType);
-        Assert.NotNull(structureViewType);
         Assert.Null(contractAssembly.GetType("NLISSN.Core.Pipeline.RuleDefinitionMark"));
         Assert.Null(contractAssembly.GetType("NLISSN.Core.Pipeline.RuleDefinitionPropagate"));
         Assert.Null(contractAssembly.GetType("NLISSN.Core.Pipeline.RuleDefinitionLift"));
         Assert.Null(contractAssembly.GetType("NLISSN.Core.Pipeline.RuleDefinitionPropose"));
-        Assert.Null(contractAssembly.GetType("NLISSN.Core.Pipeline.IRuleAnalysis"));
-        Assert.Null(contractAssembly.GetType("NLISSN.Core.Pipeline.IRuleGraphBinding"));
-        Assert.Null(contractAssembly.GetType("NLISSN.Core.Pipeline.IRuleStructureView"));
-        Assert.Null(contractAssembly.GetType("NLISSN.Core.Analysis.IRuleAnalysisServices"));
-        Assert.Null(contractAssembly.GetType("NLISSN.Core.Analysis.IRuleGraphBindingServices"));
-        Assert.Null(contractAssembly.GetType("NLISSN.Core.Analysis.View.IRuleStructureViewServices"));
         Assert.True(markRuleType!.IsClass);
         Assert.True(propagateRuleType!.IsClass);
         Assert.True(liftRuleType!.IsClass);
@@ -4683,26 +4706,26 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotSame(contractAssembly, implementationAssembly);
 
         Assert.True(rules.Markers.Count >= 10);
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "SObjectIdentifierNameMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "SObjectMemberAccessMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "SObjectInvocationMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "AtomicIdentifierNameMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "AtomicMemberAccessMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "AtomicInvocationMarkRule", StringComparison.Ordinal));
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "UnreachableMethodMarkRule", StringComparison.Ordinal));
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "UnreferencedMethodMarkRule", StringComparison.Ordinal));
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "ClearUnusedInterfaceImplementationRule", StringComparison.Ordinal));
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "PrivatizeInternalOnlyPublicMethodRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "ClassTypeSyntaxMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "ClassObjectCreationDeclarationPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "ClassSymbolReferencePropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectAssignmentLeftValuePropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectDefinitionInitializerPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectLogicalConditionPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectLogicalOperandGroupPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectSymbolReferencePropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SObjectIfStructureCompletionPropagationRule", StringComparison.Ordinal));
-        Assert.True(rules.Lifters.Count >= 3);
-        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "SObjectExpressionHostLiftingRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "SObjectIfStructureLiftingRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "SObjectSwitchStructureLiftingRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "TypeSyntaxMarkRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "ObjectCreationDeclarationPropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeclarationSymbolReferencePropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "AssignmentLeftValuePropagationRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DefinitionInitializerPropagationRule", StringComparison.Ordinal));
+        Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId.StartsWith("DEL-SOBJ-PROP-LOGIC", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SymbolReferencePropagationRule", StringComparison.Ordinal));
+        Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId == "DEL-SOBJ-PROP-IF-COMPLETE-001");
+        Assert.True(rules.Lifters.Count >= 4);
+        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "ExpressionHostLiftingRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Lifters, rule => rule is LogicalExpressionLiftingRule);
+        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "IfStructureLiftingRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "SwitchStructureLiftingRule", StringComparison.Ordinal));
         Assert.True(rules.Proposers.Count >= 5);
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "LogicalExpressionProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "IfStructureProposalRule", StringComparison.Ordinal));
@@ -4712,35 +4735,35 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "UnreferencedMethodProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClearUnusedInterfaceImplementationProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "PrivatizeInternalOnlyPublicMethodProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassTypeSyntaxDeclarationProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "ClassIfStructureCompletionPropagationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassMethodReturnTypeProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassPublicMethodReturnTypeProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassParameterProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassPrivateMethodParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassNamedArgumentMethodParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassOptionalParameterDefaultedMethodShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassParamsMethodParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassPublicMethodParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassLocalFunctionParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassNamedArgumentLocalFunctionParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassOptionalParameterDefaultedLocalFunctionShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassIndexerParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassNamedArgumentIndexerParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassMethodGroupDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassLambdaDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassDelegateInvocationChainParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassExtensionReceiverNonFirstParameterShrinkProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassPublicParameterProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassInterfaceMethodProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassInterfacePropertyProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassInterfaceEventProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassInterfaceIndexerProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassDelegateProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassExtensionReceiverProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassBaseTypeProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClassGenericTypeArgumentProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "TypeSyntaxDeclarationProposalRule", StringComparison.Ordinal));
+        Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId == "DEL-CLASS-PROP-IF-COMPLETE-001");
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "MethodReturnTypeProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "PublicMethodReturnTypeProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ParameterProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "PrivateMethodParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "NamedArgumentMethodParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "OptionalParameterDefaultedMethodShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ParamsMethodParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "PublicMethodParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "LocalFunctionParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "NamedArgumentLocalFunctionParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "OptionalParameterDefaultedLocalFunctionShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "IndexerParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "NamedArgumentIndexerParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DelegateParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "MethodGroupDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "LambdaDelegateParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DelegateInvocationChainParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ExtensionReceiverNonFirstParameterShrinkProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "PublicParameterProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "InterfaceMethodProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "InterfacePropertyProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "InterfaceEventProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "InterfaceIndexerProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DelegateProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ExtensionReceiverProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "BaseTypeProposalRule", StringComparison.Ordinal));
+        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "GenericTypeArgumentProposalRule", StringComparison.Ordinal));
 
         Assert.Contains(rules.Markers, rule => markRuleType.IsAssignableFrom(rule.GetType()));
         Assert.Contains(rules.Propagators, rule => propagateRuleType.IsAssignableFrom(rule.GetType()));
@@ -4756,17 +4779,17 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.DoesNotContain(
           typeof(RuleRegistry).Assembly.GetTypes(),
           type => type.Name.EndsWith("RuleSet", StringComparison.Ordinal) &&
-            (type.Name.StartsWith("Class", StringComparison.Ordinal) ||
-             type.Name.StartsWith("SObject", StringComparison.Ordinal)));
-        Assert.Contains(rules.Markers, rule => rule is SObjectIdentifierNameMarkRule);
-        Assert.Contains(rules.Markers, rule => rule is ClassTypeSyntaxMarkRule);
+            (type.Name.StartsWith("Type", StringComparison.Ordinal) ||
+             type.Name.StartsWith("Target", StringComparison.Ordinal)));
+        Assert.Contains(rules.Markers, rule => rule is AtomicIdentifierNameMarkRule);
+        Assert.Contains(rules.Markers, rule => rule is TypeSyntaxMarkRule);
         Assert.DoesNotContain(
           rules.Markers.Cast<object>()
             .Concat(rules.Propagators)
             .Concat(rules.Lifters)
             .Concat(rules.Proposers),
-          rule => rule.GetType().Name.StartsWith("DeleteClass", StringComparison.Ordinal) ||
-            rule.GetType().Name.StartsWith("DeleteSObject", StringComparison.Ordinal));
+          rule => rule.GetType().Name.StartsWith("Delete", StringComparison.Ordinal) ||
+            rule.GetType().Name.StartsWith("Delete", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -4805,37 +4828,37 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_Assembly_DoesNotExposeLegacyDeleteSObjectPropagationHelpers()
+    public void RuleRegistry_Assembly_DoesNotExposeLegacyAtomicPropagationHelpers()
     {
         var assembly = typeof(RuleRegistry).Assembly;
 
-        Assert.Null(assembly.GetType("NLISSN.Rules.DeleteSObjectPropagationState"));
+        Assert.Null(assembly.GetType("NLISSN.Rules.PropagationState"));
         Assert.Null(assembly.GetType("NLISSN.Rules.LogicalConditionPropagationStep"));
         Assert.Null(assembly.GetType("NLISSN.Rules.SymbolReferencePropagationStep"));
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_WhenDisabledRuleTypeProvided_FiltersMatchingClassOnly()
+    public void RuleRegistry_CreateDefaultRules_WhenDisabledRuleTypeProvided_FiltersMatchingTypeOnly()
     {
-        var rules = RuleRegistry.CreateDefaultRules(new[] { "SObjectMemberAccessMarkRule" });
+        var rules = RuleRegistry.CreateDefaultRules(new[] { "AtomicMemberAccessMarkRule" });
 
         Assert.DoesNotContain(
           rules.Markers,
-          rule => string.Equals(rule.GetType().Name, "SObjectMemberAccessMarkRule", StringComparison.Ordinal));
+          rule => string.Equals(rule.GetType().Name, "AtomicMemberAccessMarkRule", StringComparison.Ordinal));
         Assert.Contains(
           rules.Markers,
           rule => string.Equals(rule.GetType().Name, "UnreachableMethodMarkRule", StringComparison.Ordinal));
         Assert.Contains(
           rules.Propagators,
-          rule => string.Equals(rule.GetType().Name, "SObjectAssignmentLeftValuePropagationRule", StringComparison.Ordinal));
+          rule => string.Equals(rule.GetType().Name, "AssignmentLeftValuePropagationRule", StringComparison.Ordinal));
         Assert.NotEmpty(rules.CompileRuleGraph().Nodes);
     }
 
     [Fact]
-    public void AnalyzeFromArgs_WhenDisabledRuleTypeProvided_DisablesOnlyMatchingClass()
+    public void AnalyzeFromArgs_WhenDisabledRuleTypeProvided_DisablesOnlyMatchingType()
     {
         var host = new  CommandHost(
-          RuleRegistry.CreateDefaultRules(new[] { "SObjectMemberAccessMarkRule" }));
+          RuleRegistry.CreateDefaultRules(new[] { "AtomicMemberAccessMarkRule" }));
 
         var result = host.AnalyzeFromArgs(new[]
         {
@@ -4851,15 +4874,15 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_DeleteSObjectMarkRulesHaveUniqueRuleIds()
+    public void RuleRegistry_CreateDefaultRules_AtomicMarkRulesHaveUniqueRuleIds()
     {
         var rules = RuleRegistry.CreateDefaultRules();
-        var deleteSObjectMarkRules = GetDeleteSObjectMarkRules(rules);
+        var deleteTargetMarkRules = GetAtomicMarkRules(rules);
 
-        Assert.True(deleteSObjectMarkRules.Count >= 10);
+        Assert.True(deleteTargetMarkRules.Count >= 10);
         Assert.Equal(
-          deleteSObjectMarkRules.Count,
-          deleteSObjectMarkRules
+          deleteTargetMarkRules.Count,
+          deleteTargetMarkRules
             .Select(rule => rule.RuleId)
             .Distinct(StringComparer.Ordinal)
             .Count());
@@ -4972,20 +4995,19 @@ public sealed class PipelineComponentTests : IDisposable
         return builder.ToString();
     }
 
-    private static IReadOnlyList<RuleDefinitionMark> GetDeleteSObjectMarkRules( RulePipeline? rules = null)
+    private static IReadOnlyList<RuleDefinitionMark> GetAtomicMarkRules( RulePipeline? rules = null)
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
-          .Where(rule => rule.Produces.Outputs.Any(output => output.SemanticTag.Value == "Target.Atomic"))
+          .Where(rule => rule.RuleId.StartsWith("DEL-SOBJ-MARK-", StringComparison.Ordinal))
           .ToList();
     }
 
-    private static IReadOnlyList<RuleDefinitionMark> GetDeleteClassMarkRules( RulePipeline? rules = null)
+    private static IReadOnlyList<RuleDefinitionMark> GetDeclarationMarkRules( RulePipeline? rules = null)
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
-          .Where(rule => rule.Produces.Outputs.Any(output =>
-            output.SemanticTag.Value.StartsWith("Class.", StringComparison.Ordinal)))
+          .Where(rule => rule.RuleId.StartsWith("DEL-CLASS-MARK-", StringComparison.Ordinal))
           .ToList();
     }
 
@@ -4998,7 +5020,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
             new[] { SyntaxKind.SimpleMemberAccessExpression };
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             _ = context;
             var memberAccess = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>().Single();
@@ -5016,7 +5038,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
             new[] { SyntaxKind.SimpleMemberAccessExpression };
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             _ = context;
             _ = root;
@@ -5036,17 +5058,23 @@ public sealed class PipelineComponentTests : IDisposable
 
         public List<int> ItemCounts { get; } = new();
 
+        public List<int> DependencyGraphMaxDegrees { get; } = new();
+
+        public List<int> SelectOrderedMaxDegrees { get; } = new();
+
         public void Reset()
         {
             InvocationCount = 0;
             ItemCounts.Clear();
+            DependencyGraphMaxDegrees.Clear();
+            SelectOrderedMaxDegrees.Clear();
         }
 
         public async Task<IReadOnlyList<TResult>> SelectOrderedAsync<TResult>(int itemCount, int maxDegreeOfParallelism, Func<int, CancellationToken, Task<TResult>> workItem, CancellationToken cancellationToken)
         {
-            _ = maxDegreeOfParallelism;
             InvocationCount++;
             ItemCounts.Add(itemCount);
+            SelectOrderedMaxDegrees.Add(maxDegreeOfParallelism);
 
             var results = new TResult[itemCount];
             for (var index = 0; index < itemCount; index++)
@@ -5086,6 +5114,7 @@ public sealed class PipelineComponentTests : IDisposable
         public Task<DependencyExecutionResult<TNode, TResult>> RunDependencyGraphAsync<TNode, TResult>(IReadOnlyList<DependencyWorkItem<TNode, TResult>> workItems, int maxDegreeOfParallelism, IComparer<TNode> readyOrder, CancellationToken cancellationToken = default)
             where TNode : notnull
         {
+            DependencyGraphMaxDegrees.Add(maxDegreeOfParallelism);
             return _inner.RunDependencyGraphAsync(workItems, maxDegreeOfParallelism, readyOrder, cancellationToken);
         }
     }
@@ -5099,7 +5128,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
             new[] { SyntaxKind.ClassDeclaration };
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             var executionOptions = context.Runtime.ExecutionOptions;
             if (executionOptions.EffectiveMaxDegreeOfParallelism != 3 ||
@@ -5109,23 +5138,23 @@ public sealed class PipelineComponentTests : IDisposable
                 yield break;
             }
 
-            var classDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().Single();
+            var typeDeclaration = root.DescendantNodes().OfType<ClassDeclarationSyntax>().Single();
             yield return new MarkRecord(
               RuleId,
-              classDeclaration,
+              typeDeclaration,
               null,
               null,
               $"mdop={executionOptions.EffectiveMaxDegreeOfParallelism};group={executionOptions.EnableGroupParallelism};helper={executionOptions.EnableHelperParallelism}");
         }
     }
 
-    private sealed class ParallelClassMarkRule : RuleDefinitionMark
+    private sealed class ParallelTypeMarkRule : RuleDefinitionMark
     {
-        private readonly string _className;
-        public ParallelClassMarkRule(string ruleId, string className)
+        private readonly string _typeName;
+        public ParallelTypeMarkRule(string ruleId, string typeName)
         {
             RuleId = ruleId;
-            _className = className;
+            _typeName = typeName;
         }
 
         public override string RuleId { get; }
@@ -5139,32 +5168,32 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
             new[] { SyntaxKind.MethodDeclaration };
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             _ = context;
-            var classDeclaration = root.DescendantNodes()
+            var typeDeclaration = root.DescendantNodes()
               .OfType<ClassDeclarationSyntax>()
-              .Single(candidate => string.Equals(candidate.Identifier.ValueText, _className, StringComparison.Ordinal));
-            var method = classDeclaration.Members.OfType<MethodDeclarationSyntax>().Single();
+              .Single(candidate => string.Equals(candidate.Identifier.ValueText, _typeName, StringComparison.Ordinal));
+            var method = typeDeclaration.Members.OfType<MethodDeclarationSyntax>().Single();
             yield return new MarkRecord(
               RuleId,
               method,
               null,
               null,
-              $"Seed {_className}",
+              $"Seed {_typeName}",
               SemanticTag: CreateSemanticTag(RuleId));
         }
     }
 
-    private sealed class ConcurrentClassMarkRule : RuleDefinitionMark
+    private sealed class ConcurrentTypeMarkRule : RuleDefinitionMark
     {
-        private readonly string _className;
+        private readonly string _typeName;
         private readonly ConcurrentRuleProbe _probe;
 
-        public ConcurrentClassMarkRule(string ruleId, string className, ConcurrentRuleProbe probe)
+        public ConcurrentTypeMarkRule(string ruleId, string typeName, ConcurrentRuleProbe probe)
         {
             RuleId = ruleId;
-            _className = className;
+            _typeName = typeName;
             _probe = probe;
         }
 
@@ -5176,16 +5205,16 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
             new[] { SyntaxKind.ClassDeclaration };
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             _ = context;
             _probe.Enter();
             try
             {
-                var classDeclaration = root.DescendantNodes()
+                var typeDeclaration = root.DescendantNodes()
                   .OfType<ClassDeclarationSyntax>()
-                  .Single(candidate => string.Equals(candidate.Identifier.ValueText, _className, StringComparison.Ordinal));
-                yield return new MarkRecord(RuleId, classDeclaration, null, null, $"Seed {_className}");
+                  .Single(candidate => string.Equals(candidate.Identifier.ValueText, _typeName, StringComparison.Ordinal));
+                yield return new MarkRecord(RuleId, typeDeclaration, null, null, $"Seed {_typeName}");
             }
             finally
             {
@@ -5255,7 +5284,7 @@ public sealed class PipelineComponentTests : IDisposable
 
         public override string Name { get; } = "Emit duplicated propagated marks";
 
-        public override RuleConsumesContract Consumes => CreateSObjectAtomicConsumes();
+        public override RuleConsumesContract Consumes => CreateTargetAtomicConsumes();
 
         public override RuleProducesContract Produces =>
           CreateSyntaxProduces(new[] { SyntaxKind.IfStatement }, IfSemanticTag);
@@ -5263,7 +5292,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IfStatement };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             var ifStatement = context.Root.DescendantNodes().OfType<IfStatementSyntax>().Single();
             var source = Assert.Single(seedMarks);
@@ -5293,7 +5322,7 @@ public sealed class PipelineComponentTests : IDisposable
 
         public override string Name { get; } = "Propagate initializer marks to declarators";
 
-        public override RuleConsumesContract Consumes => CreateSObjectAtomicConsumes();
+        public override RuleConsumesContract Consumes => CreateTargetAtomicConsumes();
 
         public override RuleProducesContract Produces =>
           CreateSyntaxProduces(new[] { SyntaxKind.VariableDeclarator }, DeclaratorSemanticTag);
@@ -5301,7 +5330,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.VariableDeclarator };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             _ = context;
             foreach (var seedMark in seedMarks)
@@ -5349,7 +5378,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IdentifierName };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             var declaratorMark = seedMarks.FirstOrDefault(mark =>
               mark.SyntaxNode is VariableDeclaratorSyntax variableDeclarator &&
@@ -5408,7 +5437,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.ReturnStatement };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             var ifMarks = seedMarks.Where(mark => mark.SyntaxNode is IfStatementSyntax).ToArray();
             var ifMark = Assert.Single(ifMarks);
@@ -5445,15 +5474,15 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.MethodDeclaration };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             _ = context;
             var seedMark = Assert.Single(seedMarks);
             var method = Assert.IsType<MethodDeclarationSyntax>(seedMark.SyntaxNode);
-            var classDeclaration = Assert.IsType<ClassDeclarationSyntax>(method.Parent);
+            var typeDeclaration = Assert.IsType<ClassDeclarationSyntax>(method.Parent);
             yield return new PropagatedMarkRecord(
               RuleId,
-              new MarkRecord(RuleId, method, null, null, $"Propagate {classDeclaration.Identifier.ValueText}"),
+              new MarkRecord(RuleId, method, null, null, $"Propagate {typeDeclaration.Identifier.ValueText}"),
               seedMark,
               1);
         }
@@ -5466,12 +5495,12 @@ public sealed class PipelineComponentTests : IDisposable
 
         public override string Name { get; } = "Require a rule-scoped structure view during propagation";
 
-        public override RuleConsumesContract Consumes => CreateSObjectAtomicConsumes();
+        public override RuleConsumesContract Consumes => CreateTargetAtomicConsumes();
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
             new[] { SyntaxKind.IfStatement };
 
-        public override IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+        public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
         {
             var structureView = context.StructureView;
             Assert.NotNull(structureView);
@@ -5504,15 +5533,15 @@ public sealed class PipelineComponentTests : IDisposable
         public override RuleConsumesContract Consumes => new(new[]
         {
             new RuleConsumedSyntax(
-                SObjectPropagationRuleBase.AtomicTargetNodeKinds,
-                new RuleSemanticTag("Target.Atomic")),
+                ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds,
+                RuleFactPorts.TargetExpression),
             new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement }, IfSemanticTag)
         });
 
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
             new[] { SyntaxKind.ReturnStatement };
 
-        public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+        public override IEnumerable<LiftedMarkRecord> Lift(ILiftRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
         {
             var structureView = context.StructureView;
             Assert.NotNull(structureView);
@@ -5562,7 +5591,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
             new[] { SyntaxKind.FileScopedNamespaceDeclaration };
 
-        public override IEnumerable<LiftedMarkRecord> Lift(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+        public override IEnumerable<LiftedMarkRecord> Lift(ILiftRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
         {
             _ = context;
             _ = propagatedMarks;
@@ -5578,11 +5607,11 @@ public sealed class PipelineComponentTests : IDisposable
         }
     }
 
-    private sealed class ClassDecisionRule : RuleDefinitionPropose
+    private sealed class DeclarationDecisionRule : RuleDefinitionPropose
     {
         private readonly string _seedRuleId;
 
-        public ClassDecisionRule(string ruleId, string seedRuleId)
+        public DeclarationDecisionRule(string ruleId, string seedRuleId)
         {
             RuleId = ruleId;
             _seedRuleId = seedRuleId;
@@ -5604,16 +5633,16 @@ public sealed class PipelineComponentTests : IDisposable
         public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
             new[] { SyntaxKind.ClassDeclaration };
 
-        public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
+        public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
         {
             _ = context;
             _ = propagatedMarks;
             _ = liftedMarks;
             var seedMark = Assert.Single(seedMarks);
-            var classDeclaration = seedMark.SyntaxNode.Ancestors().OfType<ClassDeclarationSyntax>().Single();
+            var typeDeclaration = seedMark.SyntaxNode.Ancestors().OfType<ClassDeclarationSyntax>().Single();
             var fragment = DecisionCpgFactory.CreateFragment(
               $"fragment:{RuleId}",
-              classDeclaration,
+              typeDeclaration,
               "anchor",
               DecisionActionKind.Delete);
             var unitNode = DecisionCpgFactory.CreateUnit(
@@ -5627,7 +5656,7 @@ public sealed class PipelineComponentTests : IDisposable
               unitNode,
               new[] { fragment },
               new[] { DecisionCpgFactory.CreateContainment(unitNode, fragment) },
-              DecisionCpgFactory.CreateSyntaxBindings((fragment, classDeclaration)),
+              DecisionCpgFactory.CreateSyntaxBindings((fragment, typeDeclaration)),
               reason: $"Delete {RuleId}");
         }
     }
@@ -5657,11 +5686,11 @@ public sealed class PipelineComponentTests : IDisposable
         });
     }
 
-    private static RuleConsumesContract CreateSObjectAtomicConsumes()
+    private static RuleConsumesContract CreateTargetAtomicConsumes()
     {
         return CreateSyntaxConsumes(
-          SObjectPropagationRuleBase.AtomicTargetNodeKinds,
-          new RuleSemanticTag("Target.Atomic"));
+          ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds,
+          RuleFactPorts.TargetExpression);
     }
 
     private static void AssertEquivalentAnalysisResults(PrototypeAnalysisResult expected, PrototypeAnalysisResult actual)
@@ -5754,7 +5783,7 @@ public sealed class PipelineComponentTests : IDisposable
 
         public Task FastFileEntered => _fastFileEntered.Task;
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             var fileName = Path.GetFileName(root.SyntaxTree.FilePath);
             if (string.Equals(fileName, "A.Slow.cs", StringComparison.Ordinal))

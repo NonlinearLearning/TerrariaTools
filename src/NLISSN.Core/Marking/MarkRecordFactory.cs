@@ -11,7 +11,8 @@ public static class MarkRecordFactory
       SyntaxNode syntaxNode,
       string reason,
       RuleOutputKind? outputKind = null,
-      RuleSemanticTag? semanticTag = null)
+      RuleSemanticTag? semanticTag = null,
+      RuleEvidenceOrigin origins = RuleEvidenceOrigin.None)
     {
         return new MarkRecord(
           ruleId,
@@ -20,6 +21,7 @@ public static class MarkRecordFactory
           null,
           reason,
           OutputKind: outputKind,
-          SemanticTag: semanticTag);
+          SemanticTag: semanticTag,
+          Origins: origins);
     }
 }

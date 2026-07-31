@@ -18,11 +18,6 @@ internal sealed class DirectoryAnalysisService
         _pipeline = pipeline;
     }
 
-    internal PrototypeAnalysisResult AnalyzeDirectory(string directoryPath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
-    {
-        return AnalyzeDirectoryAsync(directoryPath, options, runtime).GetAwaiter().GetResult();
-    }
-
     internal async Task<PrototypeAnalysisResult> AnalyzeDirectoryAsync(string directoryPath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
     {
         var filePaths = EnumerateSourceFiles(directoryPath).ToList();

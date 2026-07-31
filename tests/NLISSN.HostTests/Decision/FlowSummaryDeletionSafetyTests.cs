@@ -44,7 +44,7 @@ public sealed class FlowSummaryDeletionSafetyTests
             1,
             new ExternalSummaryFlowPayload(resolved));
 
-        var decisions = new ClassDefaultRemovalProposalRule().Propose(
+        var decisions = new DefaultRemovalProposalRule().Propose(
             null!,
             new[] { seed },
             new[] { propagated },

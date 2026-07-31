@@ -1,6 +1,8 @@
 using NLCPG.Analysis;
+using NL.Concurrency;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Propagation;
@@ -14,7 +16,7 @@ public sealed class PropagationEngine
       IReadOnlyList<MarkRecord> inputMarks)
     {
         var ruleContext = BuildRuleContext(context, inputMarks);
-        var results = rule.Propagate(ruleContext, inputMarks)
+        var results = rule.Propagate(ruleContext.CreatePropagationRuleContext(), inputMarks)
           .Select(candidate =>
           {
               var tagged = candidate with
@@ -22,6 +24,7 @@ public sealed class PropagationEngine
                   Mark = MarkingEngine.BindDeclaredSemanticTag(rule.Produces, candidate.Mark)
               };
               ValidatePropagateNode(rule, tagged.Mark.SyntaxNode);
+              ValidatePropagationPayload(rule, tagged.Payload);
               MarkingEngine.ValidateProducedSyntax(rule.Produces, tagged.Mark);
               return BindPropagatedMarkRecord(ruleContext, tagged);
           })
@@ -55,13 +58,11 @@ public sealed class PropagationEngine
         var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
           .Select(node => new RuleStructureContractGraphNode(
             node.NodeId,
-            node.Kind,
             RuleConsumesContract.Empty,
             new RuleProducesContract(node.ProducedSyntax)))
           .Concat(rules
           .Select(rule => new RuleStructureContractGraphNode(
-            rule.NodeId,
-            RuleKind.Propagate,
+            RuleNodeId.For(RuleKind.Propagate, rule.RuleId),
             rule.Consumes,
             rule.Produces)))
           .ToList());
@@ -69,7 +70,7 @@ public sealed class PropagationEngine
         {
             IReadOnlyList<RuleDependency> dependencies = rule.Consumes.Inputs.Count > 0
               ? contractGraph.Edges
-                .Where(edge => edge.Consumer == rule.NodeId)
+                .Where(edge => edge.Consumer == RuleNodeId.For(RuleKind.Propagate, rule.RuleId))
                 .Select(edge => new RuleDependency(edge.Producer, edge.Input))
                 .ToList()
               : Array.Empty<RuleDependency>();
@@ -78,8 +79,7 @@ public sealed class PropagationEngine
               RuleKind.Propagate,
               dependencies)
             {
-              ProducedSyntax = rule.Produces.Outputs,
-              ConsumedSyntax = rule.Consumes.Inputs
+              ProducedSyntax = rule.Produces.Outputs
             };
         }).ToList();
         var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
@@ -97,10 +97,13 @@ public sealed class PropagationEngine
                   ExecuteRule(context, rule, GetInputMarks(node, inputs)))));
           }))
           .ToList();
+        var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
+          context.Runtime.ExecutionOptions.EnableGroupParallelism,
+          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
         var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
-            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            graphDegree,
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
@@ -119,9 +122,10 @@ public sealed class PropagationEngine
 
     private static PropagatedMarkRecord BindPropagatedMarkRecord(RuleContext context, PropagatedMarkRecord candidate)
     {
+        var origins = candidate.Mark.Origins | candidate.SourceMark.Origins;
         return candidate with
         {
-            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark),
+            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark with { Origins = origins }),
             SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark)
         };
     }
@@ -139,6 +143,17 @@ public sealed class PropagationEngine
           $"Rule '{rule.RuleId}' emitted unsupported propagate node kind '{nodeKind}'. Allowed propagate node kinds: {allowedKinds}.");
     }
 
+    private static void ValidatePropagationPayload(RuleDefinitionPropagate rule, object? payload)
+    {
+        if (payload is not ILiftPayload)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+          $"Rule '{rule.RuleId}' emitted a Lift-owned structural payload from Propagate.");
+    }
+
     private static RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> marks)
     {
         var fragments = marks
@@ -150,7 +165,7 @@ public sealed class PropagationEngine
             return context;
         }
 
-        var query = context.StructureViews.QueryStructureView(
+        var query = context.QueryStructureView(
           fragments,
           CpgRelationProfile.StructuralContainment,
           CpgQueryDirection.Bidirectional,
@@ -160,7 +175,7 @@ public sealed class PropagationEngine
             return context;
         }
 
-        return context.StructureViews.WithStructureView(query.View);
+        return context.WithStructureView(query.View);
     }
 
     private static RuleNodeResult CreateSourceResult(RuleGraphNode node, IReadOnlyList<MarkRecord> seedMarks)

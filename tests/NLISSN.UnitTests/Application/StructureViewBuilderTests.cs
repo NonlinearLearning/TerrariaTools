@@ -6,7 +6,7 @@ using NLISSN.Core.Analysis;
 using NLCPG.Builder;
 using NLCPG.Contracts;
 using NLCPG.Model;
-using RoslynPrototype.Tests.TestCodeSet.SObject;
+using RoslynPrototype.Tests.TestCodeSet.Target;
 using NLISSN.Rules;
 using Xunit;
 
@@ -126,7 +126,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void Build_ForSingleFragment_CopiesMainGraphNodesAndEdgesInsideFragment()
     {
-        var source = SObjectExpressionSources.ReturnExpressionSource;
+        var source = AtomicExpressionSources.ReturnExpressionSource;
         var (context, root) = CreateAnalysisContext(source, "structure-view-single-fragment.cs");
         var memberAccess = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>().Single();
         var expectedNodeIds = ResolveGraphNodeIdsInside(context, memberAccess);
@@ -148,7 +148,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void Build_ForMultipleFragments_CopiesMainGraphNodesAndConnectsFragments()
     {
-        var source = SObjectExpressionSources.TargetNameSource;
+        var source = AtomicExpressionSources.AtomicNameSource;
         var (context, root) = CreateAnalysisContext(source, "structure-view-multiple-fragments.cs");
         var declarator = root.DescendantNodes().OfType<VariableDeclaratorSyntax>().Single();
         var memberAccess = root.DescendantNodes()
@@ -198,7 +198,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void Build_ForSameFragments_ReusesCachedViewWithinAnalysisContext()
     {
-        var source = SObjectExpressionSources.TargetNameSource;
+        var source = AtomicExpressionSources.AtomicNameSource;
         var (context, root) = CreateAnalysisContext(source, "structure-view-cache.cs");
         var declarator = root.DescendantNodes().OfType<VariableDeclaratorSyntax>().Single();
         var memberAccess = root.DescendantNodes()
@@ -215,7 +215,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void Build_AfterRuntimeCacheInvalidation_DoesNotReuseCachedView()
     {
-        var source = SObjectExpressionSources.TargetNameSource;
+        var source = AtomicExpressionSources.AtomicNameSource;
         var (context, root) = CreateAnalysisContext(source, "structure-view-cache-epoch.cs");
         var declarator = root.DescendantNodes().OfType<VariableDeclaratorSyntax>().Single();
         var memberAccess = root.DescendantNodes()
@@ -231,12 +231,12 @@ public sealed class StructureViewBuilderTests
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
             runtime: runtime.InvalidateCaches());
 
-        var firstView = firstRuleContext.StructureViews.BuildStructureView(
+        var firstView = firstRuleContext.BuildStructureView(
             new SyntaxNode[] { declarator, memberAccess },
             CpgRelationProfile.StructuralContainment,
             CpgQueryDirection.Bidirectional,
             new NLCPGTraversalBudget(16, 1, 1, 4096, 8192));
-        var secondView = secondRuleContext.StructureViews.BuildStructureView(
+        var secondView = secondRuleContext.BuildStructureView(
             new SyntaxNode[] { declarator, memberAccess },
             CpgRelationProfile.StructuralContainment,
             CpgQueryDirection.Bidirectional,
@@ -248,7 +248,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void Build_ForSameFragmentsDifferentOrder_UsesRequestedFirstFragmentAsRoot()
     {
-        var source = SObjectExpressionSources.TargetNameSource;
+        var source = AtomicExpressionSources.AtomicNameSource;
         var (context, root) = CreateAnalysisContext(source, "structure-view-cache-order.cs");
         var declarator = root.DescendantNodes().OfType<VariableDeclaratorSyntax>().Single();
         var memberAccess = root.DescendantNodes()
@@ -267,7 +267,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void Build_ForRepeatedRequests_ReusesCachedViewForTheSameFragmentOrder()
     {
-        var source = SObjectExpressionSources.TargetNameSource;
+        var source = AtomicExpressionSources.AtomicNameSource;
         var (context, root) = CreateAnalysisContext(source, "structure-view-cache-telemetry.cs");
         var declarator = root.DescendantNodes().OfType<VariableDeclaratorSyntax>().Single();
         var memberAccess = root.DescendantNodes()
@@ -393,7 +393,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void AnalyzeBinaryExpression_ReturnsAffectedSyntaxTreeOnly()
     {
-        var source = SObjectLogicalSources.LogicalAndConditionSource;
+        var source = AtomicLogicalSources.LogicalAndConditionSource;
         var (context, root) = CreateAnalysisContext(source, "binary-structure-members.cs");
         var binaryExpression = root.DescendantNodes()
             .OfType<BinaryExpressionSyntax>()
@@ -412,7 +412,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void AnalyzeMarkRegion_ForMemberAccess_UsesContainingStatementAsRegion()
     {
-        var source = SObjectExpressionSources.TargetNameSource;
+        var source = AtomicExpressionSources.AtomicNameSource;
         var (context, root) = CreateAnalysisContext(source, "mark-region-statement.cs");
         var memberAccess = root.DescendantNodes()
             .OfType<MemberAccessExpressionSyntax>()
@@ -431,7 +431,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void AnalyzePropagationRegion_ForConditionMemberAccess_UsesContainingControlStatement()
     {
-        var source = SObjectLogicalSources.LogicalAndConditionSource;
+        var source = AtomicLogicalSources.LogicalAndConditionSource;
         var (context, root) = CreateAnalysisContext(source, "propagation-region-if.cs");
         var memberAccess = root.DescendantNodes()
             .OfType<MemberAccessExpressionSyntax>()
@@ -450,7 +450,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void AnalyzeIfStructure_ForHeadIf_ExposesElseIfTail()
     {
-        var source = SObjectControlFlowSources.IfElseIfElseSource;
+        var source = AtomicControlFlowSources.IfElseIfElseSource;
         var (context, root) = CreateAnalysisContext(source, "if-structure-head.cs");
         var ifStatement = root.DescendantNodes().OfType<IfStatementSyntax>().First();
 
@@ -465,7 +465,7 @@ public sealed class StructureViewBuilderTests
     [Fact]
     public void AnalyzeIfStructure_ForElseIf_UsesElseIfVariant()
     {
-        var source = SObjectControlFlowSources.ElseIfElseSource;
+        var source = AtomicControlFlowSources.ElseIfElseSource;
         var (context, root) = CreateAnalysisContext(source, "if-structure-elseif.cs");
         var elseIfStatement = root.DescendantNodes()
             .OfType<IfStatementSyntax>()

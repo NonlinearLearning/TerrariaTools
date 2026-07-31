@@ -33,7 +33,7 @@ public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
     Array.Empty<SyntaxKind>();
 
   // 为已证明无剩余引用的私有方法声明直接生成删除决策。
-  public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
+  public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
   {
     _ = context;
     _ = propagatedMarks;

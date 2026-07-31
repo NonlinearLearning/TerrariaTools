@@ -5,13 +5,13 @@ using Microsoft.CodeAnalysis.Operations;
 using NLISSN.Core.Analysis;
 using NLISSN.Rules;
 
-namespace NLISSN.Core.Marking;
+namespace NLISSN.Rules;
 
 /// 缓存同一分析内的语义绑定和目标匹配事实，保证原子标记规则使用一致证据。
-public static class DeleteSObjectMarkRuleHelpers
+public static class AtomicMarkRuleHelpers
 {
     // 在允许的原子表达式里筛出确实以目标为根、且拥有 CPG 绑定的最小 seed mark。
-    public static IEnumerable<MarkRecord> BuildExpressionMarks(RuleContext context, SyntaxNode root, string ruleId, IReadOnlyCollection<SyntaxKind> allowedKinds)
+    public static IEnumerable<MarkRecord> BuildExpressionMarks(IMarkRuleContext context, SyntaxNode root, string ruleId, IReadOnlyCollection<SyntaxKind> allowedKinds)
     {
         var targetNames = ParseTargetNames(context);
         if (targetNames.DisplayNames.Count == 0)
@@ -53,7 +53,7 @@ public static class DeleteSObjectMarkRuleHelpers
     }
 
     // 把目标名称命中的变量定义点直接标记为 declarator，供局部定义传播复用。
-    public static IEnumerable<MarkRecord> BuildDefinitionLeftValueMarks(RuleContext context, SyntaxNode root, string ruleId)
+    public static IEnumerable<MarkRecord> BuildDefinitionLeftValueMarks(IMarkRuleContext context, SyntaxNode root, string ruleId)
     {
         var targetNames = ParseTargetNames(context);
         if (targetNames.DisplayNames.Count == 0)
@@ -83,7 +83,7 @@ public static class DeleteSObjectMarkRuleHelpers
         return FinalizeMarks(marks);
     }
 
-    private static TargetNameDescriptor ParseTargetNames(RuleContext context)
+    private static NameDescriptor ParseTargetNames(IMarkRuleContext context)
     {
         return context.GetTargetNameDescriptor();
     }
@@ -97,7 +97,7 @@ public static class DeleteSObjectMarkRuleHelpers
           .ToList();
     }
 
-    private static bool HasRootedObjectAncestorInRegion(RuleContext context, ExpressionSyntax expression, TargetNameDescriptor targetNames, MarkCodeRegion markRegion)
+    private static bool HasRootedObjectAncestorInRegion(IMarkRuleContext context, ExpressionSyntax expression, NameDescriptor targetNames, MarkCodeRegion markRegion)
     {
         foreach (var ancestor in expression.Ancestors().OfType<ExpressionSyntax>())
         {
@@ -129,7 +129,7 @@ public static class DeleteSObjectMarkRuleHelpers
         return false;
     }
 
-    private static bool IsRootedAtTarget(RuleContext context, ExpressionSyntax expression, TargetNameDescriptor targetNames)
+    private static bool IsRootedAtTarget(IMarkRuleContext context, ExpressionSyntax expression, NameDescriptor targetNames)
     {
         return context.GetCachedTargetMatch(expression, targetNames, () =>
         {
@@ -144,7 +144,7 @@ public static class DeleteSObjectMarkRuleHelpers
         });
     }
 
-    private static bool ReferencesTarget(IOperation operation, TargetNameDescriptor targetNames)
+    private static bool ReferencesTarget(IOperation operation, NameDescriptor targetNames)
     {
         if (operation is ILocalReferenceOperation localReference &&
             targetNames.Lookup.Contains(localReference.Local.Name))
@@ -206,7 +206,7 @@ public static class DeleteSObjectMarkRuleHelpers
         return false;
     }
 
-    private static bool LiteralMatchesTarget(ILiteralOperation literalOperation, TargetNameDescriptor targetNames)
+    private static bool LiteralMatchesTarget(ILiteralOperation literalOperation, NameDescriptor targetNames)
     {
         if (!literalOperation.ConstantValue.HasValue)
         {
@@ -221,7 +221,7 @@ public static class DeleteSObjectMarkRuleHelpers
         };
     }
 
-    private static bool ReferencesTargetMemberBinding(RuleContext context, MemberBindingExpressionSyntax memberBinding, TargetNameDescriptor targetNames)
+    private static bool ReferencesTargetMemberBinding(IMarkRuleContext context, MemberBindingExpressionSyntax memberBinding, NameDescriptor targetNames)
     {
         var symbol = context.SemanticModel.GetSymbolInfo(memberBinding).Symbol;
         if (symbol is null)
@@ -232,7 +232,7 @@ public static class DeleteSObjectMarkRuleHelpers
         return targetNames.Lookup.Contains(symbol.Name);
     }
 
-    private static bool IsTargetInstanceReference(IInstanceReferenceOperation instanceReference, TargetNameDescriptor targetNames)
+    private static bool IsTargetInstanceReference(IInstanceReferenceOperation instanceReference, NameDescriptor targetNames)
     {
         return instanceReference.Syntax switch
         {
@@ -242,7 +242,7 @@ public static class DeleteSObjectMarkRuleHelpers
         };
     }
 
-    private static bool HasCpgNodeInRegion(RuleContext context, ExpressionSyntax expression, MarkCodeRegion markRegion)
+    private static bool HasCpgNodeInRegion(IMarkRuleContext context, ExpressionSyntax expression, MarkCodeRegion markRegion)
     {
         return context.ContainsPrimaryGraphNodeInRegion(expression, markRegion.Span);
     }

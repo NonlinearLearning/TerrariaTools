@@ -6,7 +6,4 @@ namespace NLISSN.Rules;
 public sealed record DelegateComplexShrinkPlan(
   DelegateDeclarationSyntax DelegateDeclaration,
   DelegateDeclarationSyntax ReplacementDelegate,
-  IReadOnlyList<MethodRewrite> MethodRewrites,
-  IReadOnlyList<LocalFunctionRewrite> LocalFunctionRewrites,
-  IReadOnlyList<ExpressionRewrite> LambdaRewrites,
-  IReadOnlyList<InvocationRewrite> InvocationRewrites);
+  DelegateUsageSummary Usage);

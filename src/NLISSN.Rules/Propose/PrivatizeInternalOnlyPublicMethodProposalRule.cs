@@ -39,7 +39,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
       Array.Empty<SyntaxKind>();
 
     // 把仅内部使用的 public 方法改写为 private，并保留原有签名主体不变。
-    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = propagatedMarks;
@@ -53,11 +53,12 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
                 continue;
             }
 
-            yield return CreateMethodReplaceDecision(
+            yield return ReplaceDecisionFactory.CreateMethodReplaceDecision(
               RuleId,
               method,
               replacementMethod,
-              "Public method has no external references; change accessibility to private.");
+              "Public method has no external references; change accessibility to private.",
+              NLCPGDecisionRelationKind.AccessibilityToPrivate);
         }
     }
 
@@ -76,49 +77,4 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
         return true;
     }
 
-    private static DecisionUnit CreateMethodReplaceDecision(string ruleId, MethodDeclarationSyntax anchorNode, MethodDeclarationSyntax replacementNode, string reason)
-    {
-        var anchorFragment = CreateFragment(anchorNode, "anchor", DecisionActionKind.Replace);
-        var replacementFragment = CreateFragment(
-          replacementNode.WithoutTrivia(),
-          "replacement",
-          DecisionActionKind.Replace);
-        var unitNode = DecisionCpgFactory.CreateUnit(
-          ruleId,
-          DecisionActionKind.Replace,
-          anchorFragment,
-          reason: reason,
-          conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
-          mergeKey: DecisionCpgFactory.BuildNodeKey(anchorNode));
-
-        return new DecisionUnit(
-          ruleId,
-          DecisionActionKind.Replace,
-          unitNode,
-          new[] { anchorFragment, replacementFragment },
-          new[]
-          {
-        DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
-        DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
-        DecisionCpgFactory.CreateRelation(
-          NLCPGDecisionRelationKind.AccessibilityToPrivate,
-          anchorFragment,
-          replacementFragment)
-          },
-          DecisionCpgFactory.CreateSyntaxBindings(
-            (anchorFragment, anchorNode),
-            (replacementFragment, replacementNode.WithoutTrivia())),
-          conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
-          mergeKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
-          reason: reason);
-    }
-
-    private static NLCPGNode CreateFragment(SyntaxNode node, string role, DecisionActionKind action)
-    {
-        return DecisionCpgFactory.CreateFragment(
-          $"frag:{DecisionCpgFactory.BuildNodeKey(node)}",
-          node,
-          role,
-          action);
-    }
 }

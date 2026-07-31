@@ -4,10 +4,10 @@ using Microsoft.CodeAnalysis.Operations;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 
-namespace NLISSN.Core.Decision;
+namespace NLISSN.Rules;
 
 /// 从传播结果提取唯一的方法参数使用事实，并把语义操作还原为调用点改写。
-public static class DeleteClassMethodParameterUsageProposalHelpers
+public static class MethodParameterUsageProposalHelpers
 {
     // 提取指定方法参数使用模式下的唯一 payload，供方法签名收缩提案消费。
     public static IEnumerable<MethodParameterUsagePayload> EnumerateMethodPayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks, MethodParameterUsageMode mode)
@@ -35,7 +35,7 @@ public static class DeleteClassMethodParameterUsageProposalHelpers
     // 尝试生成删除目标参数后的方法声明替换节点。
     public static bool TryBuildReplacementMethod(MethodParameterUsagePayload payload, out MethodDeclarationSyntax replacementMethod)
     {
-        return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementMethod(
+        return ParameterShrinkAnalyzer.TryBuildReplacementMethod(
           payload.Method,
           payload.Parameter,
           out replacementMethod);
@@ -61,7 +61,7 @@ public static class DeleteClassMethodParameterUsageProposalHelpers
                 continue;
             }
 
-            yield return DeleteClassReplaceDecisionFactory.CreateInvocationReplaceDecision(
+            yield return ReplaceDecisionFactory.CreateInvocationReplaceDecision(
               ruleId,
               invocation,
               replacementInvocation,
@@ -76,7 +76,7 @@ public static class DeleteClassMethodParameterUsageProposalHelpers
         {
             case MethodParameterUsageMode.PrivatePositional:
             case MethodParameterUsageMode.PublicPositional:
-                return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementInvocation(
+                return ParameterShrinkAnalyzer.TryBuildReplacementInvocation(
                   invocation,
                   payload.ParameterIndex,
                   payload.Method.ParameterList.Parameters.Count,
@@ -84,7 +84,7 @@ public static class DeleteClassMethodParameterUsageProposalHelpers
 
             case MethodParameterUsageMode.NamedArgument:
                 return TryResolveInvocationOperation(compilation, invocation, out var namedInvocationOperation) &&
-                  DeleteClassParameterShrinkAnalyzer.TryBuildNamedArgumentReplacementInvocation(
+                  ParameterShrinkAnalyzer.TryBuildNamedArgumentReplacementInvocation(
                     invocation,
                     namedInvocationOperation,
                     parameterSymbol,
@@ -92,7 +92,7 @@ public static class DeleteClassMethodParameterUsageProposalHelpers
 
             case MethodParameterUsageMode.Optional:
                 if (!TryResolveInvocationOperation(compilation, invocation, out var optionalInvocationOperation) ||
-                    !DeleteClassParameterShrinkAnalyzer.TryBuildOptionalReplacementInvocation(
+                    !ParameterShrinkAnalyzer.TryBuildOptionalReplacementInvocation(
                       invocation,
                       optionalInvocationOperation,
                       parameterSymbol,

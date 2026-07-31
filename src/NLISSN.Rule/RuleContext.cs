@@ -7,23 +7,22 @@ using NLCPG.Analysis;
 using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Model;
 using NLISSN.Core.Analysis;
-using NLISSN.Core.Analysis.View;
 using NLISSN.Core.Decision;
 
 namespace NLISSN.Core.Pipeline;
 
 /// 规则执行时共享的最小上下文。
-public sealed class RuleContext :
-  IRuleOptions,
-  IRuleAnalysis,
-  IRuleGraphBinding,
-  IRuleStructureView
+public sealed class RuleContext
 {
     private readonly CpgAnalysisContext _analysisContext;
     private readonly IReadOnlyDictionary<string, string> _options;
     private readonly  AnalysisRuntime _runtime;
     private readonly MarkAnalysisSnapshot _markAnalysisSnapshot;
     private readonly AnalysisEvidenceCollector _evidence;
+    private readonly IMarkRuleContext _markRuleContext;
+    private readonly IPropagationRuleContext _propagationRuleContext;
+    private readonly ILiftRuleContext _liftRuleContext;
+    private readonly IProposeRuleContext _proposeRuleContext;
 
     // 绑定本次分析的源码上下文、运行时和可选结构视图，供规则阶段统一访问。
     public RuleContext(CpgAnalysisContext analysisContext, IReadOnlyDictionary<string, string> options, NLCPGStructureView? structureView = null,  AnalysisRuntime? runtime = null, MarkAnalysisSnapshot? markAnalysisSnapshot = null, AnalysisEvidenceCollector? evidence = null)
@@ -34,21 +33,27 @@ public sealed class RuleContext :
         _evidence = evidence ?? new AnalysisEvidenceCollector();
         _markAnalysisSnapshot = markAnalysisSnapshot ?? new MarkAnalysisSnapshot(analysisContext, _evidence);
         StructureView = structureView;
+        _markRuleContext = new MarkRuleContext(this);
+        _propagationRuleContext = new PropagationRuleContext(this);
+        _liftRuleContext = new LiftRuleContext(this);
+        _proposeRuleContext = new ProposeRuleContext(this);
     }
-
-    public IRuleOptions Options => this;
-
-    public IRuleAnalysis Analysis => this;
-
-    public IRuleGraphBinding GraphBinding => this;
-
-    public IRuleStructureView StructureViews => this;
 
     public NLCPGStructureView? StructureView { get; }
 
     public  AnalysisRuntime Runtime => _runtime;
 
     public AnalysisEvidenceCollector Evidence => _evidence;
+
+    public IMarkRuleContext CreateMarkRuleContext() => _markRuleContext;
+
+    public IPropagationRuleContext CreatePropagationRuleContext() => _propagationRuleContext;
+
+    public ILiftRuleContext CreateLiftRuleContext() => _liftRuleContext;
+
+    public IProposeRuleContext CreateProposeRuleContext() => _proposeRuleContext;
+
+    public ISemanticRuleContext CreateSemanticRuleContext() => _proposeRuleContext;
 
     // 解析并返回标准化后的目标名列表，供规则按同一名称集合匹配。
     public IReadOnlyList<string> GetNormalizedTargetNames()
@@ -59,7 +64,7 @@ public sealed class RuleContext :
     }
 
     // 返回带缓存键的目标名描述对象，避免不同规则重复拆分相同的选项值。
-    public TargetNameDescriptor GetTargetNameDescriptor()
+    public NameDescriptor GetTargetNameDescriptor()
     {
         return TryGetOption("target-name", out var targetName)
           ? _markAnalysisSnapshot.GetTargetNameDescriptor(targetName)
@@ -67,7 +72,7 @@ public sealed class RuleContext :
     }
 
     // 为指定语法节点缓存一次目标匹配判断，避免多条规则重复求值同一条件。
-    public bool GetCachedTargetMatch(SyntaxNode syntaxNode, TargetNameDescriptor targetNames, Func<bool> evaluate)
+    public bool GetCachedTargetMatch(SyntaxNode syntaxNode, NameDescriptor targetNames, Func<bool> evaluate)
     {
         return _markAnalysisSnapshot.GetTargetMatch(syntaxNode, targetNames, evaluate);
     }
@@ -184,7 +189,11 @@ public sealed class RuleContext :
     // 在逻辑条件内部解析目标命中、操作数组和优选标记宿主。
     public LogicalConditionMarkAnalysis AnalyzeLogicalCondition(ExpressionSyntax seedExpression, string targetName)
     {
-        return new LogicalConditionMarkAnalyzer().Analyze(seedExpression, targetName, _analysisContext);
+        return new LogicalConditionMarkAnalyzer().Analyze(
+          seedExpression,
+          targetName,
+          _analysisContext,
+          expression => _markAnalysisSnapshot.GetOperation(expression));
     }
 
     // 分析二元表达式链中的受影响语法节点集合。
@@ -248,6 +257,126 @@ public sealed class RuleContext :
     public NLCPGNode? FindGraphNodeById(NodeId nodeId)
     {
         return _analysisContext.Graph.GetNode(nodeId);
+    }
+
+    private sealed class MarkRuleContext : IMarkRuleContext
+    {
+        private readonly RuleContext _context;
+
+        public MarkRuleContext(RuleContext context)
+        {
+            _context = context;
+        }
+
+        public SemanticModel SemanticModel => _context.SemanticModel;
+
+        public AnalysisRuntime Runtime => _context.Runtime;
+
+        public IReadOnlyList<string> GetNormalizedTargetNames() => _context.GetNormalizedTargetNames();
+
+        public NameDescriptor GetTargetNameDescriptor() => _context.GetTargetNameDescriptor();
+
+        public bool GetCachedTargetMatch(
+          SyntaxNode syntaxNode,
+          NameDescriptor targetNames,
+          Func<bool> evaluate) => _context.GetCachedTargetMatch(syntaxNode, targetNames, evaluate);
+
+        public bool TryGetOption(string key, out string value) => _context.TryGetOption(key, out value);
+
+        public IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(
+          SyntaxNode root,
+          IReadOnlyCollection<Microsoft.CodeAnalysis.CSharp.SyntaxKind> allowedKinds) =>
+          _context.EnumerateAllowedExpressions(root, allowedKinds);
+
+        public IEnumerable<MethodDeclarationSyntax> EnumerateMethodDeclarations(SyntaxNode root) =>
+          _context.EnumerateMethodDeclarations(root);
+
+        public MarkCodeRegion AnalyzeMarkRegion(SyntaxNode anchorNode) =>
+          _context.AnalyzeMarkRegion(anchorNode);
+
+        public IOperation? GetCachedOperation(SyntaxNode syntaxNode) =>
+          _context.GetCachedOperation(syntaxNode);
+
+        public bool CanAnalyzeLogicalCondition(ExpressionSyntax expression) =>
+          _context.CanAnalyzeLogicalCondition(expression);
+
+        public LogicalConditionMarkAnalysis AnalyzeLogicalCondition(
+          ExpressionSyntax seedExpression,
+          string targetName) => _context.AnalyzeLogicalCondition(seedExpression, targetName);
+
+        public bool TryResolvePrimaryGraphNode(SyntaxNode syntaxNode, out NLCPGNode? graphNode) =>
+          _context.TryResolvePrimaryGraphNode(syntaxNode, out graphNode);
+
+        public bool ContainsPrimaryGraphNodeInRegion(SyntaxNode syntaxNode, TextSpan regionSpan) =>
+          _context.ContainsPrimaryGraphNodeInRegion(syntaxNode, regionSpan);
+
+        public IReadOnlyList<NLCPGNode> GetGraphNodesByKind(NLCPGNodeKind kind) =>
+          _context.GetGraphNodesByKind(kind);
+
+        public IReadOnlyList<NLCPGEdge> GetGraphEdgesByKind(
+          NodeId sourceNodeId,
+          NLCPGEdgeKind kind) => _context.GetGraphEdgesByKind(sourceNodeId, kind);
+
+        public NLCPGNode? FindGraphNodeById(NodeId nodeId) => _context.FindGraphNodeById(nodeId);
+    }
+
+    private sealed class PropagationRuleContext : IPropagationRuleContext
+    {
+        private readonly RuleContext _context;
+
+        public PropagationRuleContext(RuleContext context)
+        {
+            _context = context;
+        }
+
+        public SemanticModel SemanticModel => _context.SemanticModel;
+
+        public AnalysisRuntime Runtime => _context.Runtime;
+
+        public SyntaxNode Root => _context.Root;
+
+        public NLCPGStructureView? StructureView => _context.StructureView;
+    }
+
+    private sealed class LiftRuleContext : ILiftRuleContext
+    {
+        private readonly RuleContext _context;
+
+        public LiftRuleContext(RuleContext context)
+        {
+            _context = context;
+        }
+
+        public SyntaxNode Root => _context.Root;
+
+        public NLCPGStructureView? StructureView => _context.StructureView;
+
+        public IfStructureAnalysis AnalyzeIfStructure(IfStatementSyntax ifStatement) =>
+          _context.AnalyzeIfStructure(ifStatement);
+
+        public bool TryFindContainingIf(
+          ExpressionSyntax expression,
+          out IfStructureAnalysis? analysis) => _context.TryFindContainingIf(expression, out analysis);
+
+        public SyntaxNode? FindLogicalHost(ExpressionSyntax expression) =>
+          _context.FindLogicalHost(expression);
+
+        public LoopStructureAnalysis AnalyzeLoopStructure(StatementSyntax statement) =>
+          _context.AnalyzeLoopStructure(statement);
+    }
+
+    private sealed class ProposeRuleContext : IProposeRuleContext
+    {
+        private readonly RuleContext _context;
+
+        public ProposeRuleContext(RuleContext context)
+        {
+            _context = context;
+        }
+
+        public SemanticModel SemanticModel => _context.SemanticModel;
+
+        public AnalysisRuntime Runtime => _context.Runtime;
     }
 
 }

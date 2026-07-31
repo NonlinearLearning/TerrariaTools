@@ -3,7 +3,7 @@ using NLCPG.Model;
 using NLISSN.Application;
 using NLISSN.Composition;
 using NLISSN.Core.Rewrite;
-using RoslynPrototype.Tests.TestCodeSet.SObject;
+using RoslynPrototype.Tests.TestCodeSet.Target;
 using RoslynPrototype.Testing.TestInfrastructure;
 using NLISSN.Rules;
 using Xunit;
@@ -14,7 +14,7 @@ namespace RoslynPrototype.ContractTests.Cpg;
 public sealed class CpgExecutionMatrixTests
 {
   private const string FixtureId = "control-flow-references-call";
-  private const string Source = SObjectExpressionSources.TargetNameSource;
+  private const string Source = AtomicExpressionSources.AtomicNameSource;
 
   [Theory]
   [CombinatorialData]

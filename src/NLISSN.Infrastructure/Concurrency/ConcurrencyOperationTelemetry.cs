@@ -48,7 +48,7 @@ public enum ConcurrencyOperationKind
 /// <param name="PeakReadyWorkItemCount">峰值就绪工作项数量。</param>
 /// <param name="PeakCompletedBufferItemCount">峰值已完成缓冲项数量。</param>
 /// <param name="PeakRetainedRecordCount">峰值保留记录数量。</param>
-/// <param name="WorkClass">工作类别。</param>
+/// <param name="WorkType">工作类别。</param>
 /// <param name="PeakReservedByteCount">峰值预留字节数。</param>
 /// <param name="QueueWait">排队等待时间。</param>
 /// <param name="AdmissionReason">获得准入的原因。</param>
@@ -63,7 +63,7 @@ public sealed record ConcurrencyOperationTelemetry(
   int PeakReadyWorkItemCount,
   int PeakCompletedBufferItemCount,
   int PeakRetainedRecordCount,
-  ConcurrencyWorkClass WorkClass,
+  ConcurrencyWorkType WorkType,
   long PeakReservedByteCount,
   TimeSpan QueueWait,
   ConcurrencyAdmissionReason? AdmissionReason,

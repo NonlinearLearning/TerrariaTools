@@ -43,7 +43,7 @@ public sealed class ApplicationService
           source,
           filePath,
           options,
-           AnalysisRuntime.CreateFromOptions(options));
+            AnalysisRuntimeFactory.CreateFromOptions(options));
     }
 
     // 使用调用方提供的运行时执行完整分析，保留外部传入的并行和缓存设置。
@@ -60,7 +60,7 @@ public sealed class ApplicationService
           source,
           filePath,
           options,
-           AnalysisRuntime.CreateFromOptions(options),
+            AnalysisRuntimeFactory.CreateFromOptions(options),
           semanticModel,
           root);
     }

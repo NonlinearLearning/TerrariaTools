@@ -15,8 +15,8 @@ namespace RoslynPrototype.Tests;
 public sealed class MarkRuleRegistryCoverageTests
 {
   [Theory]
-  [MemberData(nameof(DeleteSObjectScenarios))]
-  public void Mark_DeleteSObjectRule_EmitsOnlyItsExpectedAtomicNode(MarkRuleScenario scenario)
+  [MemberData(nameof(AtomicScenarios))]
+  public void Mark_AtomicRule_EmitsOnlyItsExpectedAtomicNode(MarkRuleScenario scenario)
   {
     var (context, root) = CreateRuleContext(scenario.Source, scenario.Options);
     var rule = GetMarker(scenario.RuleId);
@@ -32,7 +32,7 @@ public sealed class MarkRuleRegistryCoverageTests
       Assert.IsAssignableFrom<IInstanceReferenceOperation>(context.GetCachedOperation(expectedSyntax));
     }
 
-    var marks = rule.Mark(context, root).ToArray();
+    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
 
     var mark = Assert.Single(marks);
     Assert.Equal(scenario.RuleId, mark.RuleId);
@@ -45,26 +45,26 @@ public sealed class MarkRuleRegistryCoverageTests
   }
 
   [Theory]
-  [MemberData(nameof(DeleteSObjectNegativeScenarios))]
-  public void Mark_DeleteSObjectRule_WhenTargetDoesNotExist_ProducesNoMark(MarkRuleScenario scenario)
+  [MemberData(nameof(AtomicNegativeScenarios))]
+  public void Mark_AtomicRule_WhenTargetDoesNotExist_ProducesNoMark(MarkRuleScenario scenario)
   {
     var options = Options(("target-name", "not_a_target"));
     var (context, root) = CreateRuleContext(scenario.Source, options);
     var rule = GetMarker(scenario.RuleId);
 
-    var marks = rule.Mark(context, root).ToArray();
+    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
 
     Assert.Empty(marks);
   }
 
   [Theory]
-  [MemberData(nameof(NonSObjectScenarios))]
-  public void Mark_NonSObjectRule_EmitsOnlyItsExpectedSyntaxNode(MarkRuleScenario scenario)
+  [MemberData(nameof(NonTargetScenarios))]
+  public void Mark_NonTargetRule_EmitsOnlyItsExpectedSyntaxNode(MarkRuleScenario scenario)
   {
     var (context, root) = CreateRuleContext(scenario.Source, scenario.Options);
     var rule = GetMarker(scenario.RuleId);
 
-    var marks = rule.Mark(context, root).ToArray();
+    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
 
     var mark = Assert.Single(marks);
     var expectedSyntax = root.DescendantNodes()
@@ -79,45 +79,45 @@ public sealed class MarkRuleRegistryCoverageTests
   }
 
   [Theory]
-  [MemberData(nameof(NonSObjectNegativeScenarios))]
-  public void Mark_NonSObjectRule_WhenSemanticPredicateDoesNotHold_ProducesNoMark(MarkRuleNegativeScenario scenario)
+  [MemberData(nameof(NonTargetNegativeScenarios))]
+  public void Mark_NonTargetRule_WhenSemanticPredicateDoesNotHold_ProducesNoMark(MarkRuleNegativeScenario scenario)
   {
     var (context, root) = CreateRuleContext(scenario.Source, scenario.Options);
     var rule = GetMarker(scenario.RuleId);
 
-    var marks = rule.Mark(context, root).ToArray();
+    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
 
     Assert.Empty(marks);
   }
 
   [Fact]
-  public void Mark_DeleteSObjectIdentifierRule_MultipleMatchesAreDistinctAndSourceOrdered()
+  public void Mark_AtomicIdentifierRule_MultipleMatchesAreDistinctAndSourceOrdered()
   {
     const string source = "public sealed class Sample { public int Run(int target) { return target + target; } }";
     var (context, root) = CreateRuleContext(source, "target");
     var rule = GetMarker("DEL-SOBJ-MARK-ID-001");
 
-    var marks = rule.Mark(context, root).ToArray();
+    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
 
     Assert.Equal(2, marks.Length);
     AssertMarksAreUniqueAndInStableOrder(marks);
   }
 
   [Fact]
-  public void Mark_DeleteSObjectIdentifierRule_IgnoresTargetTextInStringsAndComments()
+  public void Mark_AtomicIdentifierRule_IgnoresTargetTextInStringsAndComments()
   {
     const string source = "public sealed class Sample { public int Run() { var label = \"target\"; // target\n return label.Length; } }";
     var (context, root) = CreateRuleContext(source, "target");
     var rule = GetMarker("DEL-SOBJ-MARK-ID-001");
 
-    var marks = rule.Mark(context, root).ToArray();
+    var marks = rule.Mark(context.CreateMarkRuleContext(), root).ToArray();
 
     Assert.Empty(marks);
   }
 
   [Theory]
-  [MemberData(nameof(DeleteSObjectScenarios))]
-  public void Pipeline_DeleteSObjectScenario_DirectAndPlanReplaysAreEquivalentAndCompilable(MarkRuleScenario scenario)
+  [MemberData(nameof(AtomicScenarios))]
+  public void Pipeline_AtomicScenario_DirectAndPlanReplaysAreEquivalentAndCompilable(MarkRuleScenario scenario)
   {
     AssertFullPipelineOutput(
       scenario.Source,
@@ -128,8 +128,8 @@ public sealed class MarkRuleRegistryCoverageTests
   }
 
   [Theory]
-  [MemberData(nameof(NonSObjectScenarios))]
-  public void Pipeline_NonSObjectScenario_DirectAndPlanReplaysAreEquivalentAndCompilable(MarkRuleScenario scenario)
+  [MemberData(nameof(NonTargetScenarios))]
+  public void Pipeline_NonTargetScenario_DirectAndPlanReplaysAreEquivalentAndCompilable(MarkRuleScenario scenario)
   {
     AssertFullPipelineOutput(
       scenario.Source,
@@ -140,7 +140,7 @@ public sealed class MarkRuleRegistryCoverageTests
   }
 
   [Fact]
-  public void Pipeline_DeleteSObjectReturnExpressions_ReplacesWithDeclaredReturnTypeValues()
+  public void Pipeline_AtomicReturnExpressions_ReplacesWithDeclaredReturnTypeValues()
   {
     const string source = """
       public sealed class Target
@@ -227,12 +227,12 @@ public sealed class MarkRuleRegistryCoverageTests
 
   private static IEnumerable<MarkRuleScenario> AllScenarios()
   {
-    return DeleteSObjectScenarios()
-      .Concat(NonSObjectScenarios())
+    return AtomicScenarios()
+      .Concat(NonTargetScenarios())
       .Select(values => (MarkRuleScenario)values[0]);
   }
 
-  public static IEnumerable<object[]> DeleteSObjectScenarios()
+  public static IEnumerable<object[]> AtomicScenarios()
   {
     yield return Scenario(
       "DEL-SOBJ-MARK-ID-001",
@@ -332,13 +332,13 @@ public sealed class MarkRuleRegistryCoverageTests
       "target?.Value");
   }
 
-  public static IEnumerable<object[]> DeleteSObjectNegativeScenarios()
+  public static IEnumerable<object[]> AtomicNegativeScenarios()
   {
-    return DeleteSObjectScenarios()
+    return AtomicScenarios()
       .Select(scenario => new[] { scenario[0] });
   }
 
-  public static IEnumerable<object[]> NonSObjectScenarios()
+  public static IEnumerable<object[]> NonTargetScenarios()
   {
     yield return Scenario(
       "CLR-UNUSED-IFACE-IMPL-MARK-001",
@@ -384,7 +384,7 @@ public sealed class MarkRuleRegistryCoverageTests
       "public void Target() { }");
   }
 
-  public static IEnumerable<object[]> NonSObjectNegativeScenarios()
+  public static IEnumerable<object[]> NonTargetNegativeScenarios()
   {
     yield return NegativeScenario(
       "CLR-UNUSED-IFACE-IMPL-MARK-001",

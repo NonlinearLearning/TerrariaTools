@@ -16,6 +16,5 @@
     <ProjectReference Include="..\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
     <ProjectReference Include="..\NLISSN.Core\NLISSN.Core.csproj" />
     <ProjectReference Include="..\NLCPG\NLCPG.csproj" />
-    <ProjectReference Include="..\NLISSN.Rules\NLISSN.Rules.csproj" />
   </ItemGroup>
 </Project>

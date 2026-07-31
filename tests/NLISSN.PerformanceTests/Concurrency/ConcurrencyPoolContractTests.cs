@@ -7,7 +7,7 @@ namespace RoslynPrototype.PerformanceTests.Concurrency;
 public sealed class ConcurrencyPoolContractTests
 {
     [Fact]
-    public async Task AdmissionController_WhenBothClassesWait_UsesWeightedTurnsBeforeThroughputAdmission()
+    public async Task AdmissionController_WhenBothTypeesWait_UsesWeightedTurnsBeforeThroughputAdmission()
     {
         var controller = new ConcurrencyAdmissionController(new ConcurrencyAdmissionOptions(
           MaxConcurrentOperations: 1,
@@ -15,10 +15,10 @@ public sealed class ConcurrencyPoolContractTests
           MaxReservedByteCount: 1024,
           LatencySensitiveWeight: 3,
           ThroughputWeight: 1));
-        using var firstLease = await controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.LatencySensitive));
-        var latencyOne = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.LatencySensitive));
-        var latencyTwo = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.LatencySensitive));
-        var throughput = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput));
+        using var firstLease = await controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.LatencySensitive));
+        var latencyOne = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.LatencySensitive));
+        var latencyTwo = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.LatencySensitive));
+        var throughput = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput));
 
         firstLease.Dispose();
         using var latencyOneLease = await latencyOne.WaitAsync(TimeSpan.FromSeconds(5));
@@ -42,7 +42,7 @@ public sealed class ConcurrencyPoolContractTests
           MaxReservedByteCount: 1024));
 
         using var throughputLease = await controller.AcquireAsync(
-          new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput));
+          new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput));
 
         Assert.Equal(ConcurrencyAdmissionReason.WeightedTurn, throughputLease.AdmissionReason);
     }
@@ -57,9 +57,9 @@ public sealed class ConcurrencyPoolContractTests
           LatencySensitiveWeight: 10,
           ThroughputWeight: 1,
           MaximumThroughputWait: TimeSpan.FromMilliseconds(20)));
-        using var firstLease = await controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.LatencySensitive));
-        var throughput = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput));
-        var latency = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.LatencySensitive));
+        using var firstLease = await controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.LatencySensitive));
+        var throughput = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput));
+        var latency = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.LatencySensitive));
 
         await Task.Delay(TimeSpan.FromMilliseconds(50));
         firstLease.Dispose();
@@ -79,7 +79,7 @@ public sealed class ConcurrencyPoolContractTests
           MaxReservedByteCount: 128));
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => controller.AcquireAsync(
-          new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput, ReservedByteCount: 129)));
+          new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput, ReservedByteCount: 129)));
     }
 
     [Fact]
@@ -89,15 +89,15 @@ public sealed class ConcurrencyPoolContractTests
           MaxConcurrentOperations: 1,
           MaxReservedItemCount: 1,
           MaxReservedByteCount: 128));
-        using var firstLease = await controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.LatencySensitive));
+        using var firstLease = await controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.LatencySensitive));
         using var cancellation = new CancellationTokenSource();
         var canceledWaiter = controller.AcquireAsync(
-          new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput),
+          new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput),
           cancellation.Token);
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await canceledWaiter);
 
-        var nextWaiter = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkClass.Throughput));
+        var nextWaiter = controller.AcquireAsync(new ConcurrencyAdmissionRequest(ConcurrencyWorkType.Throughput));
         firstLease.Dispose();
         using var nextLease = await nextWaiter.WaitAsync(TimeSpan.FromSeconds(5));
     }
@@ -416,14 +416,14 @@ public sealed class ConcurrencyPoolContractTests
         var options = new ConcurrencyWindowOptions(
           MaxDegreeOfParallelism: 2,
           ReorderAllowance: 2,
-          WorkClass: ConcurrencyWorkClass.Throughput,
+          WorkType: ConcurrencyWorkType.Throughput,
           EstimatedRetainedBytesPerItem: 8);
 
         using var lease = await admissionController.AcquireAsync(options.CreateAdmissionRequest(sourceCount: 2));
 
         Assert.Equal(2, lease.Request.ReservedItemCount);
         Assert.Equal(16, lease.Request.ReservedByteCount);
-        Assert.Equal(ConcurrencyWorkClass.Throughput, lease.Request.WorkClass);
+        Assert.Equal(ConcurrencyWorkType.Throughput, lease.Request.WorkType);
     }
 
     [Fact]
@@ -495,7 +495,7 @@ public sealed class ConcurrencyPoolContractTests
     }
 
     [Fact]
-    public void CommitOrdered_WhenWorkClassIsSpecified_ReportsTheDeclaredClassWithoutAdmission()
+    public void CommitOrdered_WhenWorkTypeIsSpecified_ReportsTheDeclaredTypeWithoutAdmission()
     {
         var telemetrySink = new RecordingTelemetrySink();
         var pool = new BoundedConcurrencyPool(telemetrySink);
@@ -504,11 +504,11 @@ public sealed class ConcurrencyPoolContractTests
           new[] { 0 },
           new ConcurrencyWindowOptions(
             MaxDegreeOfParallelism: 1,
-            WorkClass: ConcurrencyWorkClass.LatencySensitive),
+            WorkType: ConcurrencyWorkType.LatencySensitive),
           (source, _) => source,
           (_, _) => { });
 
-        Assert.Equal(ConcurrencyWorkClass.LatencySensitive, Assert.Single(telemetrySink.Operations).WorkClass);
+        Assert.Equal(ConcurrencyWorkType.LatencySensitive, Assert.Single(telemetrySink.Operations).WorkType);
     }
 
     [Fact]
@@ -742,7 +742,7 @@ public sealed class ConcurrencyPoolContractTests
 
         var telemetry = Assert.Single(telemetrySink.Operations);
         Assert.Equal(ConcurrencyOperationKind.DependencyGraph, telemetry.OperationKind);
-        Assert.Equal(ConcurrencyWorkClass.LatencySensitive, telemetry.WorkClass);
+        Assert.Equal(ConcurrencyWorkType.LatencySensitive, telemetry.WorkType);
         Assert.Equal(2, telemetry.PeakReadyWorkItemCount);
         Assert.True(telemetry.WasCanceled);
         Assert.True(telemetry.FailureDrainElapsed >= TimeSpan.Zero);

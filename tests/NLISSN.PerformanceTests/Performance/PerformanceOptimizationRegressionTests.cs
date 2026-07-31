@@ -7,7 +7,7 @@ using NLISSN.Core.Analysis;
 using NLISSN.Application;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Rewrite;
-using RoslynPrototype.Tests.TestCodeSet.DeleteClassDirectory;
+using RoslynPrototype.Tests.TestCodeSet.DirectoryFixtures;
 using RoslynPrototype.Tests.TestCodeSet.Performance;
 using NLISSN.Rules;
 using System.Diagnostics;
@@ -71,13 +71,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void NamedArgumentMethodPlan_RewritesNamedCallsitesAcrossMultipleSyntaxTrees()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Game.cs",
           PerformanceSources.CreateNamedArgumentMethodPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildNamedArgumentMethodPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindParameterTypeSyntax("Game.cs", "Apply", "input"),
           out var plan);
 
@@ -101,13 +101,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void OptionalParameterMethodPlan_KeepsOmittedCallsitesAcrossMultipleSyntaxTrees()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Game.cs",
           PerformanceSources.CreateOptionalParameterMethodPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildOptionalParameterMethodPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindParameterTypeSyntax("Game.cs", "Apply", "input"),
           out var plan);
 
@@ -127,13 +127,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void ParamsMethodPlan_SucceedsWhenAllParamsArgumentsAreImplicitAcrossMultipleSyntaxTrees()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Game.cs",
           PerformanceSources.CreateImplicitParamsMethodPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildParamsMethodPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindParameterTypeSyntax("Game.cs", "Apply", "inputs"),
           out var plan);
 
@@ -148,13 +148,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void ParamsMethodPlan_FailsWhenAnyCallsiteSuppliesExplicitParamsArgument()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Game.cs",
           PerformanceSources.CreateExplicitParamsMethodPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildParamsMethodPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindParameterTypeSyntax("Game.cs", "Apply", "inputs"),
           out _);
 
@@ -164,13 +164,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void NamedIndexerPlan_RewritesNamedElementAccessesAcrossMultipleSyntaxTrees()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Buffer.cs",
           PerformanceSources.CreateNamedIndexerPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildNamedArgumentIndexerPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindIndexerParameterTypeSyntax("Buffer.cs", "input"),
           out var plan);
 
@@ -193,13 +193,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void DelegateMethodGroupPlan_RewritesMethodGroupTargetsAndDelegateInvocationsAcrossMultipleTrees()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Handler.cs",
           PerformanceSources.CreateDelegateMethodGroupPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegateMethodGroupPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out var plan);
 
@@ -207,10 +207,10 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         Assert.Equal(
           "public delegate int Handler(int frame);",
           plan.ReplacementDelegate.NormalizeWhitespace().ToFullString());
-        Assert.Single(plan.MethodRewrites);
+        Assert.Single(plan.Usage.MethodRewrites);
         Assert.Contains(
           "public static int Apply(int frame)",
-          plan.MethodRewrites[0].ReplacementMethod.NormalizeWhitespace().ToFullString(),
+          plan.Usage.MethodRewrites[0].ReplacementMethod.NormalizeWhitespace().ToFullString(),
           StringComparison.Ordinal);
         Assert.Equal(
           new[]
@@ -218,23 +218,23 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
             "handler(frame)",
             "handler.Invoke(frame)"
           },
-          plan.InvocationRewrites
+          plan.Usage.InvocationRewrites
             .Select(rewrite => rewrite.Replacement.NormalizeWhitespace().ToFullString())
             .OrderBy(text => text, StringComparer.Ordinal)
             .ToArray());
-        Assert.Empty(plan.LambdaRewrites);
+        Assert.Empty(plan.Usage.LambdaRewrites);
     }
 
     [Fact]
     public void DelegateLambdaPlan_RewritesConvertedLambdaBindingsAcrossMultipleTrees()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Handler.cs",
           PerformanceSources.CreateDelegateLambdaPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegateLambdaPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out var plan);
 
@@ -242,28 +242,28 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         Assert.Equal(
           "public delegate int Handler(int frame);",
           plan.ReplacementDelegate.NormalizeWhitespace().ToFullString());
-        Assert.Single(plan.LambdaRewrites);
+        Assert.Single(plan.Usage.LambdaRewrites);
         Assert.Equal(
           "(currentFrame) => currentFrame",
-          plan.LambdaRewrites[0].Replacement.NormalizeWhitespace().ToFullString());
+          plan.Usage.LambdaRewrites[0].Replacement.NormalizeWhitespace().ToFullString());
         Assert.Equal(
           new[] { "handler(frame)" },
-          plan.InvocationRewrites
+          plan.Usage.InvocationRewrites
             .Select(rewrite => rewrite.Replacement.NormalizeWhitespace().ToFullString())
             .ToArray());
-        Assert.Empty(plan.MethodRewrites);
+        Assert.Empty(plan.Usage.MethodRewrites);
     }
 
     [Fact]
     public void DelegateInvocationChainPlan_RewritesInvocationChainsWithoutBindingRewrites()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Handler.cs",
           PerformanceSources.CreateDelegateInvocationChainPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegateInvocationChainPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out var plan);
 
@@ -271,15 +271,15 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         Assert.Equal(
           "public delegate int Handler(int frame);",
           plan.ReplacementDelegate.NormalizeWhitespace().ToFullString());
-        Assert.Empty(plan.MethodRewrites);
-        Assert.Empty(plan.LambdaRewrites);
+        Assert.Empty(plan.Usage.MethodRewrites);
+        Assert.Empty(plan.Usage.LambdaRewrites);
         Assert.Equal(
           new[]
           {
             "alias.Invoke(frame)",
             "handler(frame)"
           },
-          plan.InvocationRewrites
+          plan.Usage.InvocationRewrites
             .Select(rewrite => rewrite.Replacement.NormalizeWhitespace().ToFullString())
             .OrderBy(text => text, StringComparer.Ordinal)
             .ToArray());
@@ -288,13 +288,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void ExtensionReceiverPlan_RewritesReducedAndStaticExtensionInvocationsAcrossMultipleTrees()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "InputExtensions.cs",
           PerformanceSources.CreateExtensionReceiverPlanFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildExtensionReceiverNonFirstParameterPlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindParameterTypeSyntax("InputExtensions.cs", "Score", "input"),
           out var plan);
 
@@ -318,13 +318,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void DelegateParameterPlan_FailsWhenDelegateTypeIsStillReferencedByAnotherTypeSyntax()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Handler.cs",
           PerformanceSources.CreateDelegateReferencedTypeFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegatePlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out _);
 
@@ -334,13 +334,13 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     [Fact]
     public void DelegateParameterPlan_SucceedsWhenCompilationContainsOnlyTheDelegateDeclaration()
     {
-        var context = CreateDeleteClassContext(
+        var context = CreateDeclarationContext(
           declarationFilePath: "Handler.cs",
           PerformanceSources.CreateDelegateOnlyFiles());
-        var analyzer = new DeleteClassParameterShrinkAnalyzer();
+        var analyzer = new ParameterShrinkAnalyzer();
 
         var succeeded = analyzer.TryBuildDelegatePlan(
-          context.RuleContext,
+          context.RuleContext.CreateSemanticRuleContext(),
           context.FindDelegateParameterTypeSyntax("Handler.cs", "input"),
           out var plan);
 
@@ -361,7 +361,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         };
         var compilation = CreateCompilation(trees);
         var runtime =  AnalysisRuntime.CreateDefault();
-        var cache = GetDeleteClassCompilationScanCache(runtime, compilation);
+        var cache = GetDeclarationCompilationScanCache(runtime, compilation);
 
         Assert.Equal(0, GetPrivateIntField(cache, "_materializedTreeCount"));
 
@@ -385,7 +385,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           path: "TreeScan.cs");
         var compilation = CreateCompilation(new[] { tree });
         var runtime =  AnalysisRuntime.CreateDefault();
-        var cache = GetDeleteClassCompilationScanCache(runtime, compilation);
+        var cache = GetDeclarationCompilationScanCache(runtime, compilation);
         var scan = GetTreeScan(cache, tree);
         var semanticModel = compilation.GetSemanticModel(tree);
         var root = tree.GetRoot();
@@ -400,7 +400,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         AssertIndexBuildCounts(
           scan,
           invocation: 0,
-          mappedInvocation: 0,
           elementAccess: 0,
           expression: 0,
           typeSyntax: 0);
@@ -410,7 +409,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         AssertIndexBuildCounts(
           scan,
           invocation: 0,
-          mappedInvocation: 0,
           elementAccess: 0,
           expression: 0,
           typeSyntax: 1);
@@ -420,7 +418,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         AssertIndexBuildCounts(
           scan,
           invocation: 1,
-          mappedInvocation: 0,
           elementAccess: 0,
           expression: 0,
           typeSyntax: 1);
@@ -430,7 +427,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         AssertIndexBuildCounts(
           scan,
           invocation: 1,
-          mappedInvocation: 0,
           elementAccess: 0,
           expression: 1,
           typeSyntax: 1);
@@ -440,7 +436,6 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         AssertIndexBuildCounts(
           scan,
           invocation: 1,
-          mappedInvocation: 1,
           elementAccess: 0,
           expression: 1,
           typeSyntax: 1);
@@ -554,7 +549,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         return string.Join("\n", decisions.Concat(edits));
     }
 
-    private static AnalyzerTestContext CreateDeleteClassContext(string declarationFilePath, params (string FilePath, string Source)[] files)
+    private static AnalyzerTestContext CreateDeclarationContext(string declarationFilePath, params (string FilePath, string Source)[] files)
     {
         var trees = files.ToDictionary(
           file => file.FilePath,
@@ -595,14 +590,14 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 
-    private static object GetDeleteClassCompilationScanCache( AnalysisRuntime runtime, Compilation compilation)
+    private static object GetDeclarationCompilationScanCache( AnalysisRuntime runtime, Compilation compilation)
     {
         return GetCompilationCache(
           runtime,
           compilation,
           static currentCompilation =>
           {
-              var cacheType = typeof(DeleteClassParameterShrinkAnalyzer).GetNestedType(
+              var cacheType = typeof(ParameterShrinkAnalyzer).GetNestedType(
                 "CompilationScanCache",
                 BindingFlags.NonPublic)!;
               return Activator.CreateInstance(cacheType, currentCompilation)!;
@@ -652,10 +647,9 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
           .GetValue(instance)!;
     }
 
-    private static void AssertIndexBuildCounts(object scan, int invocation, int mappedInvocation, int elementAccess, int expression, int typeSyntax)
+    private static void AssertIndexBuildCounts(object scan, int invocation, int elementAccess, int expression, int typeSyntax)
     {
         Assert.Equal(invocation, GetPrivateIntField(scan, "_invocationIndexBuildCount"));
-        Assert.Equal(mappedInvocation, GetPrivateIntField(scan, "_mappedInvocationIndexBuildCount"));
         Assert.Equal(elementAccess, GetPrivateIntField(scan, "_elementAccessIndexBuildCount"));
         Assert.Equal(expression, GetPrivateIntField(scan, "_expressionIndexBuildCount"));
         Assert.Equal(typeSyntax, GetPrivateIntField(scan, "_typeSyntaxIndexBuildCount"));

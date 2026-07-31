@@ -63,11 +63,11 @@ public sealed record ConcurrencyAdmissionOptions(
 /// <summary>
 /// 声明一次独立操作在获准入期间持续占用的资源。
 /// </summary>
-/// <param name="WorkClass">当前操作所属的工作类别。</param>
+/// <param name="WorkType">当前操作所属的工作类别。</param>
 /// <param name="ReservedItemCount">当前操作预留的项目数量。</param>
 /// <param name="ReservedByteCount">当前操作预留的字节数量。</param>
 public sealed record ConcurrencyAdmissionRequest(
-    ConcurrencyWorkClass WorkClass,
+    ConcurrencyWorkType WorkType,
     int ReservedItemCount = 1,
     long ReservedByteCount = 0)
 {

@@ -2,10 +2,10 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Core.Marking;
 
-namespace NLISSN.Core.Lifting;
+namespace NLISSN.Rules;
 
 /// 汇集 Lift 阶段的通用筛选与去重逻辑，防止同一宿主在多个提升入口重复出现。
-public static class DeleteSObjectLiftingCommon
+public static class LiftingCommon
 {
     public static readonly IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =
       new[]

@@ -1,4 +1,5 @@
 using NLISSN.Core.Marking;
+using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Propagation;
 
@@ -12,5 +13,8 @@ public sealed record PropagatedMarkRecord(
     MarkRecord SourceMark,
   /// 从源种子标记传播到当前标记的层级深度。
     int Depth,
-  /// 传播阶段额外收集的结构化中间事实；为空时表示只有简单传播标记。
-    object? Payload = null);
+  /// 传播阶段额外收集的非结构关系事实；结构结论和结构决策 payload 只能由 Lift 产生。
+    object? Payload = null)
+{
+  public RuleEvidenceOrigin Origins => Mark.Origins | SourceMark.Origins;
+}

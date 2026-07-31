@@ -217,7 +217,7 @@ public sealed class RewritePlanPersistenceTests : IDisposable
     [Fact]
     public async Task AnalyzeDirectory_WithMultipleMarkRules_ReplaysEveryManifestFileAndCompiles()
     {
-        var targetPath = WriteSource("Target.cs", "namespace Demo; public sealed class Target { }");
+        var targetPath = WriteSource("Atomic.cs", "namespace Demo; public sealed class Target { }");
         var samplePath = WriteSource("Sample.cs", "namespace Demo; public sealed class Sample { public int Run(int target) { return target; } }");
         var artifactRoot = Path.Combine(_tempDirectory, "artifact");
         var host = new  CommandHost(RuleRegistry.CreateDefaultRules());

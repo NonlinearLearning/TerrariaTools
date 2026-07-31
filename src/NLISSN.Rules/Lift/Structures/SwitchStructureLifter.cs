@@ -4,10 +4,10 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 
-namespace NLISSN.Core.Lifting;
+namespace NLISSN.Rules;
 
 /// 判断 switch 分支是否可整体规约，避免在 case 标签和控制流边界不完整时生成改写。
-public static class DeleteSObjectSwitchLiftingHelpers
+public static class SwitchStructureLiftingHelpers
 {
     // 基于已有 provisional mark 判断哪些 switch section / statement 已可整体规约。
     public static IEnumerable<LiftedMarkRecord> BuildSwitchLiftedMarks(string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
@@ -17,12 +17,12 @@ public static class DeleteSObjectSwitchLiftingHelpers
           .Concat(existingLiftedMarks.Select(mark => mark.Mark))
           .ToList();
         var producedKeys = provisionalMarks
-          .Select(mark => DeleteSObjectLiftingCommon.BuildNodeKey(mark.SyntaxNode))
+          .Select(mark => LiftingCommon.BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
 
         foreach (var switchMark in BuildSwitchMarks(ruleId, provisionalMarks))
         {
-            var key = DeleteSObjectLiftingCommon.BuildNodeKey(switchMark.SyntaxNode);
+            var key = LiftingCommon.BuildNodeKey(switchMark.SyntaxNode);
             if (!producedKeys.Add(key))
             {
                 continue;
@@ -32,7 +32,8 @@ public static class DeleteSObjectSwitchLiftingHelpers
               ruleId,
               switchMark,
               FindSourceMarkForAncestor(seedMarks, existingLiftedMarks, switchMark.SyntaxNode),
-              1);
+              1,
+              StructureKind: StructuralKind.Switch);
         }
     }
 
@@ -40,11 +41,11 @@ public static class DeleteSObjectSwitchLiftingHelpers
     {
         var marks = new List<MarkRecord>();
         var markKeys = provisionalMarks
-          .Select(mark => DeleteSObjectLiftingCommon.BuildNodeKey(mark.SyntaxNode))
+          .Select(mark => LiftingCommon.BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
         var candidateSections = provisionalMarks
           .SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<SwitchSectionSyntax>())
-          .DistinctBy(DeleteSObjectLiftingCommon.BuildNodeKey)
+          .DistinctBy(LiftingCommon.BuildNodeKey)
           .ToList();
 
         foreach (var section in candidateSections)
@@ -62,7 +63,7 @@ public static class DeleteSObjectSwitchLiftingHelpers
 
         var candidateSwitches = provisionalMarks
           .SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<SwitchStatementSyntax>())
-          .DistinctBy(DeleteSObjectLiftingCommon.BuildNodeKey)
+          .DistinctBy(LiftingCommon.BuildNodeKey)
           .ToList();
         foreach (var switchStatement in candidateSwitches)
         {
@@ -104,7 +105,7 @@ public static class DeleteSObjectSwitchLiftingHelpers
     {
         var markedSectionKeys = synthesizedMarks
           .Where(mark => mark.SyntaxNode is SwitchSectionSyntax)
-          .Select(mark => DeleteSObjectLiftingCommon.BuildNodeKey(mark.SyntaxNode))
+          .Select(mark => LiftingCommon.BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
         foreach (var section in switchStatement.Sections)
         {
@@ -113,7 +114,7 @@ public static class DeleteSObjectSwitchLiftingHelpers
                 continue;
             }
 
-            var sectionKey = DeleteSObjectLiftingCommon.BuildNodeKey(section);
+            var sectionKey = LiftingCommon.BuildNodeKey(section);
             if (!markedSectionKeys.Contains(sectionKey) &&
                 !markKeys.Contains(sectionKey))
             {
@@ -133,7 +134,7 @@ public static class DeleteSObjectSwitchLiftingHelpers
         }
 
         return executableStatements.All(statement =>
-          markKeys.Contains(DeleteSObjectLiftingCommon.BuildNodeKey(statement)));
+          markKeys.Contains(LiftingCommon.BuildNodeKey(statement)));
     }
 
     private static IEnumerable<StatementSyntax> EnumerateExecutableCaseStatements(SwitchSectionSyntax section)

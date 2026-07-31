@@ -17,8 +17,6 @@ public abstract class RuleDefinitionPropose : IRuleDefinition
 
     public abstract string RuleId { get; }
 
-    public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Propose, RuleId);
-
     public virtual RuleInputCardinality InputCardinality => RuleInputCardinality.All;
 
     public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
@@ -32,5 +30,9 @@ public abstract class RuleDefinitionPropose : IRuleDefinition
     public abstract IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; }
 
     // 消费种子、传播和提升结果，提出供决策引擎收口的候选决策单元。
-    public abstract IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks);
+    public abstract IEnumerable<DecisionUnit> Propose(
+      IProposeRuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> liftedMarks);
 }

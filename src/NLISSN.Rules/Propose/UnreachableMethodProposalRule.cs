@@ -32,7 +32,7 @@ public sealed class UnreachableMethodProposalRule : RuleDefinitionPropose
       Array.Empty<SyntaxKind>();
 
     // 为标记阶段已经证明不可达的方法直接生成删除决策。
-    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = propagatedMarks;

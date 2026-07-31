@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NL.Concurrency;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using NLISSN.Core.Lifting;
@@ -300,13 +301,11 @@ public sealed class RuleDecisionEngine
         var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
           .Select(node => new RuleStructureContractGraphNode(
             node.NodeId,
-            node.Kind,
             RuleConsumesContract.Empty,
             new RuleProducesContract(node.ProducedSyntax)))
           .Concat(rules
             .Select(rule => new RuleStructureContractGraphNode(
-              rule.NodeId,
-              RuleKind.Propose,
+              RuleNodeId.For(RuleKind.Propose, rule.RuleId),
               rule.Consumes,
               rule.Produces)))
           .ToList());
@@ -315,8 +314,7 @@ public sealed class RuleDecisionEngine
           RuleKind.Propose,
           ResolveDependencies(rule, sourceNodes, contractGraph))
         {
-          ProducedSyntax = rule.Produces.Outputs,
-          ConsumedSyntax = rule.Consumes.Inputs
+          ProducedSyntax = rule.Produces.Outputs
         }).ToList();
         var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
         var executionNodes = sourceNodes
@@ -332,7 +330,7 @@ public sealed class RuleDecisionEngine
                 {
                     var values = GetValues(node, inputs);
                     var units = rule.Propose(
-                        context,
+                        context.CreateProposeRuleContext(),
                         values.OfType<MarkRecord>().ToList(),
                         values.OfType<PropagatedMarkRecord>().ToList(),
                         values.OfType<LiftedMarkRecord>().ToList())
@@ -341,10 +339,13 @@ public sealed class RuleDecisionEngine
                 });
           }))
           .ToList();
+        var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
+          context.Runtime.ExecutionOptions.EnableGroupParallelism,
+          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
         var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
-            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            graphDegree,
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
@@ -374,7 +375,9 @@ public sealed class RuleDecisionEngine
 
         var resolved = context.Runtime.ConcurrencyPool.SelectOrderedAsync(
             conflictDomains.Count,
-            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
+              context.Runtime.ExecutionOptions.EnableGroupParallelism,
+              context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism),
             (index, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -435,7 +438,7 @@ public sealed class RuleDecisionEngine
       CompiledRuleStructureContractGraph contractGraph)
     {
         return contractGraph.Edges
-          .Where(edge => edge.Consumer == rule.NodeId)
+          .Where(edge => edge.Consumer == RuleNodeId.For(RuleKind.Propose, rule.RuleId))
           .Select(edge => new RuleDependency(edge.Producer, edge.Input))
           .ToList();
     }

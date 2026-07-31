@@ -8,8 +8,7 @@ namespace NLISSN.Core.Pipeline;
 public enum RuleGraphNodeStatus
 {
     Completed,
-    Disabled,
-    Cancelled
+    Disabled
 }
 
 public sealed record RuleNodeResult(IReadOnlyList<object> Values)
@@ -172,13 +171,7 @@ public sealed record RuleGraphExecutionNode(
 public sealed record RuleGraphExecutionResult(
   IReadOnlyList<RuleGraphExecutionNodeResult> Nodes,
   IReadOnlyList<RuleGraphNodeTelemetry>? Telemetry = null,
-  RuleGraphExecutionMetrics? Metrics = null)
-{
-    public IReadOnlyList<object> GetValues(RuleNodeId nodeId)
-    {
-        return Nodes.Single(node => node.NodeId == nodeId).Result.Values;
-    }
-}
+  RuleGraphExecutionMetrics? Metrics = null);
 
 public sealed record RuleGraphExecutionNodeResult(
   RuleNodeId NodeId,

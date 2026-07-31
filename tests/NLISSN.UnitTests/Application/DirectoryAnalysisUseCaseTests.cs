@@ -1,5 +1,5 @@
 using NLISSN.Application;
-using NLISSN.Rules;
+using NLISSN.Composition;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -7,13 +7,9 @@ namespace RoslynPrototype.Tests;
 public sealed class DirectoryAnalysisUseCaseTests
 {
   [Fact]
-  public void Analyze_DeleteUnreferencedMethods_UsesOnlyInMemorySources()
+  public void Analyze_DeleteUnreferencedMethods_UsesRegisteredRulePipeline()
   {
-    var useCase = new DirectoryAnalysisUseCase(new  RulePipeline(
-      Array.Empty<RuleDefinitionMark>(),
-      Array.Empty<RuleDefinitionPropagate>(),
-      Array.Empty<RuleDefinitionLift>(),
-      Array.Empty<RuleDefinitionPropose>()));
+    var useCase = new DirectoryAnalysisUseCase(RuleRegistry.CreateDefaultRules());
     var sources = new[]
     {
       new DirectorySourceFile(
@@ -23,8 +19,9 @@ public sealed class DirectoryAnalysisUseCaseTests
         namespace Demo;
         public sealed class Sample
         {
-          private void Removed() { }
-          public void Kept() { }
+          private static void Removed() { }
+          private static void Kept() { }
+          public static void Main() { Kept(); }
         }
         """)
     };
@@ -37,11 +34,17 @@ public sealed class DirectoryAnalysisUseCaseTests
       },
        AnalysisRuntime.CreateDefault());
 
-    var mark = Assert.Single(outcome.Result.SeedMarks);
-    Assert.Equal("DEL-UNREF-METHOD-MARK-001", mark.RuleId);
+    var mark = Assert.Single(
+      outcome.Result.SeedMarks,
+      mark => string.Equals(mark.RuleId, "DEL-UNREF-METHOD-MARK-001", StringComparison.Ordinal));
+    Assert.Equal("UnreferencedMethod", mark.SemanticTag?.Value);
+    Assert.NotNull(mark.PrimaryGraphNode);
     var file = Assert.Single(outcome.FileResults);
     Assert.DoesNotContain("Removed", file.Result.RewrittenSource, StringComparison.Ordinal);
     Assert.Contains("Kept", file.Result.RewrittenSource, StringComparison.Ordinal);
+    Assert.Contains("Main", file.Result.RewrittenSource, StringComparison.Ordinal);
+    Assert.Equal(2, outcome.Result.Stats?.CandidateMethodCount);
+    Assert.Equal(1, outcome.Result.Stats?.DeletedMethodCount);
     Assert.Null(outcome.Result.DiffFilePath);
     Assert.Equal("InMemory.cs", Assert.Single(outcome.Result.RewritePlans!).FilePath);
   }

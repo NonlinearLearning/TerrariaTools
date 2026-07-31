@@ -12,7 +12,7 @@
 
 ## Status and decision record
 
-The Rule DAG scope of this plan is complete. The Roslyn `if`, variable-declarator, logical-binary, and rewrite-host catalog entries; marked-structure contract model; contract-edge compiler; selector-indexed runtime ports; and the S-object/class `IfCompletion -> proposal` slice are implemented. The local-definition-to-local-reference, logical-host-to-proposal, and expression/statement-host-to-switch-lift slices now also compile from explicit contracts. Default and control proposals declare terminal domain facts, and expression-host / if-structure lifts declare their Mark-and-Propagate domain inputs. The compatibility stage engines preserve structure ports instead of collapsing them to `RuleOutputKind`.
+The Rule DAG scope of this plan is complete. The Roslyn `if`, variable-declarator, logical-binary, and rewrite-host catalog entries; marked-structure contract model; contract-edge compiler; selector-indexed runtime ports; and the atomic-rule `IfCompletion -> proposal` slice are implemented. The local-definition-to-local-reference, logical-host-to-proposal, and expression/statement-host-to-switch-lift slices now also compile from explicit contracts. Default and control proposals declare terminal domain facts, and expression-host / if-structure lifts declare their Mark-and-Propagate domain inputs. The compatibility stage engines preserve structure ports instead of collapsing them to `RuleOutputKind`.
 
 `RuleGraphDependencyCatalog` has been removed. The compiled graph now receives default-family edges from explicit structural or terminal-fact contracts, never from RuleId family lists.
 
@@ -136,7 +136,7 @@ An output selector must be a subset of its consumer's accepted syntax structure 
 - A small, public-Roslyn-backed structure catalog, beginning with `if` / `else if` structures.
 - Static initialization checks for contract closure, selector compatibility, cardinality, and cycles.
 - A compiled graph whose edges originate exclusively from rule contracts.
-- Migration of the default S-object and class rule pipelines after the vertical slice proves equivalence.
+- Migration of the default atomic-rule pipeline after the vertical slice proves equivalence.
 - Tests for catalog shape, contract diagnostics, disabled producer behavior, and DOP-equivalent results.
 
 ### Excluded

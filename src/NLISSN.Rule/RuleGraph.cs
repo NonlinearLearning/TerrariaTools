@@ -40,9 +40,6 @@ public sealed record RuleGraphNode(RuleNodeId NodeId, RuleKind Kind, IReadOnlyLi
     public IReadOnlyList<RuleProducedSyntax> ProducedSyntax { get; init; } =
       Array.Empty<RuleProducedSyntax>();
 
-    public IReadOnlyList<RuleConsumedSyntax> ConsumedSyntax { get; init; } =
-      Array.Empty<RuleConsumedSyntax>();
-
     public RuleGraphNode(
       RuleNodeId nodeId,
       RuleKind kind,
@@ -54,5 +51,4 @@ public sealed record RuleGraphNode(RuleNodeId NodeId, RuleKind Kind, IReadOnlyLi
 
 public sealed record CompiledRuleGraph(
   IReadOnlyList<RuleGraphNode> Nodes,
-  IReadOnlyDictionary<RuleNodeId, int> NodeIndexes,
-  IReadOnlyDictionary<RuleNodeId, IReadOnlyList<RuleNodeId>> DownstreamNodes);
+  IReadOnlyDictionary<RuleNodeId, int> NodeIndexes);

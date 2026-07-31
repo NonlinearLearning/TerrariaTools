@@ -587,11 +587,16 @@ public sealed class AnalysisEvidenceCollector
       pendingEdges = _edges.ToList();
     }
 
-    var canonicalNodes = pendingNodes
+    var distinctNodes = pendingNodes
       .GroupBy(node => node.Key, StringComparer.Ordinal)
       .Select(group => group.OrderBy(node => node.SortKey, StringComparer.Ordinal).First())
-      .OrderBy(node => node.SortKey, StringComparer.Ordinal)
-      .Take(_budget.MaxNodes)
+      .OrderBy(node => node.Kind == AnalysisEvidenceKind.Decision ? 0 : 1)
+      .ThenBy(node => node.SortKey, StringComparer.Ordinal)
+      .ToList();
+    var decisionRootCount = distinctNodes.Count(node => node.Kind == AnalysisEvidenceKind.Decision);
+    var nodeCapacity = Math.Max(_budget.MaxNodes, decisionRootCount);
+    var canonicalNodes = distinctNodes
+      .Take(nodeCapacity)
       .ToList();
     var acceptedKeys = canonicalNodes.Select(node => node.Key).ToHashSet(StringComparer.Ordinal);
     var canonicalEdges = pendingEdges

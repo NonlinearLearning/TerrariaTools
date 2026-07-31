@@ -32,7 +32,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
       new[] { SyntaxKind.MethodDeclaration };
 
     // 仅标记只在声明类型内部被调用、且没有外部引用的 public 方法。
-    public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+    public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
     {
         if (!IsEnabled(context))
         {
@@ -67,7 +67,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
         }
     }
 
-    private static bool IsEnabled(RuleContext context)
+    private static bool IsEnabled(IMarkRuleContext context)
     {
         return context.TryGetOption("privatize-internal-only-public-methods", out var value) &&
           !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);

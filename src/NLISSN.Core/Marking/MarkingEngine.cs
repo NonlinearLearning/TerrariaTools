@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using NL.Concurrency;
 using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Marking;
@@ -14,8 +15,7 @@ public sealed class MarkingEngine
           RuleKind.Mark,
           Array.Empty<RuleDependency>())
         {
-          ProducedSyntax = rule.Produces.Outputs,
-          ConsumedSyntax = rule.Consumes.Inputs
+          ProducedSyntax = rule.Produces.Outputs
         }).ToList();
         var graph = new RuleGraphCompiler().Compile(nodes);
         var executionNodes = rules.Select(rule =>
@@ -27,9 +27,9 @@ public sealed class MarkingEngine
                 rule.Produces,
                 ExecuteRule(context, root, rule))));
         }).ToList();
-        var graphDegree = context.Runtime.ExecutionOptions.EnableGroupParallelism
-          ? context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism
-          : 1;
+        var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
+          context.Runtime.ExecutionOptions.EnableGroupParallelism,
+          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
         var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
@@ -54,7 +54,7 @@ public sealed class MarkingEngine
     public static List<MarkRecord> ExecuteRule(RuleContext context, SyntaxNode root, RuleDefinitionMark rule)
     {
         var producedMarks = new List<MarkRecord>();
-        foreach (var mark in rule.Mark(context, root))
+        foreach (var mark in rule.Mark(context.CreateMarkRuleContext(), root))
         {
             var taggedMark = BindDeclaredSemanticTag(rule.Produces, mark);
             ValidateMarkNode(rule, taggedMark.SyntaxNode);
@@ -125,7 +125,7 @@ public sealed class MarkingEngine
         var primaryGraphNode = candidate.PrimaryGraphNode;
         if (primaryGraphNode is null)
         {
-            context.GraphBinding.TryResolvePrimaryGraphNode(candidate.SyntaxNode, out primaryGraphNode);
+            context.TryResolvePrimaryGraphNode(candidate.SyntaxNode, out primaryGraphNode);
         }
 
         if (primaryGraphNode is null)

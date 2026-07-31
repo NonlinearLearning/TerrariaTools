@@ -65,7 +65,7 @@ NLISSN (composition root / CLI)
 | P0 | `LayoutArchitectureTests.ProductionProjectReferences_MatchTheTargetDependencyGraph` 未包含 `NL.Caching`，定向测试失败。 | 架构守卫不能作为当前项目引用图的回归证据。 | 先将 `NL.Caching` 写入预期引用列表；后续任何项目引用变更必须同批更新该测试。 |
 | P0 | `src/NLISSN.Core/Pipeline/` 的 11 个文件中，10 个声明 `NLISSN.Rules`，`RulePipeline.cs` 声明 `NLISSN.Application`。 | 路径、程序集和命名空间给出冲突的所有权；新代码很容易放错位置。 | 先只移动文件：规则契约和 DAG 放到 `NLISSN.Core/Rules/Contracts`，执行器放到 `NLISSN.Core/Rules/Execution`，应用管线模型放到 `NLISSN.Application/Analysis`；命名空间与路径同步。 |
 | P0 | `NLISSN.Rules` 的 `Mark/Lift/Propagate/Propose` 下有 17 个文件声明 `NLISSN.Core.*`。 | `Rules` 项目实际承载 Core 类型，项目拆分被物理文件削弱。 | 把通用模型/引擎移回 Core；若类型只服务一条规则族，保留在 Rules 并改为 `NLISSN.Rules.*`。 |
-| P1 | 当前规则顶层按阶段组织。一个 `Class` 或 `SObject` 规则族横跨四个目录，`Type*`/`Target*` 前缀又承担领域分类。 | 改一项删除能力要在四个顶层目录来回跳转，文件名不能表达规则族。 | 在 `NLISSN.Rules` 内按规则族优先：`DeleteClass/{Mark,Propagate,Lift,Propose,Support}`、`DeleteSObject/{...}`、`MethodReachability/{...}`；阶段仍作为族内子目录。 |
+| P1 | 当前规则顶层按阶段组织。原子规则横跨四个目录，`Type*`/`Target*` 前缀又承担领域分类。 | 改一项删除能力要在四个顶层目录来回跳转，文件名不能表达规则职责。 | 在 `NLISSN.Rules` 内按原子规则职责优先：`AtomicRules/{Mark,Propagate,Lift,Propose,Support}`、`MethodReachability/{...}`；阶段仍作为职责内子目录。 |
 | P1 | `NLISSN` 下有 10 个生产 `.cs` 文件全部平铺，既含 CLI parsing、host、目录 I/O、计划产物、日志遥测和组装。 | composition root 外的适配器难以定位，Host 容易继续吸收业务逻辑。 | 物理分为 `Cli/Parsing`、`Cli/Hosting`、`Artifacts`、`Telemetry`、`Composition`；`Program.cs` 保持唯一薄入口。 |
 | P2 | `NLCPG/Builder/Passes` 中 `PartitionedSyntaxPass.cs` 和 `PartitionedOperationPass.cs` 声明为 `NLCPG.Builder`，同目录其余 pass 为 `NLCPG.Builder.Passes`。 | 局部导航和可见性约定不一致。 | 统一为 `NLCPG.Builder.Passes`，或把两个协调器移到 `Builder/Partitioning`；二选一，不同时保留两种含义。 |
 
@@ -97,8 +97,7 @@ src/
     Rules/Execution/
   NLISSN.Rules/
     Catalog/
-    DeleteClass/{Mark,Propagate,Lift,Propose,Support}/
-    DeleteSObject/{Mark,Propagate,Lift,Propose,Support}/
+    AtomicRules/{Mark,Propagate,Lift,Propose,Support}/
     MethodReachability/{Mark,Propose,Support}/
   NLCPG/
     Builder/{Passes,Partitioning,Preallocation,Streaming}/
@@ -115,7 +114,7 @@ src/
 
 1. 先冻结当前规则 DAG 改动，修复 `LayoutArchitectureTests` 对 `NL.Caching` 的过期预期；再新增一个架构测试：每个生产 `.cs` 的命名空间前缀必须与所属项目和目录一致，并为例外建立明确白名单。先让后者在当前问题上失败。
 2. 执行 `NLISSN.Core/Pipeline` 与 `NLISSN.Rules/*/Support` 的移动，逐项目顺序 `dotnet build --no-restore -p:UseSharedCompilation=false`，并运行 `LayoutArchitectureTests` 和规则 DAG 的 Host 测试。
-3. 按一个规则族完成 `DeleteClass` 的纵向归位；验证同一输入的 Mark、Decision、Rewrite 结果和 DOP 1/8/12/14/16 快照相等，再迁移下一族。
+3. 按原子规则职责完成纵向归位；验证同一输入的 Mark、Decision、Rewrite 结果和 DOP 1/8/12/14/16 快照相等，再迁移下一项职责。
 4. 最后整理 `NLISSN` 的 adapter 目录和 `NLCPG` 两个 pass 的命名空间。运行 CLI 单文件、目录和 rewrite-plan 回放，再运行 `pwsh -File .\\scripts\\check-harness-consistency.ps1` 与 `git diff --check`。
 
 不得把这次目录迁移和缓存容量、CPG 并行度、规则行为改动混在一个 feature 中。前者的完成条件是依赖方向、编译、架构守卫和行为快照；性能变更需要独立的 warmed 测量。

@@ -105,12 +105,7 @@ public sealed class RuleGraphCompiler
           normalizedNodes,
           normalizedNodes
             .Select((node, index) => (node.NodeId, index))
-            .ToDictionary(entry => entry.NodeId, entry => entry.index),
-          downstream.ToDictionary(
-            entry => entry.Key,
-            entry => (IReadOnlyList<RuleNodeId>)entry.Value
-              .OrderBy(id => declarationIndexes[id])
-              .ToList()));
+            .ToDictionary(entry => entry.NodeId, entry => entry.index));
     }
 
 }

@@ -10,14 +10,14 @@ namespace NLISSN.Rules;
 /// 将 Lift 阶段确认完整的 if / else if / else 结构规约为单个改写决策。
 public sealed class IfStructureProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleSemanticTag IfCompletionSemanticTag = new("SObject.IfCompletion");
+    private static readonly RuleSemanticTag IfStructureSemanticTag = RuleFactPorts.LiftIfStructure;
 
     private static readonly RuleConsumesContract IfCompletionConsumes =
       new(new[]
       {
         new RuleConsumedSyntax(
           new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
-          IfCompletionSemanticTag)
+          IfStructureSemanticTag)
       });
 
     public override string CapabilityId { get; } = "propose.if-structure";
@@ -30,30 +30,29 @@ public sealed class IfStructureProposalRule : RuleDefinitionPropose
     public override RuleConsumesContract Consumes => IfCompletionConsumes;
 
     public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds =>
-      DeleteSObjectProposalHelpers.IfConflictNodeKinds;
+      ProposalHelpers.IfConflictNodeKinds;
 
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
-      DeleteSObjectProposalHelpers.MergeableNodeKinds;
+      ProposalHelpers.MergeableNodeKinds;
 
     // 把 if 完成态 payload 规约成唯一结构决策，并记录已消费的节点避免重复产出。
-    public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
         _ = seedMarks;
-        _ = liftedMarks;
         var consumedKeys = new HashSet<(int Start, int Length, int RawKind)>();
 
-        foreach (var payload in DeleteSObjectProposalHelpers.EnumerateIfStructureCompletionPayloads(
-                     propagatedMarks))
+        foreach (var payload in ProposalHelpers.EnumerateIfStructureLiftPayloads(
+                     liftedMarks))
         {
-            var decisionNode = DeleteSObjectProposalHelpers.GetIfStructureDecisionNode(payload);
+            var decisionNode = ProposalHelpers.GetIfStructureDecisionNode(payload);
 
-            if (consumedKeys.Contains(DeleteSObjectProposalHelpers.BuildNodeKey(decisionNode)))
+            if (consumedKeys.Contains(ProposalHelpers.BuildNodeKey(decisionNode)))
             {
                 continue;
             }
 
-            if (DeleteSObjectProposalHelpers.TryBuildIfStructureDecisionFromMark(
+            if (ProposalHelpers.TryBuildIfStructureDecisionFromMark(
                     RuleId,
                     payload,
                     out var decision,
@@ -62,7 +61,7 @@ public sealed class IfStructureProposalRule : RuleDefinitionPropose
             {
                 foreach (var node in consumedNodes)
                 {
-                    consumedKeys.Add(DeleteSObjectProposalHelpers.BuildNodeKey(node));
+                    consumedKeys.Add(ProposalHelpers.BuildNodeKey(node));
                 }
 
                 yield return decision;

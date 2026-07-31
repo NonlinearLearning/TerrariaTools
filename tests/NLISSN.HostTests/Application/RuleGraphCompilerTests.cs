@@ -27,13 +27,13 @@ public sealed class RuleGraphCompilerTests
       GraphTag);
 
     [Fact]
-    public void Analyze_WithSObjectPipelineGraphExecution_PreservesLegacyStageResults()
+    public void Analyze_WithTargetPipelineGraphExecution_PreservesLegacyStageResults()
     {
         const string source = """
           public sealed class Box { public int Value; }
           public sealed class Demo { int Run(Box s) { var value = s.Value; return value; } }
           """;
-        var rules = CreateSObjectPipeline();
+        var rules = CreateTargetPipeline();
         var legacy = new ApplicationService(rules);
         var graph = new ApplicationService(rules);
         var options = new Dictionary<string, string> { ["target-name"] = "s", ["skip-rewrite"] = "true" };
@@ -50,7 +50,7 @@ public sealed class RuleGraphCompilerTests
     }
 
     [Fact]
-    public void Analyze_WithClassPipelineGraphExecution_PreservesLegacyStageResults()
+    public void Analyze_WithTypePipelineGraphExecution_PreservesLegacyStageResults()
     {
         const string source = """
           public sealed class PlayerInput { }
@@ -60,7 +60,7 @@ public sealed class RuleGraphCompilerTests
             void Run() { var input = new PlayerInput(); System.Console.Write(input); }
           }
           """;
-        var rules = CreateClassPipeline();
+        var rules = CreateTypePipeline();
         var legacy = new ApplicationService(rules);
         var graph = new ApplicationService(rules);
         var options = new Dictionary<string, string> { ["delete-class"] = "PlayerInput", ["skip-rewrite"] = "true" };
@@ -310,8 +310,6 @@ public sealed class RuleGraphCompilerTests
           node.NodeId.Value == "Propagate:DEL-CLASS-PROP-LOCAL-REF-001");
         var sObjectSwitch = graph.Nodes.Single(node =>
           node.NodeId.Value == "Lift:DEL-SOBJ-LIFT-SWITCH-001");
-        var classSwitch = graph.Nodes.Single(node =>
-          node.NodeId.Value == "Lift:DEL-CLASS-LIFT-SWITCH-001");
 
         Assert.Contains(
           sObjectReference.Dependencies,
@@ -319,7 +317,7 @@ public sealed class RuleGraphCompilerTests
           dependency.RequiredInput is
             {
               SyntaxKinds: [SyntaxKind.VariableDeclarator],
-              SemanticTag.Value: "SObject.LocalDefinitionFromInitializer"
+              SemanticTag.Value: "Flow.LocalDefinition"
             });
         Assert.Contains(
           classReference.Dependencies,
@@ -327,22 +325,17 @@ public sealed class RuleGraphCompilerTests
             dependency.RequiredInput is
             {
               SyntaxKinds: [SyntaxKind.VariableDeclarator],
-              SemanticTag.Value: "Class.LocalDefinitionFromObjectCreation"
+              SemanticTag.Value: "Flow.LocalDefinition"
             });
         AssertSwitchLiftDependencies(
           sObjectSwitch,
           "Lift:DEL-SOBJ-LIFT-HOST-001",
           "Lift:DEL-SOBJ-LIFT-IF-001",
-          "SObject.IfStructure");
-        AssertSwitchLiftDependencies(
-          classSwitch,
-          "Lift:DEL-CLASS-LIFT-HOST-001",
-          "Lift:DEL-CLASS-LIFT-IF-001",
-          "Class.IfStructure");
+          "Lift.IfStructure");
     }
 
     [Fact]
-    public void CompileRuleGraph_WithDefaultPipeline_UsesAtomicProposalDependencies()
+    public void CompileRuleGraph_WithDefaultPipeline_UsesNeutralFactPorts()
     {
         var graph = RuleRegistry.CreateDefaultRules().CompileRuleGraph();
 
@@ -356,33 +349,28 @@ public sealed class RuleGraphCompilerTests
           node.NodeId.Value == "Lift:DEL-SOBJ-LIFT-SWITCH-001");
 
         Assert.Equal(
-          new[] { "Propagate:DEL-SOBJ-PROP-LOGIC-GROUP-001" },
+          new[] { "Lift:DEL-SOBJ-LIFT-LOGIC-001" },
           logical.Dependencies.Select(dependency => dependency.Producer.Value));
         var logicalDependency = Assert.Single(logical.Dependencies);
         Assert.Equal(
           new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
           logicalDependency.RequiredInput!.SyntaxKinds);
-        Assert.Equal("SObject.LogicalHost", logicalDependency.RequiredInput.SemanticTag.Value);
+        Assert.Equal("Lift.LogicalReduction", logicalDependency.RequiredInput.SemanticTag.Value);
         Assert.Equal(
           new[] { "Propagate:DEL-CLASS-PROP-DECL-HOST-001" },
           classReturn.Dependencies.Select(dependency => dependency.Producer.Value));
         var classReturnDependency = Assert.Single(classReturn.Dependencies);
-        Assert.Equal("Class.DeclarationHost", classReturnDependency.RequiredInput!.SemanticTag.Value);
+        Assert.Equal("Relation.DeclarationHost", classReturnDependency.RequiredInput!.SemanticTag.Value);
         Assert.Contains(SyntaxKind.MethodDeclaration, classReturnDependency.RequiredInput.SyntaxKinds);
-        Assert.Equal(
-          new[]
-          {
-            "Propagate:DEL-CLASS-PROP-METHOD-PARAM-USAGE-001"
-          },
-          privateParameter.Dependencies.Select(dependency => dependency.Producer.Value));
-        Assert.Equal(
-          new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression },
-          Assert.Single(privateParameter.Dependencies).RequiredInput!.SyntaxKinds);
+        Assert.Contains(
+          privateParameter.Dependencies,
+          dependency => dependency.Producer.Value == "Propagate:DEL-CLASS-PROP-METHOD-PARAM-USAGE-001" &&
+            dependency.RequiredInput?.SemanticTag.Value == "Relation.ParameterUsage");
         AssertSwitchLiftDependencies(
           sObjectSwitch,
           "Lift:DEL-SOBJ-LIFT-HOST-001",
           "Lift:DEL-SOBJ-LIFT-IF-001",
-          "SObject.IfStructure");
+          "Lift.IfStructure");
     }
 
     private static void AssertSwitchLiftDependencies(
@@ -453,8 +441,6 @@ public sealed class RuleGraphCompilerTests
           RuleKind.Propagate,
           new RuleDependency(producer.NodeId, GraphInput));
         var graph = new RuleGraphCompiler().Compile(new[] { producer, consumer });
-
-        Assert.Equal(new[] { consumer.NodeId }, graph.DownstreamNodes[producer.NodeId]);
 
         var result = await new RuleGraphExecutor().ExecuteAsync(
           graph,
@@ -540,8 +526,12 @@ public sealed class RuleGraphCompilerTests
           maxDegreeOfParallelism: 2);
 
         Assert.Equal(new[] { "slow", "fast" }, result.Nodes.Select(node => node.NodeId.Value));
-        Assert.Equal(new object[] { "slow" }, result.GetValues(new RuleNodeId("slow")));
-        Assert.Equal(new object[] { "fast" }, result.GetValues(new RuleNodeId("fast")));
+        Assert.Equal(
+          new object[] { "slow" },
+          result.Nodes.Single(node => node.NodeId == new RuleNodeId("slow")).Result.Values);
+        Assert.Equal(
+          new object[] { "fast" },
+          result.Nodes.Single(node => node.NodeId == new RuleNodeId("fast")).Result.Values);
     }
 
     [Fact]
@@ -638,13 +628,13 @@ public sealed class RuleGraphCompilerTests
         return marks.Select(mark => $"{mark.RuleId}:{mark.SyntaxNode.SpanStart}:{mark.SyntaxNode.Span.Length}").ToList();
     }
 
-    private static RulePipeline CreateSObjectPipeline()
+    private static RulePipeline CreateTargetPipeline()
     {
         var defaults = RuleRegistry.CreateDefaultRules();
         return new RulePipeline(
-          defaults.Markers.Where(rule => rule.GetType().Name.StartsWith("SObject", StringComparison.Ordinal)).ToList(),
-          defaults.Propagators.Where(rule => rule.GetType().Name.StartsWith("SObject", StringComparison.Ordinal)).ToList(),
-          defaults.Lifters.Where(rule => rule.GetType().Name.StartsWith("SObject", StringComparison.Ordinal)).ToList(),
+          defaults.Markers.Where(rule => rule.GetType().Name.StartsWith("Target", StringComparison.Ordinal)).ToList(),
+          defaults.Propagators.Where(rule => rule.GetType().Name.StartsWith("Target", StringComparison.Ordinal)).ToList(),
+          defaults.Lifters.Where(rule => rule.GetType().Name.StartsWith("Target", StringComparison.Ordinal)).ToList(),
           defaults.Proposers.Where(rule => rule is
             LogicalExpressionProposalRule or
             IfStructureProposalRule or
@@ -652,14 +642,14 @@ public sealed class RuleGraphCompilerTests
             DefaultRemovalProposalRule).ToList());
     }
 
-    private static RulePipeline CreateClassPipeline()
+    private static RulePipeline CreateTypePipeline()
     {
         var defaults = RuleRegistry.CreateDefaultRules();
         return new RulePipeline(
-          defaults.Markers.Where(rule => rule.GetType().Name.StartsWith("Class", StringComparison.Ordinal)).ToList(),
-          defaults.Propagators.Where(rule => rule.GetType().Name.StartsWith("Class", StringComparison.Ordinal)).ToList(),
-          defaults.Lifters.Where(rule => rule.GetType().Name.StartsWith("Class", StringComparison.Ordinal)).ToList(),
-          defaults.Proposers.Where(rule => rule.GetType().Name.StartsWith("Class", StringComparison.Ordinal)).ToList());
+          defaults.Markers.Where(rule => rule.GetType().Name.StartsWith("Type", StringComparison.Ordinal)).ToList(),
+          defaults.Propagators.Where(rule => rule.GetType().Name.StartsWith("Type", StringComparison.Ordinal)).ToList(),
+          defaults.Lifters.Where(rule => rule.GetType().Name.StartsWith("Type", StringComparison.Ordinal)).ToList(),
+          defaults.Proposers.Where(rule => rule.GetType().Name.StartsWith("Type", StringComparison.Ordinal)).ToList());
     }
 
     private sealed class CrossGroupMarker : RuleDefinitionMark
@@ -676,7 +666,7 @@ public sealed class RuleGraphCompilerTests
 
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => new[] { SyntaxKind.MethodDeclaration };
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             _ = context;
             yield return new MarkRecord(
@@ -817,7 +807,7 @@ public sealed class RuleGraphCompilerTests
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds =>
           new[] { SyntaxKind.MethodDeclaration };
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             _ = context;
             var declaration = root.DescendantNodes()
@@ -845,7 +835,7 @@ public sealed class RuleGraphCompilerTests
           new[] { SyntaxKind.MethodDeclaration };
 
         public override IEnumerable<PropagatedMarkRecord> Propagate(
-          RuleContext context,
+          IPropagationRuleContext context,
           IReadOnlyList<MarkRecord> seedMarks)
         {
             _ = context;
@@ -875,7 +865,7 @@ public sealed class RuleGraphCompilerTests
           new[] { SyntaxKind.MethodDeclaration };
 
         public override IEnumerable<PropagatedMarkRecord> Propagate(
-          RuleContext context,
+          IPropagationRuleContext context,
           IReadOnlyList<MarkRecord> seedMarks)
         {
             _ = context;
@@ -908,7 +898,7 @@ public sealed class RuleGraphCompilerTests
         public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds => new[] { SyntaxKind.MethodDeclaration };
 
         public override IEnumerable<LiftedMarkRecord> Lift(
-          RuleContext context,
+          ILiftRuleContext context,
           IReadOnlyList<MarkRecord> seedMarks,
           IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
         {
@@ -938,7 +928,7 @@ public sealed class RuleGraphCompilerTests
           new[] { SyntaxKind.ClassDeclaration };
 
         public override IEnumerable<LiftedMarkRecord> Lift(
-          RuleContext context,
+          ILiftRuleContext context,
           IReadOnlyList<MarkRecord> seedMarks,
           IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
         {
@@ -966,7 +956,7 @@ public sealed class RuleGraphCompilerTests
         public override IReadOnlyList<SyntaxKind> MergeableNodeKinds => new[] { SyntaxKind.MethodDeclaration };
 
         public override IEnumerable<DecisionUnit> Propose(
-          RuleContext context,
+          IProposeRuleContext context,
           IReadOnlyList<MarkRecord> seedMarks,
           IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
           IReadOnlyList<LiftedMarkRecord> liftedMarks)

@@ -13,7 +13,7 @@
 ## Accepted Decisions
 
 - `RuleFactDomain`, `RuleTerminalFactSelector`, and `RuleTerminalConsumesContract` are deleted. No equivalent family, stage, or terminal selector replaces them.
-- `SObjectRuleSet` and `ClassRuleSet` are deleted. Default registration becomes flat stage lists; no replacement rule-family registration object is introduced.
+- 规则集注册被删除。默认注册改为平铺的原子规则阶段列表；不引入替代的规则分类注册对象。
 - `Consumes` contains direct `RuleConsumedSyntax` values. Each value contains `SyntaxKinds` and `SemanticTag` only.
 - `Produces` contains direct `RuleProducedSyntax` values with the same two fields.
 - `RuleInputCardinality` moves to `IRuleDefinition` and the four stage bases. It applies to every declared input of that rule. The default is `All`.
@@ -52,7 +52,7 @@ permits zero matching producers. It is rule-level policy and never appears in an
 
 ## Non-Goals
 
-- Do not infer edges from `RuleId`, type names, `SObject`, `Class`, `GroupKey`, AST ancestry, or option names.
+- Do not infer edges from `RuleId`, type names, `GroupKey`, AST ancestry, or option names.
 - Do not create a family collector, aggregate node, terminal node, or fixed-point region.
 - Do not alter rule semantics, rewrite conflict policy, runtime DOP defaults, or CPG admission.
 - Do not preserve compatibility aliases for removed contract types.
@@ -80,9 +80,9 @@ Expected: the new tests fail until the direct syntax-tag model exists.
 
 **Step 3: Replace terminal-domain assertions.**
 
-Delete the assertions that expect 25 SObject and 15 Class terminal dependencies. Add
-assertions that every compiled edge has a `RuleConsumedSyntax` contract and that the graph
-contains no fact-domain or terminal input property.
+Delete assertions that expect category-specific terminal dependencies. Add assertions that
+every compiled edge has a `RuleConsumedSyntax` contract and that the graph contains no
+fact-domain or terminal input property.
 
 **Step 4: Commit.**
 
@@ -187,7 +187,7 @@ Expected: direct graph analysis preserves seed, propagated, lifted, and decision
 refactor: remove terminal fact routing from deletion rules
 ```
 
-### Task 4: Remove SObject and Class Rule-Set Registration
+### Task 4: Flatten Atomic-Rule Registration
 
 **Files:**
 - Modify: `src/NLISSN.Application/Catalog/RuleSet.cs`
@@ -195,7 +195,7 @@ refactor: remove terminal fact routing from deletion rules
 - Modify: `src/NLISSN.Application/RuleRegistry.cs`
 - Modify: `tests/NLISSN.HostTests/Application/PipelineComponentTests.cs`
 
-**Step 1: Delete `SObjectRuleSet` and `ClassRuleSet`.**
+**Step 1: Delete category-specific rule-set registration.**
 
 Move their concrete rule registrations into flat default stage lists. Remove their IDs,
 all composition assertions, and any catalog validation that makes their membership a
@@ -209,7 +209,7 @@ the concrete rule type rather than a rule-set ID.
 **Step 3: Update test fixtures.**
 
 Replace `IRuleSet` fixtures only where they exercise the removed registration API. Test the
-flat default pipeline's stable rule order and the absence of SObject/Class registration
+flat default pipeline's stable rule order and the absence of category-specific registration
 types.
 
 **Step 4: Commit.**
@@ -282,14 +282,14 @@ marks, decisions, rewritten source, diff, node statuses, and telemetry.
 **Step 4: Update current design documents.**
 
 State that automatic edges use syntax kinds and semantic tags only. Remove terminal facts,
-structure roles, and SObject/Class rule-set claims. Do not update historical plans.
+structure roles, and category-specific rule-set claims. Do not update historical plans.
 
 **Step 5: Run final repository checks.**
 
 ```powershell
 pwsh -File .\scripts\check-harness-consistency.ps1
 git diff --check
-rg -n "RuleFactDomain|RuleTerminal|MarkedStructureSelector|RuleConsumedStructure|RuleSyntaxStructureKind|RuleSyntaxStructureRole|SObjectRuleSet|ClassRuleSet" src tests
+rg -n "RuleFactDomain|RuleTerminal|MarkedStructureSelector|RuleConsumedStructure|RuleSyntaxStructureKind|RuleSyntaxStructureRole" src tests
 ```
 
 Expected: the search has no source or test hits; generated build artifacts are excluded.
@@ -307,5 +307,5 @@ docs: record syntax-tag rule DAG contracts
   and a semantic tag.
 - `RuleInputCardinality` is defined once per rule definition and is absent from syntax
   contract records.
-- No `SObjectRuleSet` or `ClassRuleSet` type or registration path remains.
+- No category-specific rule-set type or registration path remains.
 - Default-pipeline behavior and DOP 1/16 snapshots remain equivalent.

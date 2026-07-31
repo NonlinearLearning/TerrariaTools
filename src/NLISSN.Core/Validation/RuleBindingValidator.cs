@@ -38,15 +38,6 @@ public sealed class RuleBindingValidator
           result.NodeId.Value));
       }
 
-      if (result.Status == RuleGraphNodeStatus.Cancelled && result.Result.Values.Count > 0)
-      {
-        issues.Add(CreateIssue(
-          "BIND007",
-          result.NodeId.Value,
-          "A cancelled rule node produced values.",
-          result.NodeId.Value));
-      }
-
       foreach (var value in result.Result.Values)
       {
         ValidatePayload(node, value, issues);
@@ -83,13 +74,33 @@ public sealed class RuleBindingValidator
     }
 
     if (value is PropagatedMarkRecord { Payload: not null } propagated &&
-        !IsRegisteredPayload(propagated.Payload))
+        !IsRegisteredPropagationPayload(propagated.Payload))
     {
       issues.Add(CreateIssue(
         "BIND005",
         $"{node.NodeId.Value}:{propagated.Payload.GetType().FullName}",
-        "A propagated mark carries an unregistered payload type.",
+        "A propagated mark carries a structural or unregistered payload type.",
         propagated.RuleId));
+    }
+
+    if (value is PropagatedMarkRecord { Payload: not null } relationFact &&
+        !HasMatchingRelationPort(relationFact))
+    {
+      issues.Add(CreateIssue(
+        "BIND014",
+        $"{node.NodeId.Value}:{relationFact.Payload.GetType().FullName}",
+        "A relation payload is attached to the wrong semantic fact port.",
+        relationFact.RuleId));
+    }
+
+    if (value is LiftedMarkRecord { Payload: { } payload } lifted &&
+        payload is not ILiftPayload)
+    {
+      issues.Add(CreateIssue(
+        "BIND013",
+        $"{node.NodeId.Value}:{payload.GetType().FullName}",
+        "A lifted mark carries an unregistered payload type.",
+        lifted.RuleId));
     }
 
     if (node.Kind == RuleKind.Propose && ContainsPayload(value))
@@ -114,12 +125,26 @@ public sealed class RuleBindingValidator
     };
   }
 
-  private static bool IsRegisteredPayload(object payload)
+  private static bool IsRegisteredPropagationPayload(object payload)
   {
-    return payload is LogicalHostPayload or IfStructureCompletionPayload or
-      MethodParameterUsagePayload or LocalFunctionParameterUsagePayload or
+    return payload is MethodParameterUsagePayload or LocalFunctionParameterUsagePayload or
       IndexerParameterUsagePayload or DelegateUsagePayload or
       ExtensionMethodMappedCallsitePayload or DeclarationHostPayload;
+  }
+
+  private static bool HasMatchingRelationPort(PropagatedMarkRecord propagated)
+  {
+    var expectedPort = propagated.Payload switch
+    {
+      MethodParameterUsagePayload or LocalFunctionParameterUsagePayload or IndexerParameterUsagePayload =>
+        RuleFactPorts.RelationParameterUsage,
+      DelegateUsagePayload => RuleFactPorts.RelationDelegateUsage,
+      ExtensionMethodMappedCallsitePayload => RuleFactPorts.RelationExtensionUsage,
+      DeclarationHostPayload => RuleFactPorts.RelationDeclarationHost,
+      _ => null,
+    };
+
+    return expectedPort is null || propagated.Mark.SemanticTag == expectedPort;
   }
 
   private static bool ContainsPayload(object value)

@@ -27,9 +27,9 @@ public sealed class DefinitionStructureAnalyzer
             PropertyDeclarationSyntax property => AnalyzeProperty(property),
             MethodDeclarationSyntax method => AnalyzeMethod(method),
             ConstructorDeclarationSyntax constructor => AnalyzeConstructor(constructor),
-            ClassDeclarationSyntax type => AnalyzeClass(type),
-            StructDeclarationSyntax type => AnalyzeStruct(type),
-            InterfaceDeclarationSyntax type => AnalyzeInterface(type),
+            ClassDeclarationSyntax type => AnalyzeTypeDeclaration(type),
+            StructDeclarationSyntax type => AnalyzeTypeDeclaration(type),
+            InterfaceDeclarationSyntax type => AnalyzeTypeDeclaration(type),
             RecordDeclarationSyntax type => AnalyzeRecord(type),
             _ => throw new ArgumentException("Unsupported definition syntax node.", nameof(root))
         };
@@ -92,21 +92,6 @@ public sealed class DefinitionStructureAnalyzer
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.Body);
         AnalysisSyntaxNodeCollector.AddIfNotNull(nodes, root.ExpressionBody);
         return new DefinitionStructure(root, nodes);
-    }
-
-    private static DefinitionStructure AnalyzeClass(ClassDeclarationSyntax root)
-    {
-        return AnalyzeTypeDeclaration(root);
-    }
-
-    private static DefinitionStructure AnalyzeStruct(StructDeclarationSyntax root)
-    {
-        return AnalyzeTypeDeclaration(root);
-    }
-
-    private static DefinitionStructure AnalyzeInterface(InterfaceDeclarationSyntax root)
-    {
-        return AnalyzeTypeDeclaration(root);
     }
 
     private static DefinitionStructure AnalyzeRecord(RecordDeclarationSyntax root)

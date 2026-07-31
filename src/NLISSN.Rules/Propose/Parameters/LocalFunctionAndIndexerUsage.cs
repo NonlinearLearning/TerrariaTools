@@ -4,10 +4,10 @@ using Microsoft.CodeAnalysis.Operations;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 
-namespace NLISSN.Core.Decision;
+namespace NLISSN.Rules;
 
 /// 提取局部函数参数使用事实，并生成与声明同步的调用点改写。
-public static class DeleteClassLocalFunctionUsageProposalHelpers
+public static class LocalFunctionUsageProposalHelpers
 {
     // 提取指定局部函数参数使用模式下的唯一 payload，供局部函数收缩提案消费。
     public static IEnumerable<LocalFunctionParameterUsagePayload> EnumeratePayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks, LocalFunctionParameterUsageMode mode)
@@ -35,7 +35,7 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
     // 尝试生成删除目标参数后的局部函数声明替换节点。
     public static bool TryBuildReplacement(LocalFunctionParameterUsagePayload payload, out LocalFunctionStatementSyntax replacementLocalFunction)
     {
-        return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementLocalFunction(
+        return ParameterShrinkAnalyzer.TryBuildReplacementLocalFunction(
           payload.LocalFunction,
           payload.Parameter,
           out replacementLocalFunction);
@@ -61,7 +61,7 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
                 continue;
             }
 
-            yield return DeleteClassReplaceDecisionFactory.CreateInvocationReplaceDecision(
+            yield return ReplaceDecisionFactory.CreateInvocationReplaceDecision(
               ruleId,
               invocation,
               replacementInvocation,
@@ -89,7 +89,7 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
         switch (payload.Mode)
         {
             case LocalFunctionParameterUsageMode.Positional:
-                return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementInvocation(
+                return ParameterShrinkAnalyzer.TryBuildReplacementInvocation(
                   invocation,
                   payload.ParameterIndex,
                   payload.LocalFunction.ParameterList.Parameters.Count,
@@ -97,7 +97,7 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
 
             case LocalFunctionParameterUsageMode.NamedArgument:
                 return TryResolveInvocationOperation(compilation, invocation, out var namedInvocationOperation) &&
-                  DeleteClassParameterShrinkAnalyzer.TryBuildNamedArgumentReplacementInvocation(
+                  ParameterShrinkAnalyzer.TryBuildNamedArgumentReplacementInvocation(
                     invocation,
                     namedInvocationOperation,
                     parameterSymbol,
@@ -105,7 +105,7 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
 
             case LocalFunctionParameterUsageMode.Optional:
                 if (!TryResolveInvocationOperation(compilation, invocation, out var optionalInvocationOperation) ||
-                    !DeleteClassParameterShrinkAnalyzer.TryBuildOptionalReplacementInvocation(
+                    !ParameterShrinkAnalyzer.TryBuildOptionalReplacementInvocation(
                       invocation,
                       optionalInvocationOperation,
                       parameterSymbol,
@@ -133,7 +133,7 @@ public static class DeleteClassLocalFunctionUsageProposalHelpers
 }
 
 /// 提取索引器参数使用事实，并生成与声明同步的元素访问改写。
-public static class DeleteClassIndexerUsageProposalHelpers
+public static class IndexerUsageProposalHelpers
 {
     // 提取指定索引器参数使用模式下的唯一 payload，供索引器收缩提案消费。
     public static IEnumerable<IndexerParameterUsagePayload> EnumeratePayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IndexerParameterUsageMode mode)
@@ -161,7 +161,7 @@ public static class DeleteClassIndexerUsageProposalHelpers
     // 尝试生成删除目标参数后的索引器声明替换节点。
     public static bool TryBuildReplacement(IndexerParameterUsagePayload payload, out IndexerDeclarationSyntax replacementIndexer)
     {
-        return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementIndexer(
+        return ParameterShrinkAnalyzer.TryBuildReplacementIndexer(
           payload.Indexer,
           payload.Parameter,
           out replacementIndexer);
@@ -187,7 +187,7 @@ public static class DeleteClassIndexerUsageProposalHelpers
                 continue;
             }
 
-            yield return DeleteClassReplaceDecisionFactory.CreateElementAccessReplaceDecision(
+            yield return ReplaceDecisionFactory.CreateElementAccessReplaceDecision(
               ruleId,
               access,
               replacementAccess,
@@ -215,7 +215,7 @@ public static class DeleteClassIndexerUsageProposalHelpers
         switch (payload.Mode)
         {
             case IndexerParameterUsageMode.Positional:
-                return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementElementAccess(
+                return ParameterShrinkAnalyzer.TryBuildReplacementElementAccess(
                   access,
                   payload.ParameterIndex,
                   payload.Indexer.ParameterList.Parameters.Count,
@@ -224,7 +224,7 @@ public static class DeleteClassIndexerUsageProposalHelpers
             case IndexerParameterUsageMode.NamedArgument:
                 return compilation.GetSemanticModel(access.SyntaxTree)
                          .GetOperation(access, CancellationToken.None) is IPropertyReferenceOperation propertyReference &&
-                  DeleteClassParameterShrinkAnalyzer.TryBuildNamedArgumentReplacementElementAccess(
+                  ParameterShrinkAnalyzer.TryBuildNamedArgumentReplacementElementAccess(
                     access,
                     propertyReference,
                     parameterSymbol,

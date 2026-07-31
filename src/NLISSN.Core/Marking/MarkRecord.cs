@@ -5,7 +5,8 @@ using NLISSN.Core.Pipeline;
 namespace NLISSN.Core.Marking;
 
 /// <summary>
-/// Retains the provenance category of a marked value for compatibility outside graph routing.
+/// Retains legacy provenance for compatibility outside graph routing.
+/// Structural conclusions are carried by <see cref="Lifting.LiftedMarkRecord"/>.
 /// </summary>
 public enum RuleOutputKind
 {
@@ -15,8 +16,6 @@ public enum RuleOutputKind
     LocalDefinitionFromInitializer,
     LocalDefinitionFromObjectCreation,
     LocalReference,
-    LogicalHost,
-    IfCompletion,
     ExpressionHost,
     IfStructure,
     SwitchStructure,
@@ -36,4 +35,5 @@ public sealed record MarkRecord(
   /// 说明本次命中的原因，供调试和结果输出使用。
   string Reason,
   RuleOutputKind? OutputKind = null,
-  RuleSemanticTag? SemanticTag = null);
+  RuleSemanticTag? SemanticTag = null,
+  RuleEvidenceOrigin Origins = RuleEvidenceOrigin.None);

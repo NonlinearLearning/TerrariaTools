@@ -146,13 +146,13 @@ public sealed class PropagationRuleExpansionTests
         var application = new  ApplicationService(
           new RuleDefinitionMark[] { new ExactSyntaxSeedRule(seeds) },
           RuleRegistry.CreateDefaultRules().Propagators
-            .OfType<SObjectPropagationRuleBase>()
+            .OfType<ExpressionFlowPropagationRuleBase>()
             .ToList(),
           new RuleDefinitionLift[]
           {
-            new SObjectExpressionHostLiftingRule(),
-            new SObjectIfStructureLiftingRule(),
-            new SObjectSwitchStructureLiftingRule()
+            new ExpressionHostLiftingRule(),
+            new IfStructureLiftingRule(),
+            new SwitchStructureLiftingRule()
           },
           Array.Empty<RuleDefinitionPropose>());
         return application.Analyze(
@@ -199,7 +199,7 @@ public sealed class PropagationRuleExpansionTests
 
     private sealed class ExactSyntaxSeedRule : RuleDefinitionMark
     {
-        private static readonly RuleSemanticTag AtomicTargetSemanticTag = new("Target.Atomic");
+        private static readonly RuleSemanticTag AtomicTargetSemanticTag = RuleFactPorts.TargetExpression;
         private readonly IReadOnlyList<(SyntaxKind Kind, string Text)> _seeds;
 
         public ExactSyntaxSeedRule(IReadOnlyList<(SyntaxKind Kind, string Text)> seeds)
@@ -217,10 +217,10 @@ public sealed class PropagationRuleExpansionTests
 
         public override RuleProducesContract Produces { get; } = new(new[]
         {
-          new RuleProducedSyntax(SObjectPropagationRuleBase.AtomicTargetNodeKinds, AtomicTargetSemanticTag)
+          new RuleProducedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, AtomicTargetSemanticTag)
         });
 
-        public override IEnumerable<MarkRecord> Mark(RuleContext context, SyntaxNode root)
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             foreach (var seed in _seeds)
             {
@@ -235,7 +235,8 @@ public sealed class PropagationRuleExpansionTests
                       null,
                       null,
                       $"Test seed '{seed.Text}'.",
-                      SemanticTag: AtomicTargetSemanticTag);
+                      SemanticTag: AtomicTargetSemanticTag,
+                      Origins: RuleEvidenceOrigin.AtomicExpression);
                 }
             }
         }

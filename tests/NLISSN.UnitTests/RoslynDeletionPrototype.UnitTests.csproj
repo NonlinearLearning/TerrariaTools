@@ -20,6 +20,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Caching\NL.Caching.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN\NLISSN.csproj" />
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Rules\NLISSN.Rules.csproj" />
     <ProjectReference Include="..\NLISSN.Testing\RoslynDeletionPrototype.Testing.csproj" />

@@ -33,21 +33,44 @@ public sealed record LogicalConditionMarkAnalysis(
 public sealed class LogicalConditionMarkAnalyzer
 {
     // 在逻辑条件内部定位目标命中、操作数组和优选标记节点，供 mark 阶段直接使用。
-    public LogicalConditionMarkAnalysis Analyze(ExpressionSyntax seedExpression, string targetName, CpgAnalysisContext context)
+    public LogicalConditionMarkAnalysis Analyze(
+      ExpressionSyntax seedExpression,
+      string targetName,
+      CpgAnalysisContext context,
+      MarkAnalysisSnapshot snapshot)
     {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        return Analyze(
+          seedExpression,
+          targetName,
+          context,
+          snapshot.GetOperation);
+    }
+
+    internal LogicalConditionMarkAnalysis Analyze(
+      ExpressionSyntax seedExpression,
+      string targetName,
+      CpgAnalysisContext context,
+      Func<ExpressionSyntax, IOperation?> resolveOperation)
+    {
+        ArgumentNullException.ThrowIfNull(resolveOperation);
         var region = new MarkRegionAnalyzer().Analyze(seedExpression, context);
         var conditionRoot = FindConditionRoot(seedExpression, region)
             ?? throw new InvalidOperationException(
                 $"Expression '{seedExpression}' is not inside a supported logical condition.");
         var targetNames = ParseTargetNames(targetName);
-        var targetSymbols = ResolveTargetSymbols(conditionRoot, targetNames, context.SemanticModel);
+        var targetSymbols = ResolveTargetSymbols(
+          conditionRoot,
+          targetNames,
+          context.SemanticModel,
+          resolveOperation);
         if (targetSymbols.Count == 0)
         {
             throw new InvalidOperationException(
                 $"Could not resolve target symbol '{targetName}' from expression '{seedExpression}'.");
         }
 
-        var hits = CollectHits(conditionRoot, region, targetSymbols, context);
+        var hits = CollectHits(conditionRoot, region, targetSymbols, context, resolveOperation);
         if (hits.Count == 0)
         {
             throw new InvalidOperationException(
@@ -72,7 +95,12 @@ public sealed class LogicalConditionMarkAnalyzer
         return FindConditionRoot(expression, region) is not null;
     }
 
-    private static IReadOnlyList<LogicalConditionHit> CollectHits(ExpressionSyntax conditionRoot, MarkCodeRegion region, IReadOnlyList<ISymbol> targetSymbols, CpgAnalysisContext context)
+    private static IReadOnlyList<LogicalConditionHit> CollectHits(
+      ExpressionSyntax conditionRoot,
+      MarkCodeRegion region,
+      IReadOnlyList<ISymbol> targetSymbols,
+      CpgAnalysisContext context,
+      Func<ExpressionSyntax, IOperation?> resolveOperation)
     {
         var hits = new List<LogicalConditionHit>();
 
@@ -96,7 +124,8 @@ public sealed class LogicalConditionMarkAnalyzer
             var matchedTargetSymbol = ResolveMatchedTargetSymbol(
                 operand,
                 targetSymbols,
-                context.SemanticModel);
+                context.SemanticModel,
+                resolveOperation);
             if (matchedTargetSymbol is not null)
             {
                 hits.Add(new LogicalConditionHit(
@@ -121,7 +150,8 @@ public sealed class LogicalConditionMarkAnalyzer
             var matchedTargetSymbol = ResolveMatchedTargetSymbol(
                 expression,
                 targetSymbols,
-                context.SemanticModel);
+                context.SemanticModel,
+                resolveOperation);
             if (matchedTargetSymbol is not null)
             {
                 hits.Add(new LogicalConditionHit(
@@ -297,11 +327,15 @@ public sealed class LogicalConditionMarkAnalyzer
             .ToList();
     }
 
-    private static IReadOnlyList<ISymbol> ResolveTargetSymbols(ExpressionSyntax expression, IReadOnlyList<string> targetNames, SemanticModel semanticModel)
+    private static IReadOnlyList<ISymbol> ResolveTargetSymbols(
+      ExpressionSyntax expression,
+      IReadOnlyList<string> targetNames,
+      SemanticModel semanticModel,
+      Func<ExpressionSyntax, IOperation?> resolveOperation)
     {
         return expression.DescendantNodesAndSelf()
             .OfType<ExpressionSyntax>()
-            .Select(node => ResolveSymbol(node, semanticModel))
+            .Select(node => ResolveSymbol(node, semanticModel, resolveOperation))
             .Where(symbol => symbol is not null && targetNames.Contains(symbol.Name, StringComparer.Ordinal))
             .Distinct(SymbolEqualityComparer.Default)
             .Cast<ISymbol>()
@@ -327,12 +361,16 @@ public sealed class LogicalConditionMarkAnalyzer
         return null;
     }
 
-    private static ISymbol? ResolveMatchedTargetSymbol(ExpressionSyntax expression, IReadOnlyList<ISymbol> targetSymbols, SemanticModel semanticModel)
+    private static ISymbol? ResolveMatchedTargetSymbol(
+      ExpressionSyntax expression,
+      IReadOnlyList<ISymbol> targetSymbols,
+      SemanticModel semanticModel,
+      Func<ExpressionSyntax, IOperation?> resolveOperation)
     {
-        var operation = semanticModel.GetOperation(expression);
+        var operation = resolveOperation(expression);
         if (operation is null)
         {
-            var symbol = ResolveSymbol(expression, semanticModel);
+            var symbol = ResolveSymbol(expression, semanticModel, resolveOperation);
             return ResolveMatchedTargetSymbol(symbol, targetSymbols);
         }
 
@@ -360,9 +398,12 @@ public sealed class LogicalConditionMarkAnalyzer
         return null;
     }
 
-    private static ISymbol? ResolveSymbol(ExpressionSyntax expression, SemanticModel semanticModel)
+    private static ISymbol? ResolveSymbol(
+      ExpressionSyntax expression,
+      SemanticModel semanticModel,
+      Func<ExpressionSyntax, IOperation?> resolveOperation)
     {
-        var operation = semanticModel.GetOperation(expression);
+        var operation = resolveOperation(expression);
         if (operation is not null)
         {
             return ResolveOperationSymbol(operation);

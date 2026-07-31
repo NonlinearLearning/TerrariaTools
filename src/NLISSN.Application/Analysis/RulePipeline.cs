@@ -12,7 +12,6 @@ public sealed record RulePipeline(
   IReadOnlyList<RuleDefinitionPropagate> Propagators,
   IReadOnlyList<RuleDefinitionLift> Lifters,
   IReadOnlyList<RuleDefinitionPropose> Proposers,
-  bool EnableHelperReturnSlicePilot = false,
   IReadOnlyList<RuleDefinitionMark>? DisabledMarkers = null,
   IReadOnlyList<RuleDefinitionPropagate>? DisabledPropagators = null,
   IReadOnlyList<RuleDefinitionLift>? DisabledLifters = null,
@@ -36,11 +35,9 @@ public sealed record RulePipeline(
           .ToList();
         var contractGraph = new RuleStructureContractGraphCompiler().Compile(declarations
           .Select(declaration => new RuleStructureContractGraphNode(
-            declaration.Rule.NodeId,
-            declaration.Kind,
+            RuleNodeId.For(declaration.Kind, declaration.Rule.RuleId),
             declaration.Rule.Consumes,
             declaration.Rule.Produces,
-            declaration.IsEnabled,
             declaration.Rule.InputCardinality))
           .ToList());
         var declaredNodes = declarations
@@ -51,7 +48,7 @@ public sealed record RulePipeline(
         return new RuleGraphCompiler().Compile(declaredNodes);
     }
 
-    // 汇总四个阶段所有规则声明的能力需求，并按试验开关补充额外查询能力。
+    // 汇总四个阶段所有规则声明的能力需求。
     public IReadOnlyList<NLCPGCapability> GetRequiredCapabilities()
     {
         var requiredCapabilities = Markers.SelectMany(rule => rule.RequiredCapabilities)
@@ -59,14 +56,6 @@ public sealed record RulePipeline(
           .Concat(Lifters.SelectMany(rule => rule.RequiredCapabilities))
           .Concat(Proposers.SelectMany(rule => rule.RequiredCapabilities))
           .ToList();
-        if (EnableHelperReturnSlicePilot && Propagators.Any(rule => string.Equals(
-              rule.GetType().Name,
-              "ClassSymbolReferencePropagationRule",
-              StringComparison.Ordinal)))
-        {
-            requiredCapabilities.Add(NLCPGCapability.InterproceduralDataFlow);
-        }
-
         return requiredCapabilities
           .Distinct()
           .OrderBy(capability => capability)
@@ -78,20 +67,20 @@ public sealed record RulePipeline(
       CompiledRuleStructureContractGraph contractGraph)
     {
         var rule = declaration.Rule;
+        var nodeId = RuleNodeId.For(declaration.Kind, rule.RuleId);
         IReadOnlyList<RuleDependency> dependencies =
           rule.Consumes.Inputs.Count > 0
           ? contractGraph.Edges
-            .Where(edge => edge.Consumer == rule.NodeId)
+            .Where(edge => edge.Consumer == nodeId)
             .Select(edge => new RuleDependency(edge.Producer, edge.Input))
             .ToList()
           : Array.Empty<RuleDependency>();
         return new RuleGraphNode(
-          rule.NodeId,
+          nodeId,
           declaration.Kind,
           dependencies)
         {
-            ProducedSyntax = rule.Produces.Outputs,
-            ConsumedSyntax = rule.Consumes.Inputs
+            ProducedSyntax = rule.Produces.Outputs
         };
     }
 

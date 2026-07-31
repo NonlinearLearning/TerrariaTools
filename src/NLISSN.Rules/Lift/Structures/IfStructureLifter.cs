@@ -5,31 +5,90 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 
-namespace NLISSN.Core.Lifting;
+namespace NLISSN.Rules;
 
 /// 判断 if / else if / else 树是否已具备完整删除条件，并构造保留分支所需的结构化事实。
-public static class DeleteSObjectIfStructureLiftingHelpers
+public static class IfStructureLiftingHelpers
 {
+    public static IfStructureLiftPayload? TryBuildPayload(
+      ILiftRuleContext context,
+      SyntaxNode markedNode,
+      IReadOnlyList<MarkRecord> allMarks)
+    {
+        if (!TryResolveMarkedIfStructure(
+              context,
+              markedNode,
+              new IfStructureAnalyzer(),
+              out var ifAnalysis) ||
+            ifAnalysis is null ||
+            !MarkCoverage.IsCovered(ifAnalysis.AnchorIf.Condition, allMarks))
+        {
+            return null;
+        }
+
+        if (ifAnalysis.TailSection is not null)
+        {
+            if (ifAnalysis.TailSection.Kind == IfSectionKind.ElseIf)
+            {
+                return new IfStructureLiftPayload(
+                  ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, ifAnalysis.TailSection.Node,
+                  IfStructureLiftKind.ReplaceIfWithElseIfTail);
+            }
+
+            if (ifAnalysis.AnchorVariant == IfStructureVariant.HeadIf)
+            {
+                return new IfStructureLiftPayload(
+                  ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, ifAnalysis.TailSection.Node,
+                  IfStructureLiftKind.DeleteWholeIf);
+            }
+
+            if (ifAnalysis.ParentElseClause is not null)
+            {
+                return new IfStructureLiftPayload(
+                  ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, ifAnalysis.TailSection.Node,
+                  IfStructureLiftKind.ReplaceOwningElseWithElseTail);
+            }
+
+            return new IfStructureLiftPayload(
+              ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, ifAnalysis.TailSection.Node,
+              IfStructureLiftKind.ReplaceIfWithElseTail);
+        }
+
+        return ifAnalysis.AnchorVariant == IfStructureVariant.ElseIf && ifAnalysis.ParentElseClause is not null
+          ? new IfStructureLiftPayload(
+            ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, null,
+            IfStructureLiftKind.DeleteOwningElseClause)
+          : new IfStructureLiftPayload(
+            ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, null,
+            IfStructureLiftKind.DeleteWholeIf);
+    }
+
     // 从已有 seed / propagated mark 推导完整的 if 结构标记，并避免重复提升同一宿主。
-    public static IEnumerable<LiftedMarkRecord> BuildIfStructureLiftedMarks(RuleContext context, string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    public static IEnumerable<LiftedMarkRecord> BuildIfStructureLiftedMarks(ILiftRuleContext context, string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var ifStructureAnalyzer = new IfStructureAnalyzer();
-        var knownKeys = seedMarks
-          .Select(mark => DeleteSObjectLiftingCommon.BuildNodeKey(mark.SyntaxNode))
-          .Concat(propagatedMarks.Select(mark =>
-            DeleteSObjectLiftingCommon.BuildNodeKey(mark.Mark.SyntaxNode)))
-          .ToHashSet();
+        // 输入事实可以与结构结论共享同一语法节点；只抑制本规则重复产出的 Lift.IfStructure。
+        var knownKeys = new HashSet<(int Start, int Length, int RawKind)>();
 
-        foreach (var mark in seedMarks.Concat(propagatedMarks.Select(item => item.Mark)))
+        var allMarks = seedMarks.Concat(propagatedMarks.Select(item => item.Mark)).ToList();
+        foreach (var candidateIf in allMarks
+                   .SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<IfStatementSyntax>())
+                   .DistinctBy(LiftingCommon.BuildNodeKey))
         {
+            if (!MarkCoverage.IsCovered(candidateIf.Condition, allMarks))
+            {
+                continue;
+            }
+
+            var sourceMark = allMarks.First(mark => candidateIf.Span.Contains(mark.SyntaxNode.Span));
             foreach (var lifted in BuildStructuralMarksForLiftedNode(
                        context,
                        ruleId,
-                       mark.SyntaxNode,
+                       candidateIf,
                        "If structure lifting from existing mark.",
                        ifStructureAnalyzer))
             {
-                var key = DeleteSObjectLiftingCommon.BuildNodeKey(lifted.SyntaxNode);
+                var key = LiftingCommon.BuildNodeKey(lifted.SyntaxNode);
                 if (!knownKeys.Add(key))
                 {
                     continue;
@@ -38,13 +97,13 @@ public static class DeleteSObjectIfStructureLiftingHelpers
                 yield return new LiftedMarkRecord(
                   ruleId,
                   lifted,
-                  mark,
+                  sourceMark,
                   1);
             }
         }
     }
 
-    private static IReadOnlyList<MarkRecord> BuildStructuralMarksForLiftedNode(RuleContext context, string ruleId, SyntaxNode markedNode, string reason, IfStructureAnalyzer ifStructureAnalyzer)
+    private static IReadOnlyList<MarkRecord> BuildStructuralMarksForLiftedNode(ILiftRuleContext context, string ruleId, SyntaxNode markedNode, string reason, IfStructureAnalyzer ifStructureAnalyzer)
     {
         if (!TryResolveMarkedIfStructure(
               context,
@@ -102,7 +161,7 @@ public static class DeleteSObjectIfStructureLiftingHelpers
         return marks;
     }
 
-    private static bool TryResolveMarkedIfStructure(RuleContext context, SyntaxNode markedNode, IfStructureAnalyzer ifStructureAnalyzer, out IfStructureAnalysis? ifAnalysis)
+    private static bool TryResolveMarkedIfStructure(ILiftRuleContext context, SyntaxNode markedNode, IfStructureAnalyzer ifStructureAnalyzer, out IfStructureAnalysis? ifAnalysis)
     {
         ifAnalysis = null;
         if (markedNode is IfStatementSyntax ifStatement)

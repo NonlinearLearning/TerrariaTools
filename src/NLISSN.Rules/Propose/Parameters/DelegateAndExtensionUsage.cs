@@ -4,10 +4,10 @@ using Microsoft.CodeAnalysis.Operations;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 
-namespace NLISSN.Core.Decision;
+namespace NLISSN.Rules;
 
 /// 汇总委托签名收缩需要同时改写的方法组、lambda 与调用链，缺少任一可证明映射即放弃。
-public static class DeleteClassDelegateUsageProposalHelpers
+public static class DelegateUsageProposalHelpers
 {
     // 提取指定委托使用模式下的唯一 payload，供委托收缩提案逐个消费。
     public static IEnumerable<DelegateUsagePayload> EnumeratePayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks, DelegateUsageMode mode)
@@ -35,7 +35,7 @@ public static class DeleteClassDelegateUsageProposalHelpers
     // 尝试删除委托声明中的目标参数，供后续同时改写方法组、lambda 或调用链。
     public static bool TryBuildReplacement(DelegateUsagePayload payload, out DelegateDeclarationSyntax replacementDelegate)
     {
-        return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementDelegate(
+        return ParameterShrinkAnalyzer.TryBuildReplacementDelegate(
           payload.DelegateDeclaration,
           payload.Parameter,
           out replacementDelegate);
@@ -43,7 +43,7 @@ public static class DeleteClassDelegateUsageProposalHelpers
 }
 
 /// 收集扩展方法参数删除所需的调用点事实；扩展接收者由专门规则处理。
-public static class DeleteClassExtensionMethodUsageProposalHelpers
+public static class ExtensionMethodUsageProposalHelpers
 {
     // 提取扩展方法非接收者参数删除的唯一 payload，供声明与调用点同步改写。
     public static IEnumerable<ExtensionMethodMappedCallsitePayload> EnumeratePayloads(IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
@@ -70,7 +70,7 @@ public static class DeleteClassExtensionMethodUsageProposalHelpers
     // 尝试生成删除目标参数后的扩展方法声明替换节点。
     public static bool TryBuildReplacement(ExtensionMethodMappedCallsitePayload payload, out MethodDeclarationSyntax replacementMethod)
     {
-        return DeleteClassParameterShrinkAnalyzer.TryBuildReplacementMethod(
+        return ParameterShrinkAnalyzer.TryBuildReplacementMethod(
           payload.Method,
           payload.Parameter,
           out replacementMethod);
@@ -87,7 +87,7 @@ public static class DeleteClassExtensionMethodUsageProposalHelpers
         foreach (var invocation in payload.InvocationCallsites)
         {
             var model = compilation.GetSemanticModel(invocation.SyntaxTree);
-            if (!DeleteClassParameterShrinkAnalyzer.TryBuildMappedInvocationReplacement(
+            if (!ParameterShrinkAnalyzer.TryBuildMappedInvocationReplacement(
                   invocation,
                   model.GetOperation(invocation, CancellationToken.None) as IInvocationOperation,
                   parameterSymbol,
@@ -96,7 +96,7 @@ public static class DeleteClassExtensionMethodUsageProposalHelpers
                 continue;
             }
 
-            yield return DeleteClassReplaceDecisionFactory.CreateInvocationReplaceDecision(
+            yield return ReplaceDecisionFactory.CreateInvocationReplaceDecision(
               ruleId,
               invocation,
               replacementInvocation,

@@ -1,0 +1,155 @@
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NLISSN.Core.Decision;
+using NLISSN.Core.Marking;
+using NLISSN.Core.Propagation;
+
+namespace NLISSN.Rules;
+
+/// 为局部函数参数删除收集声明与调用点，把“删除哪个参数”变成可重放的结构化 payload。
+public sealed class LocalFunctionParameterUsagePropagationRule : RuleDefinitionPropagate
+{
+    private static readonly RuleConsumesContract TypeSyntaxFactsConsumes = new(new[]
+    {
+      new RuleConsumedSyntax(
+        new[]
+        {
+          SyntaxKind.IdentifierName,
+          SyntaxKind.QualifiedName,
+          SyntaxKind.AliasQualifiedName,
+          SyntaxKind.GenericName
+        },
+        RuleFactPorts.TargetTypeSyntax)
+    });
+    private static readonly RuleSemanticTag LocalFunctionParameterUsageSemanticTag = RuleFactPorts.RelationParameterUsage;
+
+    private static readonly RuleProducesContract LocalFunctionParameterUsageProduces =
+      new(new[]
+      {
+        new RuleProducedSyntax(
+          new[] { SyntaxKind.LocalFunctionStatement, SyntaxKind.InvocationExpression },
+          LocalFunctionParameterUsageSemanticTag)
+      });
+
+    private readonly ParameterShrinkAnalyzer _analyzer = new();
+
+    public override string CapabilityId { get; } = "propagate.type.local-function-parameter-usage";
+
+    public override string RuleId { get; } = "DEL-CLASS-PROP-LOCALFUNC-PARAM-USAGE-001";
+
+    public override RuleProducesContract Produces => LocalFunctionParameterUsageProduces;
+
+    public override RuleConsumesContract Consumes => TypeSyntaxFactsConsumes;
+
+
+    public override string Name { get; } = "Propagate delete-class local-function parameter usage to local functions and mapped callsites";
+
+    public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+      new[]
+      {
+        SyntaxKind.LocalFunctionStatement,
+        SyntaxKind.InvocationExpression
+      };
+
+    // 收集局部函数声明和调用点，让参数删除能以结构化 payload 形式进入提案阶段。
+    public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
+    {
+        var knownKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var seedMark in seedMarks)
+        {
+            if (!TryBuildPayload(context, seedMark, out var payload))
+            {
+                continue;
+            }
+
+            if (knownKeys.Add(DecisionCpgFactory.BuildNodeKey(payload.LocalFunction)))
+            {
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  MarkRecordFactory.Create(
+                  RuleId,
+                  payload.LocalFunction,
+                  "Local function parameter type references the delete-class target; propagate to the owning local function.",
+                  semanticTag: LocalFunctionParameterUsageSemanticTag),
+                  seedMark,
+                  1,
+                  Payload: payload);
+            }
+
+            foreach (var invocation in payload.InvocationCallsites)
+            {
+                if (!knownKeys.Add(DecisionCpgFactory.BuildNodeKey(invocation)))
+                {
+                    continue;
+                }
+
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  MarkRecordFactory.Create(
+                    RuleId,
+                    invocation,
+                    "Local function invocation passes the delete-class typed parameter; propagate to a shrinkable callsite.",
+                    semanticTag: LocalFunctionParameterUsageSemanticTag),
+                  seedMark,
+                  1,
+                  Payload: payload);
+            }
+        }
+    }
+
+    /// 优先保留命名参数和可省略默认值的事实，再退回普通位置参数，
+    private bool TryBuildPayload(IPropagationRuleContext context, MarkRecord seedMark, out LocalFunctionParameterUsagePayload payload)
+    {
+        payload = null!;
+        if (!string.Equals(seedMark.RuleId, "DEL-CLASS-MARK-TYPE-001", StringComparison.Ordinal) ||
+            seedMark.SyntaxNode is not TypeSyntax typeSyntax)
+        {
+            return false;
+        }
+
+        if (_analyzer.TryBuildNamedArgumentLocalFunctionPlan(context, typeSyntax, out var namedPlan))
+        {
+            payload = CreatePayload(
+              typeSyntax,
+              namedPlan.LocalFunction,
+              LocalFunctionParameterUsageMode.NamedArgument,
+              namedPlan.InvocationRewrites);
+            return true;
+        }
+
+        if (_analyzer.TryBuildOptionalParameterLocalFunctionPlan(context, typeSyntax, out var optionalPlan))
+        {
+            payload = CreatePayload(
+              typeSyntax,
+              optionalPlan.LocalFunction,
+              LocalFunctionParameterUsageMode.Optional,
+              optionalPlan.InvocationRewrites);
+            return true;
+        }
+
+        if (_analyzer.TryBuildLocalFunctionPlan(context, typeSyntax, out var positionalPlan))
+        {
+            payload = CreatePayload(
+              typeSyntax,
+              positionalPlan.LocalFunction,
+              LocalFunctionParameterUsageMode.Positional,
+              positionalPlan.InvocationRewrites);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static LocalFunctionParameterUsagePayload CreatePayload(TypeSyntax typeSyntax, LocalFunctionStatementSyntax localFunction, LocalFunctionParameterUsageMode mode, IReadOnlyList<InvocationRewrite> invocationRewrites)
+    {
+        var parameterIndex = localFunction.ParameterList.Parameters
+          .Select((parameter, index) => new { parameter, index })
+          .First(item => item.parameter.Type?.Span.Contains(typeSyntax.Span) == true);
+        return new LocalFunctionParameterUsagePayload(
+          localFunction,
+          parameterIndex.parameter,
+          parameterIndex.index,
+          mode,
+          invocationRewrites.Select(rewrite => rewrite.Invocation).ToList());
+    }
+}

@@ -1,8 +1,9 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis;
 using NLISSN.Application;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Rewrite;
-using RoslynPrototype.Tests.TestCodeSet.SObject;
+using RoslynPrototype.Tests.TestCodeSet.Target;
 using NLISSN.Rules;
 using Xunit;
 
@@ -11,7 +12,7 @@ namespace RoslynPrototype.Tests;
 public sealed class MarkRuleEffectTests : IDisposable
 {
     private readonly string _tempDirectory;
-    private readonly string _sObjectDiffFilePath;
+    private readonly string _targetDiffFilePath;
 
     public MarkRuleEffectTests()
     {
@@ -20,10 +21,10 @@ public sealed class MarkRuleEffectTests : IDisposable
             $"roslyn-mark-rule-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
 
-        _sObjectDiffFilePath = BuildDiffArtifactWriter.GetDiffFilePath(
+        _targetDiffFilePath = BuildDiffArtifactWriter.GetDiffFilePath(
             "MarkRuleEffectTests.cs",
-            "SObject");
-        BuildDiffArtifactWriter.InitializeDiffFile(_sObjectDiffFilePath);
+            "Target");
+        BuildDiffArtifactWriter.InitializeDiffFile(_targetDiffFilePath);
     }
 
     [Fact]
@@ -31,7 +32,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "target-name-source.cs",
-            SObjectExpressionSources.TargetNameSource);
+            AtomicExpressionSources.AtomicNameSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "target-name-source.raw.diff");
         var application = CreateApplication();
 
@@ -52,11 +53,11 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_TargetNameSource_ProducesExpectedMarksAndDiffFile),
             File.ReadAllText(rawDiffPath));
 
-        var diffText = File.ReadAllText(_sObjectDiffFilePath);
+        var diffText = File.ReadAllText(_targetDiffFilePath);
         Assert.Contains(
             "UnitTest: AnalyzeFromArgs_TargetNameSource_ProducesExpectedMarksAndDiffFile",
             diffText,
@@ -71,7 +72,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "definition-assignment.cs",
-            SObjectExpressionSources.DefinitionAssignmentSource);
+            AtomicExpressionSources.DefinitionAssignmentSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "definition-assignment.raw.diff");
         var application = CreateApplication();
 
@@ -92,7 +93,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_DefinitionAssignmentSource_MarksLocalDeclarationStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -102,7 +103,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "assignment-statement.cs",
-            SObjectExpressionSources.AssignmentStatementSource);
+            AtomicExpressionSources.AssignmentStatementSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "assignment-statement.raw.diff");
         var application = CreateApplication();
 
@@ -123,7 +124,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_AssignmentStatementSource_MarksExpressionStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -133,7 +134,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "complex-definition-assignment.cs",
-            SObjectExpressionSources.ComplexDefinitionAssignmentSource);
+            AtomicExpressionSources.ComplexDefinitionAssignmentSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "complex-definition-assignment.raw.diff");
         var application = CreateApplication();
 
@@ -154,7 +155,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_ComplexDefinitionAssignmentSource_MarksLocalDeclarationStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -164,7 +165,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "chained-assignment-statement.cs",
-            SObjectExpressionSources.ChainedAssignmentStatementSource);
+            AtomicExpressionSources.ChainedAssignmentStatementSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "chained-assignment-statement.raw.diff");
         var application = CreateApplication();
 
@@ -185,7 +186,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_ChainedAssignmentStatementSource_MarksExpressionStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -195,7 +196,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "deconstruction-assignment-statement.cs",
-            SObjectExpressionSources.DeconstructionAssignmentStatementSource);
+            AtomicExpressionSources.DeconstructionAssignmentStatementSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "deconstruction-assignment-statement.raw.diff");
         var application = CreateApplication();
 
@@ -216,7 +217,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_DeconstructionAssignmentStatementSource_MarksExpressionStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -226,7 +227,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "object-initializer-definition-assignment.cs",
-            SObjectExpressionSources.ObjectInitializerDefinitionAssignmentSource);
+            AtomicExpressionSources.ObjectInitializerDefinitionAssignmentSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "object-initializer-definition-assignment.raw.diff");
         var application = CreateApplication();
 
@@ -247,7 +248,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_ObjectInitializerDefinitionAssignmentSource_MarksLocalDeclarationStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -257,7 +258,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "complex-compound-assignment-statement.cs",
-            SObjectExpressionSources.ComplexCompoundAssignmentStatementSource);
+            AtomicExpressionSources.ComplexCompoundAssignmentStatementSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "complex-compound-assignment-statement.raw.diff");
         var application = CreateApplication();
 
@@ -278,7 +279,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_ComplexCompoundAssignmentStatementSource_MarksExpressionStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -288,7 +289,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "assignment-left-operand.cs",
-            SObjectExpressionSources.AssignmentLeftOperandSource);
+            AtomicExpressionSources.AssignmentLeftOperandSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "assignment-left-operand.raw.diff");
         var application = CreateApplication();
 
@@ -309,7 +310,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_AssignmentLeftOperandSource_MarksExpressionStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -319,7 +320,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "definition-left-operand.cs",
-            SObjectExpressionSources.DefinitionLeftOperandSource);
+            AtomicExpressionSources.DefinitionLeftOperandSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "definition-left-operand.raw.diff");
         var application = CreateApplication();
 
@@ -340,7 +341,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_DefinitionLeftOperandSource_MarksLocalDeclarationStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -350,7 +351,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "call-argument-statement.cs",
-            SObjectExpressionSources.CallArgumentStatementSource);
+            AtomicExpressionSources.CallArgumentStatementSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "call-argument-statement.raw.diff");
         var application = CreateApplication();
 
@@ -371,7 +372,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_CallArgumentStatementSource_MarksExpressionStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -381,7 +382,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "property-access-definition.cs",
-            SObjectExpressionSources.PropertyAccessDefinitionSource);
+            AtomicExpressionSources.PropertyAccessDefinitionSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "property-access-definition.raw.diff");
         var application = CreateApplication();
 
@@ -402,7 +403,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_PropertyAccessDefinitionSource_WhenPropertyNameMatches_MarksLocalDeclarationStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -412,7 +413,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "index-access-definition.cs",
-            SObjectExpressionSources.IndexAccessDefinitionSource);
+            AtomicExpressionSources.IndexAccessDefinitionSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "index-access-definition.raw.diff");
         var application = CreateApplication();
 
@@ -433,7 +434,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_IndexAccessDefinitionSource_WhenBaseMatches_MarksLocalDeclarationStatement),
             File.ReadAllText(rawDiffPath));
     }
@@ -443,7 +444,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "if-else-only.cs",
-            SObjectControlFlowSources.IfElseOnlySource);
+            AtomicControlFlowSources.IfElseOnlySource);
         var rawDiffPath = Path.Combine(_tempDirectory, "if-else-only.raw.diff");
         var application = CreateApplication();
 
@@ -466,11 +467,11 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_IfElseOnlySource_MarksElseClauseAndElseBodyTogether),
             File.ReadAllText(rawDiffPath));
 
-        var diffText = File.ReadAllText(_sObjectDiffFilePath);
+        var diffText = File.ReadAllText(_targetDiffFilePath);
         Assert.Contains(
             "UnitTest: AnalyzeFromArgs_IfElseOnlySource_MarksElseClauseAndElseBodyTogether",
             diffText,
@@ -480,11 +481,11 @@ public sealed class MarkRuleEffectTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForInitializerDeclarationSource_MarksWholeForStatement()
+    public void AnalyzeFromArgs_ForInitializerDeclarationSource_DoesNotLiftForStatementWithoutCompleteHeaderCoverage()
     {
         var filePath = WriteSourceFile(
             "for-initializer-host-sample.cs",
-            SObjectControlFlowSources.ForInitializerDeclarationSource);
+            AtomicControlFlowSources.ForInitializerDeclarationSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "for-initializer-host-sample.raw.diff");
         var application = CreateApplication();
 
@@ -499,23 +500,18 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.ForStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
-            nameof(AnalyzeFromArgs_ForInitializerDeclarationSource_MarksWholeForStatement),
-            File.ReadAllText(rawDiffPath));
+        AssertDoesNotContainLiftedStructure(result, SyntaxKind.ForStatement, StructuralKind.Loop);
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForIncrementorSource_MarksWholeForStatement()
+    public void AnalyzeFromArgs_ForIncrementorSource_DoesNotLiftForStatementWithoutCompleteHeaderCoverage()
     {
         var filePath = WriteSourceFile(
             "for-incrementor-host-sample.cs",
-            SObjectControlFlowSources.ForIncrementorSource);
+            AtomicControlFlowSources.ForIncrementorSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "for-incrementor-host-sample.raw.diff");
         var application = CreateApplication();
 
@@ -530,23 +526,18 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.ForStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
-            nameof(AnalyzeFromArgs_ForIncrementorSource_MarksWholeForStatement),
-            File.ReadAllText(rawDiffPath));
+        AssertDoesNotContainLiftedStructure(result, SyntaxKind.ForStatement, StructuralKind.Loop);
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
-    public void AnalyzeFromArgs_WhileBodySource_MarksWholeWhileStatement()
+    public void AnalyzeFromArgs_WhileBodySource_DoesNotLiftWhileStatementWithoutConditionCoverage()
     {
         var filePath = WriteSourceFile(
             "while-body-host-sample.cs",
-            SObjectControlFlowSources.WhileBodySource);
+            AtomicControlFlowSources.WhileBodySource);
         var rawDiffPath = Path.Combine(_tempDirectory, "while-body-host-sample.raw.diff");
         var application = CreateApplication();
 
@@ -561,18 +552,18 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.WhileStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
+        AssertDoesNotContainLiftedStructure(result, SyntaxKind.WhileStatement, StructuralKind.Loop);
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
-    public void AnalyzeFromArgs_DoBodySource_MarksWholeDoStatement()
+    public void AnalyzeFromArgs_DoBodySource_DoesNotLiftDoStatementWithoutConditionCoverage()
     {
         var filePath = WriteSourceFile(
             "do-body-host-sample.cs",
-            SObjectControlFlowSources.DoBodySource);
+            AtomicControlFlowSources.DoBodySource);
         var rawDiffPath = Path.Combine(_tempDirectory, "do-body-host-sample.raw.diff");
         var application = CreateApplication();
 
@@ -587,18 +578,18 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.DoStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
+        AssertDoesNotContainLiftedStructure(result, SyntaxKind.DoStatement, StructuralKind.Loop);
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
-    public void AnalyzeFromArgs_SwitchConditionSource_MarksWholeSwitchStatement()
+    public void AnalyzeFromArgs_SwitchConditionSource_DoesNotLiftSwitchStatementWithoutSectionCoverage()
     {
         var filePath = WriteSourceFile(
             "switch-condition-host-sample.cs",
-            SObjectControlFlowSources.SwitchConditionSource);
+            AtomicControlFlowSources.SwitchConditionSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "switch-condition-host-sample.raw.diff");
         var application = CreateApplication();
 
@@ -613,15 +604,10 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.SwitchStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
-            nameof(AnalyzeFromArgs_SwitchConditionSource_MarksWholeSwitchStatement),
-            File.ReadAllText(rawDiffPath));
+        AssertDoesNotContainLiftedStructure(result, SyntaxKind.SwitchStatement, StructuralKind.Switch);
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
@@ -629,7 +615,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "switch-case-single-statement.cs",
-            SObjectControlFlowSources.SwitchCaseSingleStatementSource);
+            AtomicControlFlowSources.SwitchCaseSingleStatementSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "switch-case-single-statement.raw.diff");
         var application = CreateApplication();
 
@@ -642,10 +628,10 @@ public sealed class MarkRuleEffectTests : IDisposable
             rawDiffPath
         });
 
-        AssertContainsPropagatedKind(result, SyntaxKind.SwitchSection);
+        AssertContainsLiftedStructure(result, SyntaxKind.SwitchSection, StructuralKind.Switch);
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_SwitchCaseSingleStatementSource_MarksWholeSwitchSection),
             File.ReadAllText(rawDiffPath));
     }
@@ -655,7 +641,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "switch-case-without-break-fully-marked.cs",
-            SObjectControlFlowSources.SwitchCaseWithoutBreakFullyMarkedSource);
+            AtomicControlFlowSources.SwitchCaseWithoutBreakFullyMarkedSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "switch-case-without-break-fully-marked.raw.diff");
         var application = CreateApplication();
 
@@ -668,10 +654,10 @@ public sealed class MarkRuleEffectTests : IDisposable
             rawDiffPath
         });
 
-        AssertContainsPropagatedKind(result, SyntaxKind.SwitchSection);
+        AssertContainsLiftedStructure(result, SyntaxKind.SwitchSection, StructuralKind.Switch);
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_SwitchCaseWithoutBreakFullyMarkedSource_MarksWholeSwitchSection),
             File.ReadAllText(rawDiffPath));
     }
@@ -681,7 +667,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "logical-mixed-precedence.cs",
-            SObjectLogicalSources.LogicalMixedPrecedenceSource);
+            AtomicLogicalSources.LogicalMixedPrecedenceSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "logical-mixed-precedence.raw.diff");
         var application = CreateApplication();
 
@@ -694,18 +680,18 @@ public sealed class MarkRuleEffectTests : IDisposable
             rawDiffPath
         });
 
-        var logicalMark = AssertSinglePropagatedLogicalOr(result, "a && b || c || !b");
+        AssertSingleLiftedLogicalOr(result, "a && b || c || !b");
         Assert.Single(result.Decisions);
         Assert.NotNull(result.DiffFilePath);
         Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_LogicalMixedPrecedenceSource_ProducesLogicalOrMarkAndDiffFile),
             File.ReadAllText(rawDiffPath));
 
-        var diffText = File.ReadAllText(_sObjectDiffFilePath);
+        var diffText = File.ReadAllText(_targetDiffFilePath);
         Assert.Contains(
             "UnitTest: AnalyzeFromArgs_LogicalMixedPrecedenceSource_ProducesLogicalOrMarkAndDiffFile",
             diffText,
@@ -722,7 +708,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "logical-mixed-precedence-parenthesized.cs",
-            SObjectLogicalSources.LogicalMixedPrecedenceWithParenthesesSource);
+            AtomicLogicalSources.LogicalMixedPrecedenceWithParenthesesSource);
         var rawDiffPath = Path.Combine(
             _tempDirectory,
             "logical-mixed-precedence-parenthesized.raw.diff");
@@ -737,18 +723,18 @@ public sealed class MarkRuleEffectTests : IDisposable
             rawDiffPath
         });
 
-        var logicalMark = AssertSinglePropagatedLogicalOr(result, "(a && b) || c || !b");
+        AssertSingleLiftedLogicalOr(result, "(a && b) || c || !b");
         Assert.Single(result.Decisions);
         Assert.NotNull(result.DiffFilePath);
         Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_LogicalMixedPrecedenceWithParenthesesSource_ProducesLogicalOrMarkAndDiffFile),
             File.ReadAllText(rawDiffPath));
 
-        var diffText = File.ReadAllText(_sObjectDiffFilePath);
+        var diffText = File.ReadAllText(_targetDiffFilePath);
         Assert.Contains(
             "UnitTest: AnalyzeFromArgs_LogicalMixedPrecedenceWithParenthesesSource_ProducesLogicalOrMarkAndDiffFile",
             diffText,
@@ -764,7 +750,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     {
         var filePath = WriteSourceFile(
             "logical-multi-target-group.cs",
-            SObjectLogicalSources.LogicalMultiTargetGroupFiveHitsSource);
+            AtomicLogicalSources.LogicalMultiTargetGroupFiveHitsSource);
         var rawDiffPath = Path.Combine(_tempDirectory, "logical-multi-target-group.raw.diff");
         var application = CreateApplication();
 
@@ -777,18 +763,18 @@ public sealed class MarkRuleEffectTests : IDisposable
             rawDiffPath
         });
 
-        var logicalMark = AssertSinglePropagatedLogicalOr(result, "a || b || c || d || e || f || g || h");
+        AssertSingleLiftedLogicalOr(result, "a || b || c || d || e || f || g || h");
         Assert.Single(result.Decisions);
         Assert.NotNull(result.DiffFilePath);
         Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             nameof(AnalyzeFromArgs_MultiTargetGroupWithFiveHits_ProducesSingleLogicalOrMarkAndDiffFile),
             File.ReadAllText(rawDiffPath));
 
-        var diffText = File.ReadAllText(_sObjectDiffFilePath);
+        var diffText = File.ReadAllText(_targetDiffFilePath);
         Assert.Contains(
             "UnitTest: AnalyzeFromArgs_MultiTargetGroupWithFiveHits_ProducesSingleLogicalOrMarkAndDiffFile",
             diffText,
@@ -817,18 +803,18 @@ public sealed class MarkRuleEffectTests : IDisposable
             rawDiffPath
         });
 
-        var logicalMark = AssertSinglePropagatedLogicalOr(result, expectedMarkedText);
+        AssertSingleLiftedLogicalOr(result, expectedMarkedText);
         Assert.Single(result.Decisions);
         Assert.NotNull(result.DiffFilePath);
         Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
         Assert.True(File.Exists(rawDiffPath));
 
         BuildDiffArtifactWriter.AppendDiffFragment(
-            _sObjectDiffFilePath,
+            _targetDiffFilePath,
             $"{nameof(AnalyzeFromArgs_LargeParenthesizedCases_ProduceSingleLogicalOrMark)}:{caseName}",
             File.ReadAllText(rawDiffPath));
 
-        var diffText = File.ReadAllText(_sObjectDiffFilePath);
+        var diffText = File.ReadAllText(_targetDiffFilePath);
         Assert.Contains(
             $"UnitTest: {nameof(AnalyzeFromArgs_LargeParenthesizedCases_ProduceSingleLogicalOrMark)}:{caseName}",
             diffText,
@@ -843,28 +829,28 @@ public sealed class MarkRuleEffectTests : IDisposable
     public static IEnumerable<object[]> LargeParenthesizedLogicalEffectCases()
     {
         yield return CreateEffectCase(
-            nameof(SObjectLogicalSources.LogicalMixedPrecedenceLargeCase1Source),
-            SObjectLogicalSources.LogicalMixedPrecedenceLargeCase1Source,
+            nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase1Source),
+            AtomicLogicalSources.LogicalMixedPrecedenceLargeCase1Source,
             "(a && b) || (c && d) || !b || e || (f && g) || h || i || j || k || l",
             "(c && d)||e||(f && g)||h||i||j||k||l");
         yield return CreateEffectCase(
-            nameof(SObjectLogicalSources.LogicalMixedPrecedenceLargeCase2Source),
-            SObjectLogicalSources.LogicalMixedPrecedenceLargeCase2Source,
+            nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase2Source),
+            AtomicLogicalSources.LogicalMixedPrecedenceLargeCase2Source,
             "((a || b) && (c || !b)) || d || e || (f && g) || h || i || j || k || l || m",
             "d||e||(f && g)||h||i||j||k||l||m");
         yield return CreateEffectCase(
-            nameof(SObjectLogicalSources.LogicalMixedPrecedenceLargeCase3Source),
-            SObjectLogicalSources.LogicalMixedPrecedenceLargeCase3Source,
+            nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase3Source),
+            AtomicLogicalSources.LogicalMixedPrecedenceLargeCase3Source,
             "(a && b) || c || d || (!b && e) || f || g || h || (i && j) || k || l",
             "c||d||f||g||h||(i && j)||k||l");
         yield return CreateEffectCase(
-            nameof(SObjectLogicalSources.LogicalMixedPrecedenceLargeCase4Source),
-            SObjectLogicalSources.LogicalMixedPrecedenceLargeCase4Source,
+            nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase4Source),
+            AtomicLogicalSources.LogicalMixedPrecedenceLargeCase4Source,
             "((a && b) || c) || d || e || ((f || !b) && g) || h || i || j || k || l",
             "d||e||h||i||j||k||l");
         yield return CreateEffectCase(
-            nameof(SObjectLogicalSources.LogicalMixedPrecedenceLargeCase5Source),
-            SObjectLogicalSources.LogicalMixedPrecedenceLargeCase5Source,
+            nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase5Source),
+            AtomicLogicalSources.LogicalMixedPrecedenceLargeCase5Source,
             "(a && (b || c)) || d || e || !b || (f && g) || h || i || j || k || l",
             "d||e||(f && g)||h||i||j||k||l");
     }
@@ -901,6 +887,26 @@ public sealed class MarkRuleEffectTests : IDisposable
         Assert.Contains(EnumerateEffectiveNodes(result), node => IsNodeKind(node, kind));
     }
 
+    private static void AssertContainsLiftedStructure(
+        PrototypeAnalysisResult result,
+        SyntaxKind syntaxKind,
+        StructuralKind structureKind)
+    {
+        Assert.Contains(result.LiftedMarks, mark =>
+            IsNodeKind(mark.Mark.SyntaxNode, syntaxKind) &&
+            mark.StructureKind == structureKind);
+    }
+
+    private static void AssertDoesNotContainLiftedStructure(
+        PrototypeAnalysisResult result,
+        SyntaxKind syntaxKind,
+        StructuralKind structureKind)
+    {
+        Assert.DoesNotContain(result.LiftedMarks, mark =>
+            IsNodeKind(mark.Mark.SyntaxNode, syntaxKind) &&
+            mark.StructureKind == structureKind);
+    }
+
     private static IEnumerable<SyntaxNode> EnumerateEffectiveNodes(PrototypeAnalysisResult result)
     {
         return result.SeedMarks
@@ -909,25 +915,18 @@ public sealed class MarkRuleEffectTests : IDisposable
             .Concat(result.LiftedMarks.Select(mark => mark.Mark.SyntaxNode));
     }
 
-    private static Microsoft.CodeAnalysis.SyntaxNode AssertSinglePropagatedLogicalOr(PrototypeAnalysisResult result, string expectedText)
+    private static LiftedMarkRecord AssertSingleLiftedLogicalOr(PrototypeAnalysisResult result, string expectedText)
     {
-        var exactLogicalMarks = result.PropagatedMarks
-            .Where(mark => IsNodeKind(mark.Mark.SyntaxNode, SyntaxKind.LogicalOrExpression))
-            .Where(mark => string.Equals(mark.Mark.SyntaxNode.ToString(), expectedText, StringComparison.Ordinal))
-            .Select(mark => mark.Mark.SyntaxNode)
-            .ToList();
-        if (exactLogicalMarks.Count > 0)
-        {
-            return Assert.Single(exactLogicalMarks);
-        }
-
-        var logicalMarks = result.PropagatedMarks
-            .Where(mark => IsNodeKind(mark.Mark.SyntaxNode, SyntaxKind.LogicalOrExpression))
-            .Select(mark => mark.Mark.SyntaxNode)
-            .OrderByDescending(node => node.Span.Length)
-            .ToList();
-        Assert.NotEmpty(logicalMarks);
-        return logicalMarks[0];
+        var mark = Assert.Single(result.LiftedMarks, mark =>
+            IsNodeKind(mark.Mark.SyntaxNode, SyntaxKind.LogicalOrExpression) &&
+            string.Equals(mark.Mark.SyntaxNode.ToString(), expectedText, StringComparison.Ordinal) &&
+            string.Equals(mark.Mark.SemanticTag?.Value, "Lift.LogicalReduction", StringComparison.Ordinal) &&
+            mark.Payload is LogicalExpressionReductionPayload);
+        var payload = Assert.IsType<LogicalExpressionReductionPayload>(mark.Payload);
+        Assert.Same(mark.Mark.SyntaxNode, payload.Host);
+        Assert.NotEmpty(payload.RemovableOperands);
+        Assert.NotEmpty(payload.SurvivorOperands);
+        return mark;
     }
 
     private static string RemoveWhitespace(string text)

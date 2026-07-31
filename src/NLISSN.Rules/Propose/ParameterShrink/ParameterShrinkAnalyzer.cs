@@ -7,14 +7,14 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
-namespace NLISSN.Core.Decision;
+namespace NLISSN.Rules;
 
 /// 先证明声明与所有受影响调用点可同步改写，再生成参数收缩计划。
 /// 无法覆盖的调用形状、重载冲突或语义绑定不稳定时必须返回 false。
-public sealed class DeleteClassParameterShrinkAnalyzer
+public sealed class ParameterShrinkAnalyzer
 {
     // 在所有命名参数调用都可安全删除目标实参时，生成私有方法的命名参数收缩计划。
-    public bool TryBuildNamedArgumentMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
+    public bool TryBuildNamedArgumentMethodPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out MethodParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -39,12 +39,12 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return false;
         }
 
-        plan = new PrivateMethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
+        plan = new MethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
         return true;
     }
 
     // 在可选参数既能删声明又不破坏省略调用语义时，生成方法收缩计划。
-    public bool TryBuildOptionalParameterMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
+    public bool TryBuildOptionalParameterMethodPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out MethodParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -65,18 +65,18 @@ public sealed class DeleteClassParameterShrinkAnalyzer
               context.SemanticModel.Compilation,
               methodSymbol,
               parameterSymbol,
-              requireCallsites: DeleteClassMethodProposalSafety.IsSafeNonPrivateMethod(method),
+              requireCallsites: MethodProposalSafety.IsSafeNonPrivateMethod(method),
               out var invocationRewrites))
         {
             return false;
         }
 
-        plan = new PrivateMethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
+        plan = new MethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
         return true;
     }
 
     // 仅在 params 槽位始终被省略且不存在重载冲突时，生成方法收缩计划。
-    public bool TryBuildParamsMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
+    public bool TryBuildParamsMethodPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out MethodParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -97,47 +97,40 @@ public sealed class DeleteClassParameterShrinkAnalyzer
               context.SemanticModel.Compilation,
               methodSymbol,
               parameterSymbol,
-              requireCallsites: DeleteClassMethodProposalSafety.IsSafeNonPrivateMethod(method),
+              requireCallsites: MethodProposalSafety.IsSafeNonPrivateMethod(method),
               out var invocationRewrites))
         {
             return false;
         }
 
-        plan = new PrivateMethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
+        plan = new MethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
         return true;
     }
 
     // 为普通私有方法生成参数收缩计划；调用点可为空，因为私有删除链路允许只改声明。
-    public bool TryBuildPrivateMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
+    public bool TryBuildPrivateMethodPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out MethodParameterShrinkPlan plan)
     {
         return TryBuildMethodPlan(
           context,
           typeSyntax,
-          DeleteClassMethodProposalSafety.IsSafePrivateMethod,
+          MethodProposalSafety.IsSafePrivateMethod,
           requireCallsites: false,
           out plan);
     }
 
     // 为非私有方法生成参数收缩计划，并要求调用点必须被完整覆盖。
-    public bool TryBuildPublicMethodPlan(RuleContext context, TypeSyntax typeSyntax, out PublicMethodParameterShrinkPlan plan)
+    public bool TryBuildPublicMethodPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out MethodParameterShrinkPlan plan)
     {
-        var succeeded = TryBuildMethodPlan(
+        return TryBuildMethodPlan(
           context,
           typeSyntax,
-          DeleteClassMethodProposalSafety.IsSafeNonPrivateMethod,
+          MethodProposalSafety.IsSafeNonPrivateMethod,
           requireCallsites: true,
-          out var methodPlan);
-        plan = succeeded
-          ? new PublicMethodParameterShrinkPlan(
-            methodPlan.Method,
-            methodPlan.ReplacementMethod,
-            methodPlan.InvocationRewrites)
-          : null!;
-        return succeeded;
+          out plan);
     }
 
     // 为普通位置参数局部函数生成声明与调用点同步收缩计划。
-    public bool TryBuildLocalFunctionPlan(RuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
+    public bool TryBuildLocalFunctionPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -166,7 +159,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
     }
 
     // 为命名参数局部函数调用生成声明与调用点同步收缩计划。
-    public bool TryBuildNamedArgumentLocalFunctionPlan(RuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
+    public bool TryBuildNamedArgumentLocalFunctionPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -193,7 +186,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
     }
 
     // 为带默认值的局部函数参数生成可保守执行的收缩计划。
-    public bool TryBuildOptionalParameterLocalFunctionPlan(RuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
+    public bool TryBuildOptionalParameterLocalFunctionPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out LocalFunctionParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -222,7 +215,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
     }
 
     // 为普通位置索引器参数生成声明与访问点同步收缩计划。
-    public bool TryBuildIndexerPlan(RuleContext context, TypeSyntax typeSyntax, out IndexerParameterShrinkPlan plan)
+    public bool TryBuildIndexerPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out IndexerParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -248,7 +241,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
     }
 
     // 为命名索引参数访问生成声明与访问点同步收缩计划。
-    public bool TryBuildNamedArgumentIndexerPlan(RuleContext context, TypeSyntax typeSyntax, out IndexerParameterShrinkPlan plan)
+    public bool TryBuildNamedArgumentIndexerPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out IndexerParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -272,7 +265,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
     }
 
     // 仅在委托没有额外外部绑定时，生成只改签名的简单委托收缩计划。
-    public bool TryBuildDelegatePlan(RuleContext context, TypeSyntax typeSyntax, out DelegateParameterShrinkPlan plan)
+    public bool TryBuildDelegatePlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out DelegateParameterShrinkPlan plan)
     {
         plan = null!;
         var invokeMethod = default(IMethodSymbol);
@@ -293,7 +286,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
     }
 
     // 当委托只通过 method group 绑定传播时，生成声明与绑定同步收缩计划。
-    public bool TryBuildDelegateMethodGroupPlan(RuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
+    public bool TryBuildDelegateMethodGroupPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
     {
         plan = null!;
 
@@ -320,15 +313,12 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         plan = new DelegateComplexShrinkPlan(
           delegateDeclaration,
           replacementDelegate,
-          usageSummary.MethodRewrites,
-          usageSummary.LocalFunctionRewrites,
-          usageSummary.LambdaRewrites,
-          usageSummary.InvocationRewrites);
+          usageSummary);
         return true;
     }
 
     // 当委托只通过 lambda 绑定传播时，生成声明与绑定同步收缩计划。
-    public bool TryBuildDelegateLambdaPlan(RuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
+    public bool TryBuildDelegateLambdaPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
     {
         plan = null!;
 
@@ -355,15 +345,12 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         plan = new DelegateComplexShrinkPlan(
           delegateDeclaration,
           replacementDelegate,
-          usageSummary.MethodRewrites,
-          usageSummary.LocalFunctionRewrites,
-          usageSummary.LambdaRewrites,
-          usageSummary.InvocationRewrites);
+          usageSummary);
         return true;
     }
 
     // 当委托只影响直接调用链时，生成声明与调用链同步收缩计划。
-    public bool TryBuildDelegateInvocationChainPlan(RuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
+    public bool TryBuildDelegateInvocationChainPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out DelegateComplexShrinkPlan plan)
     {
         plan = null!;
 
@@ -391,21 +378,18 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         plan = new DelegateComplexShrinkPlan(
           delegateDeclaration,
           replacementDelegate,
-          usageSummary.MethodRewrites,
-          usageSummary.LocalFunctionRewrites,
-          usageSummary.LambdaRewrites,
-          usageSummary.InvocationRewrites);
+          usageSummary);
         return true;
     }
 
     // 仅在扩展方法接收者不变且非首参可安全删除时，生成方法与映射调用点收缩计划。
-    public bool TryBuildExtensionReceiverNonFirstParameterPlan(RuleContext context, TypeSyntax typeSyntax, out PrivateMethodParameterShrinkPlan plan)
+    public bool TryBuildExtensionReceiverNonFirstParameterPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, out MethodParameterShrinkPlan plan)
     {
         plan = null!;
 
         if (!TryResolveMethodParameter(
               typeSyntax,
-              DeleteClassMethodProposalSafety.IsSafeExtensionReceiverMethod,
+              MethodProposalSafety.IsSafeExtensionReceiverMethod,
               out var method,
               out var parameter,
               out var parameterIndex) ||
@@ -428,11 +412,11 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return false;
         }
 
-        plan = new PrivateMethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
+        plan = new MethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
         return true;
     }
 
-    private static bool TryBuildMethodPlan(RuleContext context, TypeSyntax typeSyntax, Func<MethodDeclarationSyntax, bool> methodGuard, bool requireCallsites, out PrivateMethodParameterShrinkPlan plan)
+    private static bool TryBuildMethodPlan(ISemanticRuleContext context, TypeSyntax typeSyntax, Func<MethodDeclarationSyntax, bool> methodGuard, bool requireCallsites, out MethodParameterShrinkPlan plan)
     {
         plan = null!;
 
@@ -453,7 +437,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             return false;
         }
 
-        plan = new PrivateMethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
+        plan = new MethodParameterShrinkPlan(method, replacementMethod, invocationRewrites);
         return true;
     }
 
@@ -478,7 +462,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return parameterIndex >= 0;
     }
 
-    private static bool TryResolveSupportedMethodParameter(RuleContext context, TypeSyntax typeSyntax, out MethodDeclarationSyntax method, out IMethodSymbol methodSymbol, out ParameterSyntax parameter, out IParameterSymbol parameterSymbol, out int parameterIndex)
+    private static bool TryResolveSupportedMethodParameter(ISemanticRuleContext context, TypeSyntax typeSyntax, out MethodDeclarationSyntax method, out IMethodSymbol methodSymbol, out ParameterSyntax parameter, out IParameterSymbol parameterSymbol, out int parameterIndex)
     {
         method = null!;
         methodSymbol = null!;
@@ -488,13 +472,13 @@ public sealed class DeleteClassParameterShrinkAnalyzer
 
         if (!TryResolveMethodParameter(
               typeSyntax,
-              DeleteClassMethodProposalSafety.IsSafePrivateMethod,
+              MethodProposalSafety.IsSafePrivateMethod,
               out method,
               out parameter,
               out parameterIndex) &&
             !TryResolveMethodParameter(
               typeSyntax,
-              DeleteClassMethodProposalSafety.IsSafeNonPrivateMethod,
+              MethodProposalSafety.IsSafeNonPrivateMethod,
               out method,
               out parameter,
               out parameterIndex))
@@ -576,7 +560,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
     }
 
     // 汇总委托参数删除需要同步改写的方法组、局部函数、lambda 与直接调用链事实。
-    public static bool TryCollectDelegateUsageSummary(RuleContext context, INamedTypeSymbol delegateSymbol, IParameterSymbol parameterSymbol, int parameterIndex, out DelegateUsageSummary usageSummary)
+    public static bool TryCollectDelegateUsageSummary(ISemanticRuleContext context, INamedTypeSymbol delegateSymbol, IParameterSymbol parameterSymbol, int parameterIndex, out DelegateUsageSummary usageSummary)
     {
         var methodRewrites = new ConcurrentBag<MethodRewrite>();
         var localFunctionRewrites = new ConcurrentBag<LocalFunctionRewrite>();
@@ -1228,7 +1212,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         return true;
     }
 
-    private static bool TryBuildMethodGroupTargetRewrite(RuleContext context, IMethodSymbol targetMethod, int parameterIndex, out MethodRewrite? methodRewrite, out LocalFunctionRewrite? localFunctionRewrite)
+    private static bool TryBuildMethodGroupTargetRewrite(ISemanticRuleContext context, IMethodSymbol targetMethod, int parameterIndex, out MethodRewrite? methodRewrite, out LocalFunctionRewrite? localFunctionRewrite)
     {
         methodRewrite = null;
         localFunctionRewrite = null;
@@ -1243,9 +1227,9 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         var syntaxReference = targetMethod.DeclaringSyntaxReferences.SingleOrDefault();
         if (syntaxReference?.GetSyntax(CancellationToken.None) is MethodDeclarationSyntax methodDeclaration)
         {
-            if (!DeleteClassMethodProposalSafety.IsSafePrivateMethod(methodDeclaration) &&
-                !DeleteClassMethodProposalSafety.IsSafeNonPrivateMethod(methodDeclaration) &&
-                !DeleteClassMethodProposalSafety.IsSafeExtensionReceiverMethod(methodDeclaration))
+            if (!MethodProposalSafety.IsSafePrivateMethod(methodDeclaration) &&
+                !MethodProposalSafety.IsSafeNonPrivateMethod(methodDeclaration) &&
+                !MethodProposalSafety.IsSafeExtensionReceiverMethod(methodDeclaration))
             {
                 return false;
             }
@@ -1281,7 +1265,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
     }
 
     // 为 lambda 绑定生成删除目标参数后的替换表达式，同时保持委托签名兼容。
-    public static bool TryBuildLambdaRewrite(RuleContext context, SemanticModel semanticModel, ExpressionSyntax expression, IAnonymousFunctionOperation anonymousFunction, int parameterIndex, out ExpressionRewrite lambdaRewrite)
+    public static bool TryBuildLambdaRewrite(ISemanticRuleContext context, SemanticModel semanticModel, ExpressionSyntax expression, IAnonymousFunctionOperation anonymousFunction, int parameterIndex, out ExpressionRewrite lambdaRewrite)
     {
         lambdaRewrite = null!;
         if (parameterIndex >= anonymousFunction.Symbol.Parameters.Length)
@@ -1624,11 +1608,9 @@ public sealed class DeleteClassParameterShrinkAnalyzer
         private readonly Lazy<IReadOnlyList<TypeSyntaxBinding>> _typeSyntaxBindings;
         private readonly Lazy<Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>>> _invocationsByMethodSymbol;
         private readonly Lazy<Dictionary<IPropertySymbol, IReadOnlyList<ElementAccessBinding>>> _elementAccessesByPropertySymbol;
-        private readonly Lazy<Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>>> _mappedInvocationsByMethodSymbol;
         private readonly Lazy<Dictionary<INamedTypeSymbol, IReadOnlyList<ExpressionBinding>>> _expressionsByConvertedType;
         private readonly Lazy<Dictionary<INamedTypeSymbol, IReadOnlyList<TypeSyntaxBinding>>> _typeSyntaxesByResolvedSymbol;
         private int _invocationIndexBuildCount;
-        private int _mappedInvocationIndexBuildCount;
         private int _elementAccessIndexBuildCount;
         private int _expressionIndexBuildCount;
         private int _typeSyntaxIndexBuildCount;
@@ -1647,11 +1629,6 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             {
                 Interlocked.Increment(ref _invocationIndexBuildCount);
                 return BuildInvocationIndex(_invocationBindings.Value);
-            });
-            _mappedInvocationsByMethodSymbol = CreateLazy(() =>
-            {
-                Interlocked.Increment(ref _mappedInvocationIndexBuildCount);
-                return BuildMappedInvocationIndex(_invocationBindings.Value);
             });
             _elementAccessesByPropertySymbol = CreateLazy(() =>
             {
@@ -1688,7 +1665,7 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             var results = new Dictionary<string, InvocationBinding>(StringComparer.Ordinal);
             foreach (var lookupSymbol in GetMethodLookupSymbols(methodSymbol))
             {
-                if (!_mappedInvocationsByMethodSymbol.Value.TryGetValue(lookupSymbol, out var bindings))
+                if (!_invocationsByMethodSymbol.Value.TryGetValue(lookupSymbol, out var bindings))
                 {
                     continue;
                 }
@@ -1812,11 +1789,6 @@ public sealed class DeleteClassParameterShrinkAnalyzer
             }
 
             return FreezeIndex(index, SymbolEqualityComparer.Default);
-        }
-
-        private static Dictionary<IMethodSymbol, IReadOnlyList<InvocationBinding>> BuildMappedInvocationIndex(IEnumerable<InvocationBinding> invocationBindings)
-        {
-            return BuildInvocationIndex(invocationBindings);
         }
 
         private static Dictionary<IPropertySymbol, IReadOnlyList<ElementAccessBinding>> BuildElementAccessIndex(IEnumerable<ElementAccessBinding> elementAccessBindings)

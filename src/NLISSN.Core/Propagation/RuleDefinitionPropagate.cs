@@ -15,8 +15,6 @@ public abstract class RuleDefinitionPropagate : IRuleDefinition
 
     public abstract string RuleId { get; }
 
-    public virtual RuleNodeId NodeId => RuleNodeId.For(RuleKind.Propagate, RuleId);
-
     public virtual RuleInputCardinality InputCardinality => RuleInputCardinality.All;
 
     public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
@@ -28,5 +26,7 @@ public abstract class RuleDefinitionPropagate : IRuleDefinition
     public abstract IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; }
 
     // 基于当前规则的种子标记执行语义传播，并返回新的传播标记。
-    public abstract IEnumerable<PropagatedMarkRecord> Propagate(RuleContext context, IReadOnlyList<MarkRecord> seedMarks);
+    public abstract IEnumerable<PropagatedMarkRecord> Propagate(
+      IPropagationRuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks);
 }

@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using NL.Concurrency;
 using NLCPG.Analysis;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
@@ -19,7 +20,11 @@ public sealed class MarkLiftingEngine
       IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
     {
         var ruleContext = BuildRuleContext(context, seedMarks, propagatedMarks);
-        var results = rule.Lift(ruleContext, seedMarks, propagatedMarks, existingLiftedMarks)
+        var results = rule.Lift(
+          ruleContext.CreateLiftRuleContext(),
+          seedMarks,
+          propagatedMarks,
+          existingLiftedMarks)
           .Select(candidate =>
           {
               var tagged = candidate with
@@ -27,8 +32,14 @@ public sealed class MarkLiftingEngine
                   Mark = MarkingEngine.BindDeclaredSemanticTag(rule.Produces, candidate.Mark)
               };
               ValidateLiftNode(rule, tagged.Mark.SyntaxNode);
+              ValidateStructureKind(rule, tagged);
               MarkingEngine.ValidateProducedSyntax(rule.Produces, tagged.Mark);
-              return BindLiftedMarkRecord(ruleContext, tagged);
+              return BindLiftedMarkRecord(
+                ruleContext,
+                tagged,
+                seedMarks,
+                propagatedMarks,
+                existingLiftedMarks);
           })
           .ToList();
         context.Evidence.RecordLift(rule.RuleId, seedMarks, propagatedMarks, results);
@@ -38,28 +49,24 @@ public sealed class MarkLiftingEngine
     // 兼容入口也按规则图执行。
     public IReadOnlyList<LiftedMarkRecord> Run(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<RuleDefinitionLift> rules)
     {
-        var liftEligiblePropagatedMarks = propagatedMarks
-          .Where(mark => mark.Payload is null)
-          .ToList();
+        var propagatedInputs = propagatedMarks.ToList();
         var consumedInputs = rules
           .SelectMany(rule => rule.Consumes.Inputs)
           .ToList();
         var sourceNodes = CreateSourceNodes(
           seedMarks,
-          liftEligiblePropagatedMarks,
+          propagatedInputs,
           consumedInputs);
         var sourceNodeIds = sourceNodes.Select(node => node.NodeId).ToHashSet();
         var liftNodeIds = rules.Select(rule => RuleNodeId.For(RuleKind.Lift, rule.RuleId)).ToHashSet();
         var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
           .Select(node => new RuleStructureContractGraphNode(
             node.NodeId,
-            node.Kind,
             RuleConsumesContract.Empty,
             new RuleProducesContract(node.ProducedSyntax)))
           .Concat(rules
           .Select(rule => new RuleStructureContractGraphNode(
-            rule.NodeId,
-            RuleKind.Lift,
+            RuleNodeId.For(RuleKind.Lift, rule.RuleId),
             rule.Consumes,
             rule.Produces)))
           .ToList());
@@ -68,14 +75,13 @@ public sealed class MarkLiftingEngine
           RuleKind.Lift,
           ResolveDependencies(rule, sourceNodes, sourceNodeIds, liftNodeIds, contractGraph))
         {
-          ProducedSyntax = rule.Produces.Outputs,
-          ConsumedSyntax = rule.Consumes.Inputs
+          ProducedSyntax = rule.Produces.Outputs
         }).ToList();
         var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
         var executionNodes = sourceNodes
           .Select(node => new RuleGraphExecutionNode(
             node,
-            (_, _) => Task.FromResult(CreateSourceResult(node, seedMarks, liftEligiblePropagatedMarks))))
+            (_, _) => Task.FromResult(CreateSourceResult(node, seedMarks, propagatedInputs))))
           .Concat(rules.Select(rule =>
           {
               var node = graph.Nodes.Single(candidate => candidate.NodeId == RuleNodeId.For(RuleKind.Lift, rule.RuleId));
@@ -95,10 +101,13 @@ public sealed class MarkLiftingEngine
                 });
           }))
           .ToList();
+        var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
+          context.Runtime.ExecutionOptions.EnableGroupParallelism,
+          context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
         var execution = new RuleGraphExecutor(context.Runtime.ConcurrencyPool).ExecuteAsync(
             graph,
             executionNodes,
-            context.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+            graphDegree,
             context.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
@@ -159,7 +168,7 @@ public sealed class MarkLiftingEngine
     {
         IReadOnlyList<RuleDependency> declared = rule.Consumes.Inputs.Count > 0
           ? contractGraph.Edges
-            .Where(edge => edge.Consumer == rule.NodeId)
+            .Where(edge => edge.Consumer == RuleNodeId.For(RuleKind.Lift, rule.RuleId))
             .Select(edge => new RuleDependency(edge.Producer, edge.Input))
             .ToList()
           : Array.Empty<RuleDependency>();
@@ -209,7 +218,7 @@ public sealed class MarkLiftingEngine
             return context;
         }
 
-        var query = context.StructureViews.QueryStructureView(
+        var query = context.QueryStructureView(
           fragments,
           CpgRelationProfile.StructuralContainment,
           CpgQueryDirection.Bidirectional,
@@ -219,7 +228,7 @@ public sealed class MarkLiftingEngine
             return context;
         }
 
-        return context.StructureViews.WithStructureView(query.View);
+        return context.WithStructureView(query.View);
     }
 
     internal static void ValidateLiftNode(RuleDefinitionLift rule, SyntaxNode syntaxNode)
@@ -235,12 +244,70 @@ public sealed class MarkLiftingEngine
           $"Rule '{rule.RuleId}' emitted unsupported lift node kind '{nodeKind}'. Allowed lift node kinds: {allowedKinds}.");
     }
 
-    internal static LiftedMarkRecord BindLiftedMarkRecord(RuleContext context, LiftedMarkRecord candidate)
+    private static void ValidateStructureKind(RuleDefinitionLift rule, LiftedMarkRecord mark)
     {
+        if (mark.StructureKind is not { } structureKind)
+        {
+            return;
+        }
+
+        if (!Enum.IsDefined(structureKind) || !IsCompatibleStructureNode(structureKind, mark.Mark.SyntaxNode))
+        {
+            throw new InvalidOperationException(
+              $"Rule '{rule.RuleId}' emitted incompatible structural conclusion '{structureKind}' for '{mark.Mark.SyntaxNode.Kind()}'.");
+        }
+    }
+
+    private static bool IsCompatibleStructureNode(StructuralKind structureKind, SyntaxNode syntaxNode)
+    {
+        var kind = (SyntaxKind)syntaxNode.RawKind;
+        return structureKind switch
+        {
+            StructuralKind.Assignment => kind is SyntaxKind.SimpleAssignmentExpression or SyntaxKind.AddAssignmentExpression or
+              SyntaxKind.SubtractAssignmentExpression or SyntaxKind.MultiplyAssignmentExpression or SyntaxKind.DivideAssignmentExpression,
+            StructuralKind.LocalDefinition => kind is SyntaxKind.VariableDeclarator or SyntaxKind.LocalDeclarationStatement,
+            StructuralKind.If => kind is SyntaxKind.IfStatement or SyntaxKind.ElseClause,
+            StructuralKind.Loop => kind is SyntaxKind.ForStatement or SyntaxKind.WhileStatement or SyntaxKind.DoStatement or SyntaxKind.ForEachStatement,
+            StructuralKind.Switch => kind is SyntaxKind.SwitchStatement or SyntaxKind.SwitchSection,
+            StructuralKind.ConditionalExpression => kind == SyntaxKind.ConditionalExpression,
+            StructuralKind.Return => kind == SyntaxKind.ReturnStatement,
+            _ => false
+        };
+    }
+
+    internal static LiftedMarkRecord BindLiftedMarkRecord(
+      RuleContext context,
+      LiftedMarkRecord candidate,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
+    {
+        var origins = candidate.Mark.Origins |
+          candidate.SourceMark.Origins |
+          FindCoveredInputOrigins(
+            candidate.Mark.SyntaxNode,
+            seedMarks,
+            propagatedMarks,
+            existingLiftedMarks);
         return candidate with
         {
-            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark),
+            Mark = MarkingEngine.BindMarkRecord(context, candidate.Mark with { Origins = origins }),
             SourceMark = MarkingEngine.BindMarkRecord(context, candidate.SourceMark)
         };
+    }
+
+    private static RuleEvidenceOrigin FindCoveredInputOrigins(
+      SyntaxNode host,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
+    {
+        return seedMarks
+          .Concat(propagatedMarks.Select(mark => mark.Mark))
+          .Concat(existingLiftedMarks.Select(mark => mark.Mark))
+          .Where(mark => host.Span.Contains(mark.SyntaxNode.Span))
+          .Aggregate(
+            RuleEvidenceOrigin.None,
+            (origins, mark) => origins | mark.Origins);
     }
 }

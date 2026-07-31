@@ -86,27 +86,6 @@ public sealed class AnalysisRuntime
           new AnalysisEpoch(0, 0, 0));
     }
 
-    // 从 CLI 选项解析目录并行、分组并行和 CPG 并行等运行参数。
-    public static RoslynPrototypeExecutionOptions CreateExecutionOptions(IReadOnlyDictionary<string, string> options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-
-        return new RoslynPrototypeExecutionOptions(
-          ResolveMaxDegreeOfParallelism(options),
-          EnableDirectoryParallelism: !IsTrueOption(options, "disable-directory-parallelism"),
-          EnableGroupParallelism: IsTrueOption(options, "enable-group-parallelism"),
-          EnableHelperParallelism: !IsTrueOption(options, "disable-helper-parallelism"),
-          CpgMaxDegreeOfParallelism: ResolveCpgMaxDegreeOfParallelism(options));
-    }
-
-    // 从 CLI 选项直接创建运行时，供宿主和应用服务共享同一解析逻辑。
-    public static AnalysisRuntime CreateFromOptions(IReadOnlyDictionary<string, string> options)
-    {
-        return new AnalysisRuntime(
-          CreateExecutionOptions(options),
-          new AnalysisEpoch(0, 0, 0));
-    }
-
     // 在保留编译缓存注册表的前提下推进缓存版本，隔离失效后的结构视图。
     public AnalysisRuntime InvalidateCaches()
     {
@@ -173,44 +152,6 @@ public sealed class AnalysisRuntime
                 _lease.Value = _previous;
             }
         }
-    }
-
-    private static bool IsTrueOption(IReadOnlyDictionary<string, string> options, string key)
-    {
-        return options.TryGetValue(key, out var rawValue) &&
-          string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int ResolveMaxDegreeOfParallelism(IReadOnlyDictionary<string, string> options)
-    {
-        if (!options.TryGetValue("max-degree-of-parallelism", out var rawValue) ||
-            string.IsNullOrWhiteSpace(rawValue))
-        {
-            return Math.Max(1, Environment.ProcessorCount);
-        }
-
-        if (!int.TryParse(rawValue, out var parsedValue))
-        {
-            return Math.Max(1, Environment.ProcessorCount);
-        }
-
-        return Math.Max(1, parsedValue);
-    }
-
-    private static int? ResolveCpgMaxDegreeOfParallelism(IReadOnlyDictionary<string, string> options)
-    {
-        if (!options.TryGetValue("cpg-max-degree-of-parallelism", out var rawValue))
-        {
-            return null;
-        }
-
-        if (!int.TryParse(rawValue, out var parsedValue) || parsedValue <= 0)
-        {
-            throw new ArgumentException(
-              "--cpg-max-degree-of-parallelism requires a positive integer.");
-        }
-
-        return parsedValue;
     }
 
     private static ConcurrencyAdmissionOptions CreateConcurrencyAdmissionOptions(

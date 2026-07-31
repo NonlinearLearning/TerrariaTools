@@ -57,7 +57,6 @@ public sealed class  LayoutArchitectureTests
         "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj",
-        "..\\NLISSN.Rules\\NLISSN.Rules.csproj"
       },
       "src", "NLISSN.Application", "NLISSN.Application.csproj");
     AssertProjectReferences(
@@ -79,12 +78,8 @@ public sealed class  LayoutArchitectureTests
     var expectedSources = new[]
     {
       (new[] { "src", "NLISSN.Application", "ExecutionRuntime.cs" }, "NLISSN.Core.Pipeline"),
-      (new[] { "src", "NLISSN.Rule", "IRuleOptions.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Rule", "RuleContext.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Rule", "IRuleDefinition.cs" }, "NLISSN.Core.Pipeline"),
-      (new[] { "src", "NLISSN.Core", "Analysis", "IRuleAnalysis.cs" }, "NLISSN.Core.Analysis"),
-      (new[] { "src", "NLISSN.Core", "Analysis", "IRuleGraphBinding.cs" }, "NLISSN.Core.Analysis"),
-      (new[] { "src", "NLISSN.Core", "Analysis", "View", "IRuleStructureView.cs" }, "NLISSN.Core.Analysis.View"),
       (new[] { "src", "NLISSN.Core", "Marking", "RuleDefinitionMark.cs" }, "NLISSN.Core.Marking"),
       (new[] { "src", "NLISSN.Core", "Propagation", "RuleDefinitionPropagate.cs" }, "NLISSN.Core.Propagation"),
       (new[] { "src", "NLISSN.Core", "Lifting", "RuleDefinitionLift.cs" }, "NLISSN.Core.Lifting"),
@@ -102,7 +97,7 @@ public sealed class  LayoutArchitectureTests
       (new[] { "src", "NLISSN", "Artifacts", "DiffPathResolver.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanArtifactService.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanReplayService.cs" }, "NLISSN.Artifacts"),
-      (new[] { "src", "NLISSN.Application", "RuleRegistry.cs" }, "NLISSN.Composition"),
+      (new[] { "src", "NLISSN", "Composition", "RuleRegistry.cs" }, "NLISSN.Composition"),
       (new[] { "src", "NLISSN", "Telemetry", "RuntimeMeasurementLog.cs" }, "NLISSN.Telemetry")
     };
 

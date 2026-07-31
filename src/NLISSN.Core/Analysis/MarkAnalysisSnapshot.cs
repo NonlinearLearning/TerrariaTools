@@ -22,7 +22,7 @@ public sealed class MarkAnalysisSnapshot
     private readonly ConcurrentDictionary<SyntaxNode, Lazy<MarkRegionFacts>> _regions = new();
     private readonly ConcurrentDictionary<TargetMatchKey, Lazy<bool>> _targetMatches = new();
     private readonly ConcurrentDictionary<SliceQueryKey, Lazy<NLCPGSliceResult>> _sliceQueries = new();
-    private readonly ConcurrentDictionary<string, Lazy<TargetNameDescriptor>> _targetNameDescriptors =
+    private readonly ConcurrentDictionary<string, Lazy<NameDescriptor>> _targetNameDescriptors =
       new(StringComparer.Ordinal);
 
     // 为一次分析运行建立共享快照，并预先索引语法到图节点的稳定绑定。
@@ -42,18 +42,18 @@ public sealed class MarkAnalysisSnapshot
     }
 
     // 解析并缓存目标名描述对象，统一显示名、查找集和缓存键。
-    public TargetNameDescriptor GetTargetNameDescriptor(string? targetName)
+    public NameDescriptor GetTargetNameDescriptor(string? targetName)
     {
         var key = targetName ?? string.Empty;
         return _targetNameDescriptors.GetOrAdd(
           key,
-          static value => new Lazy<TargetNameDescriptor>(
-            () => TargetNameDescriptor.Create(value),
+          static value => new Lazy<NameDescriptor>(
+            () => NameDescriptor.Create(value),
             LazyThreadSafetyMode.ExecutionAndPublication)).Value;
     }
 
     // 为语法节点和目标名组合缓存匹配结果，避免重复执行外部判断逻辑。
-    public bool GetTargetMatch(SyntaxNode syntaxNode, TargetNameDescriptor targetNames, Func<bool> evaluate)
+    public bool GetTargetMatch(SyntaxNode syntaxNode, NameDescriptor targetNames, Func<bool> evaluate)
     {
         var key = new TargetMatchKey(syntaxNode, targetNames.CacheKey);
         var created = new Lazy<bool>(evaluate, LazyThreadSafetyMode.ExecutionAndPublication);
@@ -281,9 +281,9 @@ public sealed class MarkAnalysisSnapshot
 
 }
 
-public sealed class TargetNameDescriptor
+public sealed class NameDescriptor
 {
-    private TargetNameDescriptor(IReadOnlyList<string> displayNames, string cacheKey)
+    private NameDescriptor(IReadOnlyList<string> displayNames, string cacheKey)
     {
         DisplayNames = displayNames;
         Lookup = new HashSet<string>(displayNames, StringComparer.Ordinal);
@@ -297,7 +297,7 @@ public sealed class TargetNameDescriptor
     public string CacheKey { get; }
 
     // 解析逗号分隔的目标名字符串，并生成稳定缓存键和精确匹配集合。
-    public static TargetNameDescriptor Create(string value)
+    public static NameDescriptor Create(string value)
     {
         var displayNames = value
           .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
@@ -305,6 +305,6 @@ public sealed class TargetNameDescriptor
           .Distinct(StringComparer.Ordinal)
           .ToArray();
         var cacheKey = string.Join("\u001f", displayNames.OrderBy(name => name, StringComparer.Ordinal));
-        return new TargetNameDescriptor(displayNames, cacheKey);
+        return new NameDescriptor(displayNames, cacheKey);
     }
 }
