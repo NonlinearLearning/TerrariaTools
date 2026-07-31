@@ -10,7 +10,7 @@ namespace RoslynPrototype.Tests;
 public sealed class DecisionComplexTests
 {
     [Fact]
-    public void Analyze_NestedLogicalAndCondition_ReducesOnlyTargetOperand()
+    public void Analyze_NestedLogicalAndCondition_DeletesOuterIf()
     {
         var application = CreateApplication();
 
@@ -20,15 +20,15 @@ public sealed class DecisionComplexTests
           CreateOptions("s"));
 
         Assert.Contains(result.Decisions, decision =>
-          decision.Action == DecisionActionKind.Replace &&
-          IsNodeKind(decision.FinalNode, SyntaxKind.LogicalAndExpression));
-        TextDiffAssert.Contains("if (ready && enabled)", result.RewrittenSource, result.Diff);
+          decision.Action == DecisionActionKind.Delete &&
+          IsNodeKind(decision.FinalNode, SyntaxKind.IfStatement));
+        TextDiffAssert.DoesNotContain("if (ready && s.IsReady && enabled)", result.RewrittenSource, result.Diff);
         TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.Diff);
         TextDiffAssert.DoesNotContain("if (enabled)", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
-    public void Analyze_NestedLogicalOrCondition_ReducesOnlyTargetOperand()
+    public void Analyze_NestedLogicalOrCondition_DeletesOuterIf()
     {
         var application = CreateApplication();
 
@@ -38,9 +38,9 @@ public sealed class DecisionComplexTests
           CreateOptions("s"));
 
         Assert.Contains(result.Decisions, decision =>
-          decision.Action == DecisionActionKind.Replace &&
-          IsNodeKind(decision.FinalNode, SyntaxKind.LogicalOrExpression));
-        TextDiffAssert.Contains("if (ready || fallback)", result.RewrittenSource, result.Diff);
+          decision.Action == DecisionActionKind.Delete &&
+          IsNodeKind(decision.FinalNode, SyntaxKind.IfStatement));
+        TextDiffAssert.DoesNotContain("if (ready || s.IsReady || fallback)", result.RewrittenSource, result.Diff);
         TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.Diff);
         TextDiffAssert.DoesNotContain("if (fallback)", result.RewrittenSource, result.Diff);
     }

@@ -492,22 +492,18 @@ public sealed class RuleDecisionEngine
         return units
           .Where(unit =>
           {
-              if (unit.Action != DecisionActionKind.Delete)
-              {
-                  return true;
-              }
-
               var anchorNode = TryResolveAnchorNode(unit);
               if (anchorNode is null)
               {
                   return true;
               }
 
-              return !replaceAnchors.Any(replaceAnchor =>
-                  ReferenceEquals(anchorNode, replaceAnchor) ||
-                  (!ReferenceEquals(anchorNode, replaceAnchor) &&
-                   anchorNode.Span.Contains(replaceAnchor.Span) &&
-                   replaceAnchor.Ancestors().Any(ancestor => ReferenceEquals(ancestor, anchorNode))));
+              if (unit.Action != DecisionActionKind.Delete)
+              {
+                  return true;
+              }
+
+              return !replaceAnchors.Any(replaceAnchor => ReferenceEquals(anchorNode, replaceAnchor));
           })
           .ToList();
     }

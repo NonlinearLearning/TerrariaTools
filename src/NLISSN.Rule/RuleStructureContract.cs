@@ -51,6 +51,8 @@ public static class RuleFactPorts
 
   public static RuleSemanticTag FlowAssignmentTarget { get; } = new("Flow.AssignmentTarget");
 
+  public static RuleSemanticTag FlowLogicalExpression { get; } = new("Flow.LogicalExpression");
+
   public static RuleSemanticTag RelationDeclarationHost { get; } = new("Relation.DeclarationHost");
 
   public static RuleSemanticTag RelationParameterUsage { get; } = new("Relation.ParameterUsage");

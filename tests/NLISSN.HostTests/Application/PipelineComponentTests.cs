@@ -4718,7 +4718,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeclarationSymbolReferencePropagationRule", StringComparison.Ordinal));
         Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "AssignmentLeftValuePropagationRule", StringComparison.Ordinal));
         Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DefinitionInitializerPropagationRule", StringComparison.Ordinal));
-        Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId.StartsWith("DEL-SOBJ-PROP-LOGIC", StringComparison.Ordinal));
+        Assert.Contains(rules.Propagators, rule => rule is LogicalExpressionPropagationRule);
         Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SymbolReferencePropagationRule", StringComparison.Ordinal));
         Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId == "DEL-SOBJ-PROP-IF-COMPLETE-001");
         Assert.True(rules.Lifters.Count >= 4);

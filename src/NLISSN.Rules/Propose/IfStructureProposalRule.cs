@@ -42,9 +42,10 @@ public sealed class IfStructureProposalRule : RuleDefinitionPropose
         _ = seedMarks;
         var consumedKeys = new HashSet<(int Start, int Length, int RawKind)>();
 
-        foreach (var payload in ProposalHelpers.EnumerateIfStructureLiftPayloads(
+        foreach (var liftedPayload in ProposalHelpers.EnumerateIfStructureLiftPayloads(
                      liftedMarks))
         {
+            var payload = liftedPayload.Payload;
             var decisionNode = ProposalHelpers.GetIfStructureDecisionNode(payload);
 
             if (consumedKeys.Contains(ProposalHelpers.BuildNodeKey(decisionNode)))

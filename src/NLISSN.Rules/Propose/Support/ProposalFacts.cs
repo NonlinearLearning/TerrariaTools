@@ -5,6 +5,7 @@ using NLCPG.Contracts;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
+using NLISSN.Core.Pipeline;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 
@@ -152,14 +153,19 @@ public static class ProposalHelpers
     }
 
     // 提取唯一的 if 结构完成态 payload，并按决策节点顺序交给 if 提案规则。
-    public static IEnumerable<IfStructureLiftPayload> EnumerateIfStructureLiftPayloads(IReadOnlyList<LiftedMarkRecord> liftedMarks)
+    public static IEnumerable<(IfStructureLiftPayload Payload, RuleEvidenceOrigin Origins)>
+      EnumerateIfStructureLiftPayloads(IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         return liftedMarks
           .Where(mark => mark.Payload is IfStructureLiftPayload && mark.StructureKind == StructuralKind.If)
-          .Select(mark => (IfStructureLiftPayload)mark.Payload!)
-          .DistinctBy(payload => BuildNodeKey(GetIfStructureDecisionNode(payload)))
-          .OrderBy(payload => GetIfStructureDecisionNode(payload).SpanStart)
-          .ThenByDescending(payload => GetIfStructureDecisionNode(payload).Span.Length);
+          .GroupBy(mark => BuildNodeKey(GetIfStructureDecisionNode((IfStructureLiftPayload)mark.Payload!)))
+          .Select(group => (
+            Payload: (IfStructureLiftPayload)group.First().Payload!,
+            Origins: group.Aggregate(
+              RuleEvidenceOrigin.None,
+              (origins, mark) => origins | mark.Origins)))
+          .OrderBy(item => GetIfStructureDecisionNode(item.Payload).SpanStart)
+          .ThenByDescending(item => GetIfStructureDecisionNode(item.Payload).Span.Length);
     }
 
     // 计算已经被更大 propagated mark 覆盖的 seed 节点键，避免默认删除重复落在子节点上。

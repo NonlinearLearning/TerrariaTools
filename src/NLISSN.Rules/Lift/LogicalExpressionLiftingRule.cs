@@ -13,6 +13,7 @@ namespace NLISSN.Rules;
 public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
 {
   private static readonly RuleSemanticTag LogicalReductionSemanticTag = RuleFactPorts.LiftLogicalReduction;
+  private static readonly RuleSemanticTag LogicalExpressionFlowSemanticTag = RuleFactPorts.FlowLogicalExpression;
 
   public override string RuleId { get; } = "DEL-SOBJ-LIFT-LOGIC-001";
 
@@ -25,7 +26,10 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
     new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactPorts.TargetExpression),
     new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactPorts.FlowAssignmentTarget),
     new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactPorts.FlowLocalDefinition),
-    new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference)
+    new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference),
+    new RuleConsumedSyntax(
+      new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
+      LogicalExpressionFlowSemanticTag)
   });
 
   public override RuleProducesContract Produces { get; } = new(new[]
@@ -43,18 +47,31 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
     IReadOnlyList<MarkRecord> seedMarks,
     IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
   {
-    var marks = seedMarks.Concat(propagatedMarks.Select(mark => mark.Mark)).ToList();
-    foreach (var host in marks.SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<BinaryExpressionSyntax>())
+    var operandMarks = seedMarks
+      .Concat(propagatedMarks
+        .Where(mark => mark.Mark.SemanticTag != LogicalExpressionFlowSemanticTag)
+        .Select(mark => mark.Mark))
+      .ToList();
+    var propagatedLogicalHosts = propagatedMarks
+      .Where(mark => mark.Mark.SemanticTag == LogicalExpressionFlowSemanticTag)
+      .Select(mark => mark.Mark.SyntaxNode)
+      .OfType<BinaryExpressionSyntax>();
+    foreach (var host in operandMarks
+               .SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<BinaryExpressionSyntax>())
+               .Concat(propagatedLogicalHosts)
                .Where(host => host.IsKind(SyntaxKind.LogicalAndExpression) || host.IsKind(SyntaxKind.LogicalOrExpression))
                .DistinctBy(LiftingCommon.BuildNodeKey))
     {
-      var payload = LogicalExpressionLiftingHelpers.TryBuildPayload(host, marks.Select(mark => mark.SyntaxNode));
+      var payload = LogicalExpressionLiftingHelpers.TryBuildPayload(host, operandMarks.Select(mark => mark.SyntaxNode));
       if (payload is null)
       {
         continue;
       }
 
-      var sourceMark = marks.First(mark => host.Span.Contains(mark.SyntaxNode.Span));
+      var sourceMark = propagatedMarks
+        .Where(mark => mark.Mark.SemanticTag == LogicalExpressionFlowSemanticTag)
+        .FirstOrDefault(mark => ReferenceEquals(mark.Mark.SyntaxNode, host))
+        ?.SourceMark ?? operandMarks.First(mark => host.Span.Contains(mark.SyntaxNode.Span));
       yield return new LiftedMarkRecord(
         RuleId,
         MarkRecordFactory.Create(RuleId, host, "Logical operands are reducible from token-level marks."),

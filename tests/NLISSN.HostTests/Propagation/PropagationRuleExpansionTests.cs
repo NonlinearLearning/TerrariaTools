@@ -124,6 +124,118 @@ public sealed class PropagationRuleExpansionTests
         AssertContainsPropagated(result, SyntaxKind.IdentifierName, "value");
     }
 
+    [Fact]
+    public void Analyze_LogicalAndOperand_PropagatesToLogicalAndHost()
+    {
+        const string source = """
+            class Sample
+            {
+                void Check(bool removable, bool survivor)
+                {
+                    if (!removable && survivor)
+                    {
+                    }
+                }
+            }
+            """;
+
+        var result = AnalyzeWithSeed(
+          source,
+          "logical-and.cs",
+          SyntaxKind.IdentifierName,
+          "removable");
+
+        var propagated = Assert.Single(result.PropagatedMarks, mark =>
+          mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001");
+        Assert.Equal(SyntaxKind.LogicalAndExpression, propagated.Mark.SyntaxNode.Kind());
+        Assert.Equal("!removable && survivor", propagated.Mark.SyntaxNode.ToString());
+        Assert.Equal(RuleFactPorts.FlowLogicalExpression, propagated.Mark.SemanticTag);
+        Assert.Equal("removable", propagated.SourceMark.SyntaxNode.ToString());
+        Assert.DoesNotContain(result.PropagatedMarks, mark =>
+          mark.Mark.SyntaxNode.IsKind(SyntaxKind.IfStatement));
+    }
+
+    [Fact]
+    public void Analyze_LogicalOrOperand_PropagatesToLogicalOrHost()
+    {
+        const string source = """
+            class Sample
+            {
+                void Check(bool removable, bool survivor)
+                {
+                    if (removable || survivor)
+                    {
+                    }
+                }
+            }
+            """;
+
+        var result = AnalyzeWithSeed(
+          source,
+          "logical-or.cs",
+          SyntaxKind.IdentifierName,
+          "removable");
+
+        var propagated = Assert.Single(result.PropagatedMarks, mark =>
+          mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001");
+        Assert.Equal(SyntaxKind.LogicalOrExpression, propagated.Mark.SyntaxNode.Kind());
+        Assert.Equal("removable || survivor", propagated.Mark.SyntaxNode.ToString());
+    }
+
+    [Fact]
+    public void Analyze_MultipleLogicalOperands_DeduplicatesHostAndRetainsSource()
+    {
+        const string source = """
+            class Sample
+            {
+                void Check(bool first, bool second, bool survivor)
+                {
+                    if (first && second && survivor)
+                    {
+                    }
+                }
+            }
+            """;
+
+        var result = AnalyzeWithSeeds(
+          source,
+          "logical-and-deduplication.cs",
+          (SyntaxKind.IdentifierName, "first"),
+          (SyntaxKind.IdentifierName, "second"));
+
+        var propagated = Assert.Single(result.PropagatedMarks, mark =>
+          mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001");
+        Assert.Equal("first && second && survivor", propagated.Mark.SyntaxNode.ToString());
+        Assert.Equal("first", propagated.SourceMark.SyntaxNode.ToString());
+    }
+
+    [Fact]
+    public void Analyze_MixedLogicalChain_DoesNotPropagateAcrossOperatorKinds()
+    {
+        const string source = """
+            class Sample
+            {
+                void Check(bool removable, bool second, bool survivor)
+                {
+                    if (removable && second || survivor)
+                    {
+                    }
+                }
+            }
+            """;
+
+        var result = AnalyzeWithSeed(
+          source,
+          "mixed-logical-chain.cs",
+          SyntaxKind.IdentifierName,
+          "removable");
+
+        var propagated = Assert.Single(result.PropagatedMarks, mark =>
+          mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001");
+        Assert.Equal(SyntaxKind.LogicalAndExpression, propagated.Mark.SyntaxNode.Kind());
+        Assert.Equal("removable && second", propagated.Mark.SyntaxNode.ToString());
+    }
+
     private static PrototypeAnalysisResult Analyze(string source, string filePath, string targetName)
     {
         var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());

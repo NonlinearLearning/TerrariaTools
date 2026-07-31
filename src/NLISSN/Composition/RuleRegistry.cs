@@ -50,6 +50,7 @@ public static class RuleRegistry
         {
             new AssignmentLeftValuePropagationRule(),
             new DefinitionInitializerPropagationRule(),
+            new LogicalExpressionPropagationRule(),
             new SymbolReferencePropagationRule(),
             new DeclarationHostPropagationRule(),
             new DelegateUsageClassificationPropagationRule(),

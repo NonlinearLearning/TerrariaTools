@@ -65,7 +65,7 @@ public sealed class DecisionStructureValidationTests
     }
 
     [Fact]
-    public void RuleDecisionEngine_PrefersReducibleLogicalHostInsideSameConflictDomain()
+    public void RuleDecisionEngine_PrefersOuterDeleteOverReducibleLogicalHostInsideSameConflictDomain()
     {
         var source = AtomicLogicalSources.LogicalAndConflictSource;
 
@@ -78,8 +78,92 @@ public sealed class DecisionStructureValidationTests
         var engineDecisions = engine.Decide(context, seedMarks, propagatedMarks, liftedMarks, rules.Proposers).ToList();
 
         Assert.Single(engineDecisions);
-        Assert.Equal(DecisionActionKind.Replace, engineDecisions[0].Action);
-        Assert.Equal(SyntaxKind.LogicalAndExpression, (SyntaxKind)engineDecisions[0].FinalNode.RawKind);
+        Assert.Equal(DecisionActionKind.Delete, engineDecisions[0].Action);
+        Assert.Equal(SyntaxKind.IfStatement, (SyntaxKind)engineDecisions[0].FinalNode.RawKind);
+    }
+
+    [Fact]
+    public void Analyze_ClassDerivedLogicalIf_PrefersIfDeleteOverLogicalReplacement()
+    {
+        const string source = """
+          namespace Demo;
+
+          public static class PlayerInput
+          {
+            public static bool UsingGamepad { get; set; }
+          }
+
+          public sealed class Checker
+          {
+            public int Check(bool smartCursorIsUsed)
+            {
+              if (!smartCursorIsUsed && !PlayerInput.UsingGamepad)
+              {
+                return 1;
+              }
+
+              return 0;
+            }
+          }
+          """;
+        var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+          ["delete-class"] = "PlayerInput"
+        };
+        var service = new ApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var result = service.Analyze(source, "class-derived-logical-if.cs", options);
+
+        Assert.Contains(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Delete &&
+          decision.FinalNode.IsKind(SyntaxKind.IfStatement));
+        Assert.DoesNotContain(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Replace &&
+          decision.FinalNode.IsKind(SyntaxKind.LogicalAndExpression));
+    }
+
+    [Fact]
+    public void Analyze_ClassDerivedLogicalInitializerWithOuterDelete_DeletesLocalDeclaration()
+    {
+        const string source = """
+          namespace Demo;
+
+          public static class PlayerInput
+          {
+            public static bool UsingGamepad { get; set; }
+          }
+
+          public sealed class Checker
+          {
+            public int Check(bool smartCursorIsUsed)
+            {
+              bool flag4 = !smartCursorIsUsed && !PlayerInput.UsingGamepad;
+              if (!flag4)
+              {
+                return 1;
+              }
+
+              return 0;
+            }
+          }
+          """;
+        var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+          ["delete-class"] = "PlayerInput"
+        };
+        var service = new ApplicationService(RuleRegistry.CreateDefaultRules());
+
+        var result = service.Analyze(source, "class-derived-logical-initializer.cs", options);
+
+        Assert.Contains(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Delete &&
+          decision.FinalNode.IsKind(SyntaxKind.LocalDeclarationStatement));
+        Assert.DoesNotContain(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Replace &&
+          decision.FinalNode.IsKind(SyntaxKind.LogicalAndExpression));
+        TextDiffAssert.DoesNotContain("flag4", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("PlayerInput.UsingGamepad", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("if (!flag4)", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
