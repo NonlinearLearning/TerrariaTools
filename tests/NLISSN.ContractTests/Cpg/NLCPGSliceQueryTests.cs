@@ -368,7 +368,7 @@ public sealed class NLCPGSliceQueryTests
         var snapshot = new MarkAnalysisSnapshot(analysisContext);
         var session = new AnalysisSession(
             analysisContext,
-            new Dictionary<string, string>(),
+            AnalysisLegacyOptionsTestExtensions.CreateSettings(new Dictionary<string, string>()),
             markAnalysisSnapshot: snapshot);
         var sinkNode = graph.Nodes.First(node => node.Kind == NLCPGNodeKind.MethodReturn);
         var options = new NLCPGSliceQueryOptions(

@@ -198,7 +198,9 @@ public sealed class MarkLiftingEngine
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredInput))
+          .SelectMany(dependency => dependency.RequiredInput is { } input
+            ? inputs.GetOutputs(dependency.Producer, input)
+            : inputs.GetValues(dependency.Producer))
           .ToList();
     }
 

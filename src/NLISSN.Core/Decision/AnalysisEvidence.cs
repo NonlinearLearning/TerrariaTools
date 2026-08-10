@@ -288,11 +288,14 @@ public sealed class AnalysisEvidenceCollector
         AnalysisEvidenceKind.Propagation,
         ruleId,
         output.Mark,
-        summaryKey: BuildPayloadSummary(output.Payload));
+        summaryKey: BuildPropagationSummary(output));
       AddNode(outputNode);
+      var sourceKind = output.Depth > 1
+        ? AnalysisEvidenceKind.Propagation
+        : AnalysisEvidenceKind.SeedMark;
       foreach (MarkRecord input in inputMarks)
       {
-        AddEdge(CreateMarkKey(AnalysisEvidenceKind.SeedMark, input.RuleId, input), outputNode.Key,
+        AddEdge(CreateMarkKey(sourceKind, input.RuleId, input), outputNode.Key,
           AnalysisEvidenceEdgeKind.DerivedFrom);
       }
     }
@@ -648,8 +651,11 @@ public sealed class AnalysisEvidenceCollector
     string? summaryKey = null)
   {
     var anchor = EvidenceAnchor.FromSyntaxNode(mark.SyntaxNode, mark.PrimaryGraphNode);
+    var nodeKey = kind == AnalysisEvidenceKind.Propagation
+      ? CreateKey(kind, ruleId, anchor, null)
+      : CreateKey(kind, ruleId, anchor, summaryKey);
     return new PendingNode(
-      CreateKey(kind, ruleId, anchor, summaryKey),
+      nodeKey,
       kind,
       ruleId,
       anchor,
@@ -719,6 +725,14 @@ public sealed class AnalysisEvidenceCollector
   private static string BuildPayloadSummary(object? payload)
   {
     return payload is null ? string.Empty : payload.GetType().FullName ?? payload.GetType().Name;
+  }
+
+  private static string BuildPropagationSummary(PropagatedMarkRecord output)
+  {
+    var payloadSummary = BuildPayloadSummary(output.Payload);
+    return payloadSummary.Length == 0
+      ? $"depth:{output.Depth}"
+      : $"depth:{output.Depth};payload:{payloadSummary}";
   }
 
   private string BuildDescription(string description)

@@ -27,6 +27,9 @@ public enum DecisionActionKind
 /// 决策引擎输出的最终结果，供 rewrite 阶段直接消费。
 public sealed record RuleDecision
 {
+    /// 产生当前最终决策的 proposal 规则标识。
+    public string? RuleId { get; init; }
+
     /// 决策最初绑定的原始语法节点。
     public SyntaxNode OriginalNode { get; init; }
 
@@ -49,8 +52,15 @@ public sealed record RuleDecision
     public DecisionEvidence? Evidence { get; init; }
 
     // 记录一条最终决策及其改写原因，供 rewrite 阶段直接消费。
-    public RuleDecision(SyntaxNode originalNode, SyntaxNode finalNode, DecisionActionKind action, string reason, SyntaxNode? replacementNode = null)
+    public RuleDecision(
+      SyntaxNode originalNode,
+      SyntaxNode finalNode,
+      DecisionActionKind action,
+      string reason,
+      SyntaxNode? replacementNode = null,
+      string? ruleId = null)
     {
+        RuleId = ruleId;
         OriginalNode = originalNode;
         FinalNode = finalNode;
         Action = action;
@@ -133,10 +143,10 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
               .FirstOrDefault(fragment => string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal))
               ?? winner.Fragments.Last();
             var replacement = ResolveBoundSyntaxNode(winner, replacementFragment);
-            return new RuleDecision(node, node, winner.Action, winner.Reason, replacement);
+            return new RuleDecision(node, node, winner.Action, winner.Reason, replacement, winner.RuleId);
         }
 
-        return new RuleDecision(node, node, winner.Action, winner.Reason);
+        return new RuleDecision(node, node, winner.Action, winner.Reason, ruleId: winner.RuleId);
     }
 
     internal DecisionUnit ResolveToUnitForTesting(IReadOnlyList<DecisionUnit> units)
@@ -472,7 +482,9 @@ public sealed class RuleDecisionEngine
     private static IReadOnlyList<object> GetValues(RuleGraphNode node, RuleNodeInputs inputs)
     {
         return node.Dependencies
-          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredInput))
+          .SelectMany(dependency => dependency.RequiredInput is { } input
+            ? inputs.GetOutputs(dependency.Producer, input)
+            : inputs.GetValues(dependency.Producer))
           .ToList();
     }
 

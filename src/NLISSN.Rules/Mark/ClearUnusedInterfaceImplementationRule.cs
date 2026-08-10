@@ -9,14 +9,12 @@ namespace NLISSN.Rules;
 /// 命中未被调用的接口成员对应的源码实现方法。
 public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
 {
-  private static readonly RuleSemanticTag UnusedInterfaceImplementationSemanticTag = new("UnusedInterfaceImplementation");
-
   private static readonly RuleProducesContract UnusedInterfaceImplementationProduces =
     new(new[]
     {
       new RuleProducedSyntax(
         new[] { SyntaxKind.MethodDeclaration },
-        UnusedInterfaceImplementationSemanticTag)
+        UnusedInterfaceImplementationFacts.Marked)
     });
 
   public override string CapabilityId { get; } = "mark.clear-unused-interface-implementation";
@@ -71,14 +69,13 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
         RuleId,
         method,
         "Interface implementation is not referenced through its interface member or implementation method.",
-        semanticTag: UnusedInterfaceImplementationSemanticTag);
+        semanticTag: UnusedInterfaceImplementationFacts.Marked);
     }
   }
 
   private static bool IsEnabled(IMarkRuleContext context)
   {
-    return context.TryGetOption("clear-unused-interface-implementations", out var value) &&
-      !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+    return context.ClearUnusedInterfaceImplementations;
   }
 
   private static Dictionary<IMethodSymbol, IReadOnlyList<IMethodSymbol>> BuildInterfaceImplementations(Compilation compilation)

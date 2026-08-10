@@ -19,6 +19,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Configuration\NLISSN.Configuration.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Workspace\NLISSN.Workspace.csproj" />
     <ProjectReference Include="..\..\src\NLISSN\NLISSN.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />

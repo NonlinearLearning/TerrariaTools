@@ -39,11 +39,17 @@ public sealed record RulePipeline(
             declaration.Rule.Consumes,
             declaration.Rule.Produces,
             declaration.Rule.InputCardinality))
-          .ToList());
+          .ToList(),
+          RuleStructureContractGraphMode.PropagationFixedPointRegion);
+        var markerNodeIds = declarations
+          .Where(declaration => declaration.Kind == RuleKind.Mark)
+          .Select(declaration => RuleNodeId.For(declaration.Kind, declaration.Rule.RuleId))
+          .ToList();
         var declaredNodes = declarations
           .Select(declaration => ToNode(
             declaration,
-            contractGraph))
+            contractGraph,
+            markerNodeIds))
           .ToList();
         return new RuleGraphCompiler().Compile(declaredNodes);
     }
@@ -64,12 +70,17 @@ public sealed record RulePipeline(
 
     private static RuleGraphNode ToNode(
       RuleGraphRuleDeclaration declaration,
-      CompiledRuleStructureContractGraph contractGraph)
+      CompiledRuleStructureContractGraph contractGraph,
+      IReadOnlyList<RuleNodeId> markerNodeIds)
     {
         var rule = declaration.Rule;
         var nodeId = RuleNodeId.For(declaration.Kind, rule.RuleId);
         IReadOnlyList<RuleDependency> dependencies =
-          rule.Consumes.Inputs.Count > 0
+          declaration.Kind == RuleKind.Propagate
+          ? markerNodeIds
+            .Select(markerNodeId => new RuleDependency(markerNodeId, null))
+            .ToList()
+          : rule.Consumes.Inputs.Count > 0
           ? contractGraph.Edges
             .Where(edge => edge.Consumer == nodeId)
             .Select(edge => new RuleDependency(edge.Producer, edge.Input))

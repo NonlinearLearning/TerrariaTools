@@ -1,0 +1,3 @@
+root = true
+is_global = true
+build_property.WorkspaceGeneratorPrefix = configured-from-analyzer-config

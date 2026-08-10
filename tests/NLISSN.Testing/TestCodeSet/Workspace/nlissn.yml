@@ -1,0 +1,27 @@
+schemaVersion: 2
+runId: workspace-generator-cli-20260804
+input:
+  path: WorkspaceFixture.sln
+  targetFramework: net10.0
+  configuration: Debug
+  platform: AnyCPU
+  restore: disabled
+  generatedSources: include
+  generators: enabled
+analysis: {}
+execution:
+  writeBack: false
+  skipRewrite: true
+  maxDegreeOfParallelism: 1
+artifacts:
+  root: artifacts
+  diff:
+    enabled: false
+  runtimeLog:
+    enabled: false
+  evidence:
+    enabled: false
+  rewritePlan:
+    mode: none
+  analysisLog:
+    enabled: false

@@ -71,16 +71,13 @@ public static class IfStructureLiftingHelpers
         var knownKeys = new HashSet<(int Start, int Length, int RawKind)>();
 
         var allMarks = seedMarks.Concat(propagatedMarks.Select(item => item.Mark)).ToList();
-        foreach (var candidateIf in allMarks
-                   .SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<IfStatementSyntax>())
-                   .DistinctBy(LiftingCommon.BuildNodeKey))
+        foreach (var (candidateIf, sourceMark) in GetCandidateIfs(context, allMarks, propagatedMarks))
         {
             if (!MarkCoverage.IsCovered(candidateIf.Condition, allMarks))
             {
                 continue;
             }
 
-            var sourceMark = allMarks.First(mark => candidateIf.Span.Contains(mark.SyntaxNode.Span));
             foreach (var lifted in BuildStructuralMarksForLiftedNode(
                        context,
                        ruleId,
@@ -101,6 +98,47 @@ public static class IfStructureLiftingHelpers
                   1);
             }
         }
+    }
+
+    private static IEnumerable<(IfStatementSyntax Candidate, MarkRecord Source)> GetCandidateIfs(
+      ILiftRuleContext context,
+      IReadOnlyList<MarkRecord> allMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+    {
+        var knownKeys = new HashSet<(int Start, int Length, int RawKind)>();
+        foreach (var candidate in allMarks
+                   .Select(mark => mark.SyntaxNode)
+                   .OfType<IfStatementSyntax>())
+        {
+            if (knownKeys.Add(LiftingCommon.BuildNodeKey(candidate)))
+            {
+                yield return (candidate, allMarks.First(mark => candidate.Span.Contains(mark.SyntaxNode.Span)));
+            }
+        }
+
+        // A local definition can be removed independently of the terminal expression that initialized it.
+        // Its proven symbol references may therefore complete an if condition without reopening that terminal path.
+        foreach (var referenceFact in propagatedMarks.Where(IsDefinitionBackedSymbolReference))
+        {
+            if (referenceFact.Mark.SyntaxNode is not IdentifierNameSyntax reference ||
+                !context.TryFindContainingIf(reference, out var analysis) ||
+                analysis is null ||
+                !knownKeys.Add(LiftingCommon.BuildNodeKey(analysis.AnchorIf)))
+            {
+                continue;
+            }
+
+            yield return (analysis.AnchorIf, referenceFact.Mark);
+        }
+    }
+
+    private static bool IsDefinitionBackedSymbolReference(PropagatedMarkRecord fact)
+    {
+        return fact.Mark.SemanticTag == RuleFactPorts.FlowSymbolReference &&
+          fact.Mark.SyntaxNode is IdentifierNameSyntax &&
+          fact.SourceMark.SemanticTag == RuleFactPorts.FlowLocalDefinition &&
+          fact.SourceMark.SyntaxNode is VariableDeclaratorSyntax &&
+          fact.SourceMark.OutputKind == RuleOutputKind.LocalDefinitionFromInitializer;
     }
 
     private static IReadOnlyList<MarkRecord> BuildStructuralMarksForLiftedNode(ILiftRuleContext context, string ruleId, SyntaxNode markedNode, string reason, IfStructureAnalyzer ifStructureAnalyzer)

@@ -47,7 +47,7 @@ public sealed class FlowSummaryDeletionSafetyTests
                 compilation.GetSemanticModel(tree),
                 root,
                 CallFlowResolver: new ResolvedFlowResolver()),
-            new Dictionary<string, string>());
+            AnalysisLegacyOptionsTestExtensions.CreateSettings(new Dictionary<string, string>()));
 
         var result = session.CreatePropagationContext(Array.Empty<MarkRecord>()).ResolveCallFlow(
             operation,

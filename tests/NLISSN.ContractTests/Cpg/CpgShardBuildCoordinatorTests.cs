@@ -15,6 +15,135 @@ namespace RoslynPrototype.Tests;
 public sealed class CpgShardBuildCoordinatorTests
 {
   [Fact]
+  public void BuildFromSource_PersistenceMetrics_ExposeShardAndCatalogMeasurements()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "cpg-persistence-metrics-tests", Guid.NewGuid().ToString("N"));
+    try
+    {
+      var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+      {
+        Persistence = new CpgPersistenceOptions(
+          root,
+          "metrics-profile",
+          StreamingMode: true),
+      });
+      const string source = "class Example { int First(int value) => Second(value) + 1; int Second(int value) => value + 2; }";
+
+      _ = builder.BuildFromSource(source, "input.cs");
+
+      Assert.NotNull(builder.LastBuildMetrics.PersistenceMetrics);
+      var metrics = builder.LastBuildMetrics.PersistenceMetrics!;
+
+      Assert.True(metrics.PrimaryShardCount > 0);
+      Assert.True(metrics.PrimaryShardBytes > 0);
+      Assert.True(metrics.CatalogReadMilliseconds >= 0);
+      Assert.Equal(0, metrics.RestoredShardCount);
+      Assert.Equal(0, metrics.RestoredShardBytes);
+      Assert.True(metrics.FileWriteMilliseconds >= 0);
+      Assert.True(metrics.CatalogWriteMilliseconds >= 0);
+      Assert.True(metrics.RoutingIndexWriteMilliseconds >= 0);
+      Assert.NotNull(metrics.Provenance);
+      var provenance = metrics.Provenance!;
+      Assert.Equal(
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))).ToLowerInvariant(),
+        provenance.SourceHash);
+      Assert.Equal("metrics-profile", provenance.ProfileHash);
+      Assert.Equal(1, provenance.SchemaVersion);
+      Assert.Contains("Microsoft.CodeAnalysis.CSharp", provenance.CompilerIdentity, StringComparison.Ordinal);
+      Assert.NotEmpty(provenance.CapabilityFingerprint);
+    }
+    finally
+    {
+      if (Directory.Exists(root))
+      {
+        Directory.Delete(root, recursive: true);
+      }
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_PersistenceMetrics_ExposeExactRestoreHit()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "cpg-persistence-restore-metrics-tests", Guid.NewGuid().ToString("N"));
+    try
+    {
+      var options = NLCPGBuilderOptions.CreateDefault() with
+      {
+        Persistence = new CpgPersistenceOptions(
+          root,
+          "restore-metrics-profile",
+          StreamingMode: true),
+      };
+      const string source = "class Example { int First(int value) => Second(value) + 1; int Second(int value) => value + 2; }";
+
+      _ = new NLCPGBuilder(options).BuildFromSource(source, "input.cs");
+      var hitBuilder = new NLCPGBuilder(options);
+      _ = hitBuilder.BuildFromSource(source, "input.cs");
+
+      Assert.NotNull(hitBuilder.LastBuildMetrics.PersistenceMetrics);
+      var metrics = hitBuilder.LastBuildMetrics.PersistenceMetrics!;
+
+      Assert.True(metrics.RestoreAttempted);
+      Assert.True(metrics.RestoreHit);
+      Assert.True(metrics.RestoreElapsedMilliseconds >= 0);
+      Assert.True(metrics.CatalogReadMilliseconds >= 0);
+      Assert.True(metrics.ShardReadMilliseconds >= 0);
+      Assert.True(metrics.RestoredShardCount > 0);
+      Assert.True(metrics.RestoredShardBytes > 0);
+      Assert.True(metrics.RestoreFactsElapsedMilliseconds >= 0);
+      Assert.True(metrics.RestoreFactsAllocatedBytes >= 0);
+      Assert.True(metrics.RestoreGraphImportElapsedMilliseconds >= 0);
+      Assert.True(metrics.RestoreGraphImportAllocatedBytes >= 0);
+      var stages = hitBuilder.LastBuildMetrics.PassElapsedMilliseconds!;
+      Assert.True(stages.ContainsKey("PersistenceRestoreFacts"));
+      Assert.True(stages["PersistenceRestoreFacts"] >= 0);
+      Assert.True(stages.ContainsKey("PersistenceGraphImport"));
+      Assert.True(stages["PersistenceGraphImport"] >= 0);
+    }
+    finally
+    {
+      if (Directory.Exists(root))
+      {
+        Directory.Delete(root, recursive: true);
+      }
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_PersistenceMetrics_ExposeNonStreamingRestoreBreakdown()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "cpg-persistence-non-streaming-read-metrics-tests", Guid.NewGuid().ToString("N"));
+    try
+    {
+      var options = NLCPGBuilderOptions.CreateDefault() with
+      {
+        Persistence = new CpgPersistenceOptions(root, "non-streaming-read-metrics-profile"),
+      };
+      const string source = "class Example { int Run(int value) => value + 1; }";
+
+      _ = new NLCPGBuilder(options).BuildFromSource(source, "input.cs");
+      var hitBuilder = new NLCPGBuilder(options);
+      _ = hitBuilder.BuildFromSource(source, "input.cs");
+
+      Assert.NotNull(hitBuilder.LastBuildMetrics.PersistenceMetrics);
+      var metrics = hitBuilder.LastBuildMetrics.PersistenceMetrics!;
+      Assert.True(metrics.RestoreAttempted);
+      Assert.True(metrics.RestoreHit);
+      Assert.True(metrics.CatalogReadMilliseconds >= 0);
+      Assert.True(metrics.ShardReadMilliseconds >= 0);
+      Assert.Equal(1, metrics.RestoredShardCount);
+      Assert.True(metrics.RestoredShardBytes > 0);
+    }
+    finally
+    {
+      if (Directory.Exists(root))
+      {
+        Directory.Delete(root, recursive: true);
+      }
+    }
+  }
+
+  [Fact]
   public async Task BuildFromSource_Persistence_DeletedCatalog_RebuildsCompletedSession()
   {
     var root = Path.Combine(Path.GetTempPath(), "cpg-completed-session-rebuild-tests", Guid.NewGuid().ToString("N"));
@@ -896,6 +1025,41 @@ public sealed class CpgShardBuildCoordinatorTests
     {
       readObserver!.SetValue(null, null);
       Directory.Delete(root, recursive: true);
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_Persistence_ReusesUnchangedMethodFragmentAfterLaterMethodEdit()
+  {
+    var root = Path.Combine(Path.GetTempPath(), "cpg-non-streaming-reuse-tests", Guid.NewGuid().ToString("N"));
+    try
+    {
+      const string firstSource = "class Example { int First() => 1; int Second() => 2; }";
+      const string secondSource = "class Example { int First() => 1; int Second() => 3; }";
+      var options = NLCPGBuilderOptions.CreateDefault() with
+      {
+        Persistence = new CpgPersistenceOptions(root, "non-streaming-reuse-profile"),
+      };
+
+      _ = new NLCPGBuilder(options).BuildFromSource(firstSource, "input.cs");
+      var reusedBuilder = new NLCPGBuilder(options);
+      var reusedBuild = reusedBuilder.BuildFromSource(secondSource, "input.cs");
+      var expected = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault())
+        .BuildFromSource(secondSource, "input.cs");
+      var metrics = reusedBuilder.LastBuildMetrics;
+
+      Assert.NotNull(metrics.PersistenceMetrics);
+      Assert.True(metrics.PersistenceMetrics!.ReusedShardCount >= 1);
+      Assert.True(metrics.PersistenceMetrics.ReuseMissCount >= 1);
+      Assert.Equal(ExactNodes(expected), ExactNodes(reusedBuild));
+      Assert.Equal(ExactEdges(expected), ExactEdges(reusedBuild));
+    }
+    finally
+    {
+      if (Directory.Exists(root))
+      {
+        Directory.Delete(root, recursive: true);
+      }
     }
   }
 

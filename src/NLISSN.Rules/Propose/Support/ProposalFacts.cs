@@ -107,16 +107,16 @@ public static class ProposalHelpers
     // 返回尚未被传播或提升宿主覆盖的 seed mark，供默认删除规则兜底消费。
     public static IEnumerable<MarkRecord> EnumerateUncoveredSeedMarks(IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
-      var derivedMarks = propagatedMarks
-        .Select(mark => mark.Mark)
-        .Concat(liftedMarks.Select(mark => mark.Mark))
-        .DistinctBy(mark => BuildNodeKey(mark.SyntaxNode))
-        .ToList();
+        var derivedMarks = propagatedMarks
+          .Select(mark => mark.Mark)
+          .Concat(liftedMarks.Select(mark => mark.Mark))
+          .DistinctBy(mark => BuildNodeKey(mark.SyntaxNode))
+          .ToList();
         var coveredSeedKeys = BuildCoveredSeedKeys(seedMarks, derivedMarks);
         var protectedSeedKeys = propagatedMarks
           .Where(mark => mark.Payload is ExternalSummaryFlowPayload
           {
-            IsParameterToReturn: true
+              IsParameterToReturn: true
           })
           .Select(mark => BuildNodeKey(mark.Mark.SyntaxNode))
           .ToHashSet();
@@ -130,7 +130,7 @@ public static class ProposalHelpers
             }
 
             yield return seedMark;
-      }
+        }
     }
 
     // 识别来自局部定义符号引用传播的 mark，避免把它们当成原始结构事实再次处理。

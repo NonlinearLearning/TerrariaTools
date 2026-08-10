@@ -33,7 +33,7 @@ public sealed record RuleNodeId
     }
 }
 
-public sealed record RuleDependency(RuleNodeId Producer, RuleConsumedSyntax RequiredInput);
+public sealed record RuleDependency(RuleNodeId Producer, RuleConsumedSyntax? RequiredInput);
 
 public sealed record RuleGraphNode(RuleNodeId NodeId, RuleKind Kind, IReadOnlyList<RuleDependency> Dependencies)
 {

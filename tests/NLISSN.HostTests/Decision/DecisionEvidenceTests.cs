@@ -4,7 +4,7 @@ using NLCPG.Analysis;
 using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Contracts;
 using NLISSN.Application;
-using NLISSN.Cli.Hosting;
+using NLISSN.Hosting;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Marking;
 using NLISSN.Rules;
@@ -18,7 +18,8 @@ public sealed class DecisionEvidenceTests
   [Fact]
   public void Analyze_WhenDecisionIsProduced_ConnectsDecisionRootToSeedMark()
   {
-    var application = new ApplicationService(RuleRegistry.CreateDefaultRules());
+    var application = new ApplicationService(
+      RuleRegistry.CreateDefaultRules(enableUnreachableMethodDeletion: true));
 
     var result = application.Analyze(
       ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource,
@@ -37,7 +38,8 @@ public sealed class DecisionEvidenceTests
   [Fact]
   public void Analyze_WhenDopChanges_ProducesIdenticalEvidenceJson()
   {
-    var application = new ApplicationService(RuleRegistry.CreateDefaultRules());
+    var application = new ApplicationService(
+      RuleRegistry.CreateDefaultRules(enableUnreachableMethodDeletion: true));
 
     var sequential = application.Analyze(
       ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource,
@@ -126,7 +128,13 @@ public sealed class DecisionEvidenceTests
     {
       var host = new CommandHost(RuleRegistry.CreateDefaultRules());
 
-      var result = host.AnalyzeFromArgs(new[] { sourcePath, "--evidence-json", outputPath });
+      var result = host.AnalyzeFromArgs(new[]
+      {
+        sourcePath,
+        "--delete-unreachable-methods",
+        "--evidence-json",
+        outputPath
+      });
 
       Assert.True(File.Exists(outputPath));
       var projection = JsonSerializer.Deserialize<AnalysisEvidenceGraph>(

@@ -118,19 +118,14 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.ExpressionStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _targetDiffFilePath,
-            nameof(AnalyzeFromArgs_AssignmentStatementSource_MarksExpressionStatement),
-            File.ReadAllText(rawDiffPath));
+        Assert.DoesNotContain(result.PropagatedMarks, mark => mark.Mark.SyntaxNode.IsKind(SyntaxKind.ExpressionStatement));
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ComplexDefinitionAssignmentSource_MarksLocalDeclarationStatement()
+    public void AnalyzeFromArgs_ComplexDefinitionAssignmentSource_PreservesLocalDeclarationWithoutDiff()
     {
         var filePath = WriteSourceFile(
             "complex-definition-assignment.cs",
@@ -150,14 +145,11 @@ public sealed class MarkRuleEffectTests : IDisposable
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
         AssertContainsPropagatedKind(result, SyntaxKind.LocalDeclarationStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _targetDiffFilePath,
-            nameof(AnalyzeFromArgs_ComplexDefinitionAssignmentSource_MarksLocalDeclarationStatement),
-            File.ReadAllText(rawDiffPath));
+        Assert.DoesNotContain(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Delete &&
+          decision.FinalNode.IsKind(SyntaxKind.LocalDeclarationStatement));
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
@@ -180,15 +172,10 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.ExpressionStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _targetDiffFilePath,
-            nameof(AnalyzeFromArgs_ChainedAssignmentStatementSource_MarksExpressionStatement),
-            File.ReadAllText(rawDiffPath));
+        Assert.DoesNotContain(result.PropagatedMarks, mark => mark.Mark.SyntaxNode.IsKind(SyntaxKind.ExpressionStatement));
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
@@ -223,7 +210,7 @@ public sealed class MarkRuleEffectTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ObjectInitializerDefinitionAssignmentSource_MarksLocalDeclarationStatement()
+    public void AnalyzeFromArgs_ObjectInitializerDefinitionAssignmentSource_PreservesLocalDeclarationWithoutDiff()
     {
         var filePath = WriteSourceFile(
             "object-initializer-definition-assignment.cs",
@@ -243,14 +230,11 @@ public sealed class MarkRuleEffectTests : IDisposable
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.ObjectCreationExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
         AssertContainsPropagatedKind(result, SyntaxKind.LocalDeclarationStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _targetDiffFilePath,
-            nameof(AnalyzeFromArgs_ObjectInitializerDefinitionAssignmentSource_MarksLocalDeclarationStatement),
-            File.ReadAllText(rawDiffPath));
+        Assert.DoesNotContain(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Delete &&
+          decision.FinalNode.IsKind(SyntaxKind.LocalDeclarationStatement));
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
@@ -273,19 +257,14 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.SimpleMemberAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.ExpressionStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _targetDiffFilePath,
-            nameof(AnalyzeFromArgs_ComplexCompoundAssignmentStatementSource_MarksExpressionStatement),
-            File.ReadAllText(rawDiffPath));
+        Assert.DoesNotContain(result.PropagatedMarks, mark => mark.Mark.SyntaxNode.IsKind(SyntaxKind.ExpressionStatement));
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
-    public void AnalyzeFromArgs_AssignmentLeftOperandSource_MarksExpressionStatement()
+    public void AnalyzeFromArgs_AssignmentLeftOperandSource_StopsWithoutRewrite()
     {
         var filePath = WriteSourceFile(
             "assignment-left-operand.cs",
@@ -304,15 +283,9 @@ public sealed class MarkRuleEffectTests : IDisposable
 
         var seedMark = Assert.Single(result.SeedMarks);
         Assert.Equal(SyntaxKind.ElementAccessExpression, (SyntaxKind)seedMark.SyntaxNode.RawKind);
-        AssertContainsPropagatedKind(result, SyntaxKind.ExpressionStatement);
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.True(File.Exists(rawDiffPath));
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _targetDiffFilePath,
-            nameof(AnalyzeFromArgs_AssignmentLeftOperandSource_MarksExpressionStatement),
-            File.ReadAllText(rawDiffPath));
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
@@ -628,12 +601,10 @@ public sealed class MarkRuleEffectTests : IDisposable
             rawDiffPath
         });
 
-        AssertContainsLiftedStructure(result, SyntaxKind.SwitchSection, StructuralKind.Switch);
-
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            _targetDiffFilePath,
-            nameof(AnalyzeFromArgs_SwitchCaseSingleStatementSource_MarksWholeSwitchSection),
-            File.ReadAllText(rawDiffPath));
+        AssertDoesNotContainLiftedStructure(result, SyntaxKind.SwitchSection, StructuralKind.Switch);
+        Assert.Empty(result.Decisions);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
@@ -654,7 +625,7 @@ public sealed class MarkRuleEffectTests : IDisposable
             rawDiffPath
         });
 
-        AssertContainsLiftedStructure(result, SyntaxKind.SwitchSection, StructuralKind.Switch);
+        AssertDoesNotContainLiftedStructure(result, SyntaxKind.SwitchSection, StructuralKind.Switch);
 
         BuildDiffArtifactWriter.AppendDiffFragment(
             _targetDiffFilePath,
@@ -697,10 +668,9 @@ public sealed class MarkRuleEffectTests : IDisposable
             diffText,
             StringComparison.Ordinal);
         TextDiffAssert.Contains("a && b || c || !b", diffText, diffText);
-        TextDiffAssert.Contains("c", diffText, diffText);
-        Assert.Equal("c", result.Decisions[0].ReplacementNode?.ToString());
-        TextDiffAssert.Contains("if (c)", result.RewrittenSource, diffText);
-        TextDiffAssert.DoesNotContain("c || !b", result.RewrittenSource, diffText);
+        TextDiffAssert.Contains("c || !b", diffText, diffText);
+        Assert.Equal("c||!b", result.Decisions[0].ReplacementNode?.ToString());
+        TextDiffAssert.Contains("if (c || !b)", result.RewrittenSource, diffText);
     }
 
     [Fact]
@@ -740,9 +710,8 @@ public sealed class MarkRuleEffectTests : IDisposable
             diffText,
             StringComparison.Ordinal);
         TextDiffAssert.Contains("(a && b) || c || !b", diffText, diffText);
-        Assert.Equal("c", result.Decisions[0].ReplacementNode?.ToString());
-        TextDiffAssert.Contains("if (c)", result.RewrittenSource, diffText);
-        TextDiffAssert.DoesNotContain("c || !b", result.RewrittenSource, diffText);
+        Assert.Equal("c||!b", result.Decisions[0].ReplacementNode?.ToString());
+        TextDiffAssert.Contains("if (c || !b)", result.RewrittenSource, diffText);
     }
 
     [Fact]
@@ -786,7 +755,7 @@ public sealed class MarkRuleEffectTests : IDisposable
 
     [Theory]
     [MemberData(nameof(LargeParenthesizedLogicalEffectCases))]
-    public void AnalyzeFromArgs_LargeParenthesizedCases_ProduceSingleLogicalOrMark(string caseName, string source, string expectedMarkedText, string expectedReplacementText)
+    public void AnalyzeFromArgs_LargeParenthesizedCases_ProduceSingleLogicalOrMark(string caseName, string source, string expectedMarkedText)
     {
         var filePath = WriteSourceFile(
             $"{caseName}.cs",
@@ -819,11 +788,7 @@ public sealed class MarkRuleEffectTests : IDisposable
             $"UnitTest: {nameof(AnalyzeFromArgs_LargeParenthesizedCases_ProduceSingleLogicalOrMark)}:{caseName}",
             diffText,
             StringComparison.Ordinal);
-        Assert.Equal(expectedReplacementText, result.Decisions[0].ReplacementNode?.ToString());
-        Assert.Contains(
-            RemoveWhitespace(expectedReplacementText),
-            RemoveWhitespace(diffText),
-            StringComparison.Ordinal);
+        Assert.Null(result.Decisions[0].ReplacementNode);
     }
 
     public static IEnumerable<object[]> LargeParenthesizedLogicalEffectCases()
@@ -831,28 +796,23 @@ public sealed class MarkRuleEffectTests : IDisposable
         yield return CreateEffectCase(
             nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase1Source),
             AtomicLogicalSources.LogicalMixedPrecedenceLargeCase1Source,
-            "(a && b) || (c && d) || !b || e || (f && g) || h || i || j || k || l",
-            "(c && d)||e||(f && g)||h||i||j||k||l");
+            "(a && b) || (c && d) || !b || e || (f && g) || h || i || j || k || l");
         yield return CreateEffectCase(
             nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase2Source),
             AtomicLogicalSources.LogicalMixedPrecedenceLargeCase2Source,
-            "((a || b) && (c || !b)) || d || e || (f && g) || h || i || j || k || l || m",
-            "d||e||(f && g)||h||i||j||k||l||m");
+            "((a || b) && (c || !b)) || d || e || (f && g) || h || i || j || k || l || m");
         yield return CreateEffectCase(
             nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase3Source),
             AtomicLogicalSources.LogicalMixedPrecedenceLargeCase3Source,
-            "(a && b) || c || d || (!b && e) || f || g || h || (i && j) || k || l",
-            "c||d||f||g||h||(i && j)||k||l");
+            "(a && b) || c || d || (!b && e) || f || g || h || (i && j) || k || l");
         yield return CreateEffectCase(
             nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase4Source),
             AtomicLogicalSources.LogicalMixedPrecedenceLargeCase4Source,
-            "((a && b) || c) || d || e || ((f || !b) && g) || h || i || j || k || l",
-            "d||e||h||i||j||k||l");
+            "((a && b) || c) || d || e || ((f || !b) && g) || h || i || j || k || l");
         yield return CreateEffectCase(
             nameof(AtomicLogicalSources.LogicalMixedPrecedenceLargeCase5Source),
             AtomicLogicalSources.LogicalMixedPrecedenceLargeCase5Source,
-            "(a && (b || c)) || d || e || !b || (f && g) || h || i || j || k || l",
-            "d||e||(f && g)||h||i||j||k||l");
+            "(a && (b || c)) || d || e || !b || (f && g) || h || i || j || k || l");
     }
 
     private static  ApplicationService CreateApplication()
@@ -872,9 +832,9 @@ public sealed class MarkRuleEffectTests : IDisposable
         return filePath;
     }
 
-    private static object[] CreateEffectCase(string caseName, string source, string expectedMarkedText, string expectedReplacementText)
+    private static object[] CreateEffectCase(string caseName, string source, string expectedMarkedText)
     {
-        return new object[] { caseName, source, expectedMarkedText, expectedReplacementText };
+        return new object[] { caseName, source, expectedMarkedText };
     }
 
     private static bool IsNodeKind(Microsoft.CodeAnalysis.SyntaxNode node, SyntaxKind kind)

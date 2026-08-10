@@ -153,8 +153,7 @@ public static class CpgFrozenShardGraphReader
     internal static CpgFrozenShardGraphFacts ReadMutableFacts(IEnumerable<CpgFrozenShard> shards)
     {
         ArgumentNullException.ThrowIfNull(shards);
-        var nodes = new Dictionary<NodeId, NLCPGNode>();
-        var edges = new HashSet<NLCPGEdge>();
+        var accumulator = CreateMutableFactsAccumulator();
         var orderedShards = shards
           .OrderBy(shard => shard.Lookup.Fragment.Kind, StringComparer.Ordinal)
           .ThenBy(shard => shard.Lookup.Fragment.SpanStart)
@@ -162,35 +161,15 @@ public static class CpgFrozenShardGraphReader
           .ToArray();
         foreach (var shard in orderedShards)
         {
-            var graph = ReadGraph(shard);
-            foreach (var node in graph.Nodes)
-            {
-                if (!nodes.TryAdd(node.NodeId!.Value, node) && nodes[node.NodeId.Value] != node)
-                {
-                    throw new InvalidDataException("The CPG shards contain conflicting nodes with the same NodeId.");
-                }
-            }
-
-            edges.UnionWith(graph.Edges);
+            accumulator.Add(shard);
         }
 
-        foreach (var boundaryEdge in orderedShards
-          .SelectMany(shard => shard.BoundaryEdges ?? Array.Empty<CpgFrozenBoundaryEdge>())
-          .OrderBy(edge => edge.SourceNodeId)
-          .ThenBy(edge => edge.Kind, StringComparer.Ordinal)
-          .ThenBy(edge => edge.TargetNodeId))
-        {
-            var sourceNodeId = new NodeId(boundaryEdge.SourceNodeId);
-            var targetNodeId = new NodeId(boundaryEdge.TargetNodeId);
-            if (!nodes.ContainsKey(sourceNodeId) || !nodes.ContainsKey(targetNodeId))
-            {
-                throw new InvalidDataException("A CPG boundary edge references a node that was not restored.");
-            }
+        return accumulator.Complete();
+    }
 
-            edges.Add(CreateBoundaryEdge(boundaryEdge));
-        }
-
-        return new CpgFrozenShardGraphFacts(nodes.Values.ToArray(), edges.ToArray());
+    internal static MutableFactsAccumulator CreateMutableFactsAccumulator()
+    {
+        return new MutableFactsAccumulator();
     }
 
     // 从单个冻结分片恢复一张只读图。
@@ -337,6 +316,78 @@ public static class CpgFrozenShardGraphReader
           ParseLabel(edge.Label, edge.FlowSummaryLabel),
           edge.ContextId is null ? null : new NLCPGContextId(edge.ContextId),
           callSiteContext);
+    }
+
+    internal sealed class MutableFactsAccumulator
+    {
+        private readonly Dictionary<NodeId, NLCPGNode> _nodes = new();
+        private readonly HashSet<NLCPGEdge> _edges = new();
+
+        internal void Add(CpgFrozenShard shard)
+        {
+            ArgumentNullException.ThrowIfNull(shard);
+            var nodeIdsByLocalIndex = new Dictionary<int, NodeId>(shard.Nodes.Count);
+            foreach (var frozenNode in shard.Nodes.OrderBy(node => node.LocalIndex))
+            {
+                if (!nodeIdsByLocalIndex.TryAdd(frozenNode.LocalIndex, new NodeId(frozenNode.NodeId)))
+                {
+                    throw new InvalidDataException("The CPG shard contains duplicate local nodes.");
+                }
+
+                var node = CreateNode(frozenNode);
+                if (!node.NodeId.HasValue)
+                {
+                    throw new InvalidDataException("Persisted CPG nodes require NodeIds.");
+                }
+
+                if (!_nodes.TryAdd(node.NodeId.Value, node) && _nodes[node.NodeId.Value] != node)
+                {
+                    throw new InvalidDataException("The CPG shards contain conflicting nodes with the same NodeId.");
+                }
+            }
+
+            foreach (var frozenEdge in shard.Edges)
+            {
+                _edges.Add(CreateEdge(frozenEdge, nodeIdsByLocalIndex));
+            }
+
+            foreach (var boundaryEdge in shard.BoundaryEdges ?? Array.Empty<CpgFrozenBoundaryEdge>())
+            {
+                _edges.Add(CreateBoundaryEdge(boundaryEdge));
+            }
+        }
+
+        internal CpgFrozenShardGraphFacts Complete()
+        {
+            foreach (var edge in _edges)
+            {
+                if (!_nodes.ContainsKey(edge.SourceNodeId) || !_nodes.ContainsKey(edge.TargetNodeId))
+                {
+                    throw new InvalidDataException("A CPG edge references a node that was not restored.");
+                }
+            }
+
+            return new CpgFrozenShardGraphFacts(_nodes.Values.ToArray(), _edges.ToArray());
+        }
+    }
+
+    private static NLCPGEdge CreateEdge(
+      CpgFrozenEdge edge,
+      IReadOnlyDictionary<int, NodeId> nodeIdsByLocalIndex)
+    {
+        if (!nodeIdsByLocalIndex.TryGetValue(edge.SourceLocalIndex, out var sourceNodeId) ||
+            !nodeIdsByLocalIndex.TryGetValue(edge.TargetLocalIndex, out var targetNodeId))
+        {
+            throw new InvalidDataException("The CPG shard contains an orphan local edge endpoint.");
+        }
+
+        return new NLCPGEdge(
+          sourceNodeId,
+          targetNodeId,
+          Enum.Parse<NLCPGEdgeKind>(edge.Kind),
+          ParseLabel(edge.Label, edge.FlowSummaryLabel),
+          edge.ContextId is null ? null : new NLCPGContextId(edge.ContextId),
+          CreateCallSiteContext(edge));
     }
 }
 

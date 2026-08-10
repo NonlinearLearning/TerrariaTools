@@ -9,14 +9,12 @@ namespace NLISSN.Rules;
 /// 命中只被同一类型内部调用的 public 方法，供后续改成 private。
 public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
 {
-    private static readonly RuleSemanticTag InternalOnlyPublicMethodSemanticTag = new("InternalOnlyPublicMethod");
-
     private static readonly RuleProducesContract InternalOnlyPublicMethodProduces =
       new(new[]
       {
         new RuleProducedSyntax(
           new[] { SyntaxKind.MethodDeclaration },
-          InternalOnlyPublicMethodSemanticTag)
+          InternalOnlyPublicMethodFacts.Marked)
       });
 
     public override string CapabilityId { get; } = "mark.privatize-internal-only-public-method";
@@ -63,14 +61,13 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
         RuleId,
         method,
         "Public method is referenced only from inside its declaring type.",
-        semanticTag: InternalOnlyPublicMethodSemanticTag);
+        semanticTag: InternalOnlyPublicMethodFacts.Marked);
         }
     }
 
     private static bool IsEnabled(IMarkRuleContext context)
     {
-        return context.TryGetOption("privatize-internal-only-public-methods", out var value) &&
-          !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+        return context.PrivatizeInternalOnlyPublicMethods;
     }
 
     private static Dictionary<IMethodSymbol, MethodDeclarationSyntax> BuildCandidateMap(Compilation compilation)
@@ -144,9 +141,65 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
                     facts.HasExternalReference = true;
                 }
             }
+
+            foreach (var invocation in tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                if (model.GetSymbolInfo(invocation, CancellationToken.None).Symbol is not null ||
+                    model.GetSymbolInfo(invocation, CancellationToken.None).CandidateSymbols.Length > 0 ||
+                    !TryGetInvokedMethodName(invocation, out var methodName))
+                {
+                    continue;
+                }
+
+                MarkUnresolvedExternalReferences(
+                  model,
+                  invocation,
+                  methodName,
+                  candidateSet,
+                  factsByMethod);
+            }
         }
 
         return factsByMethod;
+    }
+
+    private static void MarkUnresolvedExternalReferences(
+      SemanticModel model,
+      InvocationExpressionSyntax invocation,
+      string methodName,
+      IReadOnlySet<IMethodSymbol> candidates,
+      IReadOnlyDictionary<IMethodSymbol, ReferenceFacts> factsByMethod)
+    {
+        var containingMethod = invocation.FirstAncestorOrSelf<MethodDeclarationSyntax>();
+        var containingType = containingMethod is null
+          ? null
+          : model.GetDeclaredSymbol(containingMethod, CancellationToken.None)?.ContainingType;
+
+        foreach (var candidate in candidates)
+        {
+            if (!string.Equals(candidate.Name, methodName, StringComparison.Ordinal) ||
+                SymbolEqualityComparer.Default.Equals(containingType, candidate.ContainingType))
+            {
+                continue;
+            }
+
+            factsByMethod[candidate].HasExternalReference = true;
+        }
+    }
+
+    private static bool TryGetInvokedMethodName(
+      InvocationExpressionSyntax invocation,
+      out string methodName)
+    {
+        methodName = invocation.Expression switch
+        {
+            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
+            GenericNameSyntax generic => generic.Identifier.ValueText,
+            MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.ValueText,
+            MemberBindingExpressionSyntax memberBinding => memberBinding.Name.Identifier.ValueText,
+            _ => string.Empty
+        };
+        return methodName.Length > 0;
     }
 
     private static bool IsCandidate(IMethodSymbol method)

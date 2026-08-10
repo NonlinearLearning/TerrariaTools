@@ -12,6 +12,34 @@ namespace RoslynPrototype.ContractTests.Cpg;
 
 public sealed class CpgPropertyEquivalenceTests
 {
+  [Fact]
+  public void BuildFromSource_DelegateInvocation_PreallocatesMetadataParameter()
+  {
+    var fixture = GeneratedCSharpFixture.Create(2);
+    var persistedRoot = Path.Combine(Path.GetTempPath(), "cpg-property", Guid.NewGuid().ToString("N"));
+    try
+    {
+      var graph = Build(
+        fixture,
+        1,
+        new CpgPersistenceOptions(persistedRoot, fixture.Id, StreamingMode: true));
+
+      Assert.Contains(
+        graph.Nodes,
+        node => string.Equals(
+          node.FullName,
+          "Generated.Mapper.Invoke:int(int)#0:value",
+          StringComparison.Ordinal));
+    }
+    finally
+    {
+      if (Directory.Exists(persistedRoot))
+      {
+        Directory.Delete(persistedRoot, recursive: true);
+      }
+    }
+  }
+
   [Property(MaxTest = 8, Replay = "12345,67891", Arbitrary = [typeof(GeneratedFixtureArbitraries)])]
   public Property BuildFromSource_GeneratedFixture_PreservesSerialSemantics(GeneratedCSharpFixture fixture)
   {

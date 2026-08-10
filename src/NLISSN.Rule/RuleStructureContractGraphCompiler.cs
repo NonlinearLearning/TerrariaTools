@@ -1,6 +1,15 @@
 namespace NLISSN.Core.Pipeline;
 
 /// <summary>
+/// Selects whether propagation-internal edges participate in outer DAG cycle checks.
+/// </summary>
+public enum RuleStructureContractGraphMode
+{
+    Default = 0,
+    PropagationFixedPointRegion = 1
+}
+
+/// <summary>
 /// Declares one rule node using direct syntax-tag contracts.
 /// </summary>
 public sealed record RuleStructureContractGraphNode(
@@ -46,7 +55,8 @@ public sealed class CompiledRuleStructureContractGraph
 public sealed class RuleStructureContractGraphCompiler
 {
     public CompiledRuleStructureContractGraph Compile(
-      IReadOnlyList<RuleStructureContractGraphNode> declaredNodes)
+      IReadOnlyList<RuleStructureContractGraphNode> declaredNodes,
+      RuleStructureContractGraphMode mode = RuleStructureContractGraphMode.Default)
     {
         ArgumentNullException.ThrowIfNull(declaredNodes);
 
@@ -100,8 +110,17 @@ public sealed class RuleStructureContractGraphCompiler
             }
         }
 
-        ValidateAcyclic(declaredNodes, edges, declarationIndexes);
+        var acyclicityEdges = mode == RuleStructureContractGraphMode.PropagationFixedPointRegion
+          ? edges.Where(edge => !IsPropagationInternalEdge(edge)).ToList()
+          : edges;
+        ValidateAcyclic(declaredNodes, acyclicityEdges, declarationIndexes);
         return new CompiledRuleStructureContractGraph(edges);
+    }
+
+    private static bool IsPropagationInternalEdge(RuleStructureContractEdge edge)
+    {
+        return edge.Producer.Value.StartsWith("Propagate:", StringComparison.Ordinal) &&
+          edge.Consumer.Value.StartsWith("Propagate:", StringComparison.Ordinal);
     }
 
     private static void ValidateDistinctInputs(RuleStructureContractGraphNode consumer)

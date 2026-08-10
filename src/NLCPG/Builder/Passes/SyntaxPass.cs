@@ -62,7 +62,7 @@ namespace NLCPG.Builder
             public int SyntaxTokenCount { get; set; }
         }
 
-        private void RunLegacySyntaxPass(NLCPGBuildContext context)
+        private void RunLegacySyntaxPass(NLCPGBuildContext context, CapabilityBuildPlan buildPlan)
         {
             var metrics = new SyntaxPassMetrics();
             // 整棵语法树沿用显式栈遍历，保证节点与 token 的物化顺序稳定。
@@ -72,15 +72,20 @@ namespace NLCPG.Builder
               context.Graph,
               context.SemanticModel,
               context.FilePath,
-              metrics);
+              metrics,
+              buildPlan);
         }
 
         internal void RunSyntaxPass(NLCPGBuildContext context)
         {
-            RunLegacySyntaxPass(context);
+            RunLegacySyntaxPass(context, ResolveCapabilityBuildPlan());
         }
 
-        private void RunPartitionedSyntaxPass(NLCPGBuildContext context, IReadOnlyCollection<SyntaxNode> partitionRoots, IReadOnlyList<SyntaxNode[]> partitions)
+        private void RunPartitionedSyntaxPass(
+          NLCPGBuildContext context,
+          IReadOnlyCollection<SyntaxNode> partitionRoots,
+          IReadOnlyList<SyntaxNode[]> partitions,
+          CapabilityBuildPlan buildPlan)
         {
             var metrics = new SyntaxPassMetrics();
             // 分区外语法仍由当前线程串行落图，保证父子链和全局顺序先稳定下来。
@@ -91,7 +96,8 @@ namespace NLCPG.Builder
               context.SemanticModel,
               context.FilePath,
               partitionRoots,
-              metrics);
+              metrics,
+              buildPlan);
 
             foreach (var partition in partitions)
             {
@@ -107,30 +113,54 @@ namespace NLCPG.Builder
                       context.Graph,
                       context.SemanticModel,
                       context.FilePath,
-                      metrics);
-                    EmitChildTokens(syntax, syntaxNode, context.Graph, context.FilePath, metrics);
+                      metrics,
+                      buildPlan);
+                    EmitChildTokens(syntax, syntaxNode, context.Graph, context.FilePath, metrics, buildPlan);
                 }
             }
         }
 
-        private void VisitSyntaxOutsidePartitions(SyntaxNode syntax, NLCPGNode parent, NLCPGGraph graph, SemanticModel semanticModel, string filePath, IReadOnlyCollection<SyntaxNode> partitionRoots, SyntaxPassMetrics metrics)
+        private void VisitSyntaxOutsidePartitions(
+          SyntaxNode syntax,
+          NLCPGNode parent,
+          NLCPGGraph graph,
+          SemanticModel semanticModel,
+          string filePath,
+          IReadOnlyCollection<SyntaxNode> partitionRoots,
+          SyntaxPassMetrics metrics,
+          CapabilityBuildPlan buildPlan)
         {
             if (partitionRoots.Contains(syntax))
             {
                 return;
             }
 
-            var syntaxNode = CreateSyntaxNode(syntax, parent, graph, semanticModel, filePath, metrics);
+            var syntaxNode = CreateSyntaxNode(syntax, parent, graph, semanticModel, filePath, metrics, buildPlan);
             foreach (var child in syntax.ChildNodes())
             {
                 // 只有分区外节点会继续向下递归，避免和分区提交阶段重复建图。
-                VisitSyntaxOutsidePartitions(child, syntaxNode, graph, semanticModel, filePath, partitionRoots, metrics);
+                VisitSyntaxOutsidePartitions(
+                  child,
+                  syntaxNode,
+                  graph,
+                  semanticModel,
+                  filePath,
+                  partitionRoots,
+                  metrics,
+                  buildPlan);
             }
 
-            EmitChildTokens(syntax, syntaxNode, graph, filePath, metrics);
+            EmitChildTokens(syntax, syntaxNode, graph, filePath, metrics, buildPlan);
         }
 
-        private void VisitSyntaxIterative(SyntaxNode syntax, NLCPGNode parent, NLCPGGraph graph, SemanticModel semanticModel, string filePath, SyntaxPassMetrics metrics)
+        private void VisitSyntaxIterative(
+          SyntaxNode syntax,
+          NLCPGNode parent,
+          NLCPGGraph graph,
+          SemanticModel semanticModel,
+          string filePath,
+          SyntaxPassMetrics metrics,
+          CapabilityBuildPlan buildPlan)
         {
             var traversalStopwatch = Stopwatch.StartNew();
             var pending = new Stack<SyntaxTraversalFrame>();
@@ -142,11 +172,18 @@ namespace NLCPG.Builder
                 if (frame.EmitTokens)
                 {
                     // 第二次出栈只补 token，保持“先节点后 token”的稳定结构。
-                    EmitChildTokens(frame.Syntax, frame.Current!, graph, filePath, metrics);
+                    EmitChildTokens(frame.Syntax, frame.Current!, graph, filePath, metrics, buildPlan);
                     continue;
                 }
 
-                var syntaxNode = CreateSyntaxNode(frame.Syntax, frame.Parent, graph, semanticModel, filePath, metrics);
+                var syntaxNode = CreateSyntaxNode(
+                  frame.Syntax,
+                  frame.Parent,
+                  graph,
+                  semanticModel,
+                  filePath,
+                  metrics,
+                  buildPlan);
                 pending.Push(new SyntaxTraversalFrame(frame.Syntax, frame.Parent, syntaxNode, EmitTokens: true));
 
                 // 倒序压栈，弹出时才能恢复 Roslyn 原始的子节点顺序。
@@ -161,7 +198,14 @@ namespace NLCPG.Builder
             metrics.TraversalElapsedMilliseconds = traversalStopwatch.ElapsedMilliseconds;
         }
 
-        private NLCPGNode CreateSyntaxNode(SyntaxNode syntax, NLCPGNode parent, NLCPGGraph graph, SemanticModel semanticModel, string filePath, SyntaxPassMetrics metrics)
+        private NLCPGNode CreateSyntaxNode(
+          SyntaxNode syntax,
+          NLCPGNode parent,
+          NLCPGGraph graph,
+          SemanticModel semanticModel,
+          string filePath,
+          SyntaxPassMetrics metrics,
+          CapabilityBuildPlan buildPlan)
         {
             var createNodeStopwatch = Stopwatch.StartNew();
             var syntaxNode = graph.AddNode(new NLCPGNode(
@@ -203,13 +247,18 @@ namespace NLCPG.Builder
             metrics.DeclaredSymbolQueryCount += queriedDeclaredSymbol ? 1 : 0;
             metrics.DeclaredSymbolResolvedCount += declaredSymbol is null ? 0 : 1;
 
-            // 引用符号允许直接复用分区预分析结果，否则按节点种类按需查询。
-            var referencedSymbolStopwatch = Stopwatch.StartNew();
-            var referencedSymbol = cachedFacts?.ReferencedSymbol ??
-              (CanReferenceSymbol(syntax) ? semanticModel.GetSymbolInfo(syntax).Symbol : null);
-            AddReferencedSymbolEdges(syntax, syntaxNode, referencedSymbol, graph);
-            referencedSymbolStopwatch.Stop();
-            metrics.AddReferencedSymbolEdgesElapsedMilliseconds += referencedSymbolStopwatch.ElapsedMilliseconds;
+            ISymbol? referencedSymbol = null;
+            if (buildPlan.EmitReferences)
+            {
+                // 引用符号允许直接复用分区预分析结果，否则按节点种类按需查询。
+                var referencedSymbolStopwatch = Stopwatch.StartNew();
+                referencedSymbol = cachedFacts is null
+                  ? (CanReferenceSymbol(syntax) ? semanticModel.GetSymbolInfo(syntax).Symbol : null)
+                  : cachedFacts.ReferencedSymbol;
+                AddReferencedSymbolEdges(syntax, syntaxNode, referencedSymbol, graph);
+                referencedSymbolStopwatch.Stop();
+                metrics.AddReferencedSymbolEdgesElapsedMilliseconds += referencedSymbolStopwatch.ElapsedMilliseconds;
+            }
 
             // 能交给 OperationPass 提供类型的表达式先登记，当前阶段避免重复算类型。
             var shouldDeferToOperation = cachedFacts?.ShouldDeferToOperation ?? ShouldDeferSyntaxTypeToOperation(syntax);
@@ -238,11 +287,14 @@ namespace NLCPG.Builder
             metrics.AddTypeInfoElapsedMilliseconds +=
               resolveTypeInfoStopwatch.ElapsedMilliseconds + addTypeEdgesStopwatch.ElapsedMilliseconds;
 
-            // TypeRef 边单独记时，因为它既依赖语法形状，也依赖上一步的类型结果。
-            var typeReferenceStopwatch = Stopwatch.StartNew();
-            AddTypeReferenceEdges(syntax, syntaxNode, graph, semanticModel, typeResolution.TypeSymbol);
-            typeReferenceStopwatch.Stop();
-            metrics.AddTypeReferenceEdgesElapsedMilliseconds += typeReferenceStopwatch.ElapsedMilliseconds;
+            if (buildPlan.EmitTypeReferences)
+            {
+                // TypeRef 边单独记时，因为它既依赖语法形状，也依赖上一步的类型结果。
+                var typeReferenceStopwatch = Stopwatch.StartNew();
+                AddTypeReferenceEdges(syntax, syntaxNode, graph, semanticModel, typeResolution.TypeSymbol);
+                typeReferenceStopwatch.Stop();
+                metrics.AddTypeReferenceEdgesElapsedMilliseconds += typeReferenceStopwatch.ElapsedMilliseconds;
+            }
             return syntaxNode;
         }
 
@@ -311,8 +363,19 @@ namespace NLCPG.Builder
               PostfixUnaryExpressionSyntax;
         }
 
-        private static void EmitChildTokens(SyntaxNode syntax, NLCPGNode syntaxNode, NLCPGGraph graph, string filePath, SyntaxPassMetrics metrics)
+        private static void EmitChildTokens(
+          SyntaxNode syntax,
+          NLCPGNode syntaxNode,
+          NLCPGGraph graph,
+          string filePath,
+          SyntaxPassMetrics metrics,
+          CapabilityBuildPlan buildPlan)
         {
+            if (!buildPlan.EmitSyntaxTokens)
+            {
+                return;
+            }
+
             var tokenStopwatch = Stopwatch.StartNew();
             var tokenCount = 0;
             foreach (var childToken in syntax.ChildTokens())

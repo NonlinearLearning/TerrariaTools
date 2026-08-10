@@ -64,7 +64,8 @@ public sealed class StructureViewBuilderTests
             "rule-context-nodes-by-kind.cs");
         var session = new AnalysisSession(
             context,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+            AnalysisLegacyOptionsTestExtensions.CreateSettings(
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)));
 
         var nodes = session.GetGraphNodesByKind(NLCPGNodeKind.Operation);
 
@@ -224,11 +225,13 @@ public sealed class StructureViewBuilderTests
         var runtime =  AnalysisRuntime.CreateDefault();
         var firstSession = new AnalysisSession(
             context,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            AnalysisLegacyOptionsTestExtensions.CreateSettings(
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)),
             runtime: runtime);
         var secondSession = new AnalysisSession(
             context,
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            AnalysisLegacyOptionsTestExtensions.CreateSettings(
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)),
             runtime: runtime.InvalidateCaches());
 
         var firstView = firstSession.BuildStructureView(

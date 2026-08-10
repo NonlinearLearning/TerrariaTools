@@ -68,13 +68,16 @@ public static class CpgFrozenShardExporter
             }
         }
 
+        var frozenNodes = nodes
+          .Select((item, index) => ToFrozenNode(item.Descriptor, item.NodeId, index))
+          .ToArray();
         var (incomingEdgeOffsets, incomingEdgeIndexes) = CpgFrozenShardIncomingEdgeIndex.Build(
-          nodes.Select((item, index) => ToFrozenNode(item.Descriptor, item.NodeId, index)).ToArray(),
+          frozenNodes,
           edges);
 
         return new CpgFrozenShard(
           lookup,
-          nodes.Select((item, index) => ToFrozenNode(item.Descriptor, item.NodeId, index)).ToArray(),
+          frozenNodes,
           edges,
           Array.Empty<CpgSymbolLocation>(),
           IncomingEdgeOffsets: incomingEdgeOffsets,
@@ -86,35 +89,69 @@ public static class CpgFrozenShardExporter
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(lookup);
+        return Export(Prepare(graph), lookup, includedNodeIds);
+    }
+
+    internal static CpgFrozenGraphProjection Prepare(NLCPGGraph graph)
+    {
+        ArgumentNullException.ThrowIfNull(graph);
         if (!graph.HasQueryIndex)
         {
-            throw new InvalidOperationException("A CPG graph must be frozen before it can be exported as a shard.");
+            throw new InvalidOperationException("A CPG graph must be frozen before it can be projected for shard export.");
         }
 
         var nodes = graph.Nodes
-          .Where(node => includedNodeIds is null || includedNodeIds.Contains(node.NodeId!.Value))
           .OrderBy(node => node.NodeId)
-          .Select((node, index) => (Node: node, LocalIndex: index))
           .ToArray();
-        var localIndexes = nodes.ToDictionary(item => item.Node.NodeId!.Value, item => item.LocalIndex);
-        var frozenNodes = nodes.Select(item => ToFrozenNode(item.Node, item.LocalIndex)).ToArray();
-        var frozenEdges = graph.Edges
-          .Where(edge => localIndexes.ContainsKey(edge.SourceNodeId) && localIndexes.ContainsKey(edge.TargetNodeId))
-          .OrderBy(edge => edge.SourceNodeId)
-          .ThenBy(edge => edge.Kind)
-          .ThenBy(edge => edge.TargetNodeId)
-          .Select(edge => new CpgFrozenEdge(
-            localIndexes[edge.SourceNodeId],
-            localIndexes[edge.TargetNodeId],
-            edge.Kind.ToString(),
-            edge.StructuredLabel?.StableKey,
-            edge.ContextId?.Value,
-            edge.CallSiteContext?.FilePath,
-            edge.CallSiteContext?.SpanStart,
-            edge.CallSiteContext?.SpanEnd,
-            edge.CallSiteContext?.DisplayName,
-            CpgFrozenFlowSummaryLabel.From(edge.StructuredLabel)))
-          .ToArray();
+        var nodesByNodeId = nodes.ToDictionary(node => node.NodeId!.Value);
+        var outgoingEdgesByNodeId = new Dictionary<NodeId, IReadOnlyList<NLCPGEdge>>(nodes.Length);
+        foreach (var node in nodes)
+        {
+            outgoingEdgesByNodeId[node.NodeId!.Value] = graph.GetOutgoingEdges(node.NodeId!.Value).ToArray();
+        }
+        return new CpgFrozenGraphProjection(nodes, nodesByNodeId, outgoingEdgesByNodeId);
+    }
+
+    internal static CpgFrozenShard Export(CpgFrozenGraphProjection projection, CpgShardLookup lookup, IReadOnlySet<NodeId>? includedNodeIds = null)
+    {
+        ArgumentNullException.ThrowIfNull(projection);
+        ArgumentNullException.ThrowIfNull(lookup);
+
+        var nodes = includedNodeIds is null
+          ? projection.Nodes
+          : includedNodeIds
+            .Where(projection.NodesByNodeId.ContainsKey)
+            .Select(nodeId => projection.NodesByNodeId[nodeId])
+            .OrderBy(node => node.NodeId)
+            .ToArray();
+        var localIndexes = nodes
+          .Select((node, index) => (NodeId: node.NodeId!.Value, LocalIndex: index))
+          .ToDictionary(item => item.NodeId, item => item.LocalIndex);
+        var frozenNodes = nodes.Select((node, index) => ToFrozenNode(node, index)).ToArray();
+        var frozenEdges = new List<CpgFrozenEdge>();
+        foreach (var sourceNode in nodes)
+        {
+            foreach (var edge in projection.OutgoingEdgesByNodeId[sourceNode.NodeId!.Value])
+            {
+                if (!localIndexes.TryGetValue(edge.TargetNodeId, out var targetLocalIndex))
+                {
+                    continue;
+                }
+
+                frozenEdges.Add(new CpgFrozenEdge(
+                  localIndexes[edge.SourceNodeId],
+                  targetLocalIndex,
+                  edge.Kind.ToString(),
+                  edge.StructuredLabel?.StableKey,
+                  edge.ContextId?.Value,
+                  edge.CallSiteContext?.FilePath,
+                  edge.CallSiteContext?.SpanStart,
+                  edge.CallSiteContext?.SpanEnd,
+                  edge.CallSiteContext?.DisplayName,
+                  CpgFrozenFlowSummaryLabel.From(edge.StructuredLabel)));
+            }
+        }
+
         var (incomingEdgeOffsets, incomingEdgeIndexes) = CpgFrozenShardIncomingEdgeIndex.Build(
           frozenNodes,
           frozenEdges);
@@ -170,4 +207,23 @@ public static class CpgFrozenShardExporter
           descriptor.Anchor.Ordinal,
           descriptor.Anchor.ExtraKeyId);
     }
+}
+
+internal sealed class CpgFrozenGraphProjection
+{
+    internal CpgFrozenGraphProjection(
+      IReadOnlyList<NLCPGNode> nodes,
+      IReadOnlyDictionary<NodeId, NLCPGNode> nodesByNodeId,
+      IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> outgoingEdgesByNodeId)
+    {
+        Nodes = nodes;
+        NodesByNodeId = nodesByNodeId;
+        OutgoingEdgesByNodeId = outgoingEdgesByNodeId;
+    }
+
+    internal IReadOnlyList<NLCPGNode> Nodes { get; }
+
+    internal IReadOnlyDictionary<NodeId, NLCPGNode> NodesByNodeId { get; }
+
+    internal IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> OutgoingEdgesByNodeId { get; }
 }

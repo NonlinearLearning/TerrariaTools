@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using NL.Concurrency;
-using NLISSN.Cli.Parsing;
+using NLISSN.Infrastructure.Configuration;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Rewrite;
 using NLISSN.Logging;
@@ -8,7 +8,7 @@ using NLISSN.Logging;
 namespace NLISSN.Telemetry;
 
 /// <summary>
-/// Writes opt-in process and pool metrics for one CLI analysis without affecting scheduling.
+/// Writes opt-in process and pool metrics for one configuration-driven analysis without affecting scheduling.
 /// </summary>
 internal sealed class RuntimeMeasurementLog : IAsyncDisposable
 {
@@ -18,7 +18,7 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
     private readonly CancellationTokenSource _samplingCancellation = new();
     private readonly Task _samplingTask;
     private readonly long _allocatedBytesAtStart;
-    private readonly string _runId = Guid.NewGuid().ToString("N");
+    private readonly string _runId;
     private readonly string? _inputPath;
     private readonly string _inputKind;
     private readonly int _dop;
@@ -26,14 +26,16 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
 
     private RuntimeMeasurementLog(
         string path,
-        IReadOnlyDictionary<string, string> options,
+        LoggingSettings logging,
+        string runId,
         string? inputPath,
         AnalysisRuntime runtime)
     {
         _sink = TextLogFileSink.Create(
           path,
           new TextLogFormatter(),
-          TextLogFilter.CreateRuntimeFilter(options));
+          TextLogFilter.CreateRuntimeFilter(logging.Profile, logging.Level, logging.Categories, logging.Events, logging.View));
+        _runId = string.IsNullOrWhiteSpace(runId) ? "unassigned" : runId;
         _inputPath = inputPath;
         _inputKind = inputPath is not null && Directory.Exists(inputPath) ? "directory" : "file";
         _dop = runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism;
@@ -44,12 +46,13 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
     }
 
     public static RuntimeMeasurementLog? TryCreate(
-        IReadOnlyDictionary<string, string> options,
+        string? path,
+        LoggingSettings logging,
+        string runId,
         string? inputPath,
         AnalysisRuntime runtime)
     {
-        var path = ApplicationOptions.ResolveRuntimeLogPath(options);
-        return path is null ? null : new RuntimeMeasurementLog(path, options, inputPath, runtime);
+        return path is null ? null : new RuntimeMeasurementLog(path, logging, runId, inputPath, runtime);
     }
 
     public async Task CompleteAsync(

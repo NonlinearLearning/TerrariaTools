@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLCPG.Builder;
 using NLCPG.Contracts;
 using NLCPG.Analysis.FlowSummaries;
@@ -36,42 +37,53 @@ public sealed class ApplicationService
     {
     }
 
-    // 从源码、文件路径和 CLI 选项构建默认运行时后执行一次完整分析。
-    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options)
+    public PrototypeAnalysisResult Analyze(string source, string filePath, AnalysisRequestSettings settings)
     {
         return Analyze(
           source,
           filePath,
-          options,
-            AnalysisRuntimeFactory.CreateFromOptions(options));
+          settings,
+          AnalysisRuntimeFactory.CreateDefault());
     }
 
-    // 使用调用方提供的运行时执行完整分析，保留外部传入的并行和缓存设置。
-    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
+    public PrototypeAnalysisResult Analyze(
+      string source,
+      string filePath,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime)
     {
-        var analysisContext = BuildAnalysisContext(source, filePath, options, runtime);
+        var analysisContext = BuildAnalysisContext(source, filePath, settings, runtime);
         return RunAnalysis(analysisContext);
     }
 
-    // 复用现成语义模型和语法树执行分析，避免调用方重复创建运行时和编译。
-    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options, SemanticModel semanticModel, SyntaxNode root)
+    public PrototypeAnalysisResult Analyze(
+      string source,
+      string filePath,
+      AnalysisRequestSettings settings,
+      SemanticModel semanticModel,
+      SyntaxNode root)
     {
         return Analyze(
           source,
           filePath,
-          options,
-            AnalysisRuntimeFactory.CreateFromOptions(options),
+          settings,
+          AnalysisRuntimeFactory.CreateDefault(),
           semanticModel,
           root);
     }
 
-    // 在复用现成语义模型的同时接收外部运行时，适合目录级批量分析共享上下文。
-    public PrototypeAnalysisResult Analyze(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root)
+    public PrototypeAnalysisResult Analyze(
+      string source,
+      string filePath,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime,
+      SemanticModel semanticModel,
+      SyntaxNode root)
     {
         var analysisContext = BuildAnalysisContext(
           source,
           filePath,
-          options,
+          settings,
           runtime,
           semanticModel,
           root);
@@ -101,7 +113,9 @@ public sealed class ApplicationService
         ruleGraphMetrics = graphResult.Metrics;
         var validationReport = graphResult.ValidationReport;
 
-        var filteredDecisions = FilterNestedDeleteDecisions(decisions);
+        var filteredDecisions = FilterUnsafeLocalDeclarationDeletes(
+          FilterNestedDeleteDecisions(decisions),
+          analysisContext.SemanticModel);
         var rewriteResult = ShouldSkipRewrite(analysisContext.Session) || validationReport is { IsValid: false }
           ? new PrototypeRewriteResult(
             null,
@@ -134,7 +148,11 @@ public sealed class ApplicationService
           ValidationReport: validationReport);
     }
 
-    private AnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
+    private AnalysisContext BuildAnalysisContext(
+      string source,
+      string filePath,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
         var root = tree.GetRoot();
@@ -143,20 +161,26 @@ public sealed class ApplicationService
         return BuildAnalysisContext(
           source,
           filePath,
-          options,
+          settings,
           runtime,
           semanticModel,
           root);
     }
 
-    private AnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root)
+    private AnalysisContext BuildAnalysisContext(
+      string source,
+      string filePath,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime,
+      SemanticModel semanticModel,
+      SyntaxNode root)
     {
         if (runtime.CurrentCpgBuildAdmissionLease is not null)
         {
             return BuildAnalysisContextCore(
               source,
               filePath,
-              options,
+              settings,
               runtime,
                semanticModel,
                root);
@@ -173,13 +197,19 @@ public sealed class ApplicationService
         return BuildAnalysisContextCore(
           source,
           filePath,
-          options,
+          settings,
           runtime,
           semanticModel,
           root);
     }
 
-    private AnalysisContext BuildAnalysisContextCore(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime, SemanticModel semanticModel, SyntaxNode root)
+    private AnalysisContext BuildAnalysisContextCore(
+      string source,
+      string filePath,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime,
+      SemanticModel semanticModel,
+      SyntaxNode root)
     {
         var builderOptions = NLCPGBuilderOptions.CreateDefault() with
         {
@@ -203,7 +233,7 @@ public sealed class ApplicationService
           root,
           availableCapabilities,
           CallFlowResolver: _callFlowResolver);
-        var session = new AnalysisSession(cpgAnalysisContext, options, runtime: runtime);
+        var session = new AnalysisSession(cpgAnalysisContext, settings, runtime: runtime);
 
         return new AnalysisContext(
           root,
@@ -248,8 +278,7 @@ public sealed class ApplicationService
 
     private static bool ShouldSkipRewrite(AnalysisSession session)
     {
-        return session.TryGetOption("skip-rewrite", out var rawValue) &&
-          string.Equals(rawValue, "true", StringComparison.OrdinalIgnoreCase);
+        return session.Settings.SkipRewrite;
     }
 
     private static bool IsCoveredByReplaceDecision(RuleDecision deleteDecision, IReadOnlyList<RuleDecision> decisions)
@@ -257,6 +286,52 @@ public sealed class ApplicationService
         return decisions.Any(decision =>
           decision.Action == DecisionActionKind.Replace &&
           decision.FinalNode.Span.Contains(deleteDecision.FinalNode.Span));
+    }
+
+    private static IReadOnlyList<RuleDecision> FilterUnsafeLocalDeclarationDeletes(
+      IReadOnlyList<RuleDecision> decisions,
+      SemanticModel semanticModel)
+    {
+        return decisions.Where(decision =>
+          decision.Action != DecisionActionKind.Delete ||
+          decision.FinalNode is not LocalDeclarationStatementSyntax declaration ||
+          !HasSurvivingLocalReference(declaration, decisions, semanticModel)).ToList();
+    }
+
+    private static bool HasSurvivingLocalReference(
+      LocalDeclarationStatementSyntax declaration,
+      IReadOnlyList<RuleDecision> decisions,
+      SemanticModel semanticModel)
+    {
+        var root = declaration.SyntaxTree.GetRoot();
+        foreach (var declarator in declaration.Declaration.Variables)
+        {
+            if (semanticModel.GetDeclaredSymbol(declarator) is not ILocalSymbol localSymbol)
+            {
+                continue;
+            }
+
+            foreach (var reference in root.DescendantNodes().OfType<IdentifierNameSyntax>())
+            {
+                if (!SymbolEqualityComparer.Default.Equals(
+                      semanticModel.GetSymbolInfo(reference).Symbol,
+                      localSymbol))
+                {
+                    continue;
+                }
+
+                var isDeleted = decisions.Any(decision =>
+                  decision.Action == DecisionActionKind.Delete &&
+                  decision.FinalNode != declaration &&
+                  decision.FinalNode.Span.Contains(reference.Span));
+                if (!isDeleted)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private sealed record AnalysisContext(

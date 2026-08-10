@@ -215,9 +215,16 @@ internal static class RandomSampleHelper
         {
             var sourcePath = Path.Combine(sourceDirectory, relativePath);
             var copiedPath = Path.Combine(copiedSourceRoot, relativePath);
-            var diffPath = Path.Combine(
-              diffRoot,
-              Path.ChangeExtension(relativePath, ".rewrite.diff"));
+            var diffFileName = string.Concat(
+              Path.GetFileNameWithoutExtension(relativePath),
+              ".rewrite.diff");
+            var diffPath = Directory.EnumerateFiles(
+                diffRoot,
+                diffFileName,
+                SearchOption.AllDirectories)
+              .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+              .FirstOrDefault()
+              ?? Path.Combine(diffRoot, Path.ChangeExtension(relativePath, ".rewrite.diff"));
             results.Add(new RandomSampleFileResult(
               relativePath,
               sourcePath,

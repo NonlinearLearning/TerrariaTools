@@ -52,6 +52,26 @@ public sealed class RewritePlanPersistenceTests : IDisposable
     }
 
     [Fact]
+    public void WriteAndValidate_WithRuleId_RoundTripsOperationProvenance()
+    {
+        // Arrange
+        var sourcePath = WriteSource("Sample.cs", "class Sample { int value; }");
+        var source = File.ReadAllText(sourcePath);
+        var artifactRoot = Path.Combine(_tempDirectory, "artifact");
+        var plan = CreatePlan(
+            "Sample.cs",
+            source,
+            new RewritePlanEdit(19, 5, "value", "count", "DEL-SOBJ-PROPOSE-DEFAULT-001"));
+
+        // Act
+        _artifactService.Write(artifactRoot, _inputRoot, sourceFileCount: 1, new[] { plan });
+        var (_, plans) = _artifactService.ReadAndValidate(artifactRoot, _inputRoot);
+
+        // Assert
+        Assert.Equal("DEL-SOBJ-PROPOSE-DEFAULT-001", Assert.Single(plans).Edits.Single().RuleId);
+    }
+
+    [Fact]
     public void Write_WithUnorderedPlans_ProducesOrdinalJsonlOrdering()
     {
         var zetaPath = WriteSource("Zeta.cs", "class Zeta { }");

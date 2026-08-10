@@ -6,6 +6,7 @@ using NLCPG.Builder;
 using NLISSN.Application;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
+using NLISSN.Core.Pipeline;
 using NLISSN.Core.Rewrite;
 using NLISSN.Rules;
 using Xunit;
@@ -202,7 +203,12 @@ public sealed class MarkRuleRegistryCoverageTests
   [Fact]
   public void CreateDefaultRules_Markers_RequireAnExplicitScenarioForEveryRule()
   {
-    var registeredRuleIds = RuleRegistry.CreateDefaultRules().Markers
+    var registeredRuleIds = RuleRegistry.CreateDefaultRules(
+        enableUnreachableMethodDeletion: true,
+        enableUnreferencedMethodDeletion: true,
+        enableUnusedInterfaceImplementationCleanup: true,
+        enableInternalOnlyPublicMethodPrivatization: true)
+      .Markers
       .Select(rule => rule.RuleId)
       .ToHashSet(StringComparer.Ordinal);
     var uncoveredRuleIds = registeredRuleIds
@@ -472,7 +478,7 @@ public sealed class MarkRuleRegistryCoverageTests
   {
     const string filePath = "Scenario.cs";
     var sourceWithUnrelatedDeclaration = source + "\npublic sealed class Unrelated { }";
-    var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+    var application = new ApplicationService(CreateRules(ruleId));
     var result = application.Analyze(sourceWithUnrelatedDeclaration, filePath, options);
     var directSource = result.RewrittenSource ?? sourceWithUnrelatedDeclaration;
     var rewritePlans = result.RewritePlans ?? Array.Empty<PrototypeFileRewritePlan>();
@@ -558,7 +564,25 @@ public sealed class MarkRuleRegistryCoverageTests
 
   private static RuleDefinitionMark GetMarker(string ruleId)
   {
-    return RuleRegistry.CreateDefaultRules().Markers.Single(rule => rule.RuleId == ruleId);
+    return CreateRules(ruleId).Markers.Single(rule => rule.RuleId == ruleId);
+  }
+
+  private static RulePipeline CreateRules(string ruleId)
+  {
+    return RuleRegistry.CreateDefaultRules(
+      enableUnreachableMethodDeletion: string.Equals(ruleId, "DEL-DEAD-001", StringComparison.Ordinal),
+      enableUnreferencedMethodDeletion: string.Equals(
+        ruleId,
+        "DEL-UNREF-METHOD-MARK-001",
+        StringComparison.Ordinal),
+      enableUnusedInterfaceImplementationCleanup: string.Equals(
+        ruleId,
+        "CLR-UNUSED-IFACE-IMPL-MARK-001",
+        StringComparison.Ordinal),
+      enableInternalOnlyPublicMethodPrivatization: string.Equals(
+        ruleId,
+        "mark.privatize-internal-only-public-method",
+        StringComparison.Ordinal));
   }
 
   private static (AnalysisSession Context, SyntaxNode Root) CreateRuleContext(string source, string targetName)
@@ -571,17 +595,11 @@ public sealed class MarkRuleRegistryCoverageTests
     const string filePath = "MarkRuleRegistryCoverage.cs";
     var tree = CSharpSyntaxTree.ParseText(source, path: filePath);
     var root = tree.GetRoot();
-    var compilation = CSharpCompilation.Create(
-      "MarkRuleRegistryCoverageTests",
-      new[] { tree },
-      new[]
-      {
-        MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
-        MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
-        MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
-      });
+    var compilation = RoslynCompilationFactory.CreateCompilation(tree);
     var semanticModel = compilation.GetSemanticModel(tree);
     var graph = new NLCPGBuilder().BuildFromSource(source, filePath);
-    return (new AnalysisSession(new CpgAnalysisContext(graph, semanticModel, root), options), root);
+    return (new AnalysisSession(
+      new CpgAnalysisContext(graph, semanticModel, root),
+      AnalysisLegacyOptionsTestExtensions.CreateSettings(options)), root);
   }
 }

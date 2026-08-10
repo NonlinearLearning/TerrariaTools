@@ -4,6 +4,7 @@ using NL.Concurrency;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
+using NLISSN.Core.Pipeline;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
 using NLISSN.Application;
@@ -300,7 +301,7 @@ public sealed class RuleGraphCompilerTests
     }
 
     [Fact]
-    public void CompileRuleGraph_WithDefaultPipeline_DeclaresTypedSymbolReferenceDependencies()
+    public void CompileRuleGraph_WithDefaultPipeline_ExcludesPropagationInternalDependencies()
     {
         var graph = RuleRegistry.CreateDefaultRules().CompileRuleGraph();
 
@@ -311,22 +312,18 @@ public sealed class RuleGraphCompilerTests
         var sObjectSwitch = graph.Nodes.Single(node =>
           node.NodeId.Value == "Lift:DEL-SOBJ-LIFT-SWITCH-001");
 
-        Assert.Contains(
-          sObjectReference.Dependencies,
-           dependency => dependency.Producer.Value == "Propagate:DEL-SOBJ-PROP-DECL-INIT-001" &&
-          dependency.RequiredInput is
-            {
-              SyntaxKinds: [SyntaxKind.VariableDeclarator],
-              SemanticTag.Value: "Flow.LocalDefinition"
-            });
-        Assert.Contains(
-          classReference.Dependencies,
-           dependency => dependency.Producer.Value == "Propagate:DEL-CLASS-PROP-NEW-DECL-001" &&
-            dependency.RequiredInput is
-            {
-              SyntaxKinds: [SyntaxKind.VariableDeclarator],
-              SemanticTag.Value: "Flow.LocalDefinition"
-            });
+        Assert.All(
+          sObjectReference.Dependencies.Concat(classReference.Dependencies),
+          dependency =>
+          {
+              Assert.StartsWith("Mark:", dependency.Producer.Value, StringComparison.Ordinal);
+              Assert.Null(dependency.RequiredInput);
+          });
+        Assert.All(
+          graph.Nodes
+            .Where(node => node.Kind == RuleKind.Propagate)
+            .SelectMany(node => node.Dependencies),
+          dependency => Assert.StartsWith("Mark:", dependency.Producer.Value, StringComparison.Ordinal));
         AssertSwitchLiftDependencies(
           sObjectSwitch,
           "Lift:DEL-SOBJ-LIFT-HOST-001",
@@ -371,6 +368,32 @@ public sealed class RuleGraphCompilerTests
           "Lift:DEL-SOBJ-LIFT-HOST-001",
           "Lift:DEL-SOBJ-LIFT-IF-001",
           "Lift.IfStructure");
+    }
+
+    [Fact]
+    public void ContractGraphCompiler_FixedPointMode_AllowsPropagationInternalCycle()
+    {
+        var tag = new RuleSemanticTag("Test.FixedPoint.Contract");
+        var node = new RuleStructureContractGraphNode(
+          RuleNodeId.For(RuleKind.Propagate, "TEST-FIXED-POINT-CONTRACT-001"),
+          new RuleConsumesContract(new[]
+          {
+              new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, tag)
+          }),
+          new RuleProducesContract(new[]
+          {
+              new RuleProducedSyntax(new[] { SyntaxKind.IdentifierName }, tag)
+          }));
+        var compiler = new RuleStructureContractGraphCompiler();
+
+        Assert.Throws<InvalidOperationException>(() => compiler.Compile(new[] { node }));
+        var graph = compiler.Compile(
+          new[] { node },
+          RuleStructureContractGraphMode.PropagationFixedPointRegion);
+
+        Assert.Single(graph.Edges);
+        Assert.Equal(node.NodeId, graph.Edges[0].Producer);
+        Assert.Equal(node.NodeId, graph.Edges[0].Consumer);
     }
 
     private static void AssertSwitchLiftDependencies(

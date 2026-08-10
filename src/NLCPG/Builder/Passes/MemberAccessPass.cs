@@ -30,7 +30,7 @@ namespace NLCPG.Builder
         internal void RunMemberAccessPass(NLCPGBuildContext context)
         {
             // 字段引用直接映射到字段符号。
-            foreach (var fieldReferenceOperation in EnumerateOperations(context).OfType<IFieldReferenceOperation>())
+            foreach (var fieldReferenceOperation in context.FieldReferenceOperations)
             {
                 var operationNode = GetOrCreateOperationNode(fieldReferenceOperation, context.Graph);
                 AddMemberAccess(
@@ -42,7 +42,7 @@ namespace NLCPG.Builder
             }
 
             // 属性引用同样走成员访问图，但目标符号换成属性。
-            foreach (var propertyReferenceOperation in EnumerateOperations(context).OfType<IPropertyReferenceOperation>())
+            foreach (var propertyReferenceOperation in context.PropertyReferenceOperations)
             {
                 var operationNode = GetOrCreateOperationNode(propertyReferenceOperation, context.Graph);
                 AddMemberAccess(

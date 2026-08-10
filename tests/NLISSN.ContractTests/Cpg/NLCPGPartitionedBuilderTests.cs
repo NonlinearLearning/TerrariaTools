@@ -200,6 +200,90 @@ public sealed class NLCPGPartitionedBuilderTests
   }
 
   [Fact]
+  public void BuildFromSource_CachesOperationNodesAndRootFactsAcrossPasses()
+  {
+    const string source = "namespace Demo; public sealed class Sample { public int Run(int value) { var copy = value; return copy.ToString().Length + value; } }";
+    var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+    {
+      MaxDegreeOfParallelism = 1,
+    });
+
+    var graph = builder.BuildFromSource(source, "operation-cache.cs");
+    var metrics = builder.LastBuildMetrics;
+
+    Assert.NotEmpty(graph.Nodes);
+    Assert.NotEmpty(graph.Edges);
+    Assert.True(metrics.OperationNodeCacheHitCount > 0);
+    Assert.True(metrics.OperationNodeCacheMissCount > 0);
+    Assert.True(metrics.OperationRootCacheHitCount > 0);
+    Assert.Equal(metrics.OperationInventoryCount, metrics.OperationNodeCacheMissCount);
+    Assert.Equal(graph.Nodes.Count, metrics.NodeCount);
+    Assert.Equal(graph.Edges.Count, metrics.EdgeCount);
+  }
+
+  [Fact]
+  public void BuildFromSource_BuildInventory_ReportsFactsAndPreallocatedAnchorEquivalence()
+  {
+    const string source = "namespace Demo; public sealed class Sample { public int Run(int value) { var copy = value; return copy + 1; } }";
+    var baselineBuilder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+    {
+      MaxDegreeOfParallelism = 1,
+    });
+    var preallocatedBuilder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+    {
+      MaxDegreeOfParallelism = 2,
+      UsePreallocatedNodeIds = true,
+    });
+
+    var baseline = baselineBuilder.BuildFromSource(source, "inventory.cs");
+    var preallocated = preallocatedBuilder.BuildFromSource(source, "inventory.cs");
+
+    var baselineMetrics = baselineBuilder.LastBuildMetrics.BuildInventoryMetrics;
+    var preallocatedMetrics = preallocatedBuilder.LastBuildMetrics.BuildInventoryMetrics;
+    Assert.NotNull(baselineMetrics);
+    Assert.NotNull(preallocatedMetrics);
+    var anchorDiff = preallocatedMetrics.PreallocatedAnchorDiff;
+    Assert.NotNull(anchorDiff);
+    Assert.True(baselineMetrics.SyntaxFactCount > 0);
+    Assert.True(baselineMetrics.OperationFactCount > 0);
+    Assert.True(baselineMetrics.TypedSymbolFactCount > 0);
+    Assert.Equal(baseline.Nodes.Count, baselineMetrics.AnchorCount);
+    Assert.Equal(preallocated.Nodes.Count, preallocatedMetrics.AnchorCount);
+    Assert.True(anchorDiff.IsEquivalent);
+    Assert.Equal(anchorDiff.ExpectedAnchorCount, anchorDiff.ActualAnchorCount);
+    Assert.Equal(anchorDiff.ExpectedFingerprint, anchorDiff.ActualFingerprint);
+    Assert.NotNull(preallocatedBuilder.LastBuildMetrics.AnchorDiscoveryPassElapsedMilliseconds);
+    Assert.Contains(
+      "BuildInventoryAudit",
+      preallocatedBuilder.LastBuildMetrics.AnchorDiscoveryPassElapsedMilliseconds!.Keys);
+    Assert.Contains("BuildInventoryAudit", preallocatedBuilder.LastBuildMetrics.PassElapsedMilliseconds!.Keys);
+  }
+
+  [Fact]
+  public void BuildFromSource_DataFlowMetrics_ExposeMethodWorkAndCandidateCounts()
+  {
+    const string source = "namespace Demo; public sealed class Sample { public int Run(int value) { var copy = value; return copy + 1; } }";
+    var builder = new NLCPGBuilder(CreateDataFlowPartitionOptions(maxDegreeOfParallelism: 1));
+
+    _ = builder.BuildFromSource(source, "data-flow-metrics.cs");
+
+    var methodMetrics = builder.LastBuildMetrics.DataFlowMethodMetrics;
+    Assert.NotNull(methodMetrics);
+    var runMetrics = Assert.Single(methodMetrics!);
+    Assert.Contains("Run", runMetrics.MethodName, StringComparison.Ordinal);
+    Assert.True(runMetrics.FlowNodeCount > 0);
+    Assert.Equal((runMetrics.FlowNodeCount + 63) / 64, runMetrics.WordsPerSet);
+    Assert.True(runMetrics.DefinitionCount > 0);
+    Assert.True(runMetrics.WorklistIterations >= runMetrics.FlowNodeCount);
+    Assert.True(runMetrics.RawCandidateCount > 0);
+    Assert.InRange(
+      runMetrics.UniqueCandidateCount,
+      0,
+      runMetrics.RawCandidateCount);
+    Assert.Equal(NLCPGDataFlowOverflowReason.None, runMetrics.OverflowReason);
+  }
+
+  [Fact]
   public void BuildFromSource_SyntaxSemanticCapability_SkipsExpensiveMethodOverlays()
   {
     var options = NLCPGBuilderOptions.CreateDefault() with
@@ -213,6 +297,92 @@ public sealed class NLCPGPartitionedBuilderTests
       "syntax-only.cs");
 
     Assert.DoesNotContain(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.DataFlow);
+  }
+
+  [Fact]
+  public void BuildFromSource_SyntaxSemanticCapability_SkipsOptionalSyntaxLayers()
+  {
+    var graph = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+    {
+      RequestedCapabilities = new[] { NLCPGCapability.SyntaxSemantic },
+    }).BuildFromSource(
+      "namespace Demo; public sealed class Sample { public string Run(int value) { return value.ToString(); } }",
+      "syntax-layer-none.cs");
+
+    Assert.Empty(graph.GetNodes(NLCPGNodeKind.SyntaxToken));
+    Assert.Empty(graph.GetNodes(NLCPGNodeKind.Reference));
+    Assert.Empty(graph.GetNodes(NLCPGNodeKind.TypeRef));
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.TokenChild);
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.ReferencesSymbol);
+    Assert.DoesNotContain(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.Ref);
+  }
+
+  [Theory]
+  [InlineData(NLCPGCapability.SyntaxToken, NLCPGNodeKind.SyntaxToken)]
+  [InlineData(NLCPGCapability.Reference, NLCPGNodeKind.Reference)]
+  [InlineData(NLCPGCapability.TypeRef, NLCPGNodeKind.TypeRef)]
+  public void BuildFromSource_OptionalSyntaxCapability_EmitsOnlyRequestedLayer(
+    NLCPGCapability capability,
+    NLCPGNodeKind expectedNodeKind)
+  {
+    var graph = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+    {
+      RequestedCapabilities = new[] { capability },
+    }).BuildFromSource(
+      "namespace Demo; public sealed class Sample { public string Run(int value) { return value.ToString(); } }",
+      $"syntax-layer-{capability}.cs");
+
+    Assert.NotEmpty(graph.GetNodes(expectedNodeKind));
+    foreach (var optionalNodeKind in new[]
+    {
+      NLCPGNodeKind.SyntaxToken,
+      NLCPGNodeKind.Reference,
+      NLCPGNodeKind.TypeRef,
+    }.Where(nodeKind => nodeKind != expectedNodeKind))
+    {
+      Assert.Empty(graph.GetNodes(optionalNodeKind));
+    }
+
+    if (capability == NLCPGCapability.SyntaxToken)
+    {
+      Assert.Contains(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.TokenChild);
+    }
+    else if (capability == NLCPGCapability.Reference)
+    {
+      Assert.Contains(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.ReferencesSymbol);
+      Assert.Contains(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.Ref);
+    }
+    else
+    {
+      Assert.Contains(graph.Edges, edge =>
+        edge.Kind == NLCPGEdgeKind.RefersToType &&
+        graph.GetNode(edge.SourceNodeId)?.Kind == NLCPGNodeKind.TypeRef);
+    }
+  }
+
+  [Fact]
+  public void BuildFromSource_DefaultOptionalCapabilities_PreservePreallocatedDopGraph()
+  {
+    const string source = "namespace Demo; public sealed class Sample { public string Run(int value) { return value.ToString(); } }";
+    var baselineOptions = CreateDataFlowPartitionOptions(1);
+    var explicitDefaultOptions = baselineOptions with
+    {
+      RequestedCapabilities = new[] { NLCPGCapability.Default },
+    };
+    var preallocatedOptions = explicitDefaultOptions with
+    {
+      MaxDegreeOfParallelism = 4,
+      UsePreallocatedNodeIds = true,
+    };
+
+    var baseline = new NLCPGBuilder(baselineOptions).BuildFromSource(source, "syntax-layer-default.cs");
+    var explicitDefault = new NLCPGBuilder(explicitDefaultOptions)
+      .BuildFromSource(source, "syntax-layer-default.cs");
+    var preallocated = new NLCPGBuilder(preallocatedOptions)
+      .BuildFromSource(source, "syntax-layer-default.cs");
+
+    AssertGraphsEqual(baseline, explicitDefault);
+    AssertGraphsEqual(explicitDefault, preallocated);
   }
 
   [Fact]
@@ -544,11 +714,17 @@ public sealed class NLCPGPartitionedBuilderTests
         OverflowBehavior: NLCPGDataFlowOverflowBehavior.SkipMethod),
     };
 
-    var graph = new NLCPGBuilder(options)
-      .BuildFromSource(CpgBuilderSources.DataFlowCandidateBudget, "candidate-budget-skip.cs");
+    var builder = new NLCPGBuilder(options);
+    var graph = builder.BuildFromSource(
+      CpgBuilderSources.DataFlowCandidateBudget,
+      "candidate-budget-skip.cs");
 
     Assert.DoesNotContain(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.DataFlow);
     Assert.Contains(graph.Nodes, node => node.Kind == NLCPGNodeKind.Method && node.Name == "Run");
+    Assert.Contains(
+      builder.LastBuildMetrics.DataFlowMethodMetrics!,
+      metric => metric.OverflowReason == NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded &&
+        metric.RawCandidateCount > 0);
   }
 
   [Fact]

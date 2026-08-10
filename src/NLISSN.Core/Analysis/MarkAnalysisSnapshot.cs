@@ -24,6 +24,8 @@ public sealed class MarkAnalysisSnapshot
     private readonly ConcurrentDictionary<SliceQueryKey, Lazy<NLCPGSliceResult>> _sliceQueries = new();
     private readonly ConcurrentDictionary<string, Lazy<NameDescriptor>> _targetNameDescriptors =
       new(StringComparer.Ordinal);
+    private long _operationCacheHits;
+    private long _operationCacheMisses;
 
     // 为一次分析运行建立共享快照，并预先索引语法到图节点的稳定绑定。
     public MarkAnalysisSnapshot(CpgAnalysisContext analysisContext, AnalysisEvidenceCollector? evidence = null)
@@ -91,8 +93,22 @@ public sealed class MarkAnalysisSnapshot
         var created = new Lazy<IOperation?>(
           () => _analysisContext.SemanticModel.GetOperation(syntaxNode),
           LazyThreadSafetyMode.ExecutionAndPublication);
-        return _operations.GetOrAdd(syntaxNode, created).Value;
+        var wasHit = _operations.ContainsKey(syntaxNode);
+        var operation = _operations.GetOrAdd(syntaxNode, created).Value;
+        if (wasHit)
+        {
+            Interlocked.Increment(ref _operationCacheHits);
+        }
+        else
+        {
+            Interlocked.Increment(ref _operationCacheMisses);
+        }
+
+        return operation;
     }
+
+    public (long Hits, long Misses) GetOperationCacheMetrics() =>
+      (Interlocked.Read(ref _operationCacheHits), Interlocked.Read(ref _operationCacheMisses));
 
     // 计算并缓存锚点所在的 mark 区域事实，再返回面向当前锚点的区域对象。
     public MarkCodeRegion GetMarkRegion(SyntaxNode anchorNode)

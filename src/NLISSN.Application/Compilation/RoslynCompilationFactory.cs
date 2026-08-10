@@ -25,6 +25,7 @@ public static class RoslynCompilationFactory
         return CSharpCompilation.Create(
           assemblyName: "RoslynPrototype",
           syntaxTrees: trees,
-          references: references);
+          references: references,
+          options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
     }
 }

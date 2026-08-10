@@ -1,0 +1,110 @@
+using NLISSN.Infrastructure.Configuration;
+using NLISSN.Application;
+using NLISSN.Core.Rewrite;
+
+namespace NLISSN.Hosting;
+
+internal static class CommandHostTestConfigurationExtensions
+{
+  internal static PrototypeAnalysisResult AnalyzeFromArgs(this CommandHost host, string[] arguments)
+  {
+    ArgumentNullException.ThrowIfNull(host);
+    ArgumentNullException.ThrowIfNull(arguments);
+
+    string? inputPath = null;
+    var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    for (var index = 0; index < arguments.Length; index++)
+    {
+      var argument = arguments[index];
+      if (!argument.StartsWith("--", StringComparison.Ordinal))
+      {
+        inputPath ??= argument;
+        continue;
+      }
+
+      var key = argument[2..];
+      var value = index + 1 < arguments.Length &&
+        !arguments[index + 1].StartsWith("--", StringComparison.Ordinal)
+        ? arguments[++index]
+        : "true";
+      options[key] = value;
+    }
+
+    return host.Analyze(CreateConfiguration(inputPath ?? "demo.cs", options));
+  }
+
+  private static AnalysisConfiguration CreateConfiguration(
+    string inputPath,
+    IReadOnlyDictionary<string, string> options)
+  {
+    return new AnalysisConfiguration(
+      inputPath,
+      new RulePolicySettings(
+        GetValue(options, "target-name"),
+        GetValue(options, "delete-class"),
+        GetValues(options, "disabled-rule-types"),
+        IsTrue(options, "validate-bindings"),
+        IsTrue(options, "delete-unreachable-methods"),
+        IsTrue(options, "delete-unreferenced-methods"),
+        IsTrue(options, "clear-unused-interface-implementations"),
+        IsTrue(options, "privatize-internal-only-public-methods")),
+      new ExecutionSettings(
+        IsTrue(options, "write-back"),
+        IsTrue(options, "skip-rewrite"),
+        GetInt(options, "max-degree-of-parallelism", Math.Max(1, Environment.ProcessorCount)),
+        GetNullableInt(options, "cpg-max-degree-of-parallelism"),
+        !IsTrue(options, "disable-directory-parallelism"),
+        IsTrue(options, "enable-group-parallelism"),
+        !IsTrue(options, "disable-helper-parallelism"),
+        IsTrue(options, "fast-delete-class-directory"),
+        IsTrue(options, "filter-delete-class-files-by-target-name")),
+      new ArtifactSettings(
+        string.Empty,
+        GetValue(options, "diff-out") ?? GetValue(options, "diff-root") ?? Path.Combine(Path.GetFullPath(Path.Combine("Build", "Result")), "Diff"),
+        GetValue(options, "runtime-log") ?? string.Empty,
+        GetValue(options, "evidence-json") ?? string.Empty,
+        GetValue(options, "rewrite-plan-out") ?? string.Empty,
+        GetValue(options, "rewrite-plan-in"),
+        string.Empty,
+        !IsTrue(options, "no-diff") && !IsTrue(options, "skip-diff"),
+        options.ContainsKey("runtime-log"),
+        options.ContainsKey("evidence-json"),
+        options.ContainsKey("rewrite-plan-in") ? RewritePlanMode.Replay :
+          options.ContainsKey("rewrite-plan-out") ? RewritePlanMode.Capture : RewritePlanMode.None,
+        GetValue(options, "diff-view") ?? "legacy"),
+      new LoggingSettings(
+        GetValue(options, "log-profile") ?? "normal",
+        GetValue(options, "log-level") ?? "debug",
+        GetValues(options, "log-categories").ToArray(),
+        GetValues(options, "log-events").ToArray(),
+        GetValue(options, "log-view") ?? "normal"),
+      new ConfigurationProvenance(2, 2, Array.Empty<string>(), new Dictionary<string, string>()));
+  }
+
+  private static bool IsTrue(IReadOnlyDictionary<string, string> options, string key)
+  {
+    return string.Equals(GetValue(options, key), "true", StringComparison.OrdinalIgnoreCase);
+  }
+
+  private static string? GetValue(IReadOnlyDictionary<string, string> options, string key)
+  {
+    return options.TryGetValue(key, out var value) ? value : null;
+  }
+
+  private static HashSet<string> GetValues(IReadOnlyDictionary<string, string> options, string key)
+  {
+    return (GetValue(options, key) ?? string.Empty)
+      .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+      .ToHashSet(StringComparer.OrdinalIgnoreCase);
+  }
+
+  private static int GetInt(IReadOnlyDictionary<string, string> options, string key, int fallback)
+  {
+    return int.TryParse(GetValue(options, key), out var value) ? value : fallback;
+  }
+
+  private static int? GetNullableInt(IReadOnlyDictionary<string, string> options, string key)
+  {
+    return int.TryParse(GetValue(options, key), out var value) ? value : null;
+  }
+}

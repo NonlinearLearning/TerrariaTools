@@ -13,12 +13,17 @@ public enum NLCPGCapability
     ControlDependence = 1 << 6,
     QueryIndex = 1 << 7,
     InterproceduralDataFlow = 1 << 8,
-    //为什么这要这么写
+    SyntaxToken = 1 << 9,
+    Reference = 1 << 10,
+    TypeRef = 1 << 11,
     Default = SyntaxSemantic |
               MethodModel |
               CallTargets |
               Cfg |
               DataFlow |
-              QueryIndex,
+              QueryIndex |
+              SyntaxToken |
+              Reference |
+              TypeRef,
     All = Default | Dominance | ControlDependence | InterproceduralDataFlow,
 }

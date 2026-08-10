@@ -8,8 +8,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="TestCodeSet\**\bin\**" />
+    <Compile Remove="TestCodeSet\**\obj\**" />
+    <Compile Remove="TestCodeSet\Workspace\App\GeneratorSemanticInput.cs" />
+    <Compile Remove="TestCodeSet\Workspace\Generator\**\*.cs" />
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Core\NLISSN.Core.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
   </ItemGroup>
 
 </Project>

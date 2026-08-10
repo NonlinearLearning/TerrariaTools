@@ -78,23 +78,12 @@ public sealed class CpgShardStore : ICpgShardStore
         Directory.CreateDirectory(directory);
         var finalPath = Path.Combine(directory, $"{shardId}.cpgbin");
         var temporaryPath = finalPath + ".tmp";
-        var payload = Serialize(shard);
-        var shardHash = Convert.ToHexString(SHA256.HashData(payload));
+        ShardPayloadWriteResult payload;
 
         try
         {
-            await using (var stream = new FileStream(
-              temporaryPath,
-              FileMode.Create,
-              FileAccess.Write,
-              FileShare.None,
-              StreamBufferSize,
-              FileOptions.SequentialScan))
-            {
-                await stream.WriteAsync(payload, cancellationToken);
-                stream.Flush(flushToDisk: _durabilityMode == CpgPersistenceDurabilityMode.Strict);
-            }
-
+            payload = await WritePayloadAsync(shard, temporaryPath, cancellationToken);
+            var shardHash = payload.Hash;
             Volatile.Read(ref _afterTemporaryWriteForTesting)?.Invoke(temporaryPath);
 
             if (_durabilityMode == CpgPersistenceDurabilityMode.Strict)
@@ -110,7 +99,7 @@ public sealed class CpgShardStore : ICpgShardStore
               shardId,
               finalPath,
               shardHash,
-              payload.LongLength,
+              payload.Length,
               CpgShardStatus.Complete);
         }
         finally
@@ -123,7 +112,7 @@ public sealed class CpgShardStore : ICpgShardStore
     }
 
     // 读取并校验一个已完成分片的位置记录。
-    public async Task<CpgFrozenShard> ReadAsync(CpgShardLocation location, CancellationToken cancellationToken)
+    public Task<CpgFrozenShard> ReadAsync(CpgShardLocation location, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(location);
         if (location.Status != CpgShardStatus.Complete)
@@ -132,14 +121,13 @@ public sealed class CpgShardStore : ICpgShardStore
         }
 
         Volatile.Read(ref _afterReadForTesting)?.Invoke(location);
-        var payload = await File.ReadAllBytesAsync(location.ShardPath, cancellationToken);
-        var shardHash = Convert.ToHexString(SHA256.HashData(payload));
-        if (!string.Equals(shardHash, location.ShardHash, StringComparison.Ordinal))
+        var payload = ReadPayloadFromPath(location.ShardPath, cancellationToken);
+        if (!string.Equals(payload.Hash, location.ShardHash, StringComparison.Ordinal))
         {
             throw new InvalidDataException("The CPG shard hash does not match its catalog location.");
         }
 
-        return Deserialize(payload);
+        return Task.FromResult(payload.Shard);
     }
 
     internal void EnsureValid(CpgShardLocation location, CancellationToken cancellationToken)
@@ -161,17 +149,16 @@ public sealed class CpgShardStore : ICpgShardStore
     }
 
     // 从任意分片文件路径恢复分片内容与对应的位置元数据。
-    public async Task<(CpgFrozenShard Shard, CpgShardLocation Location)> ReadFromPathAsync(string shardPath, CancellationToken cancellationToken)
+    public Task<(CpgFrozenShard Shard, CpgShardLocation Location)> ReadFromPathAsync(string shardPath, CancellationToken cancellationToken)
     {
-        var payload = await File.ReadAllBytesAsync(shardPath, cancellationToken);
-        var shard = Deserialize(payload);
+        var payload = ReadPayloadFromPath(shardPath, cancellationToken);
         var location = new CpgShardLocation(
-          CreateShardId(shard.Lookup),
+          CreateShardId(payload.Shard.Lookup),
           shardPath,
-          Convert.ToHexString(SHA256.HashData(payload)),
-          payload.LongLength,
+          payload.Hash,
+          payload.Length,
           CpgShardStatus.Complete);
-        return (shard, location);
+        return Task.FromResult((payload.Shard, location));
     }
 
     private static string CreateShardId(CpgShardLookup lookup)
@@ -183,10 +170,36 @@ public sealed class CpgShardStore : ICpgShardStore
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant();
     }
 
-    private static byte[] Serialize(CpgFrozenShard shard)
+    private async Task<ShardPayloadWriteResult> WritePayloadAsync(
+      CpgFrozenShard shard,
+      string temporaryPath,
+      CancellationToken cancellationToken)
     {
-        using var stream = new MemoryStream();
-        using var writer = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true);
+        cancellationToken.ThrowIfCancellationRequested();
+        await using var stream = new FileStream(
+          temporaryPath,
+          FileMode.Create,
+          FileAccess.Write,
+          FileShare.None,
+          StreamBufferSize,
+          FileOptions.SequentialScan);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using (var hashingStream = new CpgHashingWriteStream(stream, hash))
+        using (var writer = new BinaryWriter(hashingStream, Encoding.UTF8, leaveOpen: true))
+        {
+            WriteSerializedPayload(writer, shard);
+            writer.Flush();
+        }
+
+        await stream.FlushAsync(cancellationToken);
+        stream.Flush(flushToDisk: _durabilityMode == CpgPersistenceDurabilityMode.Strict);
+        return new ShardPayloadWriteResult(
+          Convert.ToHexString(hash.GetHashAndReset()),
+          stream.Length);
+    }
+
+    private static void WriteSerializedPayload(BinaryWriter writer, CpgFrozenShard shard)
+    {
         var (incomingEdgeOffsets, incomingEdgeIndexes) = CpgFrozenShardIncomingEdgeIndex.Resolve(shard);
         writer.Write(Magic);
         writer.Write(FormatVersion);
@@ -261,12 +274,30 @@ public sealed class CpgShardStore : ICpgShardStore
         }
 
         writer.Flush();
-        return stream.ToArray();
     }
 
-    private static CpgFrozenShard Deserialize(byte[] payload)
+    private static ShardPayloadReadResult ReadPayloadFromPath(string shardPath, CancellationToken cancellationToken)
     {
-        using var stream = new MemoryStream(payload, writable: false);
+        ArgumentException.ThrowIfNullOrWhiteSpace(shardPath);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var stream = new FileStream(
+          shardPath,
+          FileMode.Open,
+          FileAccess.Read,
+          FileShare.Read,
+          StreamBufferSize,
+          FileOptions.SequentialScan);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var hashingStream = new CpgHashingReadStream(stream, hash, cancellationToken);
+        var shard = Deserialize(hashingStream);
+        return new ShardPayloadReadResult(
+          shard,
+          Convert.ToHexString(hash.GetHashAndReset()),
+          stream.Length);
+    }
+
+    private static CpgFrozenShard Deserialize(Stream stream)
+    {
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
         if (!reader.ReadBytes(Magic.Length).SequenceEqual(Magic))
         {
@@ -745,6 +776,180 @@ public sealed class CpgShardStore : ICpgShardStore
     private static int? ReadOptionalInt(BinaryReader reader)
     {
         return reader.ReadBoolean() ? reader.ReadInt32() : null;
+    }
+
+    private readonly record struct ShardPayloadWriteResult(string Hash, long Length);
+
+    private readonly record struct ShardPayloadReadResult(CpgFrozenShard Shard, string Hash, long Length);
+
+    // 将序列化字节直接写入文件，并同步更新增量哈希，避免暂存完整 payload。
+    private sealed class CpgHashingWriteStream : Stream
+    {
+        private readonly Stream _stream;
+        private readonly IncrementalHash _hash;
+
+        internal CpgHashingWriteStream(Stream stream, IncrementalHash hash)
+        {
+            _stream = stream;
+            _hash = hash;
+        }
+
+        public override bool CanRead => false;
+
+        public override bool CanSeek => _stream.CanSeek;
+
+        public override bool CanWrite => _stream.CanWrite;
+
+        public override long Length => _stream.Length;
+
+        public override long Position
+        {
+            get => _stream.Position;
+            set => _stream.Position = value;
+        }
+
+        public override void Flush()
+        {
+            _stream.Flush();
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            return _stream.FlushAsync(cancellationToken);
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            return _stream.Seek(offset, origin);
+        }
+
+        public override void SetLength(long value)
+        {
+            _stream.SetLength(value);
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            _hash.AppendData(buffer, offset, count);
+            _stream.Write(buffer, offset, count);
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            _hash.AppendData(buffer);
+            _stream.Write(buffer);
+        }
+
+        public override Task WriteAsync(
+          byte[] buffer,
+          int offset,
+          int count,
+          CancellationToken cancellationToken)
+        {
+            _hash.AppendData(buffer, offset, count);
+            return _stream.WriteAsync(buffer, offset, count, cancellationToken);
+        }
+
+        public override ValueTask WriteAsync(
+          ReadOnlyMemory<byte> buffer,
+          CancellationToken cancellationToken = default)
+        {
+            _hash.AppendData(buffer.Span);
+            return _stream.WriteAsync(buffer, cancellationToken);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            // The owning method disposes the underlying file stream after the writer exits.
+        }
+    }
+
+    // 从文件流增量反序列化分片，同时避免把整个 payload 保留在 byte[] 中。
+    private sealed class CpgHashingReadStream : Stream
+    {
+        private readonly Stream _stream;
+        private readonly IncrementalHash _hash;
+        private readonly CancellationToken _cancellationToken;
+
+        internal CpgHashingReadStream(Stream stream, IncrementalHash hash, CancellationToken cancellationToken)
+        {
+            _stream = stream;
+            _hash = hash;
+            _cancellationToken = cancellationToken;
+        }
+
+        public override bool CanRead => _stream.CanRead;
+
+        public override bool CanSeek => _stream.CanSeek;
+
+        public override bool CanWrite => false;
+
+        public override long Length => _stream.Length;
+
+        public override long Position
+        {
+            get => _stream.Position;
+            set => _stream.Position = value;
+        }
+
+        public override void Flush()
+        {
+            _stream.Flush();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
+            var read = _stream.Read(buffer, offset, count);
+            if (read > 0)
+            {
+                _hash.AppendData(buffer, offset, read);
+            }
+
+            return read;
+        }
+
+        public override int Read(Span<byte> buffer)
+        {
+            _cancellationToken.ThrowIfCancellationRequested();
+            var read = _stream.Read(buffer);
+            if (read > 0)
+            {
+                _hash.AppendData(buffer[..read]);
+            }
+
+            return read;
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            return _stream.Seek(offset, origin);
+        }
+
+        public override void SetLength(long value)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            throw new NotSupportedException();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            // The owning method disposes the underlying file stream after the reader exits.
+        }
     }
 
     private sealed class CpgShardPayloadReader : IDisposable

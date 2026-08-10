@@ -91,12 +91,35 @@ public sealed class TextLogFormatter
         builder.Append('"');
         foreach (var character in value)
         {
-            if (character == '\\' || character == '"')
+            switch (character)
             {
-                builder.Append('\\');
-            }
+                case '\\':
+                case '"':
+                    builder.Append('\\');
+                    builder.Append(character);
+                    break;
+                case '\n':
+                    builder.Append("\\n");
+                    break;
+                case '\r':
+                    builder.Append("\\r");
+                    break;
+                case '\t':
+                    builder.Append("\\t");
+                    break;
+                default:
+                    if (char.IsControl(character))
+                    {
+                        builder.Append("\\u");
+                        builder.Append(((int)character).ToString("X4", CultureInfo.InvariantCulture));
+                    }
+                    else
+                    {
+                        builder.Append(character);
+                    }
 
-            builder.Append(character);
+                    break;
+            }
         }
 
         builder.Append('"');
@@ -104,7 +127,7 @@ public sealed class TextLogFormatter
 
     private static bool NeedsQuoting(string value)
     {
-        return value.Any(character => char.IsWhiteSpace(character) || character is '"' or '\\' or '=');
+        return value.Any(character => char.IsWhiteSpace(character) || char.IsControl(character) || character is '"' or '\\' or '=');
     }
 
     private static string? FormatValue(object? value)

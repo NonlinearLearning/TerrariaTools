@@ -5,7 +5,11 @@ public sealed class TextLogFilter
     private readonly HashSet<TextLogCategory> _categories;
     private readonly HashSet<TextLogEventType> _eventTypes;
 
-    public TextLogFilter(TextLogLevel minimumLevel, TextLogView view, IReadOnlyCollection<TextLogCategory> categories, IReadOnlyCollection<TextLogEventType> eventTypes)
+    public TextLogFilter(
+      TextLogLevel minimumLevel,
+      TextLogView view,
+      IReadOnlyCollection<TextLogCategory> categories,
+      IReadOnlyCollection<TextLogEventType> eventTypes)
     {
         MinimumLevel = minimumLevel;
         View = view;
@@ -27,151 +31,94 @@ public sealed class TextLogFilter
         return level <= MinimumLevel && _categories.Contains(category) && _eventTypes.Contains(eventType);
     }
 
-    public static TextLogFilter CreateRuntimeFilter(IReadOnlyDictionary<string, string> options)
+    public static TextLogFilter CreateRuntimeFilter(
+      string profile,
+      string level,
+      IReadOnlyCollection<string> categories,
+      IReadOnlyCollection<string> eventTypes,
+      string view)
     {
-        return CreateFromOptions(
-          options,
-          TextLogLevel.Info,
-          TextLogView.Normal,
-          new[] { TextLogCategory.Run, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Diag });
+        var profileSettings = CreateProfile(profile);
+        var parsedView = string.IsNullOrWhiteSpace(view)
+          ? profileSettings.View
+          : ParseEnum<TextLogView>(view, nameof(view));
+        var parsedLevel = string.IsNullOrWhiteSpace(level)
+          ? profileSettings.Level
+          : ParseEnum<TextLogLevel>(level, nameof(level));
+        IReadOnlyCollection<TextLogCategory> parsedCategories = categories.Count > 0
+          ? ParseEnums<TextLogCategory>(categories, nameof(categories))
+          : profileSettings.Categories;
+        IReadOnlyCollection<TextLogEventType> parsedEventTypes = eventTypes.Count > 0
+          ? ParseEnums<TextLogEventType>(eventTypes, nameof(eventTypes))
+          : profileSettings.EventTypes;
+
+        return new TextLogFilter(
+          parsedLevel,
+          parsedView,
+          parsedCategories,
+          parsedEventTypes);
     }
 
-    public static TextLogFilter CreateAnalysisFilter(IReadOnlyDictionary<string, string> options)
+    private static TextLogProfileSettings CreateProfile(string profile)
     {
-        return CreateFromOptions(
-          options,
-          TextLogLevel.Info,
-          TextLogView.Normal,
-          new[] { TextLogCategory.File, TextLogCategory.Phase, TextLogCategory.Memory, TextLogCategory.Io });
-    }
-
-    private static TextLogFilter CreateFromOptions(IReadOnlyDictionary<string, string> options, TextLogLevel defaultLevel, TextLogView defaultView, IReadOnlyCollection<TextLogCategory> defaultCategories)
-    {
-        var profile = TryParseProfile(options, out var profileSettings) ? profileSettings : null;
-        var level = TryParseLevel(options, out var parsedLevel) ? parsedLevel : profile?.Level ?? defaultLevel;
-        var view = TryParseView(options, out var parsedView) ? parsedView : profile?.View ?? defaultView;
-        var categories = TryParseCategories(options, out var parsedCategories) ? parsedCategories : profile?.Categories ?? defaultCategories;
-        var eventTypes = TryParseEventTypes(options, out var parsedEventTypes) ? parsedEventTypes : profile?.EventTypes ?? GetDefaultEventTypes(view);
-        return new TextLogFilter(level, view, categories, eventTypes);
-    }
-
-    private static bool TryParseProfile(IReadOnlyDictionary<string, string> options, out TextLogProfileSettings? profileSettings)
-    {
-        profileSettings = null;
-        if (!options.TryGetValue("log-profile", out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
+        return profile.Trim().ToLowerInvariant() switch
         {
-            return false;
-        }
-
-        profileSettings = rawValue.Trim().ToLowerInvariant() switch
-        {
-            "minimal" => new TextLogProfileSettings(TextLogLevel.Info, TextLogView.Compact,
+            "minimal" => new TextLogProfileSettings(
+              TextLogLevel.Info,
+              TextLogView.Compact,
               new[] { TextLogCategory.Run, TextLogCategory.Diag },
-              new[] { TextLogEventType.Started, TextLogEventType.Completed, TextLogEventType.Failed, TextLogEventType.Summary, TextLogEventType.Warning, TextLogEventType.Error }),
-            "normal" => new TextLogProfileSettings(TextLogLevel.Info, TextLogView.Normal,
-              new[] { TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag, TextLogCategory.Cpg, TextLogCategory.Mark },
-              new[] { TextLogEventType.Started, TextLogEventType.Completed, TextLogEventType.Failed, TextLogEventType.Summary, TextLogEventType.Warning, TextLogEventType.Error }),
-            "diagnostic" => new TextLogProfileSettings(TextLogLevel.Debug, TextLogView.Diagnostic, Enum.GetValues<TextLogCategory>(), Enum.GetValues<TextLogEventType>()),
-            "benchmark" => new TextLogProfileSettings(TextLogLevel.Debug, TextLogView.Benchmark,
-              new[] { TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag, TextLogCategory.Phase, TextLogCategory.Memory, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Io, TextLogCategory.Diff },
-              new[] { TextLogEventType.Started, TextLogEventType.Sampled, TextLogEventType.Completed, TextLogEventType.Failed, TextLogEventType.Summary, TextLogEventType.Snapshot, TextLogEventType.Pending, TextLogEventType.Written }),
-            _ => null
+              new[]
+              {
+          TextLogEventType.Started, TextLogEventType.Completed, TextLogEventType.Failed,
+          TextLogEventType.Summary, TextLogEventType.Warning, TextLogEventType.Error
+              }),
+            "normal" => new TextLogProfileSettings(
+              TextLogLevel.Info,
+              TextLogView.Normal,
+              new[]
+              {
+          TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag,
+          TextLogCategory.Cpg, TextLogCategory.Mark
+              },
+              new[]
+              {
+          TextLogEventType.Started, TextLogEventType.Completed, TextLogEventType.Failed,
+          TextLogEventType.Summary, TextLogEventType.Warning, TextLogEventType.Error
+              }),
+            "diagnostic" => new TextLogProfileSettings(
+              TextLogLevel.Debug,
+              TextLogView.Diagnostic,
+              Enum.GetValues<TextLogCategory>(),
+              Enum.GetValues<TextLogEventType>()),
+            "benchmark" => new TextLogProfileSettings(
+              TextLogLevel.Debug,
+              TextLogView.Benchmark,
+              Enum.GetValues<TextLogCategory>(),
+              Enum.GetValues<TextLogEventType>()),
+            _ => throw new ArgumentException($"Invalid log profile '{profile}'.", nameof(profile))
         };
-
-        return profileSettings is not null;
     }
 
-    private static IReadOnlyCollection<TextLogEventType> GetDefaultEventTypes(TextLogView view)
+    private static TEnum ParseEnum<TEnum>(string value, string parameterName)
+      where TEnum : struct, Enum
     {
-        return view switch
+        if (Enum.TryParse(value, ignoreCase: true, out TEnum parsed))
         {
-            TextLogView.Compact or TextLogView.Normal => new[] { TextLogEventType.Started, TextLogEventType.Completed, TextLogEventType.Failed, TextLogEventType.Summary, TextLogEventType.Warning, TextLogEventType.Error },
-            _ => Enum.GetValues<TextLogEventType>()
-        };
+            return parsed;
+        }
+
+        throw new ArgumentException($"Invalid {typeof(TEnum).Name} '{value}'.", parameterName);
     }
 
-    private static bool TryParseLevel(IReadOnlyDictionary<string, string> options, out TextLogLevel level)
+    private static IReadOnlyCollection<TEnum> ParseEnums<TEnum>(
+      IReadOnlyCollection<string> values,
+      string parameterName)
+      where TEnum : struct, Enum
     {
-        level = TextLogLevel.Info;
-        if (!options.TryGetValue("log-level", out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
-        {
-            return false;
-        }
-
-        if (Enum.TryParse(rawValue, ignoreCase: true, out level))
-        {
-            return true;
-        }
-
-        throw new ArgumentException($"Invalid log level '{rawValue}'.", nameof(options));
-    }
-
-    private static bool TryParseView(IReadOnlyDictionary<string, string> options, out TextLogView view)
-    {
-        view = TextLogView.Normal;
-        if (!options.TryGetValue("log-view", out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
-        {
-            return false;
-        }
-
-        if (Enum.TryParse(rawValue, ignoreCase: true, out view))
-        {
-            return true;
-        }
-
-        throw new ArgumentException($"Invalid log view '{rawValue}'.", nameof(options));
-    }
-
-    private static bool TryParseCategories(IReadOnlyDictionary<string, string> options, out IReadOnlyCollection<TextLogCategory> categories)
-    {
-        categories = Array.Empty<TextLogCategory>();
-        if (!options.TryGetValue("log-categories", out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
-        {
-            return false;
-        }
-
-        var parsedCategories = new List<TextLogCategory>();
-        foreach (var candidate in rawValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (!Enum.TryParse(candidate, ignoreCase: true, out TextLogCategory category))
-            {
-                throw new ArgumentException($"Invalid log category '{candidate}'.", nameof(options));
-            }
-
-            if (!parsedCategories.Contains(category))
-            {
-                parsedCategories.Add(category);
-            }
-        }
-
-        categories = parsedCategories;
-        return parsedCategories.Count > 0;
-    }
-
-    private static bool TryParseEventTypes(IReadOnlyDictionary<string, string> options, out IReadOnlyCollection<TextLogEventType> eventTypes)
-    {
-        eventTypes = Array.Empty<TextLogEventType>();
-        if (!options.TryGetValue("log-events", out var rawValue) || string.IsNullOrWhiteSpace(rawValue))
-        {
-            return false;
-        }
-
-        var parsedEventTypes = new List<TextLogEventType>();
-        foreach (var candidate in rawValue.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (!Enum.TryParse(candidate, ignoreCase: true, out TextLogEventType eventType))
-            {
-                throw new ArgumentException($"Invalid log event type '{candidate}'.", nameof(options));
-            }
-
-            if (!parsedEventTypes.Contains(eventType))
-            {
-                parsedEventTypes.Add(eventType);
-            }
-        }
-
-        eventTypes = parsedEventTypes;
-        return parsedEventTypes.Count > 0;
+        return values
+          .Select(value => ParseEnum<TEnum>(value, parameterName))
+          .Distinct()
+          .ToArray();
     }
 
     private sealed record TextLogProfileSettings(

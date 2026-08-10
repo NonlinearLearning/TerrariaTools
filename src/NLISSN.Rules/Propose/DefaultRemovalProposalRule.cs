@@ -31,13 +31,13 @@ public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
     // 为没有被逻辑、if 或控制结构专门规则接管的剩余 mark 生成默认删除决策。
     public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
-        _ = context;
-
         foreach (var (mark, sourceMark) in ProposalHelpers.EnumerateActiveDerivedMarks(
                      propagatedMarks,
                      liftedMarks))
         {
-            if (IsHandledBySpecializedRule(mark))
+            if (IsHandledBySpecializedRule(mark) ||
+                mark.SemanticTag == RuleFactPorts.FlowUnaryExpression ||
+                IsTerminalTopologyInput(context, mark.SyntaxNode))
             {
                 continue;
             }
@@ -54,7 +54,7 @@ public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
                      propagatedMarks,
                      liftedMarks))
         {
-            if (IsHandledBySpecializedRule(seedMark))
+            if (IsHandledBySpecializedRule(seedMark) || IsTerminalTopologyInput(context, seedMark.SyntaxNode))
             {
                 continue;
             }
@@ -72,12 +72,34 @@ public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
         return ProposalHelpers.LogicalConflictNodeKinds.Contains(kind) ||
           ProposalHelpers.IfConflictNodeKinds.Contains(kind) ||
           ProposalHelpers.ControlConflictNodeKinds.Contains(kind) ||
+          kind is SyntaxKind.SwitchSection or SyntaxKind.SwitchStatement ||
           mark.SyntaxNode is ElseClauseSyntax;
     }
+
+    private static bool IsTerminalTopologyInput(IProposeRuleContext context, Microsoft.CodeAnalysis.SyntaxNode syntaxNode) =>
+      context is not null && syntaxNode is ExpressionSyntax expression &&
+        context.ResolveExpressionTopology(expression).Termination ==
+        NLISSN.Core.Analysis.ExpressionPropagation.ExpressionTopologyTermination.Terminal;
+
 }
 
 internal static class TargetProposalContracts
 {
+    private static readonly IReadOnlyList<SyntaxKind> UnaryExpressionNodeKinds = new[]
+    {
+        SyntaxKind.LogicalNotExpression,
+        SyntaxKind.UnaryPlusExpression,
+        SyntaxKind.UnaryMinusExpression,
+        SyntaxKind.BitwiseNotExpression,
+        SyntaxKind.PreIncrementExpression,
+        SyntaxKind.PreDecrementExpression,
+        SyntaxKind.PostIncrementExpression,
+        SyntaxKind.PostDecrementExpression,
+        SyntaxKind.AddressOfExpression,
+        SyntaxKind.AwaitExpression,
+        SyntaxKind.SuppressNullableWarningExpression
+    };
+
     public static RuleConsumesContract CreateFactsConsumes()
     {
         return new RuleConsumesContract(new[]
@@ -87,6 +109,7 @@ internal static class TargetProposalContracts
             new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactPorts.FlowAssignmentTarget),
             new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactPorts.FlowLocalDefinition),
             new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference),
+            new RuleConsumedSyntax(UnaryExpressionNodeKinds, RuleFactPorts.FlowUnaryExpression),
             new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, RuleFactPorts.LiftExpressionHost),
             new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause }, RuleFactPorts.LiftIfStructure)
         });

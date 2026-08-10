@@ -1,5 +1,5 @@
 using NLISSN.Application;
-using NLISSN.Cli.Parsing;
+using NLISSN.Infrastructure.Configuration;
 using System.Text;
 using Microsoft.CodeAnalysis.Text;
 using NLISSN.Core.Rewrite;
@@ -14,7 +14,12 @@ internal sealed class RewritePlanReplayService
     private readonly DiffBuilder _diffBuilder = new();
     private readonly TextDiffRenderer _diffRenderer = new();
 
-    internal async Task<PrototypeAnalysisResult> ReplayAsync(string inputRoot, string artifactRoot, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
+    internal async Task<PrototypeAnalysisResult> ReplayAsync(
+      string inputRoot,
+      string artifactRoot,
+      AnalysisRuntime runtime,
+      ExecutionSettings execution,
+      ArtifactSettings artifacts)
     {
         var (_, plans) = _artifactService.ReadAndValidate(artifactRoot, inputRoot);
         var results = await runtime.ConcurrencyPool.SelectOrderedAsync(
@@ -25,7 +30,7 @@ internal sealed class RewritePlanReplayService
         var edits = new List<RewriteEdit>();
         var documents = new List<DiffDocument>();
         var rewrittenSources = new List<(string Path, string Source)>();
-        var diffRoot = DiffPathResolver.ResolveDirectoryDiffRoot(inputRoot, options);
+        var diffRoot = artifacts.DiffRoot;
         foreach (var result in results)
         {
             edits.AddRange(result.Edits);
@@ -33,17 +38,40 @@ internal sealed class RewritePlanReplayService
             rewrittenSources.Add((result.FilePath, result.RewrittenSource));
         }
 
-        if (ApplicationOptions.ShouldWriteDiff(options))
+        if (artifacts.WriteDiff)
         {
             foreach (var result in results)
             {
-                var diffPath = DiffPathResolver.ResolveFileDiffPath(inputRoot, result.FilePath, diffRoot);
-                Directory.CreateDirectory(Path.GetDirectoryName(diffPath)!);
-                File.WriteAllText(diffPath, _diffRenderer.Render(result.Diff.Files.Single(), ApplicationOptions.ResolveDiffView(options)), new UTF8Encoding(false));
+                var plan = plans.Single(plan => string.Equals(
+                  Path.Combine(inputRoot, plan.RelativePath),
+                  result.FilePath,
+                  StringComparison.OrdinalIgnoreCase));
+                foreach (var categoryEdits in plan.Edits.GroupBy(edit => ResolveCategory(edit.RuleId)))
+                {
+                    var categoryResult = new PrototypeRewriter().ExecutePlan(
+                      File.ReadAllText(result.FilePath),
+                      result.FilePath,
+                      plan with { Edits = categoryEdits.ToArray() });
+                    if (categoryResult.Diff.Files.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    var diffPath = DiffPathResolver.ResolveFileDiffPath(
+                      inputRoot,
+                      result.FilePath,
+                      diffRoot,
+                      categoryEdits.Key);
+                    Directory.CreateDirectory(Path.GetDirectoryName(diffPath)!);
+                    File.WriteAllText(
+                      diffPath,
+                      _diffRenderer.Render(categoryResult.Diff.Files.Single(), artifacts.DiffView),
+                      new UTF8Encoding(false));
+                }
             }
         }
 
-        if (ApplicationOptions.ShouldWriteBack(options))
+        if (execution.WriteBack)
         {
             foreach (var (path, source) in rewrittenSources)
             {
@@ -60,7 +88,7 @@ internal sealed class RewritePlanReplayService
           edits,
           $"<replay:{plans.Count}>",
           diff,
-           ApplicationOptions.ShouldWriteDiff(options) && plans.Count > 0 ? diffRoot : null,
+           artifacts.WriteDiff && plans.Count > 0 ? diffRoot : null,
           new AnalysisStats(plans.Count, plans.Count, 0, 0));
     }
 
@@ -82,4 +110,15 @@ internal sealed class RewritePlanReplayService
       string RewrittenSource,
       IReadOnlyList<RewriteEdit> Edits,
       DiffDocument Diff);
+
+    private static RuleDiffCategory ResolveCategory(string? ruleId)
+    {
+        if (string.IsNullOrWhiteSpace(ruleId))
+        {
+            throw new InvalidOperationException(
+              "Rewrite-plan category diff replay requires operation rule provenance.");
+        }
+
+        return RuleDiffCategoryRegistry.Resolve(ruleId);
+    }
 }

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>preview</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+    <ProjectReference Include="..\Logging\NLISSN.Logging.csproj" />
+    <ProjectReference Include="..\..\NLISSN.Core\NLISSN.Core.csproj" />
+    <ProjectReference Include="..\Workspace\NLISSN.Workspace.csproj" />
+  </ItemGroup>
+</Project>

@@ -442,7 +442,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_RemovesUnusedUsingsAcrossMultipleFilesDuringSharedCleanupPass()
+    public void AnalyzeFromArgs_KeepsUnusedUsingsAcrossMultipleFilesAfterRewrite()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "cleanup-multi-file-usings");
         Directory.CreateDirectory(projectDirectory);
@@ -471,10 +471,10 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
 
         var firstConsumerSource = File.ReadAllText(firstConsumerPath);
         var secondConsumerSource = File.ReadAllText(secondConsumerPath);
-        Assert.DoesNotContain("using Demo.Input;", firstConsumerSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("using System;", firstConsumerSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("using Demo.Input;", secondConsumerSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("using System;", secondConsumerSource, StringComparison.Ordinal);
+        Assert.Contains("using Demo.Input;", firstConsumerSource, StringComparison.Ordinal);
+        Assert.Contains("using System;", firstConsumerSource, StringComparison.Ordinal);
+        Assert.Contains("using Demo.Input;", secondConsumerSource, StringComparison.Ordinal);
+        Assert.Contains("using System;", secondConsumerSource, StringComparison.Ordinal);
         Assert.Empty(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
     }
 
@@ -565,10 +565,11 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         var graph = new NLCPGBuilder().BuildFromSource(declarationSource, declarationFilePath);
         var session = new AnalysisSession(
           new CpgAnalysisContext(graph, declarationSemanticModel, declarationRoot),
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["delete-class"] = "PlayerInput"
-          });
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["delete-class"] = "PlayerInput"
+            }));
         var roots = trees.ToDictionary(
           pair => pair.Key,
           pair => pair.Value.GetRoot(),

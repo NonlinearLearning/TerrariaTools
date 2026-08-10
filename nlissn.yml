@@ -1,0 +1,35 @@
+schemaVersion: 2
+runId: dop12-main-merged-20260804
+input:
+  path: ./Build/RandomSamples/run-20260802200403975-ecade51311b34d8a8ae0561b8b0e37b6/source/Terraria/Main.cs
+analysis:
+  targetName: PlayerInput
+  deleteClass: PlayerInput
+  disabledRuleTypes: []
+  validateBindings: false
+  deleteUnreachableMethods: true
+  deleteUnreferencedMethods: true
+  clearUnusedInterfaceImplementations: true
+  privatizeInternalOnlyPublicMethods: true
+execution:
+  writeBack: false
+  skipRewrite: false
+  maxDegreeOfParallelism: 12
+  cpgMaxDegreeOfParallelism: 12
+  directoryParallelism: true
+  groupParallelism: false
+  helperParallelism: true
+  fastDeleteClassDirectory: false
+  filterDeleteClassFilesByTargetName: false
+artifacts:
+  diff: { enabled: true, view: readable }
+  runtimeLog: { enabled: true }
+  evidence: { enabled: true }
+  rewritePlan: { mode: capture }
+  analysisLog: { enabled: false }
+logging:
+  profile: benchmark
+  level: debug
+  categories: []
+  events: []
+  view: normal

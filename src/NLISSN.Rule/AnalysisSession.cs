@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
 using Microsoft.CodeAnalysis.Text;
@@ -7,6 +8,7 @@ using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using NLISSN.Core.Analysis;
+using NLISSN.Core.Analysis.ExpressionPropagation;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
@@ -21,19 +23,21 @@ namespace NLISSN.Core.Pipeline;
 internal sealed class AnalysisSession
 {
     private readonly CpgAnalysisContext _analysisContext;
-    private readonly IReadOnlyDictionary<string, string> _options;
+    private readonly AnalysisRequestSettings _settings;
     private readonly MarkAnalysisSnapshot _markAnalysisSnapshot;
+    private readonly ConcurrentDictionary<ExpressionSyntax, Lazy<ExpressionTopologyPath>> _expressionTopologies = new();
+    private long _expressionTopologyAnalyzeCount;
     private int _structureViewQueryCount;
 
     internal AnalysisSession(
       CpgAnalysisContext analysisContext,
-      IReadOnlyDictionary<string, string> options,
+      AnalysisRequestSettings settings,
       AnalysisRuntime? runtime = null,
       MarkAnalysisSnapshot? markAnalysisSnapshot = null,
       AnalysisEvidenceCollector? evidence = null)
     {
         _analysisContext = analysisContext;
-        _options = options;
+        _settings = settings;
         Runtime = runtime ?? AnalysisRuntime.CreateDefault();
         Evidence = evidence ?? new AnalysisEvidenceCollector();
         _markAnalysisSnapshot = markAnalysisSnapshot ?? new MarkAnalysisSnapshot(analysisContext, Evidence);
@@ -58,13 +62,13 @@ internal sealed class AnalysisSession
     internal IProposeRuleContext CreateProposeContext() => new ProposeRuleContext(this);
 
     internal IReadOnlyList<string> GetNormalizedTargetNames() =>
-      TryGetOption("target-name", out var targetName)
-        ? _markAnalysisSnapshot.GetNormalizedTargetNames(targetName)
+      _settings.TargetNames.Count > 0
+        ? _markAnalysisSnapshot.GetNormalizedTargetNames(string.Join(',', _settings.TargetNames))
         : Array.Empty<string>();
 
     internal NameDescriptor GetTargetNameDescriptor() =>
-      TryGetOption("target-name", out var targetName)
-        ? _markAnalysisSnapshot.GetTargetNameDescriptor(targetName)
+      _settings.TargetNames.Count > 0
+        ? _markAnalysisSnapshot.GetTargetNameDescriptor(string.Join(',', _settings.TargetNames))
         : _markAnalysisSnapshot.GetTargetNameDescriptor(null);
 
     internal bool GetCachedTargetMatch(
@@ -77,7 +81,7 @@ internal sealed class AnalysisSession
 
     internal SyntaxNode Root => _analysisContext.CompilationRoot;
 
-    internal bool TryGetOption(string key, out string value) => _options.TryGetValue(key, out value!);
+    internal AnalysisRequestSettings Settings => _settings;
 
     internal CpgStructureViewQueryResult QueryStructureView(
       IReadOnlyCollection<SyntaxNode> fragments,
@@ -125,6 +129,30 @@ internal sealed class AnalysisSession
 
     internal IOperation? GetCachedOperation(SyntaxNode syntaxNode) =>
       _markAnalysisSnapshot.GetOperation(syntaxNode);
+
+    internal ExpressionTopologyPath ResolveExpressionTopology(ExpressionSyntax expression)
+    {
+        var created = new Lazy<ExpressionTopologyPath>(
+          () =>
+          {
+              Interlocked.Increment(ref _expressionTopologyAnalyzeCount);
+              return new ExpressionPropagationTopology(
+                _markAnalysisSnapshot.GetOperation,
+                requireSemanticOverlay: true).Analyze(expression);
+          },
+          LazyThreadSafetyMode.ExecutionAndPublication);
+        return _expressionTopologies.GetOrAdd(expression, created).Value;
+    }
+
+    internal ExpressionTopologyMetrics GetExpressionTopologyMetrics()
+    {
+        var operationMetrics = _markAnalysisSnapshot.GetOperationCacheMetrics();
+        return new ExpressionTopologyMetrics(
+          Interlocked.Read(ref _expressionTopologyAnalyzeCount),
+          _expressionTopologies.Count,
+          operationMetrics.Hits,
+          operationMetrics.Misses);
+    }
 
     internal NLCPGSliceResult QuerySliceBackward(NodeId sinkNodeId, NLCPGSliceQueryOptions options) =>
       _markAnalysisSnapshot.QuerySliceBackward(sinkNodeId, options);

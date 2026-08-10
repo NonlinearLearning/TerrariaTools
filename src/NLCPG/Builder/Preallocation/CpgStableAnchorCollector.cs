@@ -20,6 +20,10 @@ internal sealed class CpgStableAnchorCollector
         _anchors.Add(anchor);
     }
 
+    internal int Count => _anchors.Count;
+
+    internal IReadOnlyCollection<StableNodeAnchor> Anchors => _anchors;
+
     internal DeterministicNodeIdTable CreateAllocation()
     {
         return DeterministicNodeIdTable.Create(_anchors);

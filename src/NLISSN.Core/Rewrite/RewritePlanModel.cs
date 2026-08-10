@@ -8,7 +8,8 @@ public sealed record RewritePlanEdit(
   int Start,
   int Length,
   string OriginalText,
-  string ReplacementText)
+  string ReplacementText,
+  string? RuleId = null)
 {
   [JsonIgnore]
   public TextSpan Span => new(Start, Length);

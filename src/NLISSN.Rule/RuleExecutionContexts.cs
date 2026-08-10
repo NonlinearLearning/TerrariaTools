@@ -7,6 +7,7 @@ using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using NLISSN.Core.Analysis;
+using NLISSN.Core.Analysis.ExpressionPropagation;
 
 namespace NLISSN.Core.Pipeline;
 
@@ -17,7 +18,10 @@ public interface IMarkRuleContext
   IReadOnlyList<string> GetNormalizedTargetNames();
   NameDescriptor GetTargetNameDescriptor();
   bool GetCachedTargetMatch(SyntaxNode syntaxNode, NameDescriptor targetNames, Func<bool> evaluate);
-  bool TryGetOption(string key, out string value);
+  IReadOnlyList<string> DeleteClassNames { get; }
+  bool DeleteUnreferencedMethods { get; }
+  bool ClearUnusedInterfaceImplementations { get; }
+  bool PrivatizeInternalOnlyPublicMethods { get; }
   IEnumerable<ExpressionSyntax> EnumerateAllowedExpressions(
     SyntaxNode root,
     IReadOnlyCollection<Microsoft.CodeAnalysis.CSharp.SyntaxKind> allowedKinds);
@@ -47,6 +51,7 @@ public interface IPropagationRuleContext : ISemanticRuleContext
     IInvocationOperation invocation,
     FlowSummaryEndpoint source,
     FlowSummaryEndpoint target);
+  ExpressionTopologyPath ResolveExpressionTopology(ExpressionSyntax expression);
 }
 
 public interface ILiftRuleContext
@@ -57,8 +62,10 @@ public interface ILiftRuleContext
   bool TryFindContainingIf(ExpressionSyntax expression, out IfStructureAnalysis? analysis);
   SyntaxNode? FindLogicalHost(ExpressionSyntax expression);
   LoopStructureAnalysis AnalyzeLoopStructure(StatementSyntax statement);
+  ExpressionTopologyPath ResolveExpressionTopology(ExpressionSyntax expression);
 }
 
 public interface IProposeRuleContext : ISemanticRuleContext
 {
+  ExpressionTopologyPath ResolveExpressionTopology(ExpressionSyntax expression);
 }

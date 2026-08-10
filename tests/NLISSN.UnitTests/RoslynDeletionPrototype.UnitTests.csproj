@@ -18,7 +18,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="RoslynPrototype.Tests" />
     <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Caching\NL.Caching.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Logging\NLISSN.Logging.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Testing\NLISSN.TestComponents.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Workspace\NLISSN.Workspace.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
     <ProjectReference Include="..\..\src\NLISSN\NLISSN.csproj" />
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />

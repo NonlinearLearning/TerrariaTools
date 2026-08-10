@@ -13,14 +13,12 @@ namespace NLISSN.Rules;
 /// 仅在所有调用点都位于当前程序集内部时，将公开方法的可见性改为 private。
 public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleSemanticTag InternalOnlyPublicMethodSemanticTag = new("InternalOnlyPublicMethod");
-
     private static readonly RuleConsumesContract InternalOnlyPublicMethodConsumes =
       new(new[]
       {
         new RuleConsumedSyntax(
           new[] { SyntaxKind.MethodDeclaration },
-          InternalOnlyPublicMethodSemanticTag)
+          InternalOnlyPublicMethodFacts.Lifted)
       });
 
     public override string CapabilityId { get; } = "propose.privatize-internal-only-public-method";
@@ -42,12 +40,13 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
     public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
+        _ = seedMarks;
         _ = propagatedMarks;
-        _ = liftedMarks;
 
-        foreach (var seedMark in seedMarks)
+        foreach (var liftedMark in liftedMarks)
         {
-            if (seedMark.SyntaxNode is not MethodDeclarationSyntax method ||
+            if (liftedMark.Mark.SemanticTag != InternalOnlyPublicMethodFacts.Lifted ||
+                liftedMark.Mark.SyntaxNode is not MethodDeclarationSyntax method ||
                 !TryBuildPrivateMethod(method, out var replacementMethod))
             {
                 continue;

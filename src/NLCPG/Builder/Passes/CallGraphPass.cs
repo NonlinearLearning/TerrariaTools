@@ -30,14 +30,14 @@ namespace NLCPG.Builder
         internal void RunCallGraphPass(NLCPGBuildContext context)
         {
             // 显式方法调用会直接产出调用点和调用目标边。
-            foreach (var invocationOperation in EnumerateOperations(context).OfType<IInvocationOperation>())
+            foreach (var invocationOperation in context.InvocationOperations)
             {
                 var operationNode = GetOrCreateOperationNode(invocationOperation, context.Graph);
                 AddCallSite(invocationOperation, operationNode, context.Graph);
             }
 
             // 属性引用可能隐式落到 getter/setter，需要单独补调用点。
-            foreach (var propertyReferenceOperation in EnumerateOperations(context).OfType<IPropertyReferenceOperation>())
+            foreach (var propertyReferenceOperation in context.PropertyReferenceOperations)
             {
                 var operationNode = GetOrCreateOperationNode(propertyReferenceOperation, context.Graph);
                 AddPropertyAccessorCallSite(propertyReferenceOperation, operationNode, context.Graph);

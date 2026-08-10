@@ -37,7 +37,7 @@ pwsh -File .\init.ps1
 | --- | --- | --- |
 | 最小 CPG | `src/NLCPG/NLCPG.csproj` | 从 Roslyn 语法和语义事实构建、查询与持久化最小 CPG。 |
 | 删除规则原型 | `src/NLISSN/NLISSN.csproj` | 运行分析、标记、传播、决策和源码改写原型。 |
-| 回归测试 | `dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore` | 先运行 Unit；随后按开发者指南运行 Contract 与 Host。 |
+| 回归测试 | `dotnet test .\tests\NLISSN.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false` | 先运行 Unit；随后按开发者指南运行 Contract 与 Host。 |
 
 ## 当前边界
 

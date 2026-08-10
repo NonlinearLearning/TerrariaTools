@@ -46,17 +46,28 @@ public sealed class IfStructureLiftingRule : RuleDefinitionLift
     // 在 if / else if / else 已具备完整删除条件时，产出结构级 lifted mark。
     public override IEnumerable<LiftedMarkRecord> Lift(ILiftRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
+        var hostMarks = ExpressionHostLiftingHelpers.BuildHostLiftedMarks(
+            context,
+            RuleId,
+            seedMarks,
+            propagatedMarks)
+          .Select(mark => mark.Mark with
+          {
+            OutputKind = RuleOutputKind.ExpressionHost,
+            SemanticTag = ExpressionHostSemanticTag
+          })
+          .ToList();
         return IfStructureLiftingHelpers.BuildIfStructureLiftedMarks(
           context,
           RuleId,
-          seedMarks,
+          seedMarks.Concat(hostMarks).ToList(),
           propagatedMarks)
           .Select(mark =>
           {
             var payload = IfStructureLiftingHelpers.TryBuildPayload(
               context,
               mark.Mark.SyntaxNode,
-              seedMarks.Concat(propagatedMarks.Select(item => item.Mark)).ToList());
+              seedMarks.Concat(hostMarks).Concat(propagatedMarks.Select(item => item.Mark)).ToList());
             return mark with
             {
               Mark = mark.Mark with
@@ -77,7 +88,8 @@ public sealed class IfStructureLiftingRule : RuleDefinitionLift
       IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
     {
         var hostMarks = existingLiftedMarks
-          .Where(mark => mark.Mark.SemanticTag == ExpressionHostSemanticTag)
+          .Where(mark => mark.Mark.SemanticTag == ExpressionHostSemanticTag &&
+            mark.Mark.SyntaxNode.RawKind is not (int)SyntaxKind.LogicalAndExpression and not (int)SyntaxKind.LogicalOrExpression)
           .Select(mark => mark.Mark)
           .ToList();
         return Lift(context, seedMarks.Concat(hostMarks).ToList(), propagatedMarks);

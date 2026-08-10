@@ -7,10 +7,10 @@ namespace NLISSN.Application;
 /// 比较改写前后的 Roslyn 错误诊断，将新增错误作为分析结果的一部分返回。
 public static class  PostRewriteDiagnostics
 {
-    public static bool ShouldSkipDeclarationDiagnostics(IReadOnlyDictionary<string, string> options)
+    public static bool ShouldSkipDeclarationDiagnostics(AnalysisRequestSettings settings)
     {
-        ArgumentNullException.ThrowIfNull(options);
-        return options.ContainsKey("delete-class") && IsTrueOption(options, "fast-delete-class-directory");
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings.HasDeleteClass && settings.FastDeleteClassDirectory;
     }
 
     // 为单文件分析结果补充改写后诊断，必要时可按选项跳过这一步。
@@ -65,12 +65,6 @@ public static class  PostRewriteDiagnostics
     private static bool IsIgnoredPostRewriteDiagnostic(Diagnostic diagnostic)
     {
         return string.Equals(diagnostic.Id, "CS5001", StringComparison.Ordinal);
-    }
-
-    private static bool IsTrueOption(IReadOnlyDictionary<string, string> options, string key)
-    {
-        return options.TryGetValue(key, out var value) &&
-          string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<SyntaxTree> BuildTrees(IReadOnlyDictionary<string, string> originalSourcesByPath, IReadOnlyDictionary<string, string> rewrittenSourcesByPath)

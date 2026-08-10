@@ -10,6 +10,9 @@ using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using System.Diagnostics;
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace NLCPG.Builder;
 
@@ -57,6 +60,8 @@ public sealed partial class NLCPGBuilder
     private readonly Dictionary<NLCPGNode, HashSet<NLCPGNode>> _cfgSuccessorsByNode = new();
     private readonly Dictionary<IInvocationOperation, NLCPGNode> _callSiteNodesByInvocation =
       new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<IOperation, NLCPGNode> _operationNodesByOperation =
+      new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<IInvocationOperation, IReadOnlyList<IMethodSymbol>> _resolvedCallTargetsByInvocation =
       new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, IReadOnlyList<IMethodSymbol>> _resolvedCallTargetsByDispatchShape =
@@ -65,13 +70,27 @@ public sealed partial class NLCPGBuilder
     private readonly HashSet<SyntaxNode> _pendingOperationSyntaxTypeNodes = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<SyntaxNode, SyntaxSemanticFacts> _partitionedSyntaxFacts = new(ReferenceEqualityComparer.Instance);
     private readonly List<INamedTypeSymbol> _declaredTypes = new();
+    private readonly List<NLCPGDataFlowMethodMetrics> _dataFlowMethodMetrics = new();
+    private IReadOnlyList<OperationRootPlan>? _operationRootPlans;
+    private SyntaxNode? _operationRootPlanRoot;
+    private SemanticModel? _operationRootPlanSemanticModel;
+    private int _operationNodeCacheHitCount;
+    private int _operationNodeCacheMissCount;
+    private int _operationRootCacheHitCount;
+    private int _operationRootCacheMissCount;
+    private readonly Dictionary<string, long> _passElapsedMilliseconds = new(StringComparer.Ordinal);
     private readonly NLCPGBuilderOptions _options;
     private readonly IConcurrencyPool _concurrencyPool;
 
     public NLCPGFlowSummaryMetrics LastFlowSummaryMetrics { get; private set; } = NLCPGFlowSummaryMetrics.Empty;
 
+    public NLCPGBuildMetrics LastBuildMetrics { get; private set; } = NLCPGBuildMetrics.Empty;
+
     private sealed record CapabilityBuildPlan(
         NLCPGCapability ResolvedCapabilities,
+        bool EmitSyntaxTokens,
+        bool EmitReferences,
+        bool EmitTypeReferences,
         bool RequiresMethodModel,
         bool RequiresCallTargets,
         bool RequiresCfg,
@@ -100,21 +119,42 @@ public sealed partial class NLCPGBuilder
             return Build(NLCPGBuildContext.CreateFromSource(source, filePath));
         }
 
+        var sourceInput = NLCPGBuildContext.CreateSourceSemanticInput(source, filePath);
         var identityFactory = new StableNodeIdentityFactory();
-        var preflightBuilder = new NLCPGBuilder(_options with
-        {
-            Persistence = null,
-            UsePreallocatedNodeIds = false,
-        });
+        var preflightStopwatch = Stopwatch.StartNew();
+        var preflightBuilder = new NLCPGBuilder(CreateAnchorDiscoveryOptions());
         var collector = new CpgStableAnchorCollector();
-        _ = preflightBuilder.Build(NLCPGBuildContext.CreateFromSourceAnchorDiscovery(
+        _ = preflightBuilder.Build(NLCPGBuildContext.CreateAnchorDiscovery(
+            sourceInput.SemanticModel,
+            sourceInput.Root,
             source,
             filePath,
             identityFactory,
             collector.Add));
+        preflightStopwatch.Stop();
 
         var allocation = collector.CreateAllocation();
-        return Build(NLCPGBuildContext.CreateFromSource(source, filePath, allocation, identityFactory));
+        var graph = Build(NLCPGBuildContext.Create(
+          sourceInput.SemanticModel,
+          sourceInput.Root,
+          source,
+          filePath,
+          allocation,
+          identityFactory));
+        LastBuildMetrics = LastBuildMetrics with
+        {
+            AnchorDiscoveryAnchorCount = collector.Count,
+            AnchorDiscoveryElapsedMilliseconds = preflightStopwatch.ElapsedMilliseconds,
+            AnchorDiscoveryPassElapsedMilliseconds = CopyStageElapsedMilliseconds(
+              preflightBuilder.LastBuildMetrics.PassElapsedMilliseconds),
+            BuildInventoryMetrics = LastBuildMetrics.BuildInventoryMetrics! with
+            {
+                PreallocatedAnchorDiff = CpgBuildInventory.CompareAnchors(
+                  collector.Anchors,
+                  graph.Nodes),
+            },
+        };
+        return graph;
     }
 
     // 复用外部提供的语义模型与语法根来构建 CPG。
@@ -126,11 +166,8 @@ public sealed partial class NLCPGBuilder
         }
 
         var identityFactory = new StableNodeIdentityFactory();
-        var preflightBuilder = new NLCPGBuilder(_options with
-        {
-            Persistence = null,
-            UsePreallocatedNodeIds = false,
-        });
+        var preflightStopwatch = Stopwatch.StartNew();
+        var preflightBuilder = new NLCPGBuilder(CreateAnchorDiscoveryOptions());
         var collector = new CpgStableAnchorCollector();
         _ = preflightBuilder.Build(NLCPGBuildContext.CreateAnchorDiscovery(
             semanticModel,
@@ -139,13 +176,29 @@ public sealed partial class NLCPGBuilder
             filePath,
             identityFactory,
             collector.Add));
+        preflightStopwatch.Stop();
 
         var allocation = collector.CreateAllocation();
-        return Build(NLCPGBuildContext.Create(semanticModel, root, source, filePath, allocation, identityFactory));
+        var graph = Build(NLCPGBuildContext.Create(semanticModel, root, source, filePath, allocation, identityFactory));
+        LastBuildMetrics = LastBuildMetrics with
+        {
+            AnchorDiscoveryAnchorCount = collector.Count,
+            AnchorDiscoveryElapsedMilliseconds = preflightStopwatch.ElapsedMilliseconds,
+            AnchorDiscoveryPassElapsedMilliseconds = CopyStageElapsedMilliseconds(
+              preflightBuilder.LastBuildMetrics.PassElapsedMilliseconds),
+            BuildInventoryMetrics = LastBuildMetrics.BuildInventoryMetrics! with
+            {
+                PreallocatedAnchorDiff = CpgBuildInventory.CompareAnchors(
+                  collector.Anchors,
+                  graph.Nodes),
+            },
+        };
+        return graph;
     }
 
     private NLCPGGraph Build(NLCPGBuildContext context)
     {
+        var buildStopwatch = Stopwatch.StartNew();
         _syntaxNodes.Clear();
         _symbolNodes.Clear();
         _typeDeclNodes.Clear();
@@ -163,22 +216,65 @@ public sealed partial class NLCPGBuilder
         _cfgPredecessorsByNode.Clear();
         _cfgSuccessorsByNode.Clear();
         _callSiteNodesByInvocation.Clear();
+        _operationNodesByOperation.Clear();
         _resolvedCallTargetsByInvocation.Clear();
         _resolvedCallTargetsByDispatchShape.Clear();
         _propertyAccessorCallSiteNodesByKey.Clear();
         _pendingOperationSyntaxTypeNodes.Clear();
         _partitionedSyntaxFacts.Clear();
         _declaredTypes.Clear();
+        _dataFlowMethodMetrics.Clear();
+        _operationRootPlans = null;
+        _operationRootPlanRoot = null;
+        _operationRootPlanSemanticModel = null;
+        _operationNodeCacheHitCount = 0;
+        _operationNodeCacheMissCount = 0;
+        _operationRootCacheHitCount = 0;
+        _operationRootCacheMissCount = 0;
+        _passElapsedMilliseconds.Clear();
+        CpgShardBuildCoordinator? persistenceCoordinator = null;
+        NLCPGPersistenceMetrics? persistenceMetrics = null;
         var persistenceHit = false;
         if (_options.Persistence is not null)
         {
-            var restoredBase = new CpgShardBuildCoordinator(_options.Persistence, _concurrencyPool)
+            persistenceCoordinator = new CpgShardBuildCoordinator(_options.Persistence, _concurrencyPool);
+            CpgBaseRestoreResult? restoredBase = null;
+            var restoreStopwatch = Stopwatch.StartNew();
+            MeasureStage(
+              "PersistenceRestore",
+              () => restoredBase = persistenceCoordinator
                 .TryRestoreBaseAsync(context, CancellationToken.None)
                 .GetAwaiter()
-                .GetResult();
+                .GetResult());
+            restoreStopwatch.Stop();
+            var restoreMetrics = persistenceCoordinator.LastRestoreMetrics;
+            persistenceMetrics = NLCPGPersistenceMetrics.Empty with
+            {
+                RestoreAttempted = true,
+                RestoreHit = restoredBase is not null,
+                RestoreElapsedMilliseconds = restoreStopwatch.ElapsedMilliseconds,
+                CatalogReadMilliseconds = restoreMetrics.CatalogReadMilliseconds,
+                ShardReadMilliseconds = restoreMetrics.ShardReadMilliseconds,
+                RestoredShardCount = restoreMetrics.RestoredShardCount,
+                RestoredShardBytes = restoreMetrics.RestoredShardBytes,
+                RestoreFactsElapsedMilliseconds = restoreMetrics.RestoreFactsElapsedMilliseconds,
+                RestoreFactsAllocatedBytes = restoreMetrics.RestoreFactsAllocatedBytes,
+            };
+            _passElapsedMilliseconds["PersistenceRestoreFacts"] =
+              restoreMetrics.RestoreFactsElapsedMilliseconds;
             if (restoredBase is not null)
             {
-                context.Graph.ImportMutableFacts(restoredBase.Facts.Nodes, restoredBase.Facts.Edges);
+                var graphImportAllocatedBefore = GC.GetTotalAllocatedBytes(precise: false);
+                MeasureStage(
+                  "PersistenceGraphImport",
+                  () => context.Graph.ImportMutableFacts(restoredBase.Facts.Nodes, restoredBase.Facts.Edges));
+                persistenceMetrics = persistenceMetrics with
+                {
+                    RestoreGraphImportElapsedMilliseconds = _passElapsedMilliseconds["PersistenceGraphImport"],
+                    RestoreGraphImportAllocatedBytes =
+                      GC.GetTotalAllocatedBytes(precise: false) - graphImportAllocatedBefore,
+                };
+                restoredBase = null;
                 persistenceHit = true;
             }
         }
@@ -196,11 +292,19 @@ public sealed partial class NLCPGBuilder
 
         try
         {
-            RunSyntaxPass(context, usePartitionedSyntaxPass, operationBuildStrategy.OperationRoots);
+            MeasureStage(
+              "Syntax",
+              () => RunSyntaxPass(
+                context,
+                usePartitionedSyntaxPass,
+                operationBuildStrategy.OperationRoots,
+                buildPlan));
 
             if (buildPlan.RequiresMethodModel)
             {
-                MethodDecorationPass.Instance.Run(this, context);
+                MeasureStage(
+                  "MethodModel",
+                  () => MethodDecorationPass.Instance.Run(this, context));
 
                 if (_options.Persistence?.StreamingMode == true && !persistenceHit)
                 {
@@ -213,16 +317,25 @@ public sealed partial class NLCPGBuilder
                       .GetResult();
                 }
 
-                RunPartitionedOperationPass(context, operationBuildStrategy.OperationRoots, streamingPublisher);
-                CompleteOperationBackedSyntaxTypes(context);
+                MeasureStage(
+                  "Operation",
+                  () =>
+                  {
+                      RunPartitionedOperationPass(context, operationBuildStrategy.OperationRoots, streamingPublisher);
+                      CompleteOperationBackedSyntaxTypes(context);
+                  });
 
                 if (streamingPublisher is not null)
                 {
                     // 操作分片均已按源顺序写入后，补齐基础节点和跨分片邻接表，再一次性发布会话。
-                    streamingPublisher
-                      .CompleteBaseAsync(context, CancellationToken.None)
-                      .GetAwaiter()
-                      .GetResult();
+                    NLCPGPersistenceMetrics? streamingMetrics = null;
+                    MeasureStage(
+                      "StreamingBasePublish",
+                      () => streamingMetrics = streamingPublisher
+                        .CompleteBaseAsync(context, CancellationToken.None)
+                        .GetAwaiter()
+                        .GetResult());
+                    persistenceMetrics = MergePersistenceMetrics(persistenceMetrics, streamingMetrics!);
                     streamingPublisher = null;
                     streamingPersistenceCompleted = true;
                 }
@@ -237,18 +350,50 @@ public sealed partial class NLCPGBuilder
             RunOptionalPass(buildPlan.RequiresControlDependence, ControlDependencePass.Instance, context);
 
             // Freeze 后图进入查询态，释放仅服务于构建过程的 Roslyn 映射和临时缓存。
-            context.Graph.FreezeQueryIndex();
+            MeasureStage("FreezeQueryIndex", () => context.Graph.FreezeQueryIndex());
             ReleaseTransientBuilderState();
 
             if (_options.Persistence is not null && !streamingPersistenceCompleted && !persistenceHit)
             {
-                new CpgShardBuildCoordinator(_options.Persistence, _concurrencyPool)
-                  .PersistAsync(context, CancellationToken.None)
-                  .GetAwaiter()
-                  .GetResult();
+                NLCPGPersistenceMetrics? writeMetrics = null;
+                MeasureStage(
+                  "PersistenceWrite",
+                  () => writeMetrics = persistenceCoordinator!
+                    .PersistAsync(context, CancellationToken.None)
+                    .GetAwaiter()
+                    .GetResult());
+                persistenceMetrics = MergePersistenceMetrics(persistenceMetrics, writeMetrics!);
                 streamingPublisher = null;
             }
 
+            if (persistenceMetrics is not null)
+            {
+                persistenceMetrics = persistenceMetrics with
+                {
+                    Provenance = CreatePersistenceProvenance(context, buildPlan),
+                };
+            }
+
+            CpgBuildInventoryMetrics? buildInventoryMetrics = null;
+            MeasureStage(
+              "BuildInventoryAudit",
+              () => buildInventoryMetrics = CpgBuildInventory.Create(context).Metrics);
+            buildStopwatch.Stop();
+            LastBuildMetrics = new NLCPGBuildMetrics(
+              _operationNodeCacheHitCount,
+              _operationNodeCacheMissCount,
+              _operationRootCacheHitCount,
+              _operationRootCacheMissCount,
+              context.OperationInventory.Count,
+              context.Graph.Nodes.Count,
+              context.Graph.Edges.Count,
+              buildStopwatch.ElapsedMilliseconds,
+              PassElapsedMilliseconds: new Dictionary<string, long>(
+                _passElapsedMilliseconds,
+                StringComparer.Ordinal),
+              PersistenceMetrics: persistenceMetrics,
+              DataFlowMethodMetrics: _dataFlowMethodMetrics.ToArray(),
+              BuildInventoryMetrics: buildInventoryMetrics);
             return context.Graph;
         }
         finally
@@ -263,6 +408,17 @@ public sealed partial class NLCPGBuilder
     private bool RequiresPreallocatedNodeIds()
     {
         return _options.UsePreallocatedNodeIds || _options.Persistence?.StreamingMode == true;
+    }
+
+    private NLCPGBuilderOptions CreateAnchorDiscoveryOptions()
+    {
+        var buildPlan = ResolveCapabilityBuildPlan();
+        return _options with
+        {
+            Persistence = null,
+            UsePreallocatedNodeIds = false,
+            RequestedCapabilities = new[] { buildPlan.ResolvedCapabilities },
+        };
     }
 
     private void ReleaseTransientBuilderState()
@@ -284,12 +440,16 @@ public sealed partial class NLCPGBuilder
         _cfgPredecessorsByNode.Clear();
         _cfgSuccessorsByNode.Clear();
         _callSiteNodesByInvocation.Clear();
+        _operationNodesByOperation.Clear();
         _resolvedCallTargetsByInvocation.Clear();
         _resolvedCallTargetsByDispatchShape.Clear();
         _propertyAccessorCallSiteNodesByKey.Clear();
         _pendingOperationSyntaxTypeNodes.Clear();
         _partitionedSyntaxFacts.Clear();
         _declaredTypes.Clear();
+        _operationRootPlans = null;
+        _operationRootPlanRoot = null;
+        _operationRootPlanSemanticModel = null;
     }
 
     private CapabilityBuildPlan ResolveCapabilityBuildPlan()
@@ -344,6 +504,9 @@ public sealed partial class NLCPGBuilder
 
         return new CapabilityBuildPlan(
             resolved,
+            EmitSyntaxTokens: (resolved & NLCPGCapability.SyntaxToken) != 0,
+            EmitReferences: (resolved & NLCPGCapability.Reference) != 0,
+            EmitTypeReferences: (resolved & NLCPGCapability.TypeRef) != 0,
             RequiresMethodModel: (resolved & NLCPGCapability.MethodModel) != 0,
             RequiresCallTargets: (resolved & NLCPGCapability.CallTargets) != 0,
             RequiresCfg: (resolved & NLCPGCapability.Cfg) != 0,
@@ -360,15 +523,147 @@ public sealed partial class NLCPGBuilder
             return;
         }
 
-        pass.Run(this, context);
+        MeasureStage(pass.Name, () => pass.Run(this, context));
+    }
+
+    private void MeasureStage(string stageName, Action action)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            action();
+        }
+        finally
+        {
+            stopwatch.Stop();
+            _passElapsedMilliseconds[stageName] = stopwatch.ElapsedMilliseconds;
+        }
+    }
+
+    private static NLCPGPersistenceMetrics MergePersistenceMetrics(
+      NLCPGPersistenceMetrics? restoreMetrics,
+      NLCPGPersistenceMetrics persistMetrics)
+    {
+        return persistMetrics with
+        {
+            RestoreAttempted = restoreMetrics?.RestoreAttempted ?? false,
+            RestoreHit = restoreMetrics?.RestoreHit ?? false,
+            RestoreElapsedMilliseconds = restoreMetrics?.RestoreElapsedMilliseconds ?? 0,
+            CatalogReadMilliseconds = restoreMetrics?.CatalogReadMilliseconds ?? 0,
+            ShardReadMilliseconds = restoreMetrics?.ShardReadMilliseconds ?? 0,
+            RestoredShardCount = restoreMetrics?.RestoredShardCount ?? 0,
+            RestoredShardBytes = restoreMetrics?.RestoredShardBytes ?? 0,
+            RestoreFactsElapsedMilliseconds = restoreMetrics?.RestoreFactsElapsedMilliseconds ?? 0,
+            RestoreFactsAllocatedBytes = restoreMetrics?.RestoreFactsAllocatedBytes ?? 0,
+            RestoreGraphImportElapsedMilliseconds = restoreMetrics?.RestoreGraphImportElapsedMilliseconds ?? 0,
+            RestoreGraphImportAllocatedBytes = restoreMetrics?.RestoreGraphImportAllocatedBytes ?? 0,
+        };
+    }
+
+    private CpgPersistenceProvenance? CreatePersistenceProvenance(
+      NLCPGBuildContext context,
+      CapabilityBuildPlan buildPlan)
+    {
+        if (_options.Persistence is not { } persistence)
+        {
+            return null;
+        }
+
+        var dataFlowOptions = _options.EffectiveDataFlowOptions;
+        var interproceduralOptions = _options.EffectiveInterproceduralDataFlowOptions;
+        var flowSummaryOptions = _options.EffectiveFlowSummaryOptions;
+        var fingerprintInput = string.Join(
+          "\u001F",
+          ((int)buildPlan.ResolvedCapabilities).ToString(CultureInfo.InvariantCulture),
+          _options.EnableReferencedSymbolTypeReuse ? "1" : "0",
+          _options.EnableOperationBackedSyntaxTypes ? "1" : "0",
+          _options.SyntaxPassMode.ToString(),
+          dataFlowOptions.MaxDefinitionsPerMethod.ToString(CultureInfo.InvariantCulture),
+          dataFlowOptions.MaxFlowNodesPerMethod.ToString(CultureInfo.InvariantCulture),
+          dataFlowOptions.MaxCandidateEdgesPerMethod.ToString(CultureInfo.InvariantCulture),
+          dataFlowOptions.OverflowBehavior.ToString(),
+          interproceduralOptions.MaxCallTargetsPerSite.ToString(CultureInfo.InvariantCulture),
+          interproceduralOptions.MaxBoundaryEdgesPerMethod.ToString(CultureInfo.InvariantCulture),
+          flowSummaryOptions.MaxMappingsPerCallSite.ToString(CultureInfo.InvariantCulture),
+          flowSummaryOptions.MaxMappingsPerMethod.ToString(CultureInfo.InvariantCulture),
+          flowSummaryOptions.MaxMappingsPerBuild.ToString(CultureInfo.InvariantCulture));
+        var compilerIdentity = typeof(CSharpCompilation).Assembly.FullName ??
+          typeof(CSharpCompilation).Assembly.GetName().Name ??
+          "unknown";
+
+        return new CpgPersistenceProvenance(
+          HashText(context.Source),
+          persistence.ProfileHash,
+          persistence.SchemaVersion,
+          compilerIdentity,
+          HashText(fingerprintInput));
+    }
+
+    private static string HashText(string value)
+    {
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+    }
+
+    private static IReadOnlyDictionary<string, long>? CopyStageElapsedMilliseconds(
+      IReadOnlyDictionary<string, long>? elapsedMilliseconds)
+    {
+        return elapsedMilliseconds is null
+          ? null
+          : new Dictionary<string, long>(elapsedMilliseconds, StringComparer.Ordinal);
+    }
+
+    private static void AddPendingEdgeIndex<TKey>(
+      Dictionary<TKey, List<NLCPGGraph.PendingEdge>> index,
+      TKey key,
+      NLCPGGraph.PendingEdge edge)
+      where TKey : notnull
+    {
+        if (!index.TryGetValue(key, out var edges))
+        {
+            edges = new List<NLCPGGraph.PendingEdge>();
+            index[key] = edges;
+        }
+
+        edges.Add(edge);
     }
 
     internal void RunInterproceduralDataFlowPass(NLCPGBuildContext context)
     {
         var graph = context.Graph;
-        var dataFlowEdges = graph.PendingEdges
-          .Where(edge => edge.Kind == NLCPGEdgeKind.DataFlow)
-          .ToArray();
+        var callTargetEdgesBySource = new Dictionary<NLCPGNode, List<NLCPGGraph.PendingEdge>>(
+          ReferenceEqualityComparer.Instance);
+        var dataFlowEdgesByTarget = new Dictionary<NLCPGNode, List<NLCPGGraph.PendingEdge>>(
+          ReferenceEqualityComparer.Instance);
+        var argumentDataFlowEdgesByMethod = new Dictionary<string, List<NLCPGGraph.PendingEdge>>(
+          StringComparer.Ordinal);
+        var returnDataFlowEdgesByMethod = new Dictionary<string, List<NLCPGGraph.PendingEdge>>(
+          StringComparer.Ordinal);
+        foreach (var edge in graph.PendingEdges)
+        {
+            if (edge.Kind == NLCPGEdgeKind.CallTargets)
+            {
+                AddPendingEdgeIndex(callTargetEdgesBySource, edge.SourceNode, edge);
+                continue;
+            }
+
+            if (edge.Kind != NLCPGEdgeKind.DataFlow)
+            {
+                continue;
+            }
+
+            AddPendingEdgeIndex(dataFlowEdgesByTarget, edge.TargetNode, edge);
+            if (_methodOwnerSymbolKeysByBoundaryNode.TryGetValue(edge.TargetNode, out var methodSymbolKey))
+            {
+                if (edge.TargetNode.Kind == NLCPGNodeKind.MethodParameter)
+                {
+                    AddPendingEdgeIndex(argumentDataFlowEdgesByMethod, methodSymbolKey, edge);
+                }
+                else if (edge.TargetNode.Kind == NLCPGNodeKind.MethodReturn)
+                {
+                    AddPendingEdgeIndex(returnDataFlowEdgesByMethod, methodSymbolKey, edge);
+                }
+            }
+        }
         var plans = new List<InterproceduralDataFlowPlan>();
         var summaryBudget = new FlowSummaryBudget(_options.EffectiveFlowSummaryOptions);
         var recordedReturnMethods = new HashSet<string>(StringComparer.Ordinal);
@@ -377,6 +672,11 @@ public sealed partial class NLCPGBuilder
         var methodBoundaryNodes = graph.Nodes
           .Where(node => node.Kind is NLCPGNodeKind.MethodParameter or NLCPGNodeKind.MethodReturn)
           .ToArray();
+        var internalMethodSymbolKeys = methodBoundaryNodes
+          .Select(node => _methodOwnerSymbolKeysByBoundaryNode.TryGetValue(node, out var key) ? key : null)
+          .Where(key => key is not null)
+          .Select(key => key!)
+          .ToHashSet(StringComparer.Ordinal);
 
         foreach (var callSite in graph.Nodes
           .Where(node => node.Kind == NLCPGNodeKind.CallSite)
@@ -384,15 +684,14 @@ public sealed partial class NLCPGBuilder
           .ThenBy(node => node.SpanStart)
           .ThenBy(NodeSortKey, StringComparer.Ordinal))
         {
-            var targets = graph.PendingEdges
-              .Where(edge =>
-                edge.Kind == NLCPGEdgeKind.CallTargets &&
-                ReferenceEquals(edge.SourceNode, callSite))
+            var targets = callTargetEdgesBySource.TryGetValue(callSite, out var callTargetEdges)
+              ? callTargetEdges
               .Select(edge => edge.TargetNode)
               .Distinct()
               .OrderBy(target => target.FullName, StringComparer.Ordinal)
               .ThenBy(NodeSortKey, StringComparer.Ordinal)
-              .ToArray();
+              .ToArray()
+              : Array.Empty<NLCPGNode>();
             if (targets.Length == 0)
             {
                 AddExternalSummaryMappings(callSite, graph, summaryBudget);
@@ -414,8 +713,7 @@ public sealed partial class NLCPGBuilder
                 continue;
             }
 
-            var hasInternalBoundary = methodBoundaryNodes.Any(node =>
-              IsMethodBoundaryNode(node, targetMethodSymbolKey));
+            var hasInternalBoundary = internalMethodSymbolKeys.Contains(targetMethodSymbolKey);
             if (!hasInternalBoundary)
             {
                 AddExternalSummaryMappings(callSite, graph, summaryBudget);
@@ -423,10 +721,17 @@ public sealed partial class NLCPGBuilder
                 continue;
             }
 
-            var callSitePlans = dataFlowEdges
-              .Where(edge =>
-                edge.TargetNode.Kind == NLCPGNodeKind.MethodParameter &&
-                IsMethodBoundaryNode(edge.TargetNode, targetMethodSymbolKey))
+            IReadOnlyList<NLCPGGraph.PendingEdge> argumentEdges = argumentDataFlowEdgesByMethod.TryGetValue(
+              targetMethodSymbolKey,
+              out var indexedArgumentEdges)
+              ? indexedArgumentEdges
+              : Array.Empty<NLCPGGraph.PendingEdge>();
+            IReadOnlyList<NLCPGGraph.PendingEdge> returnToCallEdges = dataFlowEdgesByTarget.TryGetValue(
+              callSite,
+              out var indexedReturnToCallEdges)
+              ? indexedReturnToCallEdges
+              : Array.Empty<NLCPGGraph.PendingEdge>();
+            var callSitePlans = argumentEdges
               .Select(edge => new InterproceduralDataFlowPlan(
                 callSite,
                 targetMethodNode,
@@ -434,7 +739,7 @@ public sealed partial class NLCPGBuilder
                 edge.TargetNode,
                 NLCPGInterproceduralBridgeKind.ArgumentToParameter,
                 ParseArgumentOrdinal(edge.TargetNode)))
-              .Concat(dataFlowEdges
+              .Concat(returnToCallEdges
                 .Where(edge =>
                   edge.SourceNode.Kind == NLCPGNodeKind.MethodReturn &&
                   ReferenceEquals(edge.TargetNode, callSite) &&
@@ -448,16 +753,18 @@ public sealed partial class NLCPGBuilder
               .ToList();
             if (recordedReturnMethods.Add(targetMethodNode.FullName ?? string.Empty))
             {
-                callSitePlans.AddRange(dataFlowEdges
-                  .Where(edge =>
-                    edge.TargetNode.Kind == NLCPGNodeKind.MethodReturn &&
-                    IsMethodBoundaryNode(edge.TargetNode, targetMethodSymbolKey))
+                if (returnDataFlowEdgesByMethod.TryGetValue(
+                  targetMethodSymbolKey,
+                  out var indexedReturnDataFlowEdges))
+                {
+                    callSitePlans.AddRange(indexedReturnDataFlowEdges
                   .Select(edge => new InterproceduralDataFlowPlan(
                     callSite,
                     targetMethodNode,
                     edge.SourceNode,
                     edge.TargetNode,
                     NLCPGInterproceduralBridgeKind.ReturnToMethodReturn)));
+                }
             }
 
             if (callSitePlans.Count == 0)
@@ -794,8 +1101,15 @@ public sealed partial class NLCPGBuilder
 
     private NLCPGNode GetOrCreateOperationNode(IOperation operation, NLCPGGraph graph)
     {
+        if (_operationNodesByOperation.TryGetValue(operation, out var cachedNode))
+        {
+            _operationNodeCacheHitCount += 1;
+            return cachedNode;
+        }
+
+        _operationNodeCacheMissCount += 1;
         var kind = MapOperationKind(operation);
-        return graph.AddNode(new NLCPGNode(
+        var operationNode = graph.AddNode(new NLCPGNode(
           Kind: kind,
           DisplayKind: operation.Kind.ToString(),
           Name: ResolveOperationName(operation),
@@ -806,6 +1120,26 @@ public sealed partial class NLCPGBuilder
           SpanStart: operation.Syntax.SpanStart,
           SpanEnd: operation.Syntax.Span.End,
           IsImplicit: operation.IsImplicit));
+        _operationNodesByOperation[operation] = operationNode;
+        return operationNode;
+    }
+
+    internal IOperation? GetOperationRoot(NLCPGBuildContext context, SyntaxNode bodySyntax)
+    {
+        if (context.TryGetOperationRoot(bodySyntax, out var cachedOperation))
+        {
+            _operationRootCacheHitCount += 1;
+            return cachedOperation;
+        }
+
+        _operationRootCacheMissCount += 1;
+        var operation = context.SemanticModel.GetOperation(bodySyntax);
+        if (operation is not null)
+        {
+            context.RegisterOperationRoot(operation);
+        }
+
+        return operation;
     }
 
     private static DataFlowOperationIndex CreateDataFlowOperationIndex(IReadOnlyList<OperationInventoryEntry> operationInventory, IReadOnlyCollection<IOperation> methodRoots)

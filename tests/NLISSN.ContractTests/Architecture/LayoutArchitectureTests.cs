@@ -9,6 +9,10 @@ public sealed class  LayoutArchitectureTests
   {
     Assert.True(File.Exists(ProjectPath(
       "src", "NLISSN.Infrastructure", "Concurrency", "NL.Concurrency.csproj")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Infrastructure", "Testing", "NLISSN.TestComponents.csproj")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Infrastructure", "Workspace", "NLISSN.Workspace.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Core", "NLISSN.Core.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Rules", "NLISSN.Rules.csproj")));
     Assert.True(File.Exists(ProjectPath("src", "NLISSN.Application", "NLISSN.Application.csproj")));
@@ -35,6 +39,17 @@ public sealed class  LayoutArchitectureTests
     AssertProjectReferences(
       Array.Empty<string>(),
       "src", "NLISSN.Infrastructure", "Concurrency", "NL.Concurrency.csproj");
+    AssertProjectReferences(
+      Array.Empty<string>(),
+      "src", "NLISSN.Infrastructure", "Workspace", "NLISSN.Workspace.csproj");
+    AssertProjectReferences(
+      new[]
+      {
+        "..\\Logging\\NLISSN.Logging.csproj",
+        "..\\..\\NLISSN.Core\\NLISSN.Core.csproj",
+        "..\\Workspace\\NLISSN.Workspace.csproj"
+      },
+      "src", "NLISSN.Infrastructure", "Configuration", "NLISSN.Configuration.csproj");
     AssertProjectReferences(
       new[]
       {
@@ -63,9 +78,11 @@ public sealed class  LayoutArchitectureTests
       new[]
       {
         "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
-        "..\\NLISSN.Application\\NLISSN.Application.csproj",
-        "..\\NLISSN.Infrastructure\\Logging\\NLISSN.Logging.csproj",
-        "..\\NLISSN.Rules\\NLISSN.Rules.csproj",
+         "..\\NLISSN.Application\\NLISSN.Application.csproj",
+         "..\\NLISSN.Infrastructure\\Logging\\NLISSN.Logging.csproj",
+         "..\\NLISSN.Infrastructure\\Configuration\\NLISSN.Configuration.csproj",
+         "..\\NLISSN.Infrastructure\\Workspace\\NLISSN.Workspace.csproj",
+         "..\\NLISSN.Rules\\NLISSN.Rules.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj"
       },
@@ -91,10 +108,21 @@ public sealed class  LayoutArchitectureTests
       (new[] { "src", "NLISSN.Rule", "RuleStructureContract.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Rule", "RuleStructureContractGraphCompiler.cs" }, "NLISSN.Core.Pipeline"),
       (new[] { "src", "NLISSN.Application", "Analysis", "RulePipeline.cs" }, "NLISSN.Application"),
-      (new[] { "src", "NLISSN", "Cli", "Parsing", "ApplicationOptions.cs" }, "NLISSN.Cli.Parsing"),
-      (new[] { "src", "NLISSN", "Cli", "Hosting", "CliRunner.cs" }, "NLISSN.Cli.Hosting"),
-      (new[] { "src", "NLISSN", "Cli", "Hosting", "CommandHost.cs" }, "NLISSN.Cli.Hosting"),
-      (new[] { "src", "NLISSN", "Cli", "Hosting", "DirectoryAnalysisService.cs" }, "NLISSN.Cli.Hosting"),
+      (new[] { "src", "NLISSN.Infrastructure", "Configuration", "AnalysisConfiguration.cs" }, "NLISSN.Infrastructure.Configuration"),
+      (new[] { "src", "NLISSN.Infrastructure", "Configuration", "RulePolicySettings.cs" }, "NLISSN.Infrastructure.Configuration"),
+      (new[] { "src", "NLISSN.Infrastructure", "Configuration", "ExecutionSettings.cs" }, "NLISSN.Infrastructure.Configuration"),
+      (new[] { "src", "NLISSN.Infrastructure", "Configuration", "ArtifactSettings.cs" }, "NLISSN.Infrastructure.Configuration"),
+      (new[] { "src", "NLISSN.Infrastructure", "Configuration", "LoggingSettings.cs" }, "NLISSN.Infrastructure.Configuration"),
+      (new[] { "src", "NLISSN.Infrastructure", "Configuration", "ConfigurationProvenance.cs" }, "NLISSN.Infrastructure.Configuration"),
+      (new[] { "src", "NLISSN.Infrastructure", "Configuration", "ResolvedConfigurationArtifact.cs" }, "NLISSN.Infrastructure.Configuration"),
+      (new[] { "src", "NLISSN.Infrastructure", "Configuration", "YamlConfigurationLoader.cs" }, "NLISSN.Infrastructure.Configuration"),
+      (new[] { "src", "NLISSN.Infrastructure", "Testing", "TestComponent.cs" }, "NLISSN.Infrastructure.Testing"),
+      (new[] { "src", "NLISSN.Infrastructure", "Testing", "TestComponentComposer.cs" }, "NLISSN.Infrastructure.Testing"),
+      (new[] { "src", "NLISSN.Infrastructure", "Testing", "TestComponentCombinationGenerator.cs" }, "NLISSN.Infrastructure.Testing"),
+      (new[] { "src", "NLISSN.Infrastructure", "Testing", "TestDiffContract.cs" }, "NLISSN.Infrastructure.Testing"),
+      (new[] { "src", "NLISSN", "Hosting", "ConfigurationRunHost.cs" }, "NLISSN.Hosting"),
+      (new[] { "src", "NLISSN", "Hosting", "CommandHost.cs" }, "NLISSN.Hosting"),
+      (new[] { "src", "NLISSN", "Hosting", "DirectoryAnalysisService.cs" }, "NLISSN.Hosting"),
       (new[] { "src", "NLISSN", "Artifacts", "DiffPathResolver.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanArtifactService.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanReplayService.cs" }, "NLISSN.Artifacts"),
@@ -121,6 +149,9 @@ public sealed class  LayoutArchitectureTests
     Assert.False(File.Exists(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleGraph.cs")));
     Assert.False(File.Exists(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleGraphCompiler.cs")));
     Assert.False(File.Exists(ProjectPath("src", "NLISSN.Core", "Pipeline", "RuleGraphExecutor.cs")));
+    Assert.False(Directory.Exists(ProjectPath("src", "NLISSN", "Configuration")));
+    Assert.False(Directory.Exists(ProjectPath("src", "NLISSN", "Cli")));
+    Assert.False(File.Exists(ProjectPath("src", "NLISSN.Infrastructure", "Configuration", "AnalysisOptions.cs")));
 
     var coreProjectText = File.ReadAllText(ProjectPath("src", "NLISSN.Core", "NLISSN.Core.csproj"));
     Assert.Contains("<Compile Include=\"..\\NLISSN.Application\\ExecutionRuntime.cs\"", coreProjectText, StringComparison.Ordinal);
@@ -135,8 +166,54 @@ public sealed class  LayoutArchitectureTests
         .OrderBy(fileName => fileName, StringComparer.Ordinal));
 
     var programText = File.ReadAllText(ProjectPath("src", "NLISSN", "Program.cs"));
-    Assert.Contains("CliRunner.RunAsync(args)", programText, StringComparison.Ordinal);
+    Assert.Contains("args.Length != 0", programText, StringComparison.Ordinal);
+    Assert.Contains("new ConfigurationRunHost().RunAsync()", programText, StringComparison.Ordinal);
     Assert.DoesNotContain("class ", programText, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void ProductionConfigurationBoundary_ContainsNoLegacyOptionModelOrOptionProperty()
+  {
+    var sourceFiles = Directory.EnumerateFiles(
+      ProjectPath("src"),
+      "*.cs",
+      SearchOption.AllDirectories);
+
+    foreach (var sourceFile in sourceFiles)
+    {
+      var source = File.ReadAllText(sourceFile);
+
+      Assert.DoesNotContain("AnalysisOptions", source, StringComparison.Ordinal);
+      Assert.DoesNotContain(
+        "IReadOnlyDictionary<string, string> Options",
+        source,
+        StringComparison.Ordinal);
+    }
+  }
+
+  [Fact]
+  public void RuleSources_AreSplitIntoStageOwnedDirectories()
+  {
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Rules", "Mark", "MethodGlobal", "UnreachableMethodMarkRule.cs")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Rules", "Mark", "MethodGlobal", "UnreferencedMethodMarkRule.cs")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Rules", "Mark", "AtomicExpressions", "AtomicIdentifierNameMarkRule.cs")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Rules", "Mark", "Declarations", "DeclarationMarkRule.cs")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Rules", "Propagate", "ExpressionFlow", "AssignmentLeftValuePropagationRule.cs")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Rules", "Lift", "ControlStructures", "ControlStructureLiftingRule.cs")));
+    Assert.True(File.Exists(ProjectPath(
+      "src", "NLISSN.Rules", "Propose", "MethodGlobal", "UnreachableMethodProposalRule.cs")));
+
+    Assert.False(File.Exists(ProjectPath("src", "NLISSN.Rules", "Mark", "AtomicMarkRules.cs")));
+    Assert.False(File.Exists(ProjectPath("src", "NLISSN.Rules", "Mark", "DeclarationMarkRules.cs")));
+    Assert.False(File.Exists(ProjectPath("src", "NLISSN.Rules", "Propagate", "ExpressionFlowPropagationRules.cs")));
+    Assert.False(File.Exists(ProjectPath("src", "NLISSN.Rules", "Lift", "ControlStructureLiftingRules.cs")));
+    Assert.False(File.Exists(ProjectPath("src", "NLISSN.Rules", "Propose", "DeclarationProposalRules.cs")));
   }
 
   private static void AssertProjectReferences(IReadOnlyList<string> expected, params string[] projectParts)

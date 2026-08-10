@@ -506,7 +506,9 @@ public sealed class LogicalConditionMarkAnalyzerTests
         {
             ["target-name"] = targetName
         };
-        return (new AnalysisSession(analysisContext, options), root);
+        return (new AnalysisSession(
+          analysisContext,
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(options)), root);
     }
 
     private static List<MarkRecord> RunAtomicMarks(AnalysisSession context, SyntaxNode root)

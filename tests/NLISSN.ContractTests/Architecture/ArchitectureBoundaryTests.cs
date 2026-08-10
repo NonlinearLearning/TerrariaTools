@@ -49,7 +49,7 @@ public sealed class ArchitectureBoundaryTests
       new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
     var session = new AnalysisSession(
       new CpgAnalysisContext(new NLCPGGraph(), compilation.GetSemanticModel(tree), tree.GetRoot()),
-      new Dictionary<string, string>());
+      AnalysisLegacyOptionsTestExtensions.CreateSettings(new Dictionary<string, string>()));
 
     AssertExclusive(session.CreateMarkContext(), typeof(IPropagationRuleContext), typeof(ILiftRuleContext), typeof(IProposeRuleContext));
     AssertExclusive(session.CreatePropagationContext(Array.Empty<NLISSN.Core.Marking.MarkRecord>()), typeof(IMarkRuleContext), typeof(ILiftRuleContext), typeof(IProposeRuleContext));
@@ -64,6 +64,37 @@ public sealed class ArchitectureBoundaryTests
   {
     var projectText = File.ReadAllText(ProjectPath("src", "NLISSN.Application", "NLISSN.Application.csproj"));
     Assert.DoesNotContain("NLISSN.Rules", projectText, StringComparison.Ordinal);
+  }
+
+  [Fact]
+  public void WorkspaceProject_StaysBelowApplicationAndOwnsMsBuildWorkspace()
+  {
+    var workspaceDirectory = ProjectPath("src", "NLISSN.Infrastructure", "Workspace");
+    var projectPath = Path.Combine(workspaceDirectory, "NLISSN.Workspace.csproj");
+    Assert.True(File.Exists(projectPath));
+
+    var projectText = File.ReadAllText(projectPath);
+    Assert.Contains("Microsoft.CodeAnalysis.Workspaces.MSBuild", projectText, StringComparison.Ordinal);
+    Assert.DoesNotContain("NLISSN.Application", projectText, StringComparison.Ordinal);
+    Assert.DoesNotContain("NLISSN.Core", projectText, StringComparison.Ordinal);
+    Assert.DoesNotContain("NLISSN.Rules", projectText, StringComparison.Ordinal);
+
+    var workspaceSources = Directory.EnumerateFiles(workspaceDirectory, "*.cs", SearchOption.AllDirectories);
+    Assert.NotEmpty(workspaceSources);
+    Assert.Contains(workspaceSources, sourcePath =>
+      File.ReadAllText(sourcePath).Contains("MSBuildWorkspace", StringComparison.Ordinal));
+    foreach (var sourceDirectory in new[] { "NLISSN.Application", "NLISSN.Core", "NLISSN.Rules", "NLCPG" })
+    {
+      var directory = ProjectPath("src", sourceDirectory);
+      if (!Directory.Exists(directory))
+      {
+        continue;
+      }
+
+      Assert.DoesNotContain(
+        Directory.EnumerateFiles(directory, "*.cs", SearchOption.AllDirectories),
+        sourcePath => File.ReadAllText(sourcePath).Contains("MSBuildWorkspace", StringComparison.Ordinal));
+    }
   }
 
   [Fact]

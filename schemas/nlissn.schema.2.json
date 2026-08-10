@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nlissn.dev/schemas/nlissn.schema.2.json",
+  "title": "NLISSN Schema 2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "input", "analysis", "execution", "artifacts"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "runId": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
+    "input": { "$ref": "#/$defs/input" },
+    "analysis": { "$ref": "#/$defs/analysis" },
+    "execution": { "$ref": "#/$defs/execution" },
+    "artifacts": { "$ref": "#/$defs/artifacts" },
+    "logging": { "$ref": "#/$defs/logging" }
+  },
+  "$defs": {
+    "input": { "type": "object", "additionalProperties": false, "required": ["path"], "properties": {
+      "path": { "type": "string", "minLength": 1, "description": "A .cs document, source directory, .sln, or .csproj input." },
+      "project": { "type": "string", "minLength": 1, "description": "A solution project selector, or the owning .csproj for a .cs document input." },
+      "targetFramework": { "type": "string", "minLength": 1 },
+      "configuration": { "type": "string", "minLength": 1, "default": "Debug" },
+      "platform": { "type": "string", "minLength": 1, "default": "AnyCPU" },
+      "restore": { "enum": ["disabled", "enabled"], "default": "disabled" },
+      "generatedSources": { "enum": ["include", "exclude"], "default": "include" },
+      "generators": { "enum": ["disabled", "enabled"], "default": "disabled" }
+    } },
+    "analysis": { "type": "object", "additionalProperties": false, "properties": {
+      "targetName": { "type": "string" }, "deleteClass": { "type": "string" }, "disabledRuleTypes": { "type": "array", "items": { "type": "string" }, "default": [] },
+      "validateBindings": { "type": "boolean", "default": false }, "deleteUnreachableMethods": { "type": "boolean", "default": false }, "deleteUnreferencedMethods": { "type": "boolean", "default": false }, "clearUnusedInterfaceImplementations": { "type": "boolean", "default": false }, "privatizeInternalOnlyPublicMethods": { "type": "boolean", "default": false }
+    } },
+    "execution": { "type": "object", "additionalProperties": false, "required": ["maxDegreeOfParallelism"], "properties": {
+      "writeBack": { "type": "boolean", "default": false }, "skipRewrite": { "type": "boolean", "default": false }, "maxDegreeOfParallelism": { "type": "integer", "minimum": 1 }, "cpgMaxDegreeOfParallelism": { "type": "integer", "minimum": 1 }, "directoryParallelism": { "type": "boolean", "default": true }, "groupParallelism": { "type": "boolean", "default": false }, "helperParallelism": { "type": "boolean", "default": true }, "fastDeleteClassDirectory": { "type": "boolean", "default": false }, "filterDeleteClassFilesByTargetName": { "type": "boolean", "default": false }
+    } },
+    "toggle": { "type": "object", "additionalProperties": false, "properties": { "enabled": { "type": "boolean", "default": false } } },
+    "artifacts": { "type": "object", "additionalProperties": false, "properties": {
+      "root": { "type": "string", "minLength": 1 }, "diff": { "type": "object", "additionalProperties": false, "properties": { "enabled": { "type": "boolean", "default": false }, "view": { "enum": ["legacy", "readable"], "default": "legacy" } } }, "runtimeLog": { "$ref": "#/$defs/toggle" }, "evidence": { "$ref": "#/$defs/toggle" }, "analysisLog": { "$ref": "#/$defs/toggle" }, "rewritePlan": { "type": "object", "additionalProperties": false, "properties": { "mode": { "enum": ["none", "capture", "replay"], "default": "none" }, "sourceRunId": { "type": "string" } } }
+    } },
+    "logging": { "type": "object", "additionalProperties": false, "properties": { "profile": { "enum": ["minimal", "normal", "diagnostic", "benchmark"], "default": "normal" }, "level": { "enum": ["error", "warn", "info", "debug", "trace"], "default": "debug" }, "categories": { "type": "array", "items": { "type": "string" }, "default": [] }, "events": { "type": "array", "items": { "type": "string" }, "default": [] }, "view": { "enum": ["compact", "normal", "diagnostic", "benchmark"], "default": "normal" } } }
+  }
+}

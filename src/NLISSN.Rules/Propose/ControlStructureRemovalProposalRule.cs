@@ -54,8 +54,8 @@ internal static class StructuralControlProposalContracts
 {
     public static RuleConsumesContract CreateConsumes()
     {
-      return new RuleConsumesContract(new[]
-      {
+        return new RuleConsumesContract(new[]
+        {
         new RuleConsumedSyntax(
           new[]
           {

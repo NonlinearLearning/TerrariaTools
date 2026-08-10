@@ -28,9 +28,11 @@ internal sealed class RuleGraphAnalysisExecutor
       RulePipeline pipeline,
       CompiledRuleGraph graph)
     {
+        var propagationRegion = new PropagationRegion(session, pipeline.Propagators);
         var executionNodes = pipeline.Markers
           .Select(rule => CreateMarkerNode(session, rule, root, graph))
-          .Concat(pipeline.Propagators.Select(rule => CreatePropagatorNode(session, rule, graph)))
+          .Concat(pipeline.Propagators.Select(rule =>
+            CreatePropagatorNode(rule, graph, propagationRegion)))
           .Concat(pipeline.Lifters.Select(rule => CreateLifterNode(session, rule, graph)))
           .Concat(pipeline.Proposers.Select(rule => CreateProposerNode(session, rule, graph)))
           .Concat(CreateDisabledNodes(graph, pipeline))
@@ -102,8 +104,7 @@ internal sealed class RuleGraphAnalysisExecutor
 
     private static bool IsValidationEnabled(AnalysisSession session)
     {
-        return session.TryGetOption("validate-bindings", out var value) &&
-          (string.IsNullOrEmpty(value) || bool.TryParse(value, out var enabled) && enabled);
+        return session.Settings.ValidateBindings;
     }
 
     private static RuleGraphExecutionNode CreateMarkerNode(
@@ -121,16 +122,29 @@ internal sealed class RuleGraphAnalysisExecutor
     }
 
     private static RuleGraphExecutionNode CreatePropagatorNode(
-      AnalysisSession session,
       RuleDefinitionPropagate rule,
-      CompiledRuleGraph graph)
+      CompiledRuleGraph graph,
+      PropagationRegion propagationRegion)
     {
         var node = FindNode(graph, rule, RuleKind.Propagate);
         return new RuleGraphExecutionNode(
           node,
-          (inputs, _) => Task.FromResult(CreateResult(
-            rule.Produces,
-             PropagationEngine.ExecuteRule(session, rule, GetMarks(node, inputs)))));
+          (inputs, _) =>
+          {
+              var seedMarks = GetValues(node, inputs)
+                .OfType<MarkRecord>()
+                .DistinctBy(mark => (
+                  mark.RuleId,
+                  mark.SyntaxNode.SpanStart,
+                  mark.SyntaxNode.Span.Length,
+                  mark.SyntaxNode.RawKind,
+                  mark.SemanticTag))
+                .ToList();
+              var outputs = propagationRegion.Run(seedMarks)
+                .Where(mark => string.Equals(mark.RuleId, rule.RuleId, StringComparison.Ordinal))
+                .ToList();
+              return Task.FromResult(CreateResult(rule.Produces, outputs));
+          });
     }
 
     private static RuleGraphExecutionNode CreateLifterNode(
@@ -233,5 +247,30 @@ internal sealed class RuleGraphAnalysisExecutor
             ? inputs.GetOutputs(dependency.Producer, input)
             : inputs.GetValues(dependency.Producer))
           .ToList();
+    }
+
+    private sealed class PropagationRegion
+    {
+        private readonly object _gate = new();
+        private readonly AnalysisSession _session;
+        private readonly IReadOnlyList<RuleDefinitionPropagate> _rules;
+        private IReadOnlyList<PropagatedMarkRecord>? _results;
+
+        public PropagationRegion(
+          AnalysisSession session,
+          IReadOnlyList<RuleDefinitionPropagate> rules)
+        {
+            _session = session;
+            _rules = rules;
+        }
+
+        public IReadOnlyList<PropagatedMarkRecord> Run(IReadOnlyList<MarkRecord> seedMarks)
+        {
+            lock (_gate)
+            {
+                _results ??= new PropagationEngine().Run(_session, seedMarks, _rules);
+                return _results;
+            }
+        }
     }
 }

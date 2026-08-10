@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Rules;
@@ -10,17 +11,18 @@ namespace NLISSN.Rules;
 public static class SwitchStructureLiftingHelpers
 {
     // 基于已有 provisional mark 判断哪些 switch section / statement 已可整体规约。
-    public static IEnumerable<LiftedMarkRecord> BuildSwitchLiftedMarks(string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
+    public static IEnumerable<LiftedMarkRecord> BuildSwitchLiftedMarks(ILiftRuleContext context, string ruleId, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
     {
         var provisionalMarks = seedMarks
           .Concat(propagatedMarks.Select(mark => mark.Mark))
           .Concat(existingLiftedMarks.Select(mark => mark.Mark))
           .ToList();
-        var producedKeys = provisionalMarks
-          .Select(mark => LiftingCommon.BuildNodeKey(mark.SyntaxNode))
+        var producedKeys = existingLiftedMarks
+          .Where(mark => mark.StructureKind == StructuralKind.Switch)
+          .Select(mark => LiftingCommon.BuildNodeKey(mark.Mark.SyntaxNode))
           .ToHashSet();
 
-        foreach (var switchMark in BuildSwitchMarks(ruleId, provisionalMarks))
+        foreach (var switchMark in BuildSwitchMarks(ruleId, provisionalMarks, FindTopologySwitchOwners(context, seedMarks, propagatedMarks, existingLiftedMarks)))
         {
             var key = LiftingCommon.BuildNodeKey(switchMark.SyntaxNode);
             if (!producedKeys.Add(key))
@@ -37,14 +39,15 @@ public static class SwitchStructureLiftingHelpers
         }
     }
 
-    private static IReadOnlyList<MarkRecord> BuildSwitchMarks(string ruleId, IReadOnlyList<MarkRecord> provisionalMarks)
+    private static IReadOnlyList<MarkRecord> BuildSwitchMarks(string ruleId, IReadOnlyList<MarkRecord> provisionalMarks, IReadOnlyList<SyntaxNode> topologyOwners)
     {
         var marks = new List<MarkRecord>();
         var markKeys = provisionalMarks
+          .Where(mark => mark.SyntaxNode is not SwitchSectionSyntax and not SwitchStatementSyntax)
           .Select(mark => LiftingCommon.BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
-        var candidateSections = provisionalMarks
-          .SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<SwitchSectionSyntax>())
+        var candidateSections = topologyOwners
+          .OfType<SwitchSectionSyntax>()
           .DistinctBy(LiftingCommon.BuildNodeKey)
           .ToList();
 
@@ -61,8 +64,8 @@ public static class SwitchStructureLiftingHelpers
               "All executable statements in switch case are marked; mark whole switch section."));
         }
 
-        var candidateSwitches = provisionalMarks
-          .SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<SwitchStatementSyntax>())
+        var candidateSwitches = topologyOwners
+          .OfType<SwitchStatementSyntax>()
           .DistinctBy(LiftingCommon.BuildNodeKey)
           .ToList();
         foreach (var switchStatement in candidateSwitches)
@@ -77,6 +80,23 @@ public static class SwitchStructureLiftingHelpers
         }
 
         return marks;
+    }
+
+    private static IReadOnlyList<SyntaxNode> FindTopologySwitchOwners(
+      ILiftRuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks,
+      IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+      IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
+    {
+        return seedMarks
+          .Concat(propagatedMarks.Select(mark => mark.Mark))
+          .Concat(existingLiftedMarks.Select(mark => mark.SourceMark))
+          .Select(mark => mark.SyntaxNode)
+          .OfType<ExpressionSyntax>()
+          .SelectMany(expression => context.ResolveExpressionTopology(expression).StructuralOwners)
+          .Where(node => node is SwitchSectionSyntax or SwitchStatementSyntax)
+          .DistinctBy(LiftingCommon.BuildNodeKey)
+          .ToList();
     }
 
     private static MarkRecord FindSourceMarkForAncestor(

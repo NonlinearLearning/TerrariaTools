@@ -15,7 +15,17 @@ public sealed class PropagationEngine
       RuleDefinitionPropagate rule,
       IReadOnlyList<MarkRecord> inputMarks)
     {
-        var results = rule.Propagate(session.CreatePropagationContext(inputMarks), inputMarks)
+        var results = EvaluateRule(session, rule, inputMarks);
+        session.Evidence.RecordPropagation(rule.RuleId, inputMarks, results);
+        return results;
+    }
+
+    internal static IReadOnlyList<PropagatedMarkRecord> EvaluateRule(
+      AnalysisSession session,
+      RuleDefinitionPropagate rule,
+      IReadOnlyList<MarkRecord> inputMarks)
+    {
+        return rule.Propagate(session.CreatePropagationContext(inputMarks), inputMarks)
           .Select(candidate =>
           {
               var tagged = candidate with
@@ -28,11 +38,9 @@ public sealed class PropagationEngine
               return BindPropagatedMarkRecord(session, tagged);
           })
           .ToList();
-        session.Evidence.RecordPropagation(rule.RuleId, inputMarks, results);
-        return results;
     }
 
-    // 兼容入口也按规则图执行，并按产生规则和语法位置去重。
+    // 兼容入口在传播区域内执行固定点，且只返回首次接纳的稳定事实。
     internal IReadOnlyList<PropagatedMarkRecord> Run(AnalysisSession session, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<RuleDefinitionPropagate> rules)
     {
         var consumedInputs = rules
@@ -54,7 +62,7 @@ public sealed class PropagationEngine
               };
           })
           .ToList();
-        var contractGraph = new RuleStructureContractGraphCompiler().Compile(sourceNodes
+        _ = new RuleStructureContractGraphCompiler().Compile(sourceNodes
           .Select(node => new RuleStructureContractGraphNode(
             node.NodeId,
             RuleConsumesContract.Empty,
@@ -64,59 +72,9 @@ public sealed class PropagationEngine
             RuleNodeId.For(RuleKind.Propagate, rule.RuleId),
             rule.Consumes,
             rule.Produces)))
-          .ToList());
-        var ruleNodes = rules.Select(rule =>
-        {
-            IReadOnlyList<RuleDependency> dependencies = rule.Consumes.Inputs.Count > 0
-              ? contractGraph.Edges
-                .Where(edge => edge.Consumer == RuleNodeId.For(RuleKind.Propagate, rule.RuleId))
-                .Select(edge => new RuleDependency(edge.Producer, edge.Input))
-                .ToList()
-              : Array.Empty<RuleDependency>();
-            return new RuleGraphNode(
-              RuleNodeId.For(RuleKind.Propagate, rule.RuleId),
-              RuleKind.Propagate,
-              dependencies)
-            {
-              ProducedSyntax = rule.Produces.Outputs
-            };
-        }).ToList();
-        var graph = new RuleGraphCompiler().Compile(sourceNodes.Concat(ruleNodes).ToList());
-        var executionNodes = sourceNodes
-          .Select(node => new RuleGraphExecutionNode(
-            node,
-            (_, _) => Task.FromResult(CreateSourceResult(node, seedMarks))))
-          .Concat(rules.Select(rule =>
-          {
-              var node = graph.Nodes.Single(candidate => candidate.NodeId == RuleNodeId.For(RuleKind.Propagate, rule.RuleId));
-              return new RuleGraphExecutionNode(
-                node,
-                (inputs, _) => Task.FromResult(CreateResult(
-                  rule.Produces,
-                  ExecuteRule(session, rule, GetInputMarks(node, inputs)))));
-          }))
-          .ToList();
-        var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
-          session.Runtime.ExecutionOptions.EnableGroupParallelism,
-          session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        var execution = new RuleGraphExecutor(session.Runtime.ConcurrencyPool).ExecuteAsync(
-            graph,
-            executionNodes,
-            graphDegree,
-            session.Runtime.ExecutionOptions.CancellationToken)
-          .GetAwaiter()
-          .GetResult();
-
-        return execution.Nodes
-          .Where(node => node.NodeId.Value.StartsWith("Propagate:", StringComparison.Ordinal))
-          .SelectMany(node => node.Result.Values)
-          .OfType<PropagatedMarkRecord>()
-          .DistinctBy(mark => (
-            mark.RuleId,
-            mark.Mark.SyntaxNode.SpanStart,
-            mark.Mark.SyntaxNode.Span.Length,
-            mark.Mark.SyntaxNode.RawKind))
-          .ToList();
+          .ToList(),
+          RuleStructureContractGraphMode.PropagationFixedPointRegion);
+        return new PropagationFixedPointExecutor().Run(session, seedMarks, rules);
     }
 
     private static PropagatedMarkRecord BindPropagatedMarkRecord(AnalysisSession session, PropagatedMarkRecord candidate)
@@ -151,42 +109,6 @@ public sealed class PropagationEngine
 
         throw new InvalidOperationException(
           $"Rule '{rule.RuleId}' emitted a Lift-owned structural payload from Propagate.");
-    }
-
-    private static RuleNodeResult CreateSourceResult(RuleGraphNode node, IReadOnlyList<MarkRecord> seedMarks)
-    {
-        var marks = seedMarks.Where(mark =>
-          string.Equals(mark.RuleId, node.NodeId.Value["Mark:".Length..], StringComparison.Ordinal));
-        return RuleNodeResult.FromObservedValues(
-          marks.Cast<object>().ToList(),
-          new RuleProducesContract(node.ProducedSyntax));
-    }
-
-    private static RuleNodeResult CreateResult<T>(
-      RuleProducesContract produces,
-      IReadOnlyList<T> values)
-    {
-        var boxed = values.Cast<object>().ToList();
-        return RuleNodeResult.FromValues(boxed, produces);
-    }
-
-    private static IReadOnlyList<MarkRecord> GetInputMarks(RuleGraphNode node, RuleNodeInputs inputs)
-    {
-        return node.Dependencies
-          .SelectMany(dependency => inputs.GetOutputs(dependency.Producer, dependency.RequiredInput))
-          .Select(value => value switch
-          {
-              MarkRecord mark => mark,
-              PropagatedMarkRecord propagated => propagated.Mark,
-              _ => null
-          })
-          .Where(mark => mark is not null)
-          .Cast<MarkRecord>()
-          .DistinctBy(mark => (
-            mark.SyntaxNode.SpanStart,
-            mark.SyntaxNode.Span.Length,
-            mark.SyntaxNode.RawKind))
-          .ToList();
     }
 
 }

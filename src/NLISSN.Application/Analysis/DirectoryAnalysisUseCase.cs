@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Core.Analysis;
+using NLISSN.Core.Analysis.MethodLinkage;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -11,13 +12,29 @@ using NLISSN.Core.Pipeline;
 namespace NLISSN.Application;
 
 /// 目录分析中的一个源码输入；<see cref="Index" /> 定义稳定的发布顺序。
-public sealed record DirectorySourceFile(int Index, string FilePath, string Source);
+public sealed record DirectorySourceFile(
+  int Index,
+  string FilePath,
+  string Source,
+  bool IsGenerated = false,
+  bool CanWrite = true);
+
+/// A project-owned source file whose syntax tree already belongs to an external compilation.
+public sealed record CompiledDirectorySourceFile(
+  int Index,
+  string FilePath,
+  string Source,
+  SyntaxTree SyntaxTree,
+  bool IsGenerated = false,
+  bool CanWrite = true);
 
 /// 一个目录输入文件及其独立分析结果。
 public sealed record DirectoryFileAnalysisResult(
   int Index,
   string FilePath,
-  PrototypeAnalysisResult Result);
+  PrototypeAnalysisResult Result,
+  bool CanWrite = true,
+  bool IsGenerated = false);
 
 /// 聚合目录级结果和逐文件结果。
 public sealed record DirectoryAnalysisOutcome(
@@ -37,10 +54,13 @@ public sealed class DirectoryAnalysisUseCase
     }
 
     // 对目录输入执行排序、并行分析、可选清理和聚合诊断，返回目录级稳定结果。
-    public DirectoryAnalysisOutcome Analyze(IReadOnlyList<DirectorySourceFile> sourceFiles, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
+    public DirectoryAnalysisOutcome Analyze(
+      IReadOnlyList<DirectorySourceFile> sourceFiles,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime)
     {
         ArgumentNullException.ThrowIfNull(sourceFiles);
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(runtime);
 
         var orderedSources = sourceFiles.OrderBy(file => file.Index).ToArray();
@@ -51,42 +71,87 @@ public sealed class DirectoryAnalysisUseCase
               Array.Empty<DirectoryFileAnalysisResult>());
         }
 
-        var sourcesByPath = orderedSources.ToDictionary(
-          source => source.FilePath,
-          source => source.Source,
-          StringComparer.Ordinal);
-        var analysisSources = ResolveAnalysisSources(orderedSources, options);
         var trees = orderedSources.ToDictionary(
           source => source.FilePath,
           source => CSharpSyntaxTree.ParseText(source.Source, path: source.FilePath),
           StringComparer.Ordinal);
         var compilation = RoslynCompilationFactory.CreateCompilation(trees.Values);
-        var unreferencedMethodAnalysis = IsTrue(options, "delete-unreferenced-methods")
+        return AnalyzeCore(orderedSources, trees, compilation, settings, runtime);
+    }
+
+    // An MSBuild/Workspace caller supplies the real compilation and its project-owned trees.
+    public DirectoryAnalysisOutcome AnalyzeCompiled(
+      CSharpCompilation compilation,
+      IReadOnlyList<CompiledDirectorySourceFile> sourceFiles,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(compilation);
+        ArgumentNullException.ThrowIfNull(sourceFiles);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(runtime);
+
+        var orderedSources = sourceFiles
+          .OrderBy(file => file.Index)
+          .Select(file => new DirectorySourceFile(
+            file.Index,
+            file.FilePath,
+            file.Source,
+            file.IsGenerated,
+            file.CanWrite))
+          .ToArray();
+        if (orderedSources.Length == 0)
+        {
+            return new DirectoryAnalysisOutcome(
+              CreateEmptyResult(),
+              Array.Empty<DirectoryFileAnalysisResult>());
+        }
+
+        var trees = sourceFiles.ToDictionary(
+          source => source.FilePath,
+          source => source.SyntaxTree,
+          StringComparer.Ordinal);
+        return AnalyzeCore(orderedSources, trees, compilation, settings, runtime);
+    }
+
+    private DirectoryAnalysisOutcome AnalyzeCore(
+      IReadOnlyList<DirectorySourceFile> orderedSources,
+      IReadOnlyDictionary<string, SyntaxTree> trees,
+      CSharpCompilation compilation,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime)
+    {
+        var sourcesByPath = orderedSources.ToDictionary(
+          source => source.FilePath,
+          source => source.Source,
+          StringComparer.Ordinal);
+        var analysisSources = ResolveAnalysisSources(orderedSources, settings);
+        var methodLinkageAnalysis = settings.DeleteUnreferencedMethods
           ? runtime.GetOrCreateCompilationCache(
             compilation,
-            static cachedCompilation => UnreferencedMethodAnalysis.Create(cachedCompilation))
+            static cachedCompilation => MethodLinkageAnalysis.Create(cachedCompilation))
           : null;
         var fileResults = AnalyzeFiles(
           analysisSources,
           trees,
           compilation,
-          options,
+          settings,
           runtime);
 
-        if (ShouldUseDeclarationCleanup(options))
+        if (ShouldUseDeclarationCleanup(settings))
         {
             ApplyDeclarationCleanup(orderedSources, fileResults);
         }
 
         var result = BuildResult(
-          orderedSources.Length,
+          orderedSources.Count,
           analysisSources.Length,
           fileResults,
-          unreferencedMethodAnalysis);
+          methodLinkageAnalysis);
         var rewrittenSources = fileResults
           .Where(file => file.Result.Edits.Count > 0 && file.Result.RewrittenSource is not null)
           .ToDictionary(file => file.FilePath, file => file.Result.RewrittenSource!, StringComparer.Ordinal);
-        var diagnostics = PostRewriteDiagnostics.ShouldSkipDeclarationDiagnostics(options)
+        var diagnostics = PostRewriteDiagnostics.ShouldSkipDeclarationDiagnostics(settings)
           ? Array.Empty<AnalysisDiagnostic>()
           : PostRewriteDiagnostics.GetRewriteDiagnostics(sourcesByPath, rewrittenSources);
 
@@ -95,7 +160,56 @@ public sealed class DirectoryAnalysisUseCase
           fileResults);
     }
 
-    private List<DirectoryFileAnalysisResult> AnalyzeFiles(IReadOnlyList<DirectorySourceFile> sources, IReadOnlyDictionary<string, SyntaxTree> trees, CSharpCompilation compilation, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
+    public static PrototypeAnalysisResult CombineResults(
+      IReadOnlyList<PrototypeAnalysisResult> results,
+      string resultLabel)
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resultLabel);
+
+        var rewrittenCount = results.Count(result =>
+          result.Edits.Count > 0 && result.RewrittenSource is not null);
+        var stats = results
+          .Select(result => result.Stats)
+          .Where(value => value is not null)
+          .Cast<AnalysisStats>()
+          .ToArray();
+        int? analyzedFileCount = stats.Any(value => value.AnalyzedFileCount.HasValue)
+          ? stats.Sum(value => value.AnalyzedFileCount ?? 0)
+          : null;
+        var evidence = results
+          .Select(result => result.Evidence)
+          .Where(value => value is not null)
+          .Cast<AnalysisEvidenceGraph>()
+          .ToArray();
+        return new PrototypeAnalysisResult(
+          results.SelectMany(result => result.SeedMarks).ToArray(),
+          results.SelectMany(result => result.PropagatedMarks).ToArray(),
+          results.SelectMany(result => result.LiftedMarks).ToArray(),
+          results.SelectMany(result => result.Decisions).ToArray(),
+          results.SelectMany(result => result.Edits).ToArray(),
+          $"<{resultLabel}:{rewrittenCount}>",
+          new DiffBuilder().Combine(results.Select(result => result.Diff)),
+          null,
+          new AnalysisStats(
+            stats.Sum(value => value.ScannedFileCount),
+            analyzedFileCount,
+            stats.Sum(value => value.CandidateMethodCount),
+            stats.Sum(value => value.DeletedMethodCount)),
+          results.SelectMany(result => result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>()).ToArray(),
+          results
+            .SelectMany(result => result.RewritePlans ?? Array.Empty<PrototypeFileRewritePlan>())
+            .OrderBy(plan => plan.FilePath, StringComparer.Ordinal)
+            .ToArray(),
+          Evidence: evidence.Length == 0 ? null : AnalysisEvidenceGraph.Combine(evidence));
+    }
+
+    private List<DirectoryFileAnalysisResult> AnalyzeFiles(
+      IReadOnlyList<DirectorySourceFile> sources,
+      IReadOnlyDictionary<string, SyntaxTree> trees,
+      CSharpCompilation compilation,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime)
     {
         PrototypeAnalysisResult AnalyzeFile(DirectorySourceFile source)
         {
@@ -103,7 +217,7 @@ public sealed class DirectoryAnalysisUseCase
             var result = _application.Analyze(
               source.Source,
               source.FilePath,
-              options,
+              settings,
               runtime,
               compilation.GetSemanticModel(tree),
               tree.GetRoot());
@@ -115,7 +229,12 @@ public sealed class DirectoryAnalysisUseCase
             sources.Count <= 1)
         {
             return sources
-              .Select(source => new DirectoryFileAnalysisResult(source.Index, source.FilePath, AnalyzeFile(source)))
+              .Select(source => new DirectoryFileAnalysisResult(
+                source.Index,
+                source.FilePath,
+                AnalyzeFile(source),
+                source.CanWrite,
+                source.IsGenerated))
               .ToList();
         }
 
@@ -130,7 +249,12 @@ public sealed class DirectoryAnalysisUseCase
             .ConfigureAwait(false);
               using var scope = runtime.PushCpgBuildAdmissionLease(lease);
               var source = sources[index];
-              return new DirectoryFileAnalysisResult(source.Index, source.FilePath, AnalyzeFile(source));
+              return new DirectoryFileAnalysisResult(
+                source.Index,
+                source.FilePath,
+                AnalyzeFile(source),
+                source.CanWrite,
+                source.IsGenerated);
           },
           runtime.ExecutionOptions.CancellationToken).GetAwaiter().GetResult().ToList();
     }
@@ -150,23 +274,27 @@ public sealed class DirectoryAnalysisUseCase
         {
             var fileResult = fileResults[index];
             var original = sources.Single(source => string.Equals(source.FilePath, fileResult.FilePath, StringComparison.Ordinal)).Source;
-            var cleaned = _cleanupService.ApplyUsingCleanup(fileResult.FilePath, original, fileResult.Result, cleanupState);
-            cleaned = _cleanupService.ApplyEmptyNamespaceCleanup(fileResult.FilePath, original, cleaned, cleanupState);
+            var cleaned = _cleanupService.ApplyEmptyNamespaceCleanup(
+              fileResult.FilePath,
+              original,
+              fileResult.Result,
+              cleanupState);
             fileResults[index] = fileResult with { Result = cleaned };
         }
     }
 
-    private static DirectorySourceFile[] ResolveAnalysisSources(IReadOnlyList<DirectorySourceFile> sources, IReadOnlyDictionary<string, string> options)
+    private static DirectorySourceFile[] ResolveAnalysisSources(
+      IReadOnlyList<DirectorySourceFile> sources,
+      AnalysisRequestSettings settings)
     {
-        if (!ShouldFilterDeclarationFilesByTargetName(options) ||
-            !options.TryGetValue("delete-class", out var targetName) ||
-            string.IsNullOrWhiteSpace(targetName))
+        if (!ShouldFilterDeclarationFilesByTargetName(settings))
         {
             return sources.ToArray();
         }
 
         var filtered = sources
-          .Where(source => source.Source.Contains(targetName, StringComparison.Ordinal))
+          .Where(source => settings.DeleteClassNames.Any(name =>
+            source.Source.Contains(name, StringComparison.Ordinal)))
           .ToArray();
         return filtered.Length == 0 ? sources.ToArray() : filtered;
     }
@@ -175,12 +303,17 @@ public sealed class DirectoryAnalysisUseCase
       int fileCount,
       int analyzedFileCount,
       IReadOnlyList<DirectoryFileAnalysisResult> fileResults,
-      UnreferencedMethodAnalysis? unreferencedMethodAnalysis)
+      MethodLinkageResult? methodLinkageAnalysis)
     {
         var results = fileResults.Select(file => file.Result).ToArray();
         var rewrittenCount = results.Count(result => result.Edits.Count > 0 && result.RewrittenSource is not null);
+        var writablePaths = fileResults
+          .Where(file => file.CanWrite)
+          .Select(file => file.FilePath)
+          .ToHashSet(StringComparer.Ordinal);
         var rewritePlans = results
           .SelectMany(result => result.RewritePlans ?? Array.Empty<PrototypeFileRewritePlan>())
+          .Where(plan => writablePaths.Contains(plan.FilePath))
           .Where(plan => plan.Operations.Count > 0)
           .OrderBy(plan => plan.FilePath, StringComparer.Ordinal)
           .ToArray();
@@ -196,8 +329,8 @@ public sealed class DirectoryAnalysisUseCase
           new AnalysisStats(
             fileCount,
             analyzedFileCount,
-            unreferencedMethodAnalysis?.CandidateMethodCount ?? 0,
-            unreferencedMethodAnalysis?.UnreferencedMethods.Count ?? 0),
+            methodLinkageAnalysis?.CandidateMethodCount ?? 0,
+            methodLinkageAnalysis?.UnreferencedPrivateMethods.Count ?? 0),
           RewritePlans: rewritePlans,
           Evidence: CombineEvidence(results));
     }
@@ -233,20 +366,15 @@ public sealed class DirectoryAnalysisUseCase
         return AnalysisEvidenceGraph.Combine(graphs);
     }
 
-    private static bool IsTrue(IReadOnlyDictionary<string, string> options, string key)
+    private static bool ShouldUseDeclarationCleanup(AnalysisRequestSettings settings)
     {
-        return options.TryGetValue(key, out var value) && string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+        return settings.HasDeleteClass && !settings.FastDeleteClassDirectory;
     }
 
-    private static bool ShouldUseDeclarationCleanup(IReadOnlyDictionary<string, string> options)
+    private static bool ShouldFilterDeclarationFilesByTargetName(AnalysisRequestSettings settings)
     {
-        return options.ContainsKey("delete-class") && !IsTrue(options, "fast-delete-class-directory");
-    }
-
-    private static bool ShouldFilterDeclarationFilesByTargetName(IReadOnlyDictionary<string, string> options)
-    {
-        return options.ContainsKey("delete-class") &&
-          IsTrue(options, "fast-delete-class-directory") &&
-          IsTrue(options, "filter-delete-class-files-by-target-name");
+        return settings.HasDeleteClass &&
+          settings.FastDeleteClassDirectory &&
+          settings.FilterDeleteClassFilesByTargetName;
     }
 }

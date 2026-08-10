@@ -12,17 +12,7 @@ public static class DeclarationMarkRuleHelpers
     // 解析 delete-class 选项里的目标类名列表，并去掉空值与重复项。
     public static IReadOnlyList<string> ParseTargetTypeNames(IMarkRuleContext context)
     {
-        if (!context.TryGetOption("delete-class", out var typeName) ||
-            string.IsNullOrWhiteSpace(typeName))
-        {
-            return Array.Empty<string>();
-        }
-
-        return typeName
-          .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-          .Where(name => !string.IsNullOrWhiteSpace(name))
-          .Distinct(StringComparer.Ordinal)
-          .ToList();
+        return context.DeleteClassNames;
     }
 
     // 只为名称直接命中的类声明生成删除类 seed mark。

@@ -1,10 +1,18 @@
 using NL.Caching;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace NLISSN.Tests.Caching;
 
 public sealed class WeakTypedCacheRegistryTests
 {
+    private readonly ITestOutputHelper _output;
+
+    public WeakTypedCacheRegistryTests(ITestOutputHelper output)
+    {
+        _output = output;
+    }
+
     [Fact]
     public void GetOrCreate_SameReferenceKeyAndValueType_ReusesValue()
     {
@@ -74,6 +82,30 @@ public sealed class WeakTypedCacheRegistryTests
         var value = registry.GetOrCreate(key, _ => new CacheA("retry"));
 
         Assert.Equal("retry", value.Value);
+    }
+
+    [Fact]
+    public void GetOrCreate_WarmHit_ReusesValueWithoutInvokingFactory()
+    {
+        var registry = new WeakTypedCacheRegistry<object>();
+        var key = new object();
+        _ = registry.GetOrCreate(key, static _ => new CacheA("value"));
+
+        var factoryCallCount = 0;
+        var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < 1_000; index++)
+        {
+            _ = registry.GetOrCreate(key, _ =>
+            {
+                Interlocked.Increment(ref factoryCallCount);
+                return new CacheA("unused");
+            });
+        }
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+
+        _output.WriteLine($"Warm-hit allocation diagnostic: {allocated} bytes for 1,000 calls.");
+        Assert.Equal(0, Volatile.Read(ref factoryCallCount));
     }
 
     private sealed record CacheA(string Value);

@@ -13,6 +13,22 @@ namespace RoslynPrototype.Tests;
 public sealed class CpgRelationQueryTests
 {
     [Fact]
+    public void RelationProfiles_DeclareOptionalSyntaxCapabilities()
+    {
+        Assert.Equal(
+            NLCPGCapability.SyntaxSemantic | NLCPGCapability.SyntaxToken,
+            CpgRelationProfiles.GetRequiredCapabilities(CpgRelationProfile.StructuralContainment));
+        Assert.Equal(
+            NLCPGCapability.SyntaxSemantic |
+            NLCPGCapability.Reference |
+            NLCPGCapability.TypeRef,
+            CpgRelationProfiles.GetRequiredCapabilities(CpgRelationProfile.SemanticBinding));
+        Assert.Contains(
+            NLCPGEdgeKind.RefersToType,
+            CpgRelationProfiles.GetAllowedEdgeKinds(CpgRelationProfile.SemanticBinding));
+    }
+
+    [Fact]
     public void Query_StructuralProfile_RejectsDataFlowConnector()
     {
         // Arrange

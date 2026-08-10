@@ -65,7 +65,7 @@ public sealed class DecisionStructureValidationTests
     }
 
     [Fact]
-    public void RuleDecisionEngine_PrefersOuterDeleteOverReducibleLogicalHostInsideSameConflictDomain()
+    public void RuleDecisionEngine_LogicalAndRightTarget_DeletesIfAfterLeftPropagation()
     {
         var source = AtomicLogicalSources.LogicalAndConflictSource;
 
@@ -83,7 +83,7 @@ public sealed class DecisionStructureValidationTests
     }
 
     [Fact]
-    public void Analyze_ClassDerivedLogicalIf_PrefersIfDeleteOverLogicalReplacement()
+    public void Analyze_ClassDerivedLogicalIf_StopsAtUnaryExpressionBoundary()
     {
         const string source = """
           namespace Demo;
@@ -114,16 +114,22 @@ public sealed class DecisionStructureValidationTests
 
         var result = service.Analyze(source, "class-derived-logical-if.cs", options);
 
-        Assert.Contains(result.Decisions, decision =>
-          decision.Action == DecisionActionKind.Delete &&
-          decision.FinalNode.IsKind(SyntaxKind.IfStatement));
         Assert.DoesNotContain(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Replace &&
           decision.FinalNode.IsKind(SyntaxKind.LogicalAndExpression));
+        Assert.DoesNotContain(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Delete &&
+          string.Equals(
+            decision.FinalNode.ToString(),
+            "PlayerInput.UsingGamepad",
+            StringComparison.Ordinal));
+        Assert.DoesNotContain(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Delete &&
+          decision.FinalNode.IsKind(SyntaxKind.IfStatement));
     }
 
     [Fact]
-    public void Analyze_ClassDerivedLogicalInitializerWithOuterDelete_DeletesLocalDeclaration()
+    public void Analyze_ClassDerivedUnaryInitializer_DoesNotEscapeItsTerminalBoundary()
     {
         const string source = """
           namespace Demo;
@@ -155,19 +161,27 @@ public sealed class DecisionStructureValidationTests
 
         var result = service.Analyze(source, "class-derived-logical-initializer.cs", options);
 
-        Assert.Contains(result.Decisions, decision =>
+        Assert.Contains(result.PropagatedMarks, mark =>
+          mark.Mark.SemanticTag == RuleFactPorts.FlowUnaryExpression &&
+          string.Equals(mark.Mark.SyntaxNode.ToString(), "!PlayerInput.UsingGamepad", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.PropagatedMarks, mark =>
+          mark.Mark.SemanticTag == RuleFactPorts.FlowLocalDefinition ||
+          mark.Mark.SemanticTag == RuleFactPorts.FlowSymbolReference);
+        Assert.DoesNotContain(result.LiftedMarks, mark =>
+          mark.Mark.SemanticTag == RuleFactPorts.LiftIfStructure);
+        Assert.DoesNotContain(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Delete &&
-          decision.FinalNode.IsKind(SyntaxKind.LocalDeclarationStatement));
+          (decision.FinalNode.IsKind(SyntaxKind.LocalDeclarationStatement) ||
+           decision.FinalNode.IsKind(SyntaxKind.IfStatement)));
         Assert.DoesNotContain(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Replace &&
           decision.FinalNode.IsKind(SyntaxKind.LogicalAndExpression));
-        TextDiffAssert.DoesNotContain("flag4", result.RewrittenSource, result.Diff);
-        TextDiffAssert.DoesNotContain("PlayerInput.UsingGamepad", result.RewrittenSource, result.Diff);
-        TextDiffAssert.DoesNotContain("if (!flag4)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("bool flag4", result.RewrittenSource, result.Diff);
+        TextDiffAssert.Contains("if (!flag4)", result.RewrittenSource, result.Diff);
     }
 
     [Fact]
-    public void DefaultDecisionPolicy_WhenLogicalHostIsMarked_ResolvesReplaceDecision()
+    public void LogicalExpressionProposalRule_WhenLogicalAndIsFullyCovered_DoesNotProposeReplacement()
     {
         var source = AtomicLogicalSources.LogicalAndConflictSource;
 
@@ -181,23 +195,7 @@ public sealed class DecisionStructureValidationTests
         var proposals = proposalRules
           .SelectMany(rule => rule.Propose(context.CreateProposeContext(), seedMarks, propagatedMarks, liftedMarks))
           .ToList();
-        var policy = new DefaultDecisionPolicy();
-
-        var resolved = policy.Resolve(proposals);
-
-        Assert.Equal(DecisionActionKind.Replace, resolved.Action);
-        Assert.Equal(SyntaxKind.LogicalAndExpression, (SyntaxKind)resolved.FinalNode.RawKind);
-
-        var logicalProposal = proposals.Single(unit =>
-            unit.SyntaxBindings.TryGetValue(unit.Fragments[0].NodeId!.Value, out var node) &&
-            node.IsKind(SyntaxKind.LogicalAndExpression));
-
-        var merged = ResolveMergedUnit(policy, logicalProposal);
-
-        Assert.Contains(merged.Fragments, fragment =>
-            fragment.NodeId.HasValue &&
-            merged.SyntaxBindings.TryGetValue(fragment.NodeId.Value, out var node) &&
-                node.IsKind(SyntaxKind.LogicalAndExpression));
+        Assert.Empty(proposals);
     }
 
     [Fact]
@@ -240,8 +238,10 @@ public sealed class DecisionStructureValidationTests
             options["target-name"] = targetName;
         }
 
-        var context = new AnalysisSession(new CpgAnalysisContext(graph, semanticModel, root), options);
-        var rules = RuleRegistry.CreateDefaultRules();
+        var context = new AnalysisSession(
+          new CpgAnalysisContext(graph, semanticModel, root),
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(options));
+        var rules = RuleRegistry.CreateDefaultRules(enableUnreachableMethodDeletion: true);
         return (context, root, rules);
     }
 

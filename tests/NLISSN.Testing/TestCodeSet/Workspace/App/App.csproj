@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);WORKSPACE_FIXTURE_PROJECT</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DefineConstants>$(DefineConstants);WORKSPACE_DEBUG</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DefineConstants>$(DefineConstants);WORKSPACE_RELEASE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Library\Library.csproj"
+                      SetTargetFramework="TargetFramework=net10.0" />
+    <ProjectReference Include="..\Generator\Workspace.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      SetTargetFramework="TargetFramework=net10.0"
+                      ReferenceOutputAssembly="false" />
+    <AdditionalFiles Include="generator-input.txt" />
+    <EditorConfigFiles Include="workspace-generator.editorconfig" />
+  </ItemGroup>
+</Project>

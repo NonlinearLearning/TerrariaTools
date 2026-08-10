@@ -18,7 +18,12 @@ public static class RuleRegistry
     }
 
     // 基于默认阶段列表创建稳定排序后的规则管道，并按名称排除禁用规则。
-    public static RulePipeline CreateDefaultRules(IEnumerable<string>? disabledRuleTypes = null)
+    public static RulePipeline CreateDefaultRules(
+      IEnumerable<string>? disabledRuleTypes = null,
+      bool enableUnreachableMethodDeletion = false,
+      bool enableUnreferencedMethodDeletion = false,
+      bool enableUnusedInterfaceImplementationCleanup = false,
+      bool enableInternalOnlyPublicMethodPrivatization = false)
     {
         var markers = new RuleDefinitionMark[]
         {
@@ -40,12 +45,28 @@ public static class RuleRegistry
             new AtomicConditionalAccessMarkRule(),
             new DeclarationMarkRule(),
             new TypedExpressionMarkRule(),
-            new TypeSyntaxMarkRule(),
-            new UnreachableMethodMarkRule(),
-            new UnreferencedMethodMarkRule(),
-            new ClearUnusedInterfaceImplementationRule(),
-            new PrivatizeInternalOnlyPublicMethodRule()
+            new TypeSyntaxMarkRule()
         }.ToList();
+        if (enableUnreachableMethodDeletion)
+        {
+            markers.Add(new UnreachableMethodMarkRule());
+        }
+
+        if (enableUnreferencedMethodDeletion)
+        {
+            markers.Add(new UnreferencedMethodMarkRule());
+        }
+
+        if (enableUnusedInterfaceImplementationCleanup)
+        {
+            markers.Add(new ClearUnusedInterfaceImplementationRule());
+        }
+
+        if (enableInternalOnlyPublicMethodPrivatization)
+        {
+            markers.Add(new PrivatizeInternalOnlyPublicMethodRule());
+        }
+
         var propagators = new RuleDefinitionPropagate[]
         {
             new AssignmentLeftValuePropagationRule(),
@@ -61,6 +82,14 @@ public static class RuleRegistry
             new ObjectCreationDeclarationPropagationRule(),
             new DeclarationSymbolReferencePropagationRule()
         }.ToList();
+        if (enableInternalOnlyPublicMethodPrivatization)
+        {
+            propagators.Add(new PrivatizeInternalOnlyPublicMethodPropagationRule());
+        }
+        if (enableUnusedInterfaceImplementationCleanup)
+        {
+            propagators.Add(new ClearUnusedInterfaceImplementationPropagationRule());
+        }
         var lifters = new RuleDefinitionLift[]
         {
             new ExpressionHostLiftingRule(),
@@ -69,6 +98,14 @@ public static class RuleRegistry
             new SwitchStructureLiftingRule(),
             new ControlStructureLiftingRule()
         }.ToList();
+        if (enableInternalOnlyPublicMethodPrivatization)
+        {
+            lifters.Add(new PrivatizeInternalOnlyPublicMethodLiftingRule());
+        }
+        if (enableUnusedInterfaceImplementationCleanup)
+        {
+            lifters.Add(new ClearUnusedInterfaceImplementationLiftingRule());
+        }
         var proposers = new RuleDefinitionPropose[]
         {
             new LogicalExpressionProposalRule(),
@@ -102,12 +139,27 @@ public static class RuleRegistry
             new DelegateProposalRule(),
             new ExtensionReceiverProposalRule(),
             new BaseTypeProposalRule(),
-            new GenericTypeArgumentProposalRule(),
-            new UnreachableMethodProposalRule(),
-            new UnreferencedMethodProposalRule(),
-            new ClearUnusedInterfaceImplementationProposalRule(),
-            new PrivatizeInternalOnlyPublicMethodProposalRule()
+            new GenericTypeArgumentProposalRule()
         }.ToList();
+        if (enableUnreachableMethodDeletion)
+        {
+            proposers.Add(new UnreachableMethodProposalRule());
+        }
+
+        if (enableUnreferencedMethodDeletion)
+        {
+            proposers.Add(new UnreferencedMethodProposalRule());
+        }
+
+        if (enableUnusedInterfaceImplementationCleanup)
+        {
+            proposers.Add(new ClearUnusedInterfaceImplementationProposalRule());
+        }
+
+        if (enableInternalOnlyPublicMethodPrivatization)
+        {
+            proposers.Add(new PrivatizeInternalOnlyPublicMethodProposalRule());
+        }
 
         RuleCatalog.ValidateRules(markers.Cast<IRuleDefinition>()
           .Concat(propagators)

@@ -363,7 +363,16 @@ public sealed class RuleStructureContractTests
       property => property.Name.Contains("Structure", StringComparison.Ordinal));
     Assert.All(graph.Nodes, node => Assert.All(
       node.Dependencies,
-      dependency => Assert.NotNull(dependency.RequiredInput)));
+      dependency =>
+      {
+        if (node.Kind == RuleKind.Propagate && dependency.Producer.Value.StartsWith("Mark:", StringComparison.Ordinal))
+        {
+          Assert.Null(dependency.RequiredInput);
+          return;
+        }
+
+        Assert.NotNull(dependency.RequiredInput);
+      }));
   }
 
   private static RuleStructureContractGraphNode SyntaxProducer(

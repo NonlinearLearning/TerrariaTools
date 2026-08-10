@@ -8,7 +8,7 @@ public sealed class NLCPGGraph
     private readonly Dictionary<StableNodeAnchor, NLCPGNode> _mutableNodesByAnchor = new();
     private readonly Dictionary<NodeId, NLCPGNode> _nodesByNodeId = new();
     private readonly HashSet<NLCPGEdge> _edges = new();
-    private readonly HashSet<PendingEdge> _pendingEdges = new();
+    private readonly PendingEdgeBuffer _pendingEdges = new();
     private readonly Dictionary<string, string> _sourceByPath = new(StringComparer.Ordinal);
     private readonly StableNodeIdentityFactory _identityFactory;
     private readonly DeterministicNodeIdTable? _preallocatedNodeIds;
@@ -36,7 +36,7 @@ public sealed class NLCPGGraph
 
     internal int CurrentEdgeCount => _queryIndex is null ? _pendingEdges.Count : _edges.Count;
 
-    internal IReadOnlyCollection<PendingEdge> PendingEdges => _pendingEdges;
+    internal IReadOnlyCollection<PendingEdge> PendingEdges => _pendingEdges.Materialize(_mutableNodesByAnchor);
 
     internal DeterministicNodeIdTable RequirePreallocatedNodeIds()
     {
@@ -49,7 +49,7 @@ public sealed class NLCPGGraph
         EnsureMutable();
         return new MutableGraphFacts(
           _mutableNodesByAnchor.Values.ToArray(),
-          _pendingEdges.ToArray());
+          _pendingEdges.Materialize(_mutableNodesByAnchor));
     }
 
     public bool HasQueryIndex => _queryIndex is not null;
@@ -150,13 +150,13 @@ public sealed class NLCPGGraph
             return;
         }
 
-        _pendingEdges.Add(new PendingEdge(
+        _pendingEdges.Add(
           materializedSource,
           materializedTarget,
           kind,
           structuredLabel,
           contextId,
-          callSiteContext));
+          callSiteContext);
     }
 
     // 批量提交已由图物化的节点对，避免 overlay 展开时重复执行节点身份合并。
@@ -175,13 +175,13 @@ public sealed class NLCPGGraph
         {
             foreach (var targetNode in targetNodes)
             {
-                _pendingEdges.Add(new PendingEdge(
+                _pendingEdges.Add(
                   sourceNode,
                   targetNode,
                   kind,
                   null,
                   null,
-                  null));
+                  null);
             }
         }
     }
@@ -262,25 +262,21 @@ public sealed class NLCPGGraph
     public IReadOnlyList<NLCPGEdge> GetIncomingEdges(NodeId nodeId, NLCPGEdgeKind kind)
     {
         var index = RequireQueryIndex();
-        return index.IncomingByNodeAndKind.TryGetValue((nodeId, kind), out var edges)
-            ? edges
-            : Array.Empty<NLCPGEdge>();
+        return index.GetIncomingEdges(nodeId, kind);
     }
 
     // 返回由指定节点发出且边种类匹配的边。
     public IReadOnlyList<NLCPGEdge> GetOutgoingEdges(NodeId nodeId, NLCPGEdgeKind kind)
     {
         var index = RequireQueryIndex();
-        return index.OutgoingByNodeAndKind.TryGetValue((nodeId, kind), out var edges)
-            ? edges
-            : Array.Empty<NLCPGEdge>();
+        return index.GetOutgoingEdges(nodeId, kind);
     }
 
     // 返回指定边种类的全部边。
     public IReadOnlyList<NLCPGEdge> GetEdges(NLCPGEdgeKind kind)
     {
         var index = RequireQueryIndex();
-        return index.EdgesByKind.TryGetValue(kind, out var edges) ? edges : Array.Empty<NLCPGEdge>();
+        return index.GetEdges(kind);
     }
 
     // 返回指定节点种类的全部冻结节点。
@@ -318,7 +314,7 @@ public sealed class NLCPGGraph
         }
 
         var index = RequireQueryIndex();
-        if (!index.NodesByFilePath.TryGetValue(filePath, out var nodes))
+        if (!index.TryGetNodesByFilePath(filePath, out var nodes))
         {
             return Array.Empty<NLCPGNode>();
         }
@@ -397,7 +393,7 @@ public sealed class NLCPGGraph
             var nextFrontierNodeIds = new HashSet<NodeId>();
             foreach (var nodeId in frontierNodeIds)
             {
-                ExpandFrom(nodeId, direction, index.OutgoingByNodeId, index.IncomingByNodeId, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
+                ExpandFrom(nodeId, direction, index, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
             }
 
             frontierNodeIds = nextFrontierNodeIds;
@@ -411,7 +407,7 @@ public sealed class NLCPGGraph
           .Select(nodeId => _nodesByNodeId[nodeId])
           .OrderBy(node => node.NodeId)
           .ToArray();
-        var localEdges = index.EdgesByKind.Values.SelectMany(edges => edges)
+        var localEdges = index.OrderedEdges
           .Where(edge =>
             (allowedKinds is null || allowedKinds.Contains(edge.Kind)) &&
             visitedNodeIds.Contains(edge.SourceNodeId) &&
@@ -423,26 +419,21 @@ public sealed class NLCPGGraph
         return new NLCPGLocalView(anchor, hops, localNodes, localEdges);
     }
 
-    private static void ExpandFrom(NodeId nodeId, NLCPGViewDirection direction, IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> outgoingEdges, IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> incomingEdges, HashSet<NLCPGEdgeKind>? allowedKinds, ISet<NodeId> visitedNodeIds, ISet<NodeId> nextFrontierNodeIds)
+    private static void ExpandFrom(NodeId nodeId, NLCPGViewDirection direction, NLCPGGraphIndex index, HashSet<NLCPGEdgeKind>? allowedKinds, ISet<NodeId> visitedNodeIds, ISet<NodeId> nextFrontierNodeIds)
     {
         if (direction is NLCPGViewDirection.Both or NLCPGViewDirection.Outgoing)
         {
-            ExpandNeighbors(nodeId, outgoingEdges, useOutgoingTarget: true, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
+            ExpandNeighbors(nodeId, index.GetOutgoingEdges(nodeId), useOutgoingTarget: true, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
         }
 
         if (direction is NLCPGViewDirection.Both or NLCPGViewDirection.Incoming)
         {
-            ExpandNeighbors(nodeId, incomingEdges, useOutgoingTarget: false, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
+            ExpandNeighbors(nodeId, index.GetIncomingEdges(nodeId), useOutgoingTarget: false, allowedKinds, visitedNodeIds, nextFrontierNodeIds);
         }
     }
 
-    private static void ExpandNeighbors(NodeId nodeId, IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> adjacency, bool useOutgoingTarget, HashSet<NLCPGEdgeKind>? allowedKinds, ISet<NodeId> visitedNodeIds, ISet<NodeId> nextFrontierNodeIds)
+    private static void ExpandNeighbors(NodeId nodeId, IReadOnlyList<NLCPGEdge> edges, bool useOutgoingTarget, HashSet<NLCPGEdgeKind>? allowedKinds, ISet<NodeId> visitedNodeIds, ISet<NodeId> nextFrontierNodeIds)
     {
-        if (!adjacency.TryGetValue(nodeId, out var edges))
-        {
-            return;
-        }
-
         foreach (var edge in edges)
         {
             if (allowedKinds is not null && !allowedKinds.Contains(edge.Kind))
@@ -461,8 +452,7 @@ public sealed class NLCPGGraph
     private IReadOnlyList<NLCPGEdge> GetAdjacency(NodeId nodeId, bool useOutgoingEdges)
     {
         var index = RequireQueryIndex();
-        var adjacency = useOutgoingEdges ? index.OutgoingByNodeId : index.IncomingByNodeId;
-        return adjacency.TryGetValue(nodeId, out var edges) ? edges : Array.Empty<NLCPGEdge>();
+        return useOutgoingEdges ? index.GetOutgoingEdges(nodeId) : index.GetIncomingEdges(nodeId);
     }
 
     private NLCPGGraphIndex RequireQueryIndex()
@@ -593,7 +583,7 @@ public sealed class NLCPGGraph
               };
           })
           .ToDictionary(node => node.StableAnchor!.Value);
-        var remappedEdges = _pendingEdges
+        var remappedEdges = _pendingEdges.Materialize(_mutableNodesByAnchor)
           .Select(edge =>
           {
               var sourceNode = remappedNodes[edge.SourceNode.StableAnchor!.Value];
@@ -663,6 +653,82 @@ public sealed class NLCPGGraph
         {
             throw new InvalidOperationException("The graph is frozen and cannot be mutated.");
         }
+    }
+
+    // 以稳定锚点和边元数据去重，延迟创建 PendingEdge 对象到需要读取或冻结时。
+    private sealed class PendingEdgeBuffer
+    {
+        private readonly Dictionary<PendingEdgeKey, int> _ordinals = new();
+        private readonly List<BufferedPendingEdge> _items = new();
+
+        internal int Count => _items.Count;
+
+        internal void Add(
+          NLCPGNode sourceNode,
+          NLCPGNode targetNode,
+          NLCPGEdgeKind kind,
+          NLCPGEdgeLabel? structuredLabel,
+          NLCPGContextId? contextId,
+          NLCPGCallSiteContext? callSiteContext)
+        {
+            var sourceAnchor = sourceNode.StableAnchor!.Value;
+            var targetAnchor = targetNode.StableAnchor!.Value;
+            var key = new PendingEdgeKey(
+              sourceAnchor,
+              targetAnchor,
+              kind,
+              structuredLabel,
+              contextId,
+              callSiteContext);
+            if (_ordinals.ContainsKey(key))
+            {
+                return;
+            }
+
+            _ordinals.Add(key, _items.Count);
+            _items.Add(new BufferedPendingEdge(
+              sourceAnchor,
+              targetAnchor,
+              kind,
+              structuredLabel,
+              contextId,
+              callSiteContext));
+        }
+
+        internal IReadOnlyList<PendingEdge> Materialize(
+          IReadOnlyDictionary<StableNodeAnchor, NLCPGNode> nodesByAnchor)
+        {
+            var pendingEdges = new PendingEdge[_items.Count];
+            for (var index = 0; index < _items.Count; index += 1)
+            {
+                var item = _items[index];
+                pendingEdges[index] = new PendingEdge(
+                  nodesByAnchor[item.SourceAnchor],
+                  nodesByAnchor[item.TargetAnchor],
+                  item.Kind,
+                  item.StructuredLabel,
+                  item.ContextId,
+                  item.CallSiteContext);
+            }
+
+            return pendingEdges;
+        }
+
+        private readonly record struct PendingEdgeKey(
+          StableNodeAnchor SourceAnchor,
+          StableNodeAnchor TargetAnchor,
+          NLCPGEdgeKind Kind,
+          NLCPGEdgeLabel? StructuredLabel,
+          NLCPGContextId? ContextId,
+          NLCPGCallSiteContext? CallSiteContext);
+
+        private readonly record struct BufferedPendingEdge(
+          StableNodeAnchor SourceAnchor,
+          StableNodeAnchor TargetAnchor,
+          NLCPGEdgeKind Kind,
+          NLCPGEdgeLabel? StructuredLabel,
+          NLCPGContextId? ContextId,
+          NLCPGCallSiteContext? CallSiteContext);
     }
 
     internal sealed record PendingEdge(

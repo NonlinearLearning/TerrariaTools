@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Threading.Channels;
 using NLCPG.Persistence;
@@ -15,6 +16,9 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
     private readonly Channel<CpgCatalogPublication> _queue;
     private readonly Task<Microsoft.Data.Sqlite.SqliteConnection> _connection;
     private readonly Task _writer;
+    private long _writeMilliseconds;
+    private int _batchCount;
+    private long _rowCount;
     private Exception? _fault;
 
     internal CpgCatalogBatchWriter(SqliteCpgShardCatalog catalog, string buildId, Builder.CpgPersistenceOptions options)
@@ -34,6 +38,12 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
         _connection = _catalog.OpenBatchConnectionAsync(CancellationToken.None);
         _writer = WriteAsync();
     }
+
+    internal long WriteMilliseconds => Interlocked.Read(ref _writeMilliseconds);
+
+    internal int BatchCount => Volatile.Read(ref _batchCount);
+
+    internal long RowCount => Interlocked.Read(ref _rowCount);
 
     internal async Task EnqueueAsync(CpgShardLease lease, CpgFrozenShard shard, CpgReusableFragmentKey? reusableKey, CancellationToken cancellationToken)
     {
@@ -110,7 +120,12 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
             return;
         }
 
+        var stopwatch = Stopwatch.StartNew();
         await _catalog.StageBatchAsync(connection, _buildId, batch, commandCache, CancellationToken.None);
+        stopwatch.Stop();
+        Interlocked.Add(ref _writeMilliseconds, stopwatch.ElapsedMilliseconds);
+        Interlocked.Increment(ref _batchCount);
+        Interlocked.Add(ref _rowCount, estimatedRows);
         batch.Clear();
     }
 

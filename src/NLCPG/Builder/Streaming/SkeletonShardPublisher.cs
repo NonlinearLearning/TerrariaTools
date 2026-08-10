@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -23,6 +24,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
   private readonly Dictionary<NodeId, CpgShardLookup> _primaryLookupByNodeId = new();
   private readonly Dictionary<BoundaryBucket, List<CpgFrozenBoundaryEdge>> _boundaryBatches = new();
   private readonly Dictionary<BoundaryBucket, int> _boundaryShardOrdinals = new();
+  private readonly Stopwatch _persistenceStopwatch;
   private int _bufferedBoundaryEdgeCount;
   private bool _completed;
 
@@ -33,6 +35,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     _file = file;
     _fragments = fragments;
     _ownership = new FragmentOwnershipIndex(fragments);
+    _persistenceStopwatch = Stopwatch.StartNew();
   }
 
   internal static async Task<SkeletonShardPublisher> BeginAsync(CpgPersistenceOptions options, NLCPGBuildContext context, CancellationToken cancellationToken)
@@ -62,7 +65,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
   }
 
-  internal async Task CompleteBaseAsync(NLCPGBuildContext context, CancellationToken cancellationToken)
+  internal async Task<NLCPGPersistenceMetrics> CompleteBaseAsync(NLCPGBuildContext context, CancellationToken cancellationToken)
   {
     var facts = context.Graph.SnapshotMutableFacts();
     var allocation = context.Graph.RequirePreallocatedNodeIds();
@@ -71,6 +74,11 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       node => node.NodeId!.Value,
       CpgNodeDescriptor.FromNode);
     var candidates = facts.PendingEdges.Select(CreateCandidate).ToArray();
+    var pendingCandidateBuckets = CreatePendingCandidateBuckets(
+      facts.Nodes,
+      candidates,
+      nodeOwnership,
+      allocation);
     // 操作分片已先占有主体节点；此处只补写仍未归属的辅助节点，保证每个 NodeId 只有一个主分片。
     foreach (var fragment in _fragments)
     {
@@ -87,7 +95,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
         "fragment-support",
         new TextSpan(fragment.SpanStart, fragment.SpanLength),
         nodeIds.Select(nodeId => descriptorsByNodeId[nodeId]).ToArray(),
-        FilterCandidates(candidates, nodeIds, allocation),
+        pendingCandidateBuckets.ByOwner[fragment],
         cancellationToken);
     }
 
@@ -101,15 +109,17 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
         "file-support",
         context.Root.FullSpan,
         supportNodeIds.Select(nodeId => descriptorsByNodeId[nodeId]).ToArray(),
-        FilterCandidates(candidates, supportNodeIds, allocation),
+        pendingCandidateBuckets.Skeleton,
         cancellationToken);
     }
 
     await PublishPendingBoundaryAdjacenciesAsync(candidates, allocation, context.Source, cancellationToken);
 
     await _session.CompleteAsync(cancellationToken);
+    _persistenceStopwatch.Stop();
     _completed = true;
     await _session.DisposeAsync();
+    return _session.CreatePersistenceMetrics(_persistenceStopwatch.ElapsedMilliseconds);
   }
 
   internal async Task PublishOperationFragmentAsync(NLCPGBuildContext context, OperationFragmentFacts facts, CancellationToken cancellationToken)
@@ -280,11 +290,42 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
   }
 
-  private IReadOnlyList<CpgEdgeCandidate> FilterCandidates(IReadOnlyList<CpgEdgeCandidate> candidates, IReadOnlySet<NodeId> nodeIds, DeterministicNodeIdTable allocation)
+  private PendingCandidateBuckets CreatePendingCandidateBuckets(
+    IReadOnlyList<NLCPGNode> nodes,
+    IReadOnlyList<CpgEdgeCandidate> candidates,
+    FragmentNodeOwnershipIndex nodeOwnership,
+    DeterministicNodeIdTable allocation)
   {
-    return candidates.Where(candidate =>
-      nodeIds.Contains(allocation.GetRequiredId(candidate.SourceAnchor)) &&
-      nodeIds.Contains(allocation.GetRequiredId(candidate.TargetAnchor))).ToArray();
+    var pendingNodeIds = nodes
+      .Where(node => node.NodeId.HasValue && !_publishedNodeIds.Contains(node.NodeId.Value))
+      .Select(node => node.NodeId!.Value)
+      .ToHashSet();
+    var byOwner = _fragments.ToDictionary(
+      fragment => fragment,
+      _ => new List<CpgEdgeCandidate>());
+    var skeleton = new List<CpgEdgeCandidate>();
+    foreach (var candidate in candidates)
+    {
+      var sourceNodeId = allocation.GetRequiredId(candidate.SourceAnchor);
+      var targetNodeId = allocation.GetRequiredId(candidate.TargetAnchor);
+      if (!pendingNodeIds.Contains(sourceNodeId) || !pendingNodeIds.Contains(targetNodeId))
+      {
+        continue;
+      }
+
+      var sourceOwner = nodeOwnership.GetOwner(sourceNodeId);
+      var targetOwner = nodeOwnership.GetOwner(targetNodeId);
+      if (sourceOwner is not null && sourceOwner == targetOwner)
+      {
+        byOwner[sourceOwner].Add(candidate);
+      }
+      else if (sourceOwner is null && targetOwner is null)
+      {
+        skeleton.Add(candidate);
+      }
+    }
+
+    return new PendingCandidateBuckets(byOwner, skeleton);
   }
 
   private async Task AppendBoundaryAsync(CpgShardLookup owner, CpgBoundaryAdjacencyDirection direction, CpgFrozenBoundaryEdge edge, string source, CancellationToken cancellationToken)
@@ -353,6 +394,10 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       edge.ContextId,
       edge.CallSiteContext);
   }
+
+  private sealed record PendingCandidateBuckets(
+    IReadOnlyDictionary<CpgFragmentOwnership, List<CpgEdgeCandidate>> ByOwner,
+    IReadOnlyList<CpgEdgeCandidate> Skeleton);
 
   private static void AddCandidateToBucket(CpgFragmentOwnership? owner, CpgEdgeCandidate candidate, List<CpgEdgeCandidate> skeletonCandidates, IReadOnlyDictionary<CpgFragmentOwnership, List<CpgEdgeCandidate>> candidateBuckets)
   {

@@ -61,6 +61,7 @@ public sealed class SwitchStructureLiftingRule : RuleDefinitionLift
           .ToList();
 
         return SwitchStructureLiftingHelpers.BuildSwitchLiftedMarks(
+          context,
           RuleId,
           seedMarks,
           propagatedMarks,
@@ -69,8 +70,8 @@ public sealed class SwitchStructureLiftingRule : RuleDefinitionLift
 
     public override IEnumerable<LiftedMarkRecord> Lift(ILiftRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
     {
-        _ = context;
         return SwitchStructureLiftingHelpers.BuildSwitchLiftedMarks(
+          context,
           RuleId,
           seedMarks,
           propagatedMarks,

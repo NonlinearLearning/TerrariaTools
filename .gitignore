@@ -22,12 +22,21 @@ scripts
 !scripts/
 scripts/*
 !scripts/New-CpgDopSmallFixture.ps1
+!scripts/Invoke-BenchmarkSuite.ps1
+!scripts/Compare-BenchmarkSlo.ps1
+!scripts/Publish-BenchmarkArtifact.ps1
+!scripts/Run-PerformanceSuite.ps1
+!scripts/Invoke-ProcessWithTimeout.ps1
+!scripts/Write-ExternalBenchmarkFailureEvidence.ps1
 FormatTool
 .VSCodeCounter
 progressinfo.md
 待办事项.md
 BenchmarkDotNet.Artifacts
+benchmarks/**/bin/
+benchmarks/**/obj/
 tests/*/TestResults/
+tests/NLISSN.Testing/TestCodeSet/Workspace/artifacts/
 tools
 !tools/
 tools/*
@@ -35,3 +44,4 @@ tools/*
 !tools/CpgPersistenceBenchmark/*.cs
 !tools/CpgPersistenceBenchmark/*.csproj
 skills-lock.json
+问题.md

@@ -18,10 +18,13 @@ public sealed class WeakTypedCacheRegistry<TKey>
             key,
             static _ => new ConcurrentDictionary<Type, Lazy<object>>());
         var type = typeof(TValue);
-        var value = new Lazy<object>(
-            () => factory(key),
-            LazyThreadSafetyMode.ExecutionAndPublication);
-        var cachedValue = values.GetOrAdd(type, value);
+        if (!values.TryGetValue(type, out var cachedValue))
+        {
+            var candidate = new Lazy<object>(
+              () => factory(key),
+              LazyThreadSafetyMode.ExecutionAndPublication);
+            cachedValue = values.GetOrAdd(type, candidate);
+        }
 
         try
         {

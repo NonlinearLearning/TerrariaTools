@@ -1,3 +1,4 @@
+using System.Numerics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
 using NLCPG.Builder.Streaming;
@@ -126,6 +127,8 @@ namespace NLCPG.Builder
 
             internal int RawCandidateCount { get; private set; }
 
+            internal int UniqueCandidateCount => _uniqueCandidates.Count;
+
             internal bool TryAdd(NLCPGNode sourceNode, NLCPGNode targetNode, int maxCandidateEdges)
             {
                 RawCandidateCount += 1;
@@ -171,7 +174,7 @@ namespace NLCPG.Builder
                 }
             }
 
-            internal bool TryGetCandidates(DefinitionFact usedFact, IReadOnlySet<NLCPGNode> reachingDefinitions, out IReadOnlyList<NLCPGNode> candidates)
+            internal bool TryGetCandidates(DefinitionFact usedFact, ulong[] reachingDefinitions, int reachingOffset, int wordsPerSet, IReadOnlyDictionary<NLCPGNode, int> flowNodeOrdinals, out IReadOnlyList<NLCPGNode> candidates)
             {
                 if (string.IsNullOrEmpty(usedFact.LocationKey))
                 {
@@ -181,12 +184,12 @@ namespace NLCPG.Builder
 
                 var matches = new List<NLCPGNode>();
                 var seen = new HashSet<NLCPGNode>();
-                AddReachable(_byLocation, usedFact.LocationKey, reachingDefinitions, seen, matches);
-                AddReachable(_byRoot, usedFact.BaseKey, reachingDefinitions, seen, matches);
-                AddReachable(_byBase, FactRootKey(usedFact), reachingDefinitions, seen, matches);
+                AddReachable(_byLocation, usedFact.LocationKey, reachingDefinitions, reachingOffset, wordsPerSet, flowNodeOrdinals, seen, matches);
+                AddReachable(_byRoot, usedFact.BaseKey, reachingDefinitions, reachingOffset, wordsPerSet, flowNodeOrdinals, seen, matches);
+                AddReachable(_byBase, FactRootKey(usedFact), reachingDefinitions, reachingOffset, wordsPerSet, flowNodeOrdinals, seen, matches);
                 if (!string.IsNullOrEmpty(usedFact.BaseKey) && !string.IsNullOrEmpty(usedFact.PathKey))
                 {
-                    AddReachable(_byBaseAndPath, ComposeBaseAndPathKey(usedFact.BaseKey, usedFact.PathKey), reachingDefinitions, seen, matches);
+                    AddReachable(_byBaseAndPath, ComposeBaseAndPathKey(usedFact.BaseKey, usedFact.PathKey), reachingDefinitions, reachingOffset, wordsPerSet, flowNodeOrdinals, seen, matches);
                 }
 
                 candidates = matches;
@@ -209,7 +212,7 @@ namespace NLCPG.Builder
                 nodes.Add(node);
             }
 
-            private static void AddReachable(IReadOnlyDictionary<string, List<NLCPGNode>> index, string? key, IReadOnlySet<NLCPGNode> reachingDefinitions, HashSet<NLCPGNode> seen, List<NLCPGNode> matches)
+            private static void AddReachable(IReadOnlyDictionary<string, List<NLCPGNode>> index, string? key, ulong[] reachingDefinitions, int reachingOffset, int wordsPerSet, IReadOnlyDictionary<NLCPGNode, int> flowNodeOrdinals, HashSet<NLCPGNode> seen, List<NLCPGNode> matches)
             {
                 if (string.IsNullOrEmpty(key) || !index.TryGetValue(key, out var nodes))
                 {
@@ -218,7 +221,9 @@ namespace NLCPG.Builder
 
                 foreach (var node in nodes)
                 {
-                    if (reachingDefinitions.Contains(node) && seen.Add(node))
+                    if (flowNodeOrdinals.TryGetValue(node, out var ordinal) &&
+                        IsBitSet(reachingDefinitions, reachingOffset, ordinal) &&
+                        seen.Add(node))
                     {
                         matches.Add(node);
                     }
@@ -242,7 +247,8 @@ namespace NLCPG.Builder
         private sealed record CfgSensitivePartition(
           int Order,
           LocalFlowCandidateSet Candidates,
-          NLCPGDataFlowOverflowReason OverflowReason);
+          NLCPGDataFlowOverflowReason OverflowReason,
+          NLCPGDataFlowMethodMetrics Metrics);
 
         private sealed record CfgSensitiveWorkResult(
             MethodDataFlowPlan Plan,
@@ -344,9 +350,10 @@ namespace NLCPG.Builder
                       throw new InvalidOperationException("Data-flow plan order does not match the ordered commit slot.");
                   }
 
-                  try
-                  {
-                      CommitCfgSensitivePartition(result.Plan, result.Partition, graph);
+                   try
+                   {
+                       _dataFlowMethodMetrics.Add(result.Partition.Metrics);
+                       CommitCfgSensitivePartition(result.Plan, result.Partition, graph);
                   }
                   finally
                   {
@@ -464,6 +471,7 @@ namespace NLCPG.Builder
                     definitionFactsByNode[operationNodePair.Second] = definedFact;
                 }
             }
+            var wordsPerSet = BitSetWordCount(plan.FlowNodes.Length);
             // 预算先于 fixpoint 检查，超限时直接按策略跳过或失败。
             if (definitionFactsByNode.Count > options.MaxDefinitionsPerMethod)
             {
@@ -474,7 +482,14 @@ namespace NLCPG.Builder
                 return new CfgSensitivePartition(
                   plan.Order,
                   new LocalFlowCandidateSet(Array.Empty<CpgEdgeCandidate>()),
-                  OverflowReason: NLCPGDataFlowOverflowReason.DefinitionLimitExceeded);
+                  NLCPGDataFlowOverflowReason.DefinitionLimitExceeded,
+                  CreateDataFlowMetrics(
+                    plan,
+                    wordsPerSet,
+                    definitionFactsByNode.Count,
+                    0,
+                    null,
+                    NLCPGDataFlowOverflowReason.DefinitionLimitExceeded));
             }
 
             if (plan.FlowNodes.Length > options.MaxFlowNodesPerMethod)
@@ -486,43 +501,82 @@ namespace NLCPG.Builder
                 return new CfgSensitivePartition(
                   plan.Order,
                   new LocalFlowCandidateSet(Array.Empty<CpgEdgeCandidate>()),
-                  OverflowReason: NLCPGDataFlowOverflowReason.FlowNodeLimitExceeded);
+                  NLCPGDataFlowOverflowReason.FlowNodeLimitExceeded,
+                  CreateDataFlowMetrics(
+                    plan,
+                    wordsPerSet,
+                    definitionFactsByNode.Count,
+                    0,
+                    null,
+                    NLCPGDataFlowOverflowReason.FlowNodeLimitExceeded));
             }
 
-            // 第二阶段：初始化 in/out 集和工作队列，准备跑数据流不动点。
+            // 第二阶段：用方法局部整数编号和 bitset 初始化 in/out 集，避免节点 HashSet 的迭代分配。
             var flowNodes = plan.FlowNodes;
-            var inSets = flowNodes.ToDictionary(
-              node => node,
-              _ => new HashSet<NLCPGNode>());
-            var outSets = flowNodes.ToDictionary(
-              node => node,
-              _ => new HashSet<NLCPGNode>());
-            var worklist = new Queue<NLCPGNode>(flowNodes);
-            var queued = new HashSet<NLCPGNode>(flowNodes);
+            var flowNodeOrdinals = flowNodes
+              .Select((node, ordinal) => (node, ordinal))
+              .ToDictionary(entry => entry.node, entry => entry.ordinal);
+            var inSets = new ulong[checked(flowNodes.Length * wordsPerSet)];
+            var outSets = new ulong[checked(flowNodes.Length * wordsPerSet)];
+            var incomingScratch = new ulong[wordsPerSet];
+            var updatedScratch = new ulong[wordsPerSet];
+            var worklist = new Queue<int>(flowNodes.Length);
+            var queued = new bool[flowNodes.Length];
+            for (var ordinal = 0; ordinal < flowNodes.Length; ordinal += 1)
+            {
+                worklist.Enqueue(ordinal);
+                queued[ordinal] = true;
+            }
+            var definitionFactsByOrdinal = new DefinitionFact?[flowNodes.Length];
+            foreach (var definitionFactPair in definitionFactsByNode)
+            {
+                if (flowNodeOrdinals.TryGetValue(definitionFactPair.Key, out var definitionOrdinal))
+                {
+                    definitionFactsByOrdinal[definitionOrdinal] = definitionFactPair.Value;
+                }
+            }
             // 第三阶段：标准 worklist fixpoint，按 predecessor/out 集传播 reaching definitions。
+            var worklistIterations = 0;
             while (worklist.Count > 0)
             {
-                var nodeId = worklist.Dequeue();
-                queued.Remove(nodeId);
-                var incomingDefinitions = new HashSet<NLCPGNode>();
-                foreach (var predecessorNode in plan.Predecessors[nodeId])
+                var nodeOrdinal = worklist.Dequeue();
+                queued[nodeOrdinal] = false;
+                worklistIterations += 1;
+                var node = flowNodes[nodeOrdinal];
+                Array.Clear(incomingScratch, 0, incomingScratch.Length);
+                foreach (var predecessorNode in plan.Predecessors[node])
                 {
-                    incomingDefinitions.UnionWith(outSets[predecessorNode]);
+                    if (flowNodeOrdinals.TryGetValue(predecessorNode, out var predecessorOrdinal))
+                    {
+                        OrBitSet(incomingScratch, outSets, predecessorOrdinal * wordsPerSet, wordsPerSet);
+                    }
                 }
 
-                inSets[nodeId] = incomingDefinitions;
-                var updatedOut = ApplyDefinitionTransfer(nodeId, incomingDefinitions, definitionFactsByNode);
-                if (updatedOut.SetEquals(outSets[nodeId]))
+                var nodeOffset = nodeOrdinal * wordsPerSet;
+                CopyBitSet(inSets, nodeOffset, incomingScratch, wordsPerSet);
+                Array.Copy(incomingScratch, updatedScratch, wordsPerSet);
+                if (definitionFactsByOrdinal[nodeOrdinal] is { } definedFact)
+                {
+                    ApplyDefinitionTransfer(
+                      updatedScratch,
+                      nodeOrdinal,
+                      wordsPerSet,
+                      definedFact,
+                      definitionFactsByOrdinal);
+                }
+
+                if (BitSetEquals(outSets, nodeOffset, updatedScratch, wordsPerSet))
                 {
                     continue;
                 }
 
-                outSets[nodeId] = updatedOut;
-                foreach (var successorNode in plan.Successors[nodeId])
+                CopyBitSet(outSets, nodeOffset, updatedScratch, wordsPerSet);
+                foreach (var successorNode in plan.Successors[node])
                 {
-                    if (queued.Add(successorNode))
+                    if (flowNodeOrdinals.TryGetValue(successorNode, out var successorOrdinal) && !queued[successorOrdinal])
                     {
-                        worklist.Enqueue(successorNode);
+                        queued[successorOrdinal] = true;
+                        worklist.Enqueue(successorOrdinal);
                     }
                 }
             }
@@ -531,25 +585,43 @@ namespace NLCPG.Builder
             var definitionFactIndex = new DefinitionFactIndex(definitionFactsByNode);
             foreach (var operationNodePair in plan.OrderedOperations.Zip(plan.OperationNodes))
             {
-                var reachingDefinitions = inSets[operationNodePair.Second];
-                if (reachingDefinitions.Count == 0)
+                var operationOrdinal = flowNodeOrdinals[operationNodePair.Second];
+                var reachingOffset = operationOrdinal * wordsPerSet;
+                if (IsBitSetEmpty(inSets, reachingOffset, wordsPerSet))
                 {
                     continue;
                 }
 
                 foreach (var usedFact in plan.UsedFactsByOperation[operationNodePair.First].EnumerateFacts())
                 {
-                    IEnumerable<NLCPGNode> candidateDefinitions = definitionFactIndex.TryGetCandidates(usedFact, reachingDefinitions, out var indexedCandidates)
-                      ? indexedCandidates
-                      : reachingDefinitions;
-                    foreach (var reachingDefinitionNode in candidateDefinitions)
+                    if (definitionFactIndex.TryGetCandidates(
+                      usedFact,
+                      inSets,
+                      reachingOffset,
+                      wordsPerSet,
+                      flowNodeOrdinals,
+                      out var indexedCandidates))
                     {
-                        if (definitionFactsByNode.TryGetValue(reachingDefinitionNode, out var reachingFact) &&
-                            FactsMatch(reachingFact, usedFact))
+                        foreach (var reachingDefinitionNode in indexedCandidates)
                         {
-                            if (!candidates.TryAdd(reachingDefinitionNode, operationNodePair.Second, options.MaxCandidateEdgesPerMethod))
+                            if (definitionFactsByNode.TryGetValue(reachingDefinitionNode, out var reachingFact) &&
+                                FactsMatch(reachingFact, usedFact) &&
+                                !candidates.TryAdd(reachingDefinitionNode, operationNodePair.Second, options.MaxCandidateEdgesPerMethod))
                             {
-                                return CreateCandidateLimitExceededPartition(plan, options);
+                                return CreateCandidateLimitExceededPartition(plan, options, candidates, definitionFactsByNode.Count, wordsPerSet, worklistIterations);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        foreach (var reachingDefinitionOrdinal in EnumerateSetBits(inSets, reachingOffset, flowNodes.Length, wordsPerSet))
+                        {
+                            var reachingDefinitionNode = flowNodes[reachingDefinitionOrdinal];
+                            if (definitionFactsByNode.TryGetValue(reachingDefinitionNode, out var reachingFact) &&
+                                FactsMatch(reachingFact, usedFact) &&
+                                !candidates.TryAdd(reachingDefinitionNode, operationNodePair.Second, options.MaxCandidateEdgesPerMethod))
+                            {
+                                return CreateCandidateLimitExceededPartition(plan, options, candidates, definitionFactsByNode.Count, wordsPerSet, worklistIterations);
                             }
                         }
                     }
@@ -566,7 +638,7 @@ namespace NLCPG.Builder
                     {
                         if (!candidates.TryAdd(sourceNode, targetNode, options.MaxCandidateEdgesPerMethod))
                         {
-                            return CreateCandidateLimitExceededPartition(plan, options);
+                            return CreateCandidateLimitExceededPartition(plan, options, candidates, definitionFactsByNode.Count, wordsPerSet, worklistIterations);
                         }
                     }
                 }
@@ -583,7 +655,7 @@ namespace NLCPG.Builder
                             !candidates.TryAdd(plan.ReturnNode, plan.ExitNode, options.MaxCandidateEdgesPerMethod) ||
                             !candidates.TryAdd(returnOperationNode, plan.ExitNode, options.MaxCandidateEdgesPerMethod))
                         {
-                            return CreateCandidateLimitExceededPartition(plan, options);
+                            return CreateCandidateLimitExceededPartition(plan, options, candidates, definitionFactsByNode.Count, wordsPerSet, worklistIterations);
                         }
                     }
                 }
@@ -597,7 +669,7 @@ namespace NLCPG.Builder
                 {
                     if (!candidates.TryAdd(terminalNode, plan.ReturnNode, options.MaxCandidateEdgesPerMethod))
                     {
-                        return CreateCandidateLimitExceededPartition(plan, options);
+                        return CreateCandidateLimitExceededPartition(plan, options, candidates, definitionFactsByNode.Count, wordsPerSet, worklistIterations);
                     }
                 }
             }
@@ -606,10 +678,42 @@ namespace NLCPG.Builder
             return new CfgSensitivePartition(
               plan.Order,
               candidates.ToCandidateSet(),
-              NLCPGDataFlowOverflowReason.None);
+              NLCPGDataFlowOverflowReason.None,
+              CreateDataFlowMetrics(
+                plan,
+                wordsPerSet,
+                definitionFactsByNode.Count,
+                worklistIterations,
+                candidates,
+                NLCPGDataFlowOverflowReason.None));
         }
 
-        private static CfgSensitivePartition CreateCandidateLimitExceededPartition(MethodDataFlowPlan plan, NLCPGDataFlowOptions options)
+        private static NLCPGDataFlowMethodMetrics CreateDataFlowMetrics(
+          MethodDataFlowPlan plan,
+          int wordsPerSet,
+          int definitionCount,
+          int worklistIterations,
+          DataFlowCandidateCollector? candidates,
+          NLCPGDataFlowOverflowReason overflowReason)
+        {
+            return new NLCPGDataFlowMethodMetrics(
+              plan.MethodFullName,
+              plan.FlowNodes.Length,
+              wordsPerSet,
+              definitionCount,
+              worklistIterations,
+              candidates?.RawCandidateCount ?? 0,
+              candidates?.UniqueCandidateCount ?? 0,
+              overflowReason);
+        }
+
+        private static CfgSensitivePartition CreateCandidateLimitExceededPartition(
+          MethodDataFlowPlan plan,
+          NLCPGDataFlowOptions options,
+          DataFlowCandidateCollector candidates,
+          int definitionCount,
+          int wordsPerSet,
+          int worklistIterations)
         {
             ThrowIfBudgetFailure(
               options,
@@ -618,7 +722,14 @@ namespace NLCPG.Builder
             return new CfgSensitivePartition(
               plan.Order,
               new LocalFlowCandidateSet(Array.Empty<CpgEdgeCandidate>()),
-              NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded);
+              NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded,
+              CreateDataFlowMetrics(
+                plan,
+                wordsPerSet,
+                definitionCount,
+                worklistIterations,
+                candidates,
+                NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded));
         }
 
         private static void ThrowIfBudgetFailure(NLCPGDataFlowOptions options, string methodFullName, NLCPGDataFlowOverflowReason overflowReason)
@@ -674,19 +785,95 @@ namespace NLCPG.Builder
             return neighbors;
         }
 
-        private static HashSet<NLCPGNode> ApplyDefinitionTransfer(NLCPGNode node, HashSet<NLCPGNode> incomingDefinitions, Dictionary<NLCPGNode, DefinitionFact> definitionFactsByNode)
+        private static int BitSetWordCount(int bitCount)
         {
-            var outgoingDefinitions = new HashSet<NLCPGNode>(incomingDefinitions);
-            if (!definitionFactsByNode.TryGetValue(node, out var definedFact))
+            return Math.Max(1, (bitCount + 63) / 64);
+        }
+
+        private static bool IsBitSet(ulong[] bitSet, int offset, int ordinal)
+        {
+            return (bitSet[offset + (ordinal / 64)] & (1UL << (ordinal % 64))) != 0;
+        }
+
+        private static void OrBitSet(ulong[] target, ulong[] source, int sourceOffset, int wordsPerSet)
+        {
+            for (var wordIndex = 0; wordIndex < wordsPerSet; wordIndex += 1)
             {
-                return outgoingDefinitions;
+                target[wordIndex] |= source[sourceOffset + wordIndex];
+            }
+        }
+
+        private static void CopyBitSet(ulong[] target, int targetOffset, ulong[] source, int wordsPerSet)
+        {
+            Array.Copy(source, 0, target, targetOffset, wordsPerSet);
+        }
+
+        private static bool BitSetEquals(ulong[] left, int leftOffset, ulong[] right, int wordsPerSet)
+        {
+            for (var wordIndex = 0; wordIndex < wordsPerSet; wordIndex += 1)
+            {
+                if (left[leftOffset + wordIndex] != right[wordIndex])
+                {
+                    return false;
+                }
             }
 
-            outgoingDefinitions.RemoveWhere(definitionNode =>
-              definitionFactsByNode.TryGetValue(definitionNode, out var priorFact) &&
-              FactsConflict(priorFact, definedFact));
-            outgoingDefinitions.Add(node);
-            return outgoingDefinitions;
+            return true;
+        }
+
+        private static bool IsBitSetEmpty(ulong[] bitSet, int offset, int wordsPerSet)
+        {
+            for (var wordIndex = 0; wordIndex < wordsPerSet; wordIndex += 1)
+            {
+                if (bitSet[offset + wordIndex] != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static IEnumerable<int> EnumerateSetBits(ulong[] bitSet, int offset, int bitCount, int wordsPerSet)
+        {
+            for (var wordIndex = 0; wordIndex < wordsPerSet; wordIndex += 1)
+            {
+                var word = bitSet[offset + wordIndex];
+                while (word != 0)
+                {
+                    var bitIndex = BitOperations.TrailingZeroCount(word);
+                    var ordinal = (wordIndex * 64) + bitIndex;
+                    if (ordinal < bitCount)
+                    {
+                        yield return ordinal;
+                    }
+
+                    word &= word - 1;
+                }
+            }
+        }
+
+        private static void ApplyDefinitionTransfer(ulong[] output, int nodeOrdinal, int wordsPerSet, DefinitionFact definedFact, IReadOnlyList<DefinitionFact?> definitionFactsByOrdinal)
+        {
+            for (var wordIndex = 0; wordIndex < wordsPerSet; wordIndex += 1)
+            {
+                var word = output[wordIndex];
+                while (word != 0)
+                {
+                    var bitIndex = BitOperations.TrailingZeroCount(word);
+                    var definitionOrdinal = (wordIndex * 64) + bitIndex;
+                    if (definitionOrdinal < definitionFactsByOrdinal.Count &&
+                        definitionFactsByOrdinal[definitionOrdinal] is { } priorFact &&
+                        FactsConflict(priorFact, definedFact))
+                    {
+                        output[wordIndex] &= ~(1UL << bitIndex);
+                    }
+
+                    word &= word - 1;
+                }
+            }
+
+            output[nodeOrdinal / 64] |= 1UL << (nodeOrdinal % 64);
         }
 
         private static bool FactsMatch(DefinitionFact reachingFact, DefinitionFact usedFact)
@@ -771,7 +958,7 @@ namespace NLCPG.Builder
         private void AddCallArgumentAndReturnDataFlow(NLCPGBuildContext context)
         {
             var graph = context.Graph;
-            foreach (var invocation in EnumerateOperations(context).OfType<IInvocationOperation>())
+            foreach (var invocation in context.InvocationOperations)
             {
                 var targetMethod = invocation.TargetMethod;
                 if (targetMethod is null)
@@ -799,7 +986,7 @@ namespace NLCPG.Builder
                 }
             }
 
-            foreach (var propertyReference in EnumerateOperations(context).OfType<IPropertyReferenceOperation>())
+            foreach (var propertyReference in context.PropertyReferenceOperations)
             {
                 AddPropertyAccessorSummaryDataFlow(propertyReference, graph);
             }

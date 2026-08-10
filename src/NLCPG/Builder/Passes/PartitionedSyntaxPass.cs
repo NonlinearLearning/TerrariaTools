@@ -11,12 +11,16 @@ public sealed partial class NLCPGBuilder
       SyntaxTypeResolution TypeResolution,
       bool ShouldDeferToOperation);
 
-    private void RunSyntaxPass(NLCPGBuildContext context, bool usePartitionedSyntaxPass, IReadOnlyList<OperationRootPlan> operationRoots)
+    private void RunSyntaxPass(
+      NLCPGBuildContext context,
+      bool usePartitionedSyntaxPass,
+      IReadOnlyList<OperationRootPlan> operationRoots,
+      CapabilityBuildPlan buildPlan)
     {
         if (!usePartitionedSyntaxPass)
         {
             // 关闭分区模式时完全回退到 legacy 路径，保证行为边界清晰。
-            RunLegacySyntaxPass(context);
+            RunLegacySyntaxPass(context, buildPlan);
             return;
         }
 
@@ -36,11 +40,11 @@ public sealed partial class NLCPGBuilder
         foreach (var syntax in context.Root.DescendantNodesAndSelf().Where(node => !partitionSyntax.Contains(node)))
         {
             // 分区外节点不会进入 worker，因此先在主线程补齐缓存。
-            _partitionedSyntaxFacts[syntax] = AnalyzeSyntaxFacts(syntax, context.SemanticModel);
+            _partitionedSyntaxFacts[syntax] = AnalyzeSyntaxFacts(syntax, context.SemanticModel, buildPlan);
         }
 
         // 分区内语义事实异步采集完成后统一回填缓存，再进入真正的有序建图阶段。
-        var results = RunSyntaxPartitionsAsync(partitions, context.SemanticModel).GetAwaiter().GetResult();
+        var results = RunSyntaxPartitionsAsync(partitions, context.SemanticModel, buildPlan).GetAwaiter().GetResult();
         foreach (var facts in results)
         {
             foreach (var entry in facts)
@@ -48,35 +52,46 @@ public sealed partial class NLCPGBuilder
                 _partitionedSyntaxFacts[entry.Key] = entry.Value;
             }
         }
-        RunPartitionedSyntaxPass(context, partitionRoots, partitions);
+        RunPartitionedSyntaxPass(context, partitionRoots, partitions, buildPlan);
         _partitionedSyntaxFacts.Clear();
     }
 
     // 并发跑每个语法分区的语义采集；返回值只包含只读事实，不直接触碰图状态。
-    private Task<IReadOnlyList<IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts>>> RunSyntaxPartitionsAsync(IReadOnlyList<SyntaxNode[]> partitions, SemanticModel semanticModel)
+    private Task<IReadOnlyList<IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts>>> RunSyntaxPartitionsAsync(
+      IReadOnlyList<SyntaxNode[]> partitions,
+      SemanticModel semanticModel,
+      CapabilityBuildPlan buildPlan)
     {
         return _concurrencyPool.SelectCpuBoundOrdered(
           partitions,
           _options.EffectiveMaxDegreeOfParallelism,
-          (partition, _, _) => AnalyzeSyntaxPartition(partition, semanticModel));
+          (partition, _, _) => AnalyzeSyntaxPartition(partition, semanticModel, buildPlan));
     }
 
     // 对单个语法分区逐节点采集声明、引用和类型事实，供后续提交阶段复用。
-    private IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts> AnalyzeSyntaxPartition(IReadOnlyList<SyntaxNode> syntaxNodes, SemanticModel semanticModel)
+    private IReadOnlyDictionary<SyntaxNode, SyntaxSemanticFacts> AnalyzeSyntaxPartition(
+      IReadOnlyList<SyntaxNode> syntaxNodes,
+      SemanticModel semanticModel,
+      CapabilityBuildPlan buildPlan)
     {
         var facts = new Dictionary<SyntaxNode, SyntaxSemanticFacts>(ReferenceEqualityComparer.Instance);
         foreach (var syntax in syntaxNodes)
         {
             // 这里只产出缓存数据，不创建图节点，避免 worker 线程污染共享状态。
-            facts[syntax] = AnalyzeSyntaxFacts(syntax, semanticModel);
+            facts[syntax] = AnalyzeSyntaxFacts(syntax, semanticModel, buildPlan);
         }
 
         return facts;
     }
 
-    private SyntaxSemanticFacts AnalyzeSyntaxFacts(SyntaxNode syntax, SemanticModel semanticModel)
+    private SyntaxSemanticFacts AnalyzeSyntaxFacts(
+      SyntaxNode syntax,
+      SemanticModel semanticModel,
+      CapabilityBuildPlan buildPlan)
     {
-        var referencedSymbol = CanReferenceSymbol(syntax) ? semanticModel.GetSymbolInfo(syntax).Symbol : null;
+        var referencedSymbol = buildPlan.EmitReferences && CanReferenceSymbol(syntax)
+          ? semanticModel.GetSymbolInfo(syntax).Symbol
+          : null;
         var shouldDeferToOperation = ShouldDeferSyntaxTypeToOperation(syntax);
         // 需要交给 OperationPass 回填类型的节点先留空，避免提前做重复的 GetTypeInfo。
         var typeResolution = shouldDeferToOperation

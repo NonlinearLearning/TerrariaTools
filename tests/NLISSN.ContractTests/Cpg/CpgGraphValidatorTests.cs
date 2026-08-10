@@ -58,6 +58,23 @@ public sealed class CpgGraphValidatorTests
   }
 
   [Fact]
+  public void ValidateFrozenFacts_WhenOptionalSyntaxCapabilityClosureIsPresent_ReturnsValidReport()
+  {
+    var optionalCapabilities = NLCPGCapability.SyntaxToken |
+      NLCPGCapability.Reference |
+      NLCPGCapability.TypeRef;
+
+    var report = new CpgGraphValidator().ValidateFrozenFacts(
+      Array.Empty<NLCPGNode>(),
+      Array.Empty<NLCPGEdge>(),
+      optionalCapabilities,
+      NLCPGCapability.SyntaxSemantic | optionalCapabilities);
+
+    Assert.True(report.IsValid);
+    Assert.DoesNotContain(report.Issues, issue => issue.Code == "CPG010");
+  }
+
+  [Fact]
   public void Validate_WhenFrozenGraphIsConsistent_ReturnsOrderedValidReport()
   {
     var source = Node(new NodeId(1), new StableNodeAnchor(NLCPGNodeKind.SyntaxNode, 1, 0, 1, StableNodeRole.SyntaxNode, 0, 1));

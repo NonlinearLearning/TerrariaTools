@@ -5,10 +5,22 @@ using NL.Concurrency;
 using NLCPG.Persistence;
 using NLCPG.Persistence.Sqlite;
 using NLCPG.Builder.Streaming;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 
 namespace NLCPG.Builder;
+
+internal sealed record CpgRestoreMetrics(
+  long CatalogReadMilliseconds,
+  long ShardReadMilliseconds,
+  int RestoredShardCount,
+  long RestoredShardBytes,
+  long RestoreFactsElapsedMilliseconds,
+  long RestoreFactsAllocatedBytes)
+{
+    internal static CpgRestoreMetrics Empty { get; } = new(0, 0, 0, 0, 0, 0);
+}
 
 internal sealed record CpgBaseRestoreResult(CpgFrozenShardGraphFacts Facts);
 
@@ -17,6 +29,8 @@ internal sealed class CpgShardBuildCoordinator
     private static Action<object>? _exportCheckpointObserver;
     private readonly CpgPersistenceOptions _options;
     private readonly IConcurrencyPool _concurrencyPool;
+
+    internal CpgRestoreMetrics LastRestoreMetrics { get; private set; } = CpgRestoreMetrics.Empty;
 
     internal CpgShardBuildCoordinator(CpgPersistenceOptions options, IConcurrencyPool concurrencyPool)
     {
@@ -31,8 +45,9 @@ internal sealed class CpgShardBuildCoordinator
         set => Volatile.Write(ref _exportCheckpointObserver, value);
     }
 
-    internal async Task PersistAsync(NLCPGBuildContext context, CancellationToken cancellationToken)
+    internal async Task<NLCPGPersistenceMetrics> PersistAsync(NLCPGBuildContext context, CancellationToken cancellationToken)
     {
+        var persistStopwatch = Stopwatch.StartNew();
         await using var session = await CpgShardBuildSession.BeginAsync(_options, cancellationToken);
         session.Store.DeleteStaleTemporaryFiles();
         var inputDirectory = Path.GetDirectoryName(context.FilePath);
@@ -50,6 +65,7 @@ internal sealed class CpgShardBuildCoordinator
           .ToArray();
         var ownership = new FragmentOwnershipIndex(fragments);
         var nodeOwnership = FragmentNodeOwnershipIndex.Create(context.Graph.Nodes, ownership);
+        var exportProjection = CpgFrozenShardExporter.Prepare(context.Graph);
         var exportRequests = new List<CpgShardExportRequest>();
         var sourceSequence = 0L;
         if (!_options.StreamingMode)
@@ -92,9 +108,20 @@ internal sealed class CpgShardBuildCoordinator
                 request.Sequence,
                 request.Kind,
                 request.Span.Start,
-                active));
-                  var shard = CreateShard(context, file, request.Kind, request.Span, request.NodeIds);
-                  await session.PublishFragmentAsync(shard, request.Sequence, token);
+                   active));
+                   var shard = CreateShard(context, file, request.Kind, request.Span, request.NodeIds, exportProjection);
+                   if (!_options.StreamingMode && IsReusableFragmentKind(request.Kind))
+                   {
+                       var reusableKey = CpgReusableFragmentKey.Create(shard);
+                       if (!await session.TryReuseFragmentAsync(shard, reusableKey, token, request.Sequence))
+                       {
+                           await session.PublishReusableFragmentAsync(shard, reusableKey, request.Sequence, token);
+                       }
+                   }
+                   else
+                   {
+                       await session.PublishFragmentAsync(shard, request.Sequence, token);
+                   }
               }
               finally
               {
@@ -127,10 +154,13 @@ internal sealed class CpgShardBuildCoordinator
         }
 
         await session.CompleteAsync(cancellationToken);
+        persistStopwatch.Stop();
+        return session.CreatePersistenceMetrics(persistStopwatch.ElapsedMilliseconds);
     }
 
     internal async Task<CpgBaseRestoreResult?> TryRestoreBaseAsync(NLCPGBuildContext context, CancellationToken cancellationToken)
     {
+        LastRestoreMetrics = CpgRestoreMetrics.Empty;
         var catalogPath = Path.Combine(_options.StoreRoot, "catalog.db");
         if (File.Exists(catalogPath))
         {
@@ -159,25 +189,64 @@ internal sealed class CpgShardBuildCoordinator
         var lookup = CreateFileGraphLookup(context);
         if (_options.StreamingMode)
         {
-            var locations = await catalog.FindByFileAsync(
-              lookup.File,
-              _options.SchemaVersion,
-              _options.ProfileHash,
-              cancellationToken);
+            IReadOnlyList<CpgShardLocation> locations;
+            var catalogReadStopwatch = Stopwatch.StartNew();
+            try
+            {
+                locations = await catalog.FindByFileAsync(
+                  lookup.File,
+                  _options.SchemaVersion,
+                  _options.ProfileHash,
+                  cancellationToken);
+            }
+            finally
+            {
+                catalogReadStopwatch.Stop();
+                LastRestoreMetrics = LastRestoreMetrics with
+                {
+                    CatalogReadMilliseconds = catalogReadStopwatch.ElapsedMilliseconds,
+                };
+            }
+
             if (locations.Count == 0)
             {
                 return null;
             }
 
+            var restoredShardCount = 0;
+            long restoredShardBytes = 0;
+            long shardReadMilliseconds = 0;
+            long restoreFactsElapsedMilliseconds = 0;
+            long restoreFactsAllocatedBytes = 0;
             try
             {
-                var shards = new List<CpgFrozenShard>(locations.Count);
+                var accumulator = CpgFrozenShardGraphReader.CreateMutableFactsAccumulator();
                 foreach (var location in locations)
                 {
-                    shards.Add(await store.ReadAsync(location, cancellationToken));
+                    var shardReadStopwatch = Stopwatch.StartNew();
+                    var shard = await store.ReadAsync(location, cancellationToken);
+                    shardReadStopwatch.Stop();
+                    shardReadMilliseconds += shardReadStopwatch.ElapsedMilliseconds;
+
+                    var factsStopwatch = Stopwatch.StartNew();
+                    var factsAllocatedBefore = GC.GetTotalAllocatedBytes(precise: false);
+                    accumulator.Add(shard);
+                    factsStopwatch.Stop();
+                    restoreFactsElapsedMilliseconds += factsStopwatch.ElapsedMilliseconds;
+                    restoreFactsAllocatedBytes +=
+                      GC.GetTotalAllocatedBytes(precise: false) - factsAllocatedBefore;
+                    restoredShardCount += 1;
+                    restoredShardBytes += location.ByteLength;
                 }
 
-                return new CpgBaseRestoreResult(CpgFrozenShardGraphReader.ReadMutableFacts(shards));
+                var completeStopwatch = Stopwatch.StartNew();
+                var completeAllocatedBefore = GC.GetTotalAllocatedBytes(precise: false);
+                var facts = accumulator.Complete();
+                completeStopwatch.Stop();
+                restoreFactsElapsedMilliseconds += completeStopwatch.ElapsedMilliseconds;
+                restoreFactsAllocatedBytes +=
+                  GC.GetTotalAllocatedBytes(precise: false) - completeAllocatedBefore;
+                return new CpgBaseRestoreResult(facts);
             }
             catch (IOException)
             {
@@ -187,20 +256,69 @@ internal sealed class CpgShardBuildCoordinator
             {
                 return null;
             }
+            finally
+            {
+                LastRestoreMetrics = LastRestoreMetrics with
+                {
+                    ShardReadMilliseconds = shardReadMilliseconds,
+                    RestoredShardCount = restoredShardCount,
+                    RestoredShardBytes = restoredShardBytes,
+                    RestoreFactsElapsedMilliseconds = restoreFactsElapsedMilliseconds,
+                    RestoreFactsAllocatedBytes = restoreFactsAllocatedBytes,
+                };
+            }
         }
 
-        var lease = await catalog.TryAcquireAsync(lookup, cancellationToken);
+        CpgShardLease? lease;
+        var catalogLookupStopwatch = Stopwatch.StartNew();
+        try
+        {
+            lease = await catalog.TryAcquireAsync(lookup, cancellationToken);
+        }
+        finally
+        {
+            catalogLookupStopwatch.Stop();
+            LastRestoreMetrics = LastRestoreMetrics with
+            {
+                CatalogReadMilliseconds = catalogLookupStopwatch.ElapsedMilliseconds,
+            };
+        }
+
         if (lease is null)
         {
             return null;
         }
 
+        var nonStreamingShardCount = 0;
+        long nonStreamingShardBytes = 0;
+        long nonStreamingShardReadMilliseconds = 0;
+        long nonStreamingRestoreFactsElapsedMilliseconds = 0;
+        long nonStreamingRestoreFactsAllocatedBytes = 0;
         try
         {
+            var shardReadStopwatch = Stopwatch.StartNew();
             var shard = await store.TryReadAsync(lease.Location, lookup, cancellationToken);
-            return shard is null
-              ? null
-              : new CpgBaseRestoreResult(CpgFrozenShardGraphReader.ReadMutableFacts(new[] { shard }));
+            shardReadStopwatch.Stop();
+            nonStreamingShardReadMilliseconds = shardReadStopwatch.ElapsedMilliseconds;
+            if (shard is not null)
+            {
+                nonStreamingShardCount = 1;
+                nonStreamingShardBytes = lease.Location.ByteLength;
+            }
+
+            if (shard is null)
+            {
+                return null;
+            }
+
+            var factsStopwatch = Stopwatch.StartNew();
+            var factsAllocatedBefore = GC.GetTotalAllocatedBytes(precise: false);
+            var facts = CpgFrozenShardGraphReader.ReadMutableFacts(new[] { shard });
+            factsStopwatch.Stop();
+            nonStreamingRestoreFactsElapsedMilliseconds = factsStopwatch.ElapsedMilliseconds;
+            nonStreamingRestoreFactsAllocatedBytes =
+              GC.GetTotalAllocatedBytes(precise: false) - factsAllocatedBefore;
+            return new CpgBaseRestoreResult(facts);
         }
         catch (IOException)
         {
@@ -210,9 +328,20 @@ internal sealed class CpgShardBuildCoordinator
         {
             return null;
         }
+        finally
+        {
+            LastRestoreMetrics = LastRestoreMetrics with
+            {
+                ShardReadMilliseconds = nonStreamingShardReadMilliseconds,
+                RestoredShardCount = nonStreamingShardCount,
+                RestoredShardBytes = nonStreamingShardBytes,
+                RestoreFactsElapsedMilliseconds = nonStreamingRestoreFactsElapsedMilliseconds,
+                RestoreFactsAllocatedBytes = nonStreamingRestoreFactsAllocatedBytes,
+            };
+        }
     }
 
-    private CpgFrozenShard CreateShard(NLCPGBuildContext context, CpgFileKey file, string kind, TextSpan span, IReadOnlySet<Model.NodeId> nodeIds)
+    private CpgFrozenShard CreateShard(NLCPGBuildContext context, CpgFileKey file, string kind, TextSpan span, IReadOnlySet<Model.NodeId> nodeIds, CpgFrozenGraphProjection exportProjection)
     {
         var fragmentHash = Hash(context.Source.Substring(span.Start, span.Length));
         var lookup = new CpgShardLookup(
@@ -220,7 +349,7 @@ internal sealed class CpgShardBuildCoordinator
           new CpgFragmentKey(kind, span.Start, span.Length, fragmentHash),
           _options.SchemaVersion,
           _options.ProfileHash);
-        return CpgFrozenShardExporter.Export(context.Graph, lookup, nodeIds);
+        return CpgFrozenShardExporter.Export(exportProjection, lookup, nodeIds);
     }
 
     private CpgFrozenShard CreateBoundaryShard(NLCPGBuildContext context, CpgFileKey file, IReadOnlyList<CpgFrozenBoundaryEdge> boundaryEdges)
@@ -245,6 +374,19 @@ internal sealed class CpgShardBuildCoordinator
         return root.DescendantNodes()
           .Where(node => node is BaseMethodDeclarationSyntax or AccessorDeclarationSyntax or LocalFunctionStatementSyntax or GlobalStatementSyntax)
           .OrderBy(node => node.SpanStart);
+    }
+
+    private static bool IsReusableFragmentKind(string kind)
+    {
+        return kind is
+          nameof(MethodDeclarationSyntax) or
+          nameof(ConstructorDeclarationSyntax) or
+          nameof(OperatorDeclarationSyntax) or
+          nameof(ConversionOperatorDeclarationSyntax) or
+          nameof(DestructorDeclarationSyntax) or
+          nameof(AccessorDeclarationSyntax) or
+          nameof(LocalFunctionStatementSyntax) or
+          nameof(GlobalStatementSyntax);
     }
 
     private static bool IsInside(Model.NLCPGNode node, TextSpan span)

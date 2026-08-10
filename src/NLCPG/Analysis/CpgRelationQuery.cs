@@ -161,8 +161,11 @@ public static class CpgRelationProfiles
     {
         return profile switch
         {
-            CpgRelationProfile.StructuralContainment => NLCPGCapability.SyntaxSemantic,
-            CpgRelationProfile.SemanticBinding => NLCPGCapability.SyntaxSemantic,
+            CpgRelationProfile.StructuralContainment => NLCPGCapability.SyntaxSemantic |
+                NLCPGCapability.SyntaxToken,
+            CpgRelationProfile.SemanticBinding => NLCPGCapability.SyntaxSemantic |
+                NLCPGCapability.Reference |
+                NLCPGCapability.TypeRef,
             CpgRelationProfile.LocalDataFlow => NLCPGCapability.DataFlow | NLCPGCapability.Cfg,
             CpgRelationProfile.ControlDependence => NLCPGCapability.ControlDependence,
             CpgRelationProfile.BackwardSlice => NLCPGCapability.DataFlow | NLCPGCapability.QueryIndex,
@@ -190,6 +193,7 @@ public static class CpgRelationProfiles
         NLCPGEdgeKind.Ref,
         NLCPGEdgeKind.HasType,
         NLCPGEdgeKind.EvalType,
+        NLCPGEdgeKind.RefersToType,
     }.ToFrozenSet();
 
     private static readonly IReadOnlySet<NLCPGEdgeKind> LocalDataFlow = new[]

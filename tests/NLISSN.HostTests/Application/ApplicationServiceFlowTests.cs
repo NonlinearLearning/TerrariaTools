@@ -11,7 +11,7 @@ public sealed class  ApplicationServiceFlowTests
     [Fact]
     public void Analyze_DefaultRules_RunTargetRuleAndReachabilityRuleInOnePipeline()
     {
-        var application = CreateApplication();
+        var application = CreateApplication(enableUnreachableMethodDeletion: true);
 
         var result = application.Analyze(
           ReachabilitySources.MixedRulePipelineSource,
@@ -41,7 +41,7 @@ public sealed class  ApplicationServiceFlowTests
     [Fact]
     public void Analyze_ReachabilityRule_IgnoresLegacyConfiguredMethodNamesOption()
     {
-        var application = CreateApplication();
+        var application = CreateApplication(enableUnreachableMethodDeletion: true);
 
         var result = application.Analyze(
           ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource,
@@ -60,7 +60,7 @@ public sealed class  ApplicationServiceFlowTests
     [Fact]
     public void Analyze_WhenTargetNameMissing_StillRunsReachabilityRule()
     {
-        var application = CreateApplication();
+        var application = CreateApplication(enableUnreachableMethodDeletion: true);
 
         var result = application.Analyze(
           ReachabilitySources.MixedRulePipelineSource,
@@ -75,9 +75,11 @@ public sealed class  ApplicationServiceFlowTests
         TextDiffAssert.Contains("var value = s.Seed + 1;", result.RewrittenSource, result.Diff);
     }
 
-    private static  ApplicationService CreateApplication()
+    private static ApplicationService CreateApplication(bool enableUnreachableMethodDeletion = false)
     {
-        return new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        return new ApplicationService(
+          RuleRegistry.CreateDefaultRules(
+            enableUnreachableMethodDeletion: enableUnreachableMethodDeletion));
     }
 
     private static Dictionary<string, string> CreateOptions(string? targetName = null, string? unreachableMethods = null)

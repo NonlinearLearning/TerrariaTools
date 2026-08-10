@@ -26,6 +26,20 @@ namespace RoslynPrototype.Tests;
 
 public sealed class PipelineComponentTests : IDisposable
 {
+    private static readonly string[] OptionalGlobalRuleIds =
+    {
+        "DEL-DEAD-001",
+        "DEL-UNREF-METHOD-MARK-001",
+        "CLR-UNUSED-IFACE-IMPL-MARK-001",
+        "mark.privatize-internal-only-public-method"
+    };
+
+    private const string OptionalGlobalRulesSource =
+        "public interface IUnused { void Clear(); } " +
+        "public sealed class Sample : IUnused { public void Clear() { } " +
+        "public void Internal() { } public void Run() { Internal(); } private void Remove() { } } " +
+        "public static class Program { public static void Main() { } private static void Dead() { } }";
+
     private readonly string _tempDirectory;
 
     public PipelineComponentTests()
@@ -106,7 +120,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void CreateFromOptions_WithCpgDopOverride_UsesExplicitCpgValue()
     {
-        var runtime = AnalysisRuntimeFactory.CreateFromOptions(
+        var runtime = AnalysisLegacyOptionsTestExtensions.CreateRuntime(
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
             ["max-degree-of-parallelism"] = "12",
@@ -120,7 +134,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void CreateFromOptions_WithoutCpgDopOverride_InheritsGlobalValue()
     {
-        var runtime = AnalysisRuntimeFactory.CreateFromOptions(
+        var runtime = AnalysisLegacyOptionsTestExtensions.CreateRuntime(
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
             ["max-degree-of-parallelism"] = "12"
@@ -166,7 +180,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void CreateFromOptions_WithInvalidCpgDopOverride_ThrowsArgumentException(string value)
     {
         var exception = Assert.Throws<ArgumentException>(() =>
-           AnalysisRuntimeFactory.CreateFromOptions(
+           AnalysisLegacyOptionsTestExtensions.CreateRuntime(
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
               ["cpg-max-degree-of-parallelism"] = value
@@ -505,8 +519,129 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.Contains(
           propagatedMarks,
-          mark => mark.RuleId == "TEST-PROP-VISIBILITY-001" &&
-            mark.Mark.SyntaxNode is ReturnStatementSyntax);
+            mark => mark.RuleId == "TEST-PROP-VISIBILITY-001" &&
+              mark.Mark.SyntaxNode is ReturnStatementSyntax);
+    }
+
+    [Fact]
+    public void PropagationEngine_Run_SelfConsumingRule_ReachesFixedPoint()
+    {
+        const string source = "class C { object M(State state) { return state.Root.Next.Next; } } class State { public State Root => this; public State Next => this; }";
+        var (context, root) = CreateContext(source, "state");
+        var seed = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+          .Single(candidate => string.Equals(candidate.ToString(), "state.Root", StringComparison.Ordinal));
+        var seedMarks = new[]
+        {
+            new MarkRecord(
+              "TEST-FIXED-POINT-SEED-001",
+              seed,
+              null,
+              null,
+              "Seed the first member access.",
+              SemanticTag: RuleFactPorts.TargetExpression)
+        };
+
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[] { new RepeatedMemberAccessPropagationRule() });
+
+        Assert.Collection(
+          propagatedMarks.OrderBy(mark => mark.Depth),
+          first =>
+          {
+              Assert.Equal(1, first.Depth);
+              Assert.Equal("state.Root.Next", first.Mark.SyntaxNode.ToString());
+          },
+          second =>
+          {
+              Assert.Equal(2, second.Depth);
+              Assert.Equal("state.Root.Next.Next", second.Mark.SyntaxNode.ToString());
+          });
+    }
+
+    [Fact]
+    public void PropagationEngine_Run_TwoRuleFeedback_AdmitsEachAnchorOnce()
+    {
+        const string source = "class C { object M(State state) { return state.Root.Next.Next; } } class State { public State Root => this; public State Next => this; }";
+        var (context, root) = CreateContext(source, "state");
+        var seed = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+          .Single(candidate => string.Equals(candidate.ToString(), "state.Root", StringComparison.Ordinal));
+        var seedMarks = new[]
+        {
+            new MarkRecord(
+              "TEST-FIXED-POINT-SEED-002",
+              seed,
+              null,
+              null,
+              "Seed the first member access.",
+              SemanticTag: RuleFactPorts.TargetExpression)
+        };
+
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[]
+          {
+              new FirstFeedbackMemberAccessPropagationRule(),
+              new SecondFeedbackMemberAccessPropagationRule()
+          });
+
+        Assert.Equal(2, propagatedMarks.Count);
+        Assert.Equal(
+          2,
+          propagatedMarks.Select(mark => (
+              mark.RuleId,
+              mark.Mark.SyntaxNode.SpanStart,
+              mark.Mark.SyntaxNode.Span.Length,
+              mark.Mark.SyntaxNode.RawKind,
+              mark.Mark.SemanticTag))
+            .Distinct()
+            .Count());
+        Assert.Equal(new[] { 1, 2 }, propagatedMarks.Select(mark => mark.Depth).OrderBy(depth => depth));
+    }
+
+    [Fact]
+    public void Analyze_FixedPointRegionFeedsConvergedFactsIntoLiftAndPropose()
+    {
+        const string source = "class C { object M(State state) { return state.Root.Next.Next; } } class State { public State Root => this; public State Next => this; }";
+        var lifter = new FixedPointLiftRule();
+        var proposer = new FixedPointProposalRule();
+        var application = new ApplicationService(new RulePipeline(
+          new RuleDefinitionMark[] { new FixedPointSeedMarkRule() },
+          new RuleDefinitionPropagate[] { new RepeatedMemberAccessPropagationRule() },
+          new RuleDefinitionLift[] { lifter },
+          new RuleDefinitionPropose[] { proposer }));
+
+        var result = application.Analyze(
+          source,
+          "fixed-point-e2e.cs",
+          new Dictionary<string, string> { ["skip-rewrite"] = "true" });
+
+        Assert.Equal(
+          new[] { "state.Root.Next", "state.Root.Next.Next" },
+          result.PropagatedMarks
+            .OrderBy(mark => mark.Depth)
+            .Select(mark => mark.Mark.SyntaxNode.ToString()));
+        Assert.True(lifter.SawConvergedFacts);
+        Assert.True(proposer.SawLiftedFact);
+        var secondFact = result.PropagatedMarks.Single(mark => mark.Depth == 2);
+        var evidence = Assert.IsType<AnalysisEvidenceGraph>(result.Evidence);
+        var secondEvidence = Assert.Single(
+          evidence.Nodes,
+          node => node.Kind == AnalysisEvidenceKind.Propagation &&
+            node.Anchor is
+            {
+                Start: var start,
+                Length: var length
+            } &&
+            start == secondFact.Mark.SyntaxNode.SpanStart &&
+            length == secondFact.Mark.SyntaxNode.Span.Length);
+        Assert.Contains("depth:2", secondEvidence.SummaryKey ?? string.Empty, StringComparison.Ordinal);
+        Assert.Single(
+          evidence.Edges,
+          edge => edge.Kind == AnalysisEvidenceEdgeKind.DerivedFrom &&
+            edge.TargetId == secondEvidence.Id);
     }
 
     [Fact]
@@ -877,7 +1012,7 @@ public sealed class PipelineComponentTests : IDisposable
             new DeclarationDecisionRule("TEST-COMPAT-DECIDE-B", "TEST-COMPAT-SEED-B")
           });
 
-        Assert.Equal(new[] { 1, 1, 1, 1 }, scheduler.DependencyGraphMaxDegrees);
+        Assert.Equal(new[] { 1, 1, 1 }, scheduler.DependencyGraphMaxDegrees);
         Assert.Equal(new[] { 1 }, scheduler.SelectOrderedMaxDegrees);
     }
 
@@ -895,10 +1030,11 @@ public sealed class PipelineComponentTests : IDisposable
           "delete-class-method-propagation.cs");
         var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["delete-class"] = "PlayerInput"
-          });
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["delete-class"] = "PlayerInput"
+            }));
         var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
@@ -935,10 +1071,11 @@ public sealed class PipelineComponentTests : IDisposable
           "delete-class-local-function-propagation.cs");
         var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["delete-class"] = "PlayerInput"
-          });
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["delete-class"] = "PlayerInput"
+            }));
         var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
@@ -975,10 +1112,11 @@ public sealed class PipelineComponentTests : IDisposable
           "delete-class-indexer-propagation.cs");
         var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["delete-class"] = "PlayerInput"
-          });
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["delete-class"] = "PlayerInput"
+            }));
         var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
@@ -1014,10 +1152,11 @@ public sealed class PipelineComponentTests : IDisposable
           "delete-class-delegate-propagation.cs");
         var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["delete-class"] = "PlayerInput"
-          });
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["delete-class"] = "PlayerInput"
+            }));
         var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
@@ -1057,10 +1196,11 @@ public sealed class PipelineComponentTests : IDisposable
           "delete-class-extension-propagation.cs");
         var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["delete-class"] = "PlayerInput"
-          });
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["delete-class"] = "PlayerInput"
+            }));
         var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
@@ -1096,10 +1236,11 @@ public sealed class PipelineComponentTests : IDisposable
           "delete-class-declaration-host-propagation.cs");
         var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["delete-class"] = "PlayerInput"
-          });
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["delete-class"] = "PlayerInput"
+            }));
         var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var engine = new PropagationEngine();
 
@@ -1178,23 +1319,20 @@ public sealed class PipelineComponentTests : IDisposable
 
         var (context, root) = CreateContext(source, "s, unused");
         var seedMarks = new MarkingEngine().Run(context, root, GetAtomicMarkRules());
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[] { new LogicalExpressionPropagationRule() });
         var liftedMarks = new MarkLiftingEngine().Run(
           context,
           seedMarks,
-          Array.Empty<PropagatedMarkRecord>(),
+          propagatedMarks,
           new RuleDefinitionLift[] { new LogicalExpressionLiftingRule() });
 
-        var logicalLift = Assert.Single(
+        Assert.DoesNotContain(
           liftedMarks,
           mark => mark.Mark.SyntaxNode is BinaryExpressionSyntax binaryExpression &&
             string.Equals(binaryExpression.ToString(), "s.IsReady && ready && fallback", StringComparison.Ordinal));
-        Assert.Null(logicalLift.StructureKind);
-        var payload = Assert.IsType<LogicalExpressionReductionPayload>(logicalLift.Payload);
-        Assert.Single(payload.RemovableOperands);
-        Assert.Equal("s.IsReady", payload.RemovableOperands[0].ToString());
-        Assert.Equal(2, payload.SurvivorOperands.Count);
-        Assert.Equal("ready", payload.SurvivorOperands[0].ToString());
-        Assert.Equal("fallback", payload.SurvivorOperands[1].ToString());
     }
 
     [Fact]
@@ -1241,10 +1379,11 @@ public sealed class PipelineComponentTests : IDisposable
           "delete-class-if-structure-propagation.cs");
         var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["delete-class"] = "PlayerInput"
-          });
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+              ["delete-class"] = "PlayerInput"
+            }));
         var seedMarks = new MarkingEngine().Run(context, root, GetDeclarationMarkRules());
         var liftedMarks = new MarkLiftingEngine().Run(
           context,
@@ -1411,7 +1550,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_WritesDiffFileWhenInputProducesEdits()
+    public void AnalyzeFromArgs_SuppressesUnsafeLocalDeclarationRewrite()
     {
         var filePath = Path.Combine(_tempDirectory, "delete-s-object-sample.cs");
         var rawDiffPath = Path.Combine(_tempDirectory, "delete-s-object-sample.raw.diff");
@@ -1431,23 +1570,14 @@ public sealed class PipelineComponentTests : IDisposable
             rawDiffPath
         });
 
-        Assert.NotNull(result.DiffFilePath);
-        Assert.True(File.Exists(result.DiffFilePath));
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        BuildDiffArtifactWriter.AppendDiffFragment(
-            aggregateDiffPath,
-            nameof(AnalyzeFromArgs_WritesDiffFileWhenInputProducesEdits),
-            File.ReadAllText(rawDiffPath));
-        var aggregateDiffText = File.ReadAllText(aggregateDiffPath);
-        TextDiffAssert.Contains(
-          "UnitTest: AnalyzeFromArgs_WritesDiffFileWhenInputProducesEdits",
-          aggregateDiffText,
-          aggregateDiffText);
-        TextDiffAssert.Contains("+++ rewritten #1", aggregateDiffText, aggregateDiffText);
+        Assert.Empty(result.Edits);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
+        Assert.True(File.Exists(filePath));
     }
 
     [Fact]
-    public void AnalyzeFromArgs_WithReadableDiffView_WritesReadableDiffFile()
+    public void AnalyzeFromArgs_WithReadableDiffView_SuppressesUnsafeLocalDeclarationRewrite()
     {
         var filePath = Path.Combine(_tempDirectory, "delete-s-object-readable.cs");
         var rawDiffPath = Path.Combine(_tempDirectory, "delete-s-object-readable.diff");
@@ -1465,17 +1595,9 @@ public sealed class PipelineComponentTests : IDisposable
             "readable"
         });
 
-        Assert.NotNull(result.DiffFilePath);
-        Assert.Equal(Path.GetFullPath(rawDiffPath), result.DiffFilePath);
-        Assert.Equal(result.Diff.Summary, result.DiffSummary);
-
-        var diffText = File.ReadAllText(rawDiffPath);
-        Assert.Contains("diff-summary files=1 edits=", diffText, StringComparison.Ordinal);
-        Assert.Contains("=== file", diffText, StringComparison.Ordinal);
-        Assert.Contains("edit #1 kind=", diffText, StringComparison.Ordinal);
-        Assert.Contains("--- before", diffText, StringComparison.Ordinal);
-        Assert.Contains("+++ after", diffText, StringComparison.Ordinal);
-        Assert.Equal(diffText, new TextDiffRenderer().Render(result.Diff, "readable"));
+        Assert.Empty(result.Edits);
+        Assert.Null(result.DiffFilePath);
+        Assert.False(File.Exists(rawDiffPath));
     }
 
     [Fact]
@@ -1517,7 +1639,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_WithNoDiff_WritesBackSingleFileWithoutCreatingDiffFile()
+    public void AnalyzeFromArgs_WithNoDiff_PreservesUnsafeLocalDeclaration()
     {
         var filePath = Path.Combine(_tempDirectory, "single-file-no-diff.cs");
         var expectedDiffPath = Path.Combine(_tempDirectory, "single-file-no-diff.rewrite.diff");
@@ -1533,12 +1655,12 @@ public sealed class PipelineComponentTests : IDisposable
             "--no-diff"
         });
 
-        Assert.NotEmpty(result.Edits);
+        Assert.Empty(result.Edits);
         Assert.Null(result.DiffFilePath);
         Assert.False(File.Exists(expectedDiffPath));
         var rewrittenSource = File.ReadAllText(filePath);
-        TextDiffAssert.Contains("return value;", rewrittenSource, result.Diff);
-        TextDiffAssert.DoesNotContain("var value = s.Seed + offset;", rewrittenSource, result.Diff);
+        Assert.Contains("return value;", rewrittenSource, StringComparison.Ordinal);
+        Assert.Contains("var value = s.Seed + offset;", rewrittenSource, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1596,6 +1718,13 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(result.Decisions);
         Assert.NotEmpty(result.Edits);
         Assert.NotNull(result.DiffFilePath);
+        Assert.Equal(
+          Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "Build",
+            "Result",
+            "Diff"),
+          result.DiffFilePath);
         Assert.True(Directory.Exists(result.DiffFilePath));
 
         var rewrittenTypeSource = File.ReadAllText(classFilePath);
@@ -1920,8 +2049,15 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(result.Edits);
         Assert.Equal(Path.GetFullPath(diffRootPath), result.DiffFilePath);
 
-        var declarationDiffPath = Path.Combine(diffRootPath, "PlayerInput.rewrite.diff");
-        var consumerDiffPath = Path.Combine(diffRootPath, "Gameplay", "Game.rewrite.diff");
+        var declarationDiffPath = Path.Combine(
+          diffRootPath,
+          "ExpressionControlFlow",
+          "PlayerInput.rewrite.diff");
+        var consumerDiffPath = Path.Combine(
+          diffRootPath,
+          "ExpressionControlFlow",
+          "Gameplay",
+          "Game.rewrite.diff");
         Assert.True(File.Exists(declarationDiffPath));
         Assert.True(File.Exists(consumerDiffPath));
         Assert.Contains("class PlayerInput", File.ReadAllText(declarationDiffPath), StringComparison.Ordinal);
@@ -3762,7 +3898,7 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeclaration_RemovesUnusedUsingsAfterRewrite()
+    public void AnalyzeFromArgs_ForDirectoryDeclaration_KeepsUnusedUsingsAfterRewrite()
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-using-cleanup-project");
         Directory.CreateDirectory(projectDirectory);
@@ -3806,9 +3942,9 @@ public sealed class PipelineComponentTests : IDisposable
         });
 
         var rewrittenConsumerSource = File.ReadAllText(consumerFilePath);
-        Assert.DoesNotContain("using Demo.Input;", rewrittenConsumerSource, StringComparison.Ordinal);
+        Assert.Contains("using Demo.Input;", rewrittenConsumerSource, StringComparison.Ordinal);
         Assert.DoesNotContain("PlayerInput.Enabled", rewrittenConsumerSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("using System;", rewrittenConsumerSource, StringComparison.Ordinal);
+        Assert.Contains("using System;", rewrittenConsumerSource, StringComparison.Ordinal);
 
         var rewrittenTrees = new[]
         {
@@ -3888,7 +4024,7 @@ public sealed class PipelineComponentTests : IDisposable
 
         var rewrittenConsumerSource = File.ReadAllText(consumerFilePath);
         TextDiffAssert.Contains("using Demo.Extensions;", rewrittenConsumerSource, result.Diff);
-        Assert.DoesNotContain("using Demo.Input;", rewrittenConsumerSource, StringComparison.Ordinal);
+        Assert.Contains("using Demo.Input;", rewrittenConsumerSource, StringComparison.Ordinal);
         TextDiffAssert.Contains("1.Twice()", rewrittenConsumerSource, result.Diff);
 
         var rewrittenTrees = new[]
@@ -4490,6 +4626,8 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.NotEmpty(result.SeedMarks);
         Assert.NotEmpty(result.Decisions);
+        Assert.Contains(result.PropagatedMarks, mark => mark.RuleId == "CLR-UNUSED-IFACE-IMPL-PROPAGATE-001");
+        Assert.Contains(result.LiftedMarks, mark => mark.RuleId == "CLR-UNUSED-IFACE-IMPL-LIFT-001");
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Replace);
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
         TextDiffAssert.Contains("value = new global::Demo.Payload();", rewrittenServiceSource, result.Diff);
@@ -4594,6 +4732,12 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.NotEmpty(result.SeedMarks);
         Assert.NotEmpty(result.Edits);
+        Assert.Contains(
+          result.PropagatedMarks,
+          mark => mark.RuleId == "PRIV-INTERNAL-PUBLIC-PROPAGATE-001");
+        Assert.Contains(
+          result.LiftedMarks,
+          mark => mark.RuleId == "PRIV-INTERNAL-PUBLIC-LIFT-001");
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
         TextDiffAssert.Contains("public int Run()", rewrittenServiceSource, result.Diff);
         TextDiffAssert.Contains("private int Helper()", rewrittenServiceSource, result.Diff);
@@ -4662,6 +4806,57 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void AnalyzeFromArgs_ForDirectoryPrivatizeInternalOnlyPublicMethods_KeepsMethodsCalledThroughDynamicReceiver()
+    {
+        var projectDirectory = Path.Combine(_tempDirectory, "privatize-dynamic-external-public-project");
+        Directory.CreateDirectory(projectDirectory);
+        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
+        var callerFilePath = Path.Combine(projectDirectory, "Caller.cs");
+        File.WriteAllText(
+          serviceFilePath,
+          """
+          namespace Demo;
+
+          public sealed class Worker
+          {
+            public int Run()
+            {
+              return Helper();
+            }
+
+            public int Helper()
+            {
+              return 1;
+            }
+          }
+          """);
+        File.WriteAllText(
+          callerFilePath,
+          """
+          namespace Demo;
+
+          public sealed class Caller
+          {
+            public int Run(Worker worker)
+            {
+              dynamic receiver = worker;
+              return receiver.Helper();
+            }
+          }
+          """);
+
+        var result = CreateCommandHost().AnalyzeFromArgs(new[]
+        {
+          projectDirectory,
+          "--privatize-internal-only-public-methods",
+          "--write-back"
+        });
+
+        Assert.Empty(result.Edits);
+        TextDiffAssert.Contains("public int Helper()", File.ReadAllText(serviceFilePath), result.Diff);
+    }
+
+    [Fact]
     public void PrototypeRewriter_Rewrite_WhenNoDecisionsKeepsSourceAndEmptyDiff()
     {
         var source = RewriteSources.NoDecisionSource;
@@ -4709,10 +4904,10 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "AtomicIdentifierNameMarkRule", StringComparison.Ordinal));
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "AtomicMemberAccessMarkRule", StringComparison.Ordinal));
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "AtomicInvocationMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "UnreachableMethodMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "UnreferencedMethodMarkRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "ClearUnusedInterfaceImplementationRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "PrivatizeInternalOnlyPublicMethodRule", StringComparison.Ordinal));
+        Assert.DoesNotContain(rules.Markers, rule => rule is UnreachableMethodMarkRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is UnreferencedMethodMarkRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
         Assert.Contains(rules.Markers, rule => string.Equals(rule.GetType().Name, "TypeSyntaxMarkRule", StringComparison.Ordinal));
         Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "ObjectCreationDeclarationPropagationRule", StringComparison.Ordinal));
         Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DeclarationSymbolReferencePropagationRule", StringComparison.Ordinal));
@@ -4731,10 +4926,10 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "IfStructureProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ControlStructureRemovalProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "DefaultRemovalProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "UnreachableMethodProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "UnreferencedMethodProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ClearUnusedInterfaceImplementationProposalRule", StringComparison.Ordinal));
-        Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "PrivatizeInternalOnlyPublicMethodProposalRule", StringComparison.Ordinal));
+        Assert.DoesNotContain(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
+        Assert.DoesNotContain(rules.Proposers, rule => rule is UnreferencedMethodProposalRule);
+        Assert.DoesNotContain(rules.Proposers, rule => rule is ClearUnusedInterfaceImplementationProposalRule);
+        Assert.DoesNotContain(rules.Proposers, rule => rule is PrivatizeInternalOnlyPublicMethodProposalRule);
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "TypeSyntaxDeclarationProposalRule", StringComparison.Ordinal));
         Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId == "DEL-CLASS-PROP-IF-COMPLETE-001");
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "MethodReturnTypeProposalRule", StringComparison.Ordinal));
@@ -4793,17 +4988,238 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_RegistersStandaloneRulesWithoutRuleSetTypes()
+    public void RuleRegistry_CreateDefaultRules_ExcludesUnreachableMethodRules()
     {
         var rules = RuleRegistry.CreateDefaultRules();
 
-        Assert.Contains(rules.Markers, rule => rule is UnreachableMethodMarkRule);
-        Assert.Contains(rules.Markers, rule => rule is UnreferencedMethodMarkRule);
-        Assert.Contains(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
-        Assert.Contains(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is UnreachableMethodMarkRule);
+        Assert.DoesNotContain(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is UnreferencedMethodMarkRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
         Assert.DoesNotContain(
           typeof(RuleRegistry).Assembly.GetTypes(),
           type => type.Name.Contains("RuleSet", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_WithoutDiffOut_SuppressesUnsafeLocalDeclarationRewrite()
+    {
+        var filePath = Path.Combine(_tempDirectory, "default-diff-output.cs");
+        File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
+        var expectedPath = Path.Combine(
+          Directory.GetCurrentDirectory(),
+          "Build",
+          "Result",
+          "Diff",
+          "default-diff-output.rewrite.diff");
+
+        try
+        {
+            var result = CreateCommandHost().AnalyzeFromArgs(new[]
+            {
+              filePath,
+              "--target-name",
+              "s"
+            });
+
+            Assert.Empty(result.Edits);
+            Assert.Null(result.DiffFilePath);
+            Assert.False(File.Exists(expectedPath));
+            Assert.False(File.Exists(Path.Combine(_tempDirectory, "default-diff-output.rewrite.diff")));
+        }
+        finally
+        {
+            if (File.Exists(expectedPath))
+            {
+                File.Delete(expectedPath);
+            }
+        }
+    }
+
+    [Fact]
+    public void RuleRegistry_CreateDefaultRules_WhenOptionalGlobalRulesEnabled_RegistersRulePairs()
+    {
+        var rules = RuleRegistry.CreateDefaultRules(
+          enableUnreachableMethodDeletion: true,
+          enableUnreferencedMethodDeletion: true,
+          enableUnusedInterfaceImplementationCleanup: true,
+          enableInternalOnlyPublicMethodPrivatization: true);
+
+        Assert.Contains(rules.Markers, rule => rule is UnreachableMethodMarkRule);
+        Assert.Contains(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
+        Assert.Contains(rules.Markers, rule => rule is UnreferencedMethodMarkRule);
+        Assert.Contains(rules.Proposers, rule => rule is UnreferencedMethodProposalRule);
+        Assert.Contains(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
+        Assert.Contains(rules.Proposers, rule => rule is ClearUnusedInterfaceImplementationProposalRule);
+        Assert.Contains(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
+        Assert.Contains(rules.Proposers, rule => rule is PrivatizeInternalOnlyPublicMethodProposalRule);
+        Assert.NotEmpty(rules.CompileRuleGraph().Nodes);
+    }
+
+    [Fact]
+    public void RuleRegistry_CreateDefaultRules_ExcludesOptionalGlobalRulesUntilEnabled()
+    {
+        var rules = RuleRegistry.CreateDefaultRules();
+
+        Assert.DoesNotContain(rules.Markers, rule => rule is UnreachableMethodMarkRule);
+        Assert.DoesNotContain(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is UnreferencedMethodMarkRule);
+        Assert.DoesNotContain(rules.Proposers, rule => rule is UnreferencedMethodProposalRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
+        Assert.DoesNotContain(rules.Proposers, rule => rule is ClearUnusedInterfaceImplementationProposalRule);
+        Assert.DoesNotContain(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
+        Assert.DoesNotContain(rules.Proposers, rule => rule is PrivatizeInternalOnlyPublicMethodProposalRule);
+    }
+
+    [Fact]
+    public void AnalyzeFromArgs_WhenUnreachableMethodDeletionEnabled_DeletesOnlyAfterExplicitOptIn()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "unreachable-method.cs");
+        File.WriteAllText(
+          sourcePath,
+          "public static class Program { public static void Main() { } private static void Dead() { } }");
+        var host = CreateCommandHost();
+
+        var defaultResult = host.AnalyzeFromArgs(new[] { sourcePath, "--no-diff" });
+        var enabledResult = host.AnalyzeFromArgs(new[]
+        {
+          sourcePath,
+          "--delete-unreachable-methods",
+          "--no-diff"
+        });
+
+        Assert.DoesNotContain(defaultResult.SeedMarks, mark => mark.RuleId == "DEL-DEAD-001");
+        Assert.Contains(enabledResult.SeedMarks, mark => mark.RuleId == "DEL-DEAD-001");
+        Assert.DoesNotContain("Dead", enabledResult.RewrittenSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Analyze_ConfigurationFile_SuppressesUnsafeLocalDeclarationRewrite()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "configured-input.cs");
+        var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+        File.WriteAllText(sourcePath, CliInputSources.DiffWriteSource);
+        File.WriteAllText(
+          configurationPath,
+          """
+          schemaVersion: 2
+          runId: configured-input
+          input:
+            path: configured-input.cs
+          analysis:
+            targetName: s
+          execution:
+            maxDegreeOfParallelism: 1
+          artifacts:
+            root: artifacts
+            diff:
+              enabled: false
+          """);
+
+        var result = CreateCommandHost().Analyze(YamlConfigurationLoader.Load(configurationPath));
+
+        Assert.Empty(result.Edits);
+        Assert.Null(result.DiffFilePath);
+    }
+
+    [Fact]
+    public void Analyze_ConfigurationFile_EnablesOptionalGlobalRules()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "optional-rules.cs");
+        var configurationPath = Path.Combine(_tempDirectory, "optional-rules.yml");
+        File.WriteAllText(sourcePath, OptionalGlobalRulesSource);
+        File.WriteAllText(
+          configurationPath,
+          """
+          schemaVersion: 2
+          runId: optional-rules
+          input:
+            path: optional-rules.cs
+          analysis:
+            deleteUnreachableMethods: true
+            deleteUnreferencedMethods: true
+            clearUnusedInterfaceImplementations: true
+            privatizeInternalOnlyPublicMethods: true
+          execution:
+            maxDegreeOfParallelism: 1
+          artifacts:
+            root: artifacts
+            diff:
+              enabled: false
+          """);
+
+        var result = CreateCommandHost().Analyze(YamlConfigurationLoader.Load(configurationPath));
+
+        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "DEL-DEAD-001");
+        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "DEL-UNREF-METHOD-MARK-001");
+        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "CLR-UNUSED-IFACE-IMPL-MARK-001");
+        Assert.Contains(result.SeedMarks, mark =>
+          mark.RuleId == "mark.privatize-internal-only-public-method");
+    }
+
+    [Fact]
+    public void Analyze_ConfigurationFile_DefaultPolicy_DoesNotActivateOptionalGlobalRules()
+    {
+        var sourcePath = Path.Combine(_tempDirectory, "default-optional-rules.cs");
+        var configurationPath = Path.Combine(_tempDirectory, "default-optional-rules.yml");
+        File.WriteAllText(sourcePath, OptionalGlobalRulesSource);
+        File.WriteAllText(
+          configurationPath,
+          """
+          schemaVersion: 2
+          runId: default-optional-rules
+          input:
+            path: default-optional-rules.cs
+          analysis: {}
+          execution:
+            maxDegreeOfParallelism: 1
+          artifacts:
+            root: artifacts
+            diff:
+              enabled: false
+          """);
+
+        var result = CreateCommandHost().Analyze(YamlConfigurationLoader.Load(configurationPath));
+
+        AssertNoOptionalGlobalRuleMarks(result);
+    }
+
+    [Theory]
+    [InlineData("deleteUnreachableMethods", "DEL-DEAD-001")]
+    [InlineData("deleteUnreferencedMethods", "DEL-UNREF-METHOD-MARK-001")]
+    [InlineData("clearUnusedInterfaceImplementations", "CLR-UNUSED-IFACE-IMPL-MARK-001")]
+    [InlineData("privatizeInternalOnlyPublicMethods", "mark.privatize-internal-only-public-method")]
+    public void Analyze_ConfigurationFile_EnablesOnlyTheSelectedOptionalGlobalRule(
+        string policyName,
+        string expectedRuleId)
+    {
+        var sourceFileName = $"{policyName}.cs";
+        var sourcePath = Path.Combine(_tempDirectory, sourceFileName);
+        var configurationPath = Path.Combine(_tempDirectory, $"{policyName}.yml");
+        File.WriteAllText(sourcePath, OptionalGlobalRulesSource);
+        File.WriteAllText(
+          configurationPath,
+          $$"""
+          schemaVersion: 2
+          runId: {{policyName}}
+          input:
+            path: {{sourceFileName}}
+          analysis:
+            {{policyName}}: true
+          execution:
+            maxDegreeOfParallelism: 1
+          artifacts:
+            root: artifacts
+            diff:
+              enabled: false
+          """);
+
+        var result = CreateCommandHost().Analyze(YamlConfigurationLoader.Load(configurationPath));
+
+        Assert.Contains(result.SeedMarks, mark => mark.RuleId == expectedRuleId);
+        Assert.All(OptionalGlobalRuleIds.Where(ruleId => ruleId != expectedRuleId), ruleId =>
+          Assert.DoesNotContain(result.SeedMarks, mark => mark.RuleId == ruleId));
     }
 
     [Fact]
@@ -4845,9 +5261,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.DoesNotContain(
           rules.Markers,
           rule => string.Equals(rule.GetType().Name, "AtomicMemberAccessMarkRule", StringComparison.Ordinal));
-        Assert.Contains(
-          rules.Markers,
-          rule => string.Equals(rule.GetType().Name, "UnreachableMethodMarkRule", StringComparison.Ordinal));
+        Assert.DoesNotContain(rules.Markers, rule => rule is UnreachableMethodMarkRule);
         Assert.Contains(
           rules.Propagators,
           rule => string.Equals(rule.GetType().Name, "AssignmentLeftValuePropagationRule", StringComparison.Ordinal));
@@ -4966,6 +5380,44 @@ public sealed class PipelineComponentTests : IDisposable
         return new  CommandHost(RuleRegistry.CreateDefaultRules());
     }
 
+    [Fact]
+    public void AnalysisSession_ExpressionTopology_ReusesPathAndOperationCache()
+    {
+        var (session, root) = CreateContext("class C { bool M(bool a, bool b) => a && b; }");
+        var seed = root.DescendantNodes().OfType<IdentifierNameSyntax>()
+          .Single(node => node.Identifier.ValueText == "a");
+
+        var first = session.ResolveExpressionTopology(seed);
+        var second = session.ResolveExpressionTopology(seed);
+        var metrics = session.GetExpressionTopologyMetrics();
+
+        Assert.Same(first, second);
+        Assert.Equal(1, metrics.AnalyzeCount);
+        Assert.Equal(1, metrics.CachedPathCount);
+        Assert.True(metrics.OperationCacheMisses >= 1);
+    }
+
+    [Fact]
+    public void AnalysisSession_ExpressionTopology_UserDefinedBinaryOperator_StopsConservatively()
+    {
+        var (session, root) = CreateContext(
+          """
+          struct Flag
+          {
+            public static Flag operator &(Flag left, Flag right) => left;
+            bool M(Flag left, Flag right) => (left & right) is not null;
+          }
+          """);
+        var seed = root.DescendantNodes().OfType<BinaryExpressionSyntax>()
+          .Single(binary => binary.IsKind(SyntaxKind.BitwiseAndExpression)).Left;
+
+        var path = session.ResolveExpressionTopology(seed);
+
+        var step = Assert.Single(path.Steps);
+        Assert.Equal(NLISSN.Core.Analysis.ExpressionPropagation.ExpressionPropagationMode.Stop, step.Mode);
+        Assert.True(step.OperatorFacts.HasOperatorMethod);
+    }
+
     private static (AnalysisSession Context, SyntaxNode Root) CreateContext(string source, string? targetName = null,  AnalysisRuntime? runtime = null)
     {
         var tree = CSharpSyntaxTree.ParseText(source, path: "component-test.cs");
@@ -4979,7 +5431,10 @@ public sealed class PipelineComponentTests : IDisposable
             options["target-name"] = targetName;
         }
 
-        return (new AnalysisSession(new CpgAnalysisContext(graph, semanticModel, root), options, runtime: runtime), root);
+        return (new AnalysisSession(
+          new CpgAnalysisContext(graph, semanticModel, root),
+          AnalysisLegacyOptionsTestExtensions.CreateSettings(options),
+          runtime: runtime), root);
     }
 
     private static  AnalysisRuntime CreateParallelRuntime(RecordingConcurrencyPool scheduler)
@@ -5370,6 +5825,255 @@ public sealed class PipelineComponentTests : IDisposable
             yield return propagatedMark;
         }
 
+    }
+
+    private sealed class RepeatedMemberAccessPropagationRule : RuleDefinitionPropagate
+    {
+        public override string RuleId { get; } = "TEST-FIXED-POINT-SELF-001";
+
+        public override string Name { get; } = "Propagate each member access to its direct member-access parent.";
+
+        public override RuleConsumesContract Consumes => CreateTargetAtomicConsumes();
+
+        public override RuleProducesContract Produces =>
+          CreateSyntaxProduces(
+            new[] { SyntaxKind.SimpleMemberAccessExpression },
+            RuleFactPorts.TargetExpression);
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(
+          IPropagationRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks)
+        {
+            foreach (var sourceMark in seedMarks)
+            {
+                var next = context.Root.DescendantNodes()
+                  .OfType<MemberAccessExpressionSyntax>()
+                  .SingleOrDefault(candidate => candidate.Expression.Span == sourceMark.SyntaxNode.Span);
+                if (next is null)
+                {
+                    continue;
+                }
+
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  new MarkRecord(
+                    RuleId,
+                    next,
+                    null,
+                    null,
+                    "Propagate to the direct member-access parent.",
+                    SemanticTag: RuleFactPorts.TargetExpression),
+                  sourceMark,
+                  0);
+            }
+        }
+    }
+
+    private sealed class FirstFeedbackMemberAccessPropagationRule : RuleDefinitionPropagate
+    {
+        private static readonly RuleSemanticTag FeedbackTag = new("Test.FixedPoint.Feedback");
+
+        public override string RuleId { get; } = "TEST-FIXED-POINT-FIRST-001";
+
+        public override string Name { get; } = "Move a target member access into the feedback channel.";
+
+        public override RuleConsumesContract Consumes => CreateTargetAtomicConsumes();
+
+        public override RuleProducesContract Produces =>
+          CreateSyntaxProduces(new[] { SyntaxKind.SimpleMemberAccessExpression }, FeedbackTag);
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(
+          IPropagationRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks)
+        {
+            foreach (var sourceMark in seedMarks)
+            {
+                var next = context.Root.DescendantNodes()
+                  .OfType<MemberAccessExpressionSyntax>()
+                  .SingleOrDefault(candidate => candidate.Expression.Span == sourceMark.SyntaxNode.Span);
+                if (next is null)
+                {
+                    continue;
+                }
+
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  new MarkRecord(
+                    RuleId,
+                    next,
+                    null,
+                    null,
+                    "Emit the feedback fact.",
+                    SemanticTag: FeedbackTag),
+                  sourceMark,
+                  0);
+            }
+        }
+    }
+
+    private sealed class SecondFeedbackMemberAccessPropagationRule : RuleDefinitionPropagate
+    {
+        private static readonly RuleSemanticTag FeedbackTag = new("Test.FixedPoint.Feedback");
+
+        public override string RuleId { get; } = "TEST-FIXED-POINT-SECOND-001";
+
+        public override string Name { get; } = "Return a feedback member access to the target channel.";
+
+        public override RuleConsumesContract Consumes =>
+          CreateSyntaxConsumes(new[] { SyntaxKind.SimpleMemberAccessExpression }, FeedbackTag);
+
+        public override RuleProducesContract Produces =>
+          CreateSyntaxProduces(
+            new[] { SyntaxKind.SimpleMemberAccessExpression },
+            RuleFactPorts.TargetExpression);
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(
+          IPropagationRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks)
+        {
+            foreach (var sourceMark in seedMarks)
+            {
+                var next = context.Root.DescendantNodes()
+                  .OfType<MemberAccessExpressionSyntax>()
+                  .SingleOrDefault(candidate => candidate.Expression.Span == sourceMark.SyntaxNode.Span);
+                if (next is null)
+                {
+                    continue;
+                }
+
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  new MarkRecord(
+                    RuleId,
+                    next,
+                    null,
+                    null,
+                    "Return the fact to the target channel.",
+                    SemanticTag: RuleFactPorts.TargetExpression),
+                  sourceMark,
+                  0);
+            }
+        }
+    }
+
+    private sealed class FixedPointSeedMarkRule : RuleDefinitionMark
+    {
+        public override string RuleId { get; } = "TEST-FIXED-POINT-SEED-MARK-001";
+
+        public override string Name { get; } = "Mark the first member access for fixed-point analysis.";
+
+        public override RuleProducesContract Produces =>
+          CreateSyntaxProduces(
+            new[] { SyntaxKind.SimpleMemberAccessExpression },
+            RuleFactPorts.TargetExpression);
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
+        {
+            _ = context;
+            var seed = root.DescendantNodes()
+              .OfType<MemberAccessExpressionSyntax>()
+              .Single(candidate => string.Equals(candidate.ToString(), "state.Root", StringComparison.Ordinal));
+            yield return new MarkRecord(
+              RuleId,
+              seed,
+              null,
+              null,
+              "Seed the first member access.",
+              SemanticTag: RuleFactPorts.TargetExpression);
+        }
+    }
+
+    private sealed class FixedPointLiftRule : RuleDefinitionLift
+    {
+        private static readonly RuleSemanticTag LiftTag = new("Test.FixedPoint.Lift");
+
+        public bool SawConvergedFacts { get; private set; }
+
+        public override string RuleId { get; } = "TEST-FIXED-POINT-LIFT-001";
+
+        public override string Name { get; } = "Lift the final fixed-point fact.";
+
+        public override RuleConsumesContract Consumes =>
+          CreateSyntaxConsumes(
+            new[] { SyntaxKind.SimpleMemberAccessExpression },
+            RuleFactPorts.TargetExpression);
+
+        public override RuleProducesContract Produces =>
+          CreateSyntaxProduces(new[] { SyntaxKind.SimpleMemberAccessExpression }, LiftTag);
+
+        public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<LiftedMarkRecord> Lift(
+          ILiftRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks,
+          IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
+        {
+            _ = context;
+            var finalFact = Assert.Single(propagatedMarks, mark => mark.Depth == 2);
+            var seedMark = Assert.Single(seedMarks);
+            SawConvergedFacts = propagatedMarks.Count == 2;
+            yield return new LiftedMarkRecord(
+              RuleId,
+              new MarkRecord(
+                RuleId,
+                finalFact.Mark.SyntaxNode,
+                null,
+                null,
+                "Lift the converged second-hop fact.",
+                SemanticTag: LiftTag),
+              seedMark,
+              finalFact.Depth);
+        }
+    }
+
+    private sealed class FixedPointProposalRule : RuleDefinitionPropose
+    {
+        private static readonly RuleSemanticTag LiftTag = new("Test.FixedPoint.Lift");
+
+        public bool SawLiftedFact { get; private set; }
+
+        public override string RuleId { get; } = "TEST-FIXED-POINT-PROPOSE-001";
+
+        public override string Name { get; } = "Consume a fixed-point lift.";
+
+        public override RuleConsumesContract Consumes =>
+          CreateSyntaxConsumes(new[] { SyntaxKind.SimpleMemberAccessExpression }, LiftTag);
+
+        public override IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<DecisionUnit> Propose(
+          IProposeRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks,
+          IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
+          IReadOnlyList<LiftedMarkRecord> liftedMarks)
+        {
+            _ = context;
+            _ = seedMarks;
+            _ = propagatedMarks;
+            var lifted = Assert.Single(liftedMarks);
+            SawLiftedFact = string.Equals(
+              lifted.Mark.SyntaxNode.ToString(),
+              "state.Root.Next.Next",
+              StringComparison.Ordinal);
+            yield break;
+        }
     }
 
     private sealed class DefinitionLeftValuePropagationRule : RuleDefinitionPropagate
@@ -5801,7 +6505,18 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Equal(expected.LiftedMarks.Count, actual.LiftedMarks.Count);
         Assert.Equal(expected.Decisions.Count, actual.Decisions.Count);
         Assert.Equal(expected.Edits.Count, actual.Edits.Count);
+        Assert.Equal(expected.RewrittenSource, actual.RewrittenSource);
         Assert.Equal(expected.Diff.ToString(), actual.Diff.ToString());
+        Assert.Equal(BuildMarkKeys(expected.SeedMarks), BuildMarkKeys(actual.SeedMarks));
+        Assert.Equal(
+          BuildPropagatedMarkKeys(expected.PropagatedMarks),
+          BuildPropagatedMarkKeys(actual.PropagatedMarks));
+        Assert.Equal(
+          BuildLiftedMarkKeys(expected.LiftedMarks),
+          BuildLiftedMarkKeys(actual.LiftedMarks));
+        Assert.Equal(
+          System.Text.Json.JsonSerializer.Serialize(expected.Evidence),
+          System.Text.Json.JsonSerializer.Serialize(actual.Evidence));
 
         var expectedDecisionKeys = expected.Decisions
           .Select(BuildDecisionKey)
@@ -5832,6 +6547,38 @@ public sealed class PipelineComponentTests : IDisposable
             mark.PrimaryGraphNode!.NodeId))
           .ToList();
     }
+
+    private static void AssertNoOptionalGlobalRuleMarks(PrototypeAnalysisResult result)
+    {
+        Assert.All(OptionalGlobalRuleIds, ruleId =>
+            Assert.DoesNotContain(result.SeedMarks, mark => mark.RuleId == ruleId));
+    }
+
+    private static IReadOnlyList<string> BuildPropagatedMarkKeys(
+      IReadOnlyList<PropagatedMarkRecord> marks) =>
+      marks.Select(mark => string.Join(
+        "|",
+        mark.RuleId,
+        mark.Mark.SyntaxNode.SyntaxTree.FilePath,
+        mark.Mark.SyntaxNode.SpanStart,
+        mark.Mark.SyntaxNode.Span.Length,
+        mark.Mark.SyntaxNode.RawKind,
+        mark.Mark.SemanticTag?.Value,
+        mark.Depth,
+        mark.Payload is NLISSN.Core.Analysis.ExpressionPropagation.ExpressionTopologyPayload payload
+          ? payload.StepIndex
+          : -1)).ToList();
+
+    private static IReadOnlyList<string> BuildLiftedMarkKeys(IReadOnlyList<LiftedMarkRecord> marks) =>
+      marks.Select(mark => string.Join(
+        "|",
+        mark.RuleId,
+        mark.Mark.SyntaxNode.SyntaxTree.FilePath,
+        mark.Mark.SyntaxNode.SpanStart,
+        mark.Mark.SyntaxNode.Span.Length,
+        mark.Mark.SyntaxNode.RawKind,
+        mark.Mark.SemanticTag?.Value,
+        mark.Depth)).ToList();
 
     private static string BuildDecisionKey(RuleDecision decision)
     {

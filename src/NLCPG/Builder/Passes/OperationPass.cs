@@ -34,18 +34,18 @@ namespace NLCPG.Builder
             VisitOperationRoots(
               GetOperationRootPlans(context.Root, context.SemanticModel),
               context,
-              context.Graph,
-              context.SemanticModel);
+              context.Graph);
             CompleteOperationBackedSyntaxTypes(context);
         }
 
-        private void VisitOperationRoots(IReadOnlyList<OperationRootPlan> operationRoots, NLCPGBuildContext context, NLCPGGraph graph, SemanticModel semanticModel)
+        private void VisitOperationRoots(IReadOnlyList<OperationRootPlan> operationRoots, NLCPGBuildContext context, NLCPGGraph graph)
         {
             foreach (var operationRoot in operationRoots)
             {
                 // 根节点缺失时 AddOperationTree 会直接退出，因此这里可以统一走同一入口。
+                var rootOperation = GetOperationRoot(context, operationRoot.BodySyntax);
                 AddOperationTree(
-                  semanticModel.GetOperation(operationRoot.BodySyntax),
+                  rootOperation,
                   parentOperation: null,
                   methodRoot: null,
                   owningMethod: operationRoot.OwningMethod,
@@ -54,8 +54,15 @@ namespace NLCPG.Builder
             }
         }
 
-        private static IReadOnlyList<OperationRootPlan> GetOperationRootPlans(SyntaxNode root, SemanticModel semanticModel)
+        private IReadOnlyList<OperationRootPlan> GetOperationRootPlans(SyntaxNode root, SemanticModel semanticModel)
         {
+            if (ReferenceEquals(_operationRootPlanRoot, root) &&
+                ReferenceEquals(_operationRootPlanSemanticModel, semanticModel) &&
+                _operationRootPlans is not null)
+            {
+                return _operationRootPlans;
+            }
+
             var operationRoots = new List<OperationRootPlan>();
             var order = 0;
 
@@ -109,6 +116,9 @@ namespace NLCPG.Builder
                 order += 1;
             }
 
+            _operationRootPlanRoot = root;
+            _operationRootPlanSemanticModel = semanticModel;
+            _operationRootPlans = operationRoots;
             return operationRoots;
         }
 

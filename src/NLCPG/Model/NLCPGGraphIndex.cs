@@ -8,49 +8,117 @@ namespace NLCPG.Model;
 /// 保存图冻结后可供只读查询使用的确定性边索引。
 internal sealed class NLCPGGraphIndex
 {
-    private sealed class EdgeIndexAccumulator
+    private sealed class CsrEdgeTable
     {
-        public Dictionary<NodeId, List<NLCPGEdge>> OutgoingByNodeId { get; } = new();
+        internal CsrEdgeTable(NLCPGEdge[] edges, int[] offsets, Dictionary<NodeId, int> nodeOrdinals, int kindWidth)
+        {
+            Edges = edges;
+            Offsets = offsets;
+            NodeOrdinals = nodeOrdinals;
+            KindWidth = kindWidth;
+        }
 
-        public Dictionary<NodeId, List<NLCPGEdge>> IncomingByNodeId { get; } = new();
+        internal NLCPGEdge[] Edges { get; }
 
-        public Dictionary<(NodeId NodeId, NLCPGEdgeKind Kind), List<NLCPGEdge>> OutgoingByNodeAndKind { get; } = new();
+        internal int[] Offsets { get; }
 
-        public Dictionary<(NodeId NodeId, NLCPGEdgeKind Kind), List<NLCPGEdge>> IncomingByNodeAndKind { get; } = new();
+        internal Dictionary<NodeId, int> NodeOrdinals { get; }
 
-        public Dictionary<NLCPGEdgeKind, List<NLCPGEdge>> EdgesByKind { get; } = new();
+        internal int KindWidth { get; }
+
+        internal IReadOnlyList<NLCPGEdge> Get(NodeId nodeId)
+        {
+            return TryGetBucket(nodeId, kind: null, out var offset, out var count)
+                ? new ArraySegment<NLCPGEdge>(Edges, offset, count)
+                : Array.Empty<NLCPGEdge>();
+        }
+
+        internal IReadOnlyList<NLCPGEdge> Get(NodeId nodeId, NLCPGEdgeKind kind)
+        {
+            return TryGetBucket(nodeId, kind, out var offset, out var count)
+                ? new ArraySegment<NLCPGEdge>(Edges, offset, count)
+                : Array.Empty<NLCPGEdge>();
+        }
+
+        private bool TryGetBucket(NodeId nodeId, NLCPGEdgeKind? kind, out int offset, out int count)
+        {
+            if (!NodeOrdinals.TryGetValue(nodeId, out var nodeOrdinal))
+            {
+                offset = 0;
+                count = 0;
+                return false;
+            }
+
+            var bucketOrdinal = kind.HasValue
+                ? checked((nodeOrdinal * KindWidth) + (int)kind.Value)
+                : nodeOrdinal;
+            if ((uint)bucketOrdinal >= (uint)(Offsets.Length - 1))
+            {
+                offset = 0;
+                count = 0;
+                return false;
+            }
+
+            offset = Offsets[bucketOrdinal];
+            count = Offsets[bucketOrdinal + 1] - offset;
+            return count > 0;
+        }
     }
 
-    private NLCPGGraphIndex(IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> outgoingByNodeId, IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> incomingByNodeId, IReadOnlyDictionary<(NodeId NodeId, NLCPGEdgeKind Kind), IReadOnlyList<NLCPGEdge>> outgoingByNodeAndKind, IReadOnlyDictionary<(NodeId NodeId, NLCPGEdgeKind Kind), IReadOnlyList<NLCPGEdge>> incomingByNodeAndKind, IReadOnlyDictionary<NLCPGEdgeKind, IReadOnlyList<NLCPGEdge>> edgesByKind, IReadOnlyDictionary<NLCPGNodeKind, IReadOnlyList<NLCPGNode>> nodesByKind, IReadOnlyDictionary<string, IReadOnlyList<NLCPGNode>> nodesByFilePath, string snapshotVersion)
+    private NLCPGGraphIndex(
+      IReadOnlyList<NLCPGNode> orderedNodes,
+      IReadOnlyList<NLCPGEdge> orderedEdges,
+      Dictionary<NodeId, int> nodeOrdinals,
+      CsrEdgeTable outgoing,
+      CsrEdgeTable incoming,
+      CsrEdgeTable outgoingByKind,
+      CsrEdgeTable incomingByKind,
+      NLCPGEdge[] edgesByKind,
+      int[] edgesByKindOffsets,
+      IReadOnlyDictionary<NLCPGNodeKind, IReadOnlyList<NLCPGNode>> nodesByKind,
+      IReadOnlyDictionary<string, IReadOnlyList<NLCPGNode>> nodesByFilePath,
+      string snapshotVersion)
     {
-        OutgoingByNodeId = outgoingByNodeId;
-        IncomingByNodeId = incomingByNodeId;
-        OutgoingByNodeAndKind = outgoingByNodeAndKind;
-        IncomingByNodeAndKind = incomingByNodeAndKind;
-        EdgesByKind = edgesByKind;
+        OrderedNodes = orderedNodes;
+        OrderedEdges = orderedEdges;
+        NodeOrdinals = nodeOrdinals;
+        Outgoing = outgoing;
+        Incoming = incoming;
+        OutgoingByKind = outgoingByKind;
+        IncomingByKind = incomingByKind;
+        EdgesByKindBuffer = edgesByKind;
+        EdgesByKindOffsets = edgesByKindOffsets;
         NodesByKind = nodesByKind;
         NodesByFilePath = nodesByFilePath;
         SnapshotVersion = snapshotVersion;
     }
 
-    public IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> OutgoingByNodeId { get; }
+    internal IReadOnlyList<NLCPGNode> OrderedNodes { get; }
 
-    public IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> IncomingByNodeId { get; }
+    internal IReadOnlyList<NLCPGEdge> OrderedEdges { get; }
 
-    public IReadOnlyDictionary<(NodeId NodeId, NLCPGEdgeKind Kind), IReadOnlyList<NLCPGEdge>> OutgoingByNodeAndKind { get; }
+    private Dictionary<NodeId, int> NodeOrdinals { get; }
 
-    public IReadOnlyDictionary<(NodeId NodeId, NLCPGEdgeKind Kind), IReadOnlyList<NLCPGEdge>> IncomingByNodeAndKind { get; }
+    private CsrEdgeTable Outgoing { get; }
 
-    public IReadOnlyDictionary<NLCPGEdgeKind, IReadOnlyList<NLCPGEdge>> EdgesByKind { get; }
+    private CsrEdgeTable Incoming { get; }
 
-    public IReadOnlyDictionary<NLCPGNodeKind, IReadOnlyList<NLCPGNode>> NodesByKind { get; }
+    private CsrEdgeTable OutgoingByKind { get; }
 
-    public IReadOnlyDictionary<string, IReadOnlyList<NLCPGNode>> NodesByFilePath { get; }
+    private CsrEdgeTable IncomingByKind { get; }
 
-    public string SnapshotVersion { get; }
+    private NLCPGEdge[] EdgesByKindBuffer { get; }
 
-    // 按确定性顺序冻结节点和边，并生成查询索引与快照版本。
-    public static NLCPGGraphIndex Create(IEnumerable<NLCPGNode> nodes, IEnumerable<NLCPGEdge> edges)
+    private int[] EdgesByKindOffsets { get; }
+
+    internal IReadOnlyDictionary<NLCPGNodeKind, IReadOnlyList<NLCPGNode>> NodesByKind { get; }
+
+    internal IReadOnlyDictionary<string, IReadOnlyList<NLCPGNode>> NodesByFilePath { get; }
+
+    internal string SnapshotVersion { get; }
+
+    // 按确定性顺序冻结节点和边，并生成连续数组查询索引与快照版本。
+    internal static NLCPGGraphIndex Create(IEnumerable<NLCPGNode> nodes, IEnumerable<NLCPGEdge> edges)
     {
         var orderedEdges = edges.OrderBy(edge => edge.SourceNodeId)
             .ThenBy(edge => edge.Kind)
@@ -63,13 +131,16 @@ internal sealed class NLCPGGraphIndex
             .ThenBy(edge => edge.CallSiteContext?.DisplayName, StringComparer.Ordinal)
             .ToArray();
         var orderedNodes = nodes.OrderBy(node => node.NodeId).ToArray();
+        var nodeOrdinals = orderedNodes
+            .Select((node, ordinal) => (node.NodeId!.Value, ordinal))
+            .ToDictionary(entry => entry.Value, entry => entry.ordinal);
+        var kindWidth = Enum.GetValues<NLCPGEdgeKind>().Select(kind => (int)kind).DefaultIfEmpty(0).Max() + 1;
         var snapshotVersion = CreateSnapshotVersion(orderedNodes, orderedEdges);
-        var edgeIndexes = BuildEdgeIndexes(orderedEdges);
-        var outgoingByNodeId = FreezeEdgeLists(edgeIndexes.OutgoingByNodeId);
-        var incomingByNodeId = FreezeEdgeLists(edgeIndexes.IncomingByNodeId);
-        var outgoingByNodeAndKind = FreezeEdgeLists(edgeIndexes.OutgoingByNodeAndKind);
-        var incomingByNodeAndKind = FreezeEdgeLists(edgeIndexes.IncomingByNodeAndKind);
-        var edgesByKind = FreezeEdgeLists(edgeIndexes.EdgesByKind);
+        var outgoing = BuildCsr(orderedEdges, nodeOrdinals, edge => edge.SourceNodeId, kindWidth, groupByKind: false);
+        var incoming = BuildCsr(orderedEdges, nodeOrdinals, edge => edge.TargetNodeId, kindWidth, groupByKind: false);
+        var outgoingByKind = BuildCsr(orderedEdges, nodeOrdinals, edge => edge.SourceNodeId, kindWidth, groupByKind: true);
+        var incomingByKind = BuildCsr(orderedEdges, nodeOrdinals, edge => edge.TargetNodeId, kindWidth, groupByKind: true);
+        var (edgesByKind, edgesByKindOffsets) = BuildKindBuffer(orderedEdges, kindWidth);
         var nodesByKind = orderedNodes
             .GroupBy(node => node.Kind)
             .ToDictionary(
@@ -89,14 +160,123 @@ internal sealed class NLCPGGraphIndex
                     .ToArray(),
                 StringComparer.Ordinal);
         return new NLCPGGraphIndex(
-            outgoingByNodeId,
-            incomingByNodeId,
-            outgoingByNodeAndKind,
-            incomingByNodeAndKind,
+            orderedNodes,
+            orderedEdges,
+            nodeOrdinals,
+            outgoing,
+            incoming,
+            outgoingByKind,
+            incomingByKind,
             edgesByKind,
+            edgesByKindOffsets,
             nodesByKind,
             nodesByFilePath,
             snapshotVersion);
+    }
+
+    internal IReadOnlyList<NLCPGEdge> GetOutgoingEdges(NodeId nodeId)
+    {
+        return Outgoing.Get(nodeId);
+    }
+
+    internal IReadOnlyList<NLCPGEdge> GetIncomingEdges(NodeId nodeId)
+    {
+        return Incoming.Get(nodeId);
+    }
+
+    internal IReadOnlyList<NLCPGEdge> GetOutgoingEdges(NodeId nodeId, NLCPGEdgeKind kind)
+    {
+        return OutgoingByKind.Get(nodeId, kind);
+    }
+
+    internal IReadOnlyList<NLCPGEdge> GetIncomingEdges(NodeId nodeId, NLCPGEdgeKind kind)
+    {
+        return IncomingByKind.Get(nodeId, kind);
+    }
+
+    internal IReadOnlyList<NLCPGEdge> GetEdges(NLCPGEdgeKind kind)
+    {
+        var kindOrdinal = (int)kind;
+        if ((uint)kindOrdinal >= (uint)(EdgesByKindOffsets.Length - 1))
+        {
+            return Array.Empty<NLCPGEdge>();
+        }
+
+        var offset = EdgesByKindOffsets[kindOrdinal];
+        var count = EdgesByKindOffsets[kindOrdinal + 1] - offset;
+        return count == 0
+            ? Array.Empty<NLCPGEdge>()
+            : new ArraySegment<NLCPGEdge>(EdgesByKindBuffer, offset, count);
+    }
+
+    internal bool TryGetNodesByFilePath(string filePath, out IReadOnlyList<NLCPGNode> nodes)
+    {
+        return NodesByFilePath.TryGetValue(filePath, out nodes!);
+    }
+
+    private static CsrEdgeTable BuildCsr(
+      IReadOnlyList<NLCPGEdge> orderedEdges,
+      Dictionary<NodeId, int> nodeOrdinals,
+      Func<NLCPGEdge, NodeId> endpointSelector,
+      int kindWidth,
+      bool groupByKind)
+    {
+        var bucketCount = groupByKind
+            ? checked(nodeOrdinals.Count * kindWidth)
+            : nodeOrdinals.Count;
+        var offsets = new int[bucketCount + 1];
+        foreach (var edge in orderedEdges)
+        {
+            var endpointOrdinal = nodeOrdinals[endpointSelector(edge)];
+            var bucketOrdinal = groupByKind
+                ? checked((endpointOrdinal * kindWidth) + (int)edge.Kind)
+                : endpointOrdinal;
+            offsets[bucketOrdinal + 1] += 1;
+        }
+
+        for (var index = 1; index < offsets.Length; index += 1)
+        {
+            offsets[index] += offsets[index - 1];
+        }
+
+        var positions = offsets[..^1].ToArray();
+        var adjacency = new NLCPGEdge[orderedEdges.Count];
+        foreach (var edge in orderedEdges)
+        {
+            var endpointOrdinal = nodeOrdinals[endpointSelector(edge)];
+            var bucketOrdinal = groupByKind
+                ? checked((endpointOrdinal * kindWidth) + (int)edge.Kind)
+                : endpointOrdinal;
+            adjacency[positions[bucketOrdinal]] = edge;
+            positions[bucketOrdinal] += 1;
+        }
+
+        return new CsrEdgeTable(adjacency, offsets, nodeOrdinals, groupByKind ? kindWidth : 1);
+    }
+
+    private static (NLCPGEdge[] Edges, int[] Offsets) BuildKindBuffer(IReadOnlyList<NLCPGEdge> orderedEdges, int kindWidth)
+    {
+        var offsets = new int[kindWidth + 1];
+        foreach (var edge in orderedEdges)
+        {
+            offsets[(int)edge.Kind + 1] += 1;
+        }
+
+        for (var index = 1; index < offsets.Length; index += 1)
+        {
+            offsets[index] += offsets[index - 1];
+        }
+
+        var positions = offsets[..^1].ToArray();
+        var edgesByKind = new NLCPGEdge[orderedEdges.Count];
+        foreach (var edge in orderedEdges)
+        {
+            var kindOrdinal = (int)edge.Kind;
+            edgesByKind[positions[kindOrdinal]] = edge;
+            positions[kindOrdinal] += 1;
+        }
+
+        return (edgesByKind, offsets);
     }
 
     private static string CreateSnapshotVersion(IReadOnlyList<NLCPGNode> orderedNodes, IReadOnlyList<NLCPGEdge> orderedEdges)
@@ -130,45 +310,6 @@ internal sealed class NLCPGGraphIndex
         }
 
         return Convert.ToHexString(hash.GetHashAndReset());
-    }
-
-    private static EdgeIndexAccumulator BuildEdgeIndexes(IReadOnlyList<NLCPGEdge> orderedEdges)
-    {
-        var accumulator = new EdgeIndexAccumulator();
-        foreach (var edge in orderedEdges)
-        {
-            AddEdge(accumulator.OutgoingByNodeId, edge.SourceNodeId, edge);
-            AddEdge(accumulator.IncomingByNodeId, edge.TargetNodeId, edge);
-            AddEdge(accumulator.OutgoingByNodeAndKind, (edge.SourceNodeId, edge.Kind), edge);
-            AddEdge(accumulator.IncomingByNodeAndKind, (edge.TargetNodeId, edge.Kind), edge);
-            AddEdge(accumulator.EdgesByKind, edge.Kind, edge);
-        }
-
-        return accumulator;
-    }
-
-    private static IReadOnlyDictionary<TKey, IReadOnlyList<NLCPGEdge>> FreezeEdgeLists<TKey>(Dictionary<TKey, List<NLCPGEdge>> source)
-        where TKey : notnull
-    {
-        var result = new Dictionary<TKey, IReadOnlyList<NLCPGEdge>>(source.Count);
-        foreach (var pair in source)
-        {
-            result[pair.Key] = pair.Value.ToArray();
-        }
-
-        return result;
-    }
-
-    private static void AddEdge<TKey>(Dictionary<TKey, List<NLCPGEdge>> index, TKey key, NLCPGEdge edge)
-        where TKey : notnull
-    {
-        if (!index.TryGetValue(key, out var edges))
-        {
-            edges = new List<NLCPGEdge>();
-            index[key] = edges;
-        }
-
-        edges.Add(edge);
     }
 
     private static void AppendInt32(IncrementalHash hash, int value)

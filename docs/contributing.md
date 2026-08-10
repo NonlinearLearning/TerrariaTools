@@ -40,8 +40,8 @@ pwsh -File .\init.ps1
 
 ```powershell
 dotnet build .\src\NLCPG\NLCPG.csproj
-dotnet test .\tests\RoslynDeletionPrototype.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore
-dotnet test .\tests\RoslynDeletionPrototype.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore
+dotnet test .\tests\NLISSN.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --no-restore -p:UseSharedCompilation=false
+dotnet test .\tests\NLISSN.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false
 ```
 
 `scripts/check-harness-consistency.ps1` 用于核对当前入口、文档和状态文件；`scripts/Run-TestTiers.ps1` 用于按层记录测试证据。只报告实际执行的脚本与结果。

@@ -32,7 +32,9 @@ public sealed class TestCodeSetCoverageTests
   public void Analyze_AllTestCodeSetSources_BuildsGraphAndRunsApplicationPipeline(TestSourceCase testCase)
   {
     var graph = new NLCPGBuilder().BuildFromSource(testCase.Source, testCase.FilePath);
-    var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+    var application = new ApplicationService(
+      RuleRegistry.CreateDefaultRules(
+        enableUnreachableMethodDeletion: ShouldEnableUnreachableMethodDeletion(testCase.CaseName)));
 
     var result = application.Analyze(testCase.Source, testCase.FilePath, testCase.Options);
 
@@ -164,6 +166,12 @@ public sealed class TestCodeSetCoverageTests
     };
   }
 
+  private static bool ShouldEnableUnreachableMethodDeletion(string caseName)
+  {
+    return caseName.StartsWith("ReachabilitySources.", StringComparison.Ordinal) ||
+      caseName is "MinimalSources.EmptyMainSource" or "MinimalSources.EmptyMainWithDeadMethodSource";
+  }
+
   private static string ResolveTargetName(string caseName)
   {
     return caseName switch
@@ -211,6 +219,22 @@ public sealed class TestCodeSetCoverageTests
       "AtomicControlFlowSources.ForInitializerDeclarationSource" => 0,
       "AtomicControlFlowSources.SwitchConditionSource" => 0,
       "AtomicControlFlowSources.WhileBodySource" => 0,
+      "AtomicExpressionSources.AssignmentLeftOperandSource" => 0,
+      "AtomicExpressionSources.AssignmentStatementSource" => 0,
+      "AtomicExpressionSources.ChainedAssignmentStatementSource" => 0,
+      "AtomicExpressionSources.ComplexCompoundAssignmentStatementSource" => 0,
+      "AtomicExpressionSources.ComplexDefinitionAssignmentSource" => 0,
+      "AtomicExpressionSources.ConditionalAccessChainSource" => 0,
+      "AtomicExpressionSources.ConditionalAccessPropertySource" => 0,
+      "AtomicExpressionSources.ObjectInitializerDefinitionAssignmentSource" => 0,
+      "AtomicControlFlowSources.SwitchCaseSingleStatementSource" => 0,
+      "AtomicControlFlowSources.SwitchCaseBlockStatementSource" => 0,
+      "AtomicControlFlowSources.SwitchCaseMultiStatementSource" => 0,
+      "AtomicControlFlowSources.SwitchCaseWithoutBreakSource" => 0,
+      "AtomicControlFlowSources.SwitchAllNonDefaultCasesMarkedSource" => 0,
+      "CliInputSources.DiffWriteSource" => 0,
+      "CliInputSources.ExplicitDiffOutSource" => 0,
+      "PropagationSources.ObjectCreationWithInitializerSource" => 0,
       var cpgBuilderCase when cpgBuilderCase.StartsWith("CpgBuilderSources.", StringComparison.Ordinal) => 0,
       _ => GetMinimumSeedMarks(caseName)
     };

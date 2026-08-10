@@ -49,7 +49,6 @@ public sealed class ObjectCreationDeclarationPropagationRule : RuleDefinitionPro
     // 把对象创建命中收束到局部 declarator，后续符号传播只依赖稳定的定义点。
     public override IEnumerable<PropagatedMarkRecord> Propagate(IPropagationRuleContext context, IReadOnlyList<MarkRecord> seedMarks)
     {
-        _ = context;
         foreach (var seedMark in seedMarks)
         {
             if (seedMark.SyntaxNode is not ObjectCreationExpressionSyntax and
@@ -58,7 +57,10 @@ public sealed class ObjectCreationDeclarationPropagationRule : RuleDefinitionPro
                 continue;
             }
 
-            var declarator = FindInitializerDeclarator(seedMark.SyntaxNode);
+            var declarator = context.ResolveExpressionTopology((ExpressionSyntax)seedMark.SyntaxNode)
+              .StructuralOwners
+              .OfType<VariableDeclaratorSyntax>()
+              .FirstOrDefault();
             if (declarator is null)
             {
                 continue;
@@ -77,18 +79,4 @@ public sealed class ObjectCreationDeclarationPropagationRule : RuleDefinitionPro
         }
     }
 
-    private static VariableDeclaratorSyntax? FindInitializerDeclarator(SyntaxNode syntaxNode)
-    {
-        foreach (var ancestor in syntaxNode.Ancestors())
-        {
-            if (ancestor is EqualsValueClauseSyntax equalsValueClause &&
-                equalsValueClause.Value.Span.Contains(syntaxNode.Span) &&
-                equalsValueClause.Parent is VariableDeclaratorSyntax variableDeclarator)
-            {
-                return variableDeclarator;
-            }
-        }
-
-        return null;
-    }
 }

@@ -4,6 +4,21 @@ using Xunit;
 
 namespace RoslynPrototype.Tests;
 
+[AttributeUsage(AttributeTargets.Method)]
+internal sealed class TerrariaExternalFactAttribute : FactAttribute
+{
+    public TerrariaExternalFactAttribute()
+    {
+        if (!string.Equals(
+              Environment.GetEnvironmentVariable("NLISSN_RUN_TERRARIA_EXTERNAL_TESTS"),
+              "1",
+              StringComparison.OrdinalIgnoreCase))
+        {
+            Skip = "Requires NLISSN_RUN_TERRARIA_EXTERNAL_TESTS=1.";
+        }
+    }
+}
+
 public sealed class RandomSampleHelperTests : IDisposable
 {
     private readonly string _sourceDirectory;
@@ -96,7 +111,7 @@ public sealed class RandomSampleHelperTests : IDisposable
         Assert.NotEmpty(result.AnalysisResult.Diff.Files);
     }
 
-    [Fact]
+    [TerrariaExternalFact]
     public void Execute_TerrariaCodeSet_ProducesDiffWithoutApplyingFinalWriteBack()
     {
         var stagedSourceDirectory = CreateTargetedTerrariaSourceDirectory();

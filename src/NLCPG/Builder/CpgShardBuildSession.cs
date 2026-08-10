@@ -25,6 +25,8 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     private readonly List<CpgReusableCloneRequest> _reusableCloneRequests = new();
     private readonly List<CpgBuildRoutingShardEntry> _routingEntries = new();
     private readonly HashSet<CpgShardLookup> _publishedLookups = new();
+    private readonly HashSet<long> _skippedPublicationSequences = new();
+    private readonly object _sequenceGate = new();
     private Exception? _publicationFault;
     private long _nextPublicationSequence;
     private long _publicationCount;
@@ -39,6 +41,8 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     private long _boundaryAdjacencyShardBytes;
     private long _boundaryEdgeCount;
     private long _fileWriteMilliseconds;
+    private long _routingIndexWriteMilliseconds;
+    private long _catalogFinalizeMilliseconds;
     private int _reusedShardCount;
     private int _reuseMissCount;
     private int _reuseRejectedCount;
@@ -97,6 +101,37 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     internal int PeakConcurrentShardExports => Volatile.Read(ref _peakConcurrentShardExports);
     internal int PeakReorderBuffer => Volatile.Read(ref _peakReorderBuffer);
     internal int SessionInvalidationCount { get; private set; }
+
+    internal NLCPGPersistenceMetrics CreatePersistenceMetrics(long persistElapsedMilliseconds)
+    {
+        return new NLCPGPersistenceMetrics(
+          RestoreAttempted: false,
+          RestoreHit: false,
+          RestoreElapsedMilliseconds: 0,
+          CatalogReadMilliseconds: 0,
+          ShardReadMilliseconds: 0,
+          RestoredShardCount: 0,
+          RestoredShardBytes: 0,
+          PersistElapsedMilliseconds: persistElapsedMilliseconds,
+          FileWriteMilliseconds,
+          CatalogWriteMilliseconds: _catalogWriter.WriteMilliseconds + Interlocked.Read(ref _catalogFinalizeMilliseconds),
+          RoutingIndexWriteMilliseconds: Interlocked.Read(ref _routingIndexWriteMilliseconds),
+          PrimaryShardCount,
+          PrimaryShardBytes,
+          BoundaryAdjacencyShardCount,
+          BoundaryAdjacencyShardBytes,
+          BoundaryEdgeCount,
+          ReusedShardCount: Volatile.Read(ref _reusedShardCount),
+          ReuseMissCount: Volatile.Read(ref _reuseMissCount),
+          ReuseRejectedCount: Volatile.Read(ref _reuseRejectedCount),
+          ReusedShardBytes: Interlocked.Read(ref _reusedShardBytes),
+          PeakConcurrentFileWrites,
+          PeakConcurrentShardExports,
+          PeakReorderBuffer,
+          PeakBufferedBoundaryEdges,
+          CatalogBatchCount: _catalogWriter.BatchCount,
+          CatalogRowCount: _catalogWriter.RowCount);
+    }
 
     internal void ObserveRouterBuffer(int bufferedEdges)
     {
@@ -177,7 +212,28 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
         await EnqueuePublicationAsync(shard, sourceSequence, reusableKey, cancellationToken);
     }
 
-    internal async Task<bool> TryReuseFragmentAsync(CpgFrozenShard shard, CpgReusableFragmentKey reusableKey, CancellationToken cancellationToken)
+    internal async Task PublishReusableFragmentAsync(CpgFrozenShard shard, CpgReusableFragmentKey reusableKey, long sourceSequence, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(reusableKey);
+        ArgumentNullException.ThrowIfNull(shard);
+        ArgumentOutOfRangeException.ThrowIfNegative(sourceSequence);
+        ThrowIfPublicationFaulted();
+        lock (_publishedLookups)
+        {
+            if (!_publishedLookups.Add(shard.Lookup))
+            {
+                return;
+            }
+        }
+
+        await EnqueuePublicationAsync(shard, sourceSequence, reusableKey, cancellationToken);
+    }
+
+    internal async Task<bool> TryReuseFragmentAsync(
+      CpgFrozenShard shard,
+      CpgReusableFragmentKey reusableKey,
+      CancellationToken cancellationToken,
+      long? sourceSequence = null)
     {
         ArgumentNullException.ThrowIfNull(shard);
         ArgumentNullException.ThrowIfNull(reusableKey);
@@ -196,6 +252,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
             {
                 if (!_publishedLookups.Add(shard.Lookup))
                 {
+                    RecordSkippedPublicationSequence(sourceSequence);
                     return true;
                 }
             }
@@ -212,6 +269,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
             Interlocked.Add(ref _reusedShardBytes, candidate.Location.ByteLength);
             Interlocked.Increment(ref _primaryShardCount);
             Interlocked.Add(ref _primaryShardBytes, candidate.Location.ByteLength);
+            RecordSkippedPublicationSequence(sourceSequence);
             return true;
         }
         catch (IOException)
@@ -284,11 +342,15 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
         }
 
         var routingIndexPath = Path.Combine(_stagingRoot, "routing.cpgidx");
+        var routingIndexStopwatch = Stopwatch.StartNew();
         var routingIndex = await new CpgBuildRoutingIndexWriter().WriteAsync(
           routingIndexPath,
           BuildId,
           routingEntries,
           cancellationToken);
+        routingIndexStopwatch.Stop();
+        Interlocked.Add(ref _routingIndexWriteMilliseconds, routingIndexStopwatch.ElapsedMilliseconds);
+        var catalogFinalizeStopwatch = Stopwatch.StartNew();
         await _catalog.FinalizeBuildAsync(
           BuildId,
           reusableCloneRequests,
@@ -298,6 +360,8 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
             routingIndex.ByteLength,
             routingIndex.PayloadHash),
           cancellationToken);
+        catalogFinalizeStopwatch.Stop();
+        Interlocked.Add(ref _catalogFinalizeMilliseconds, catalogFinalizeStopwatch.ElapsedMilliseconds);
         foreach (var request in reusableCloneRequests)
         {
             _stagedLocations.Add(request.Source.Location);
@@ -430,8 +494,20 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
 
                 bufferedPublications.Add(publication.Sequence, publication);
                 UpdatePeakReorderBuffer(bufferedPublications.Count);
-                while (bufferedPublications.Remove(nextSequence, out var nextPublication))
+                while (true)
                 {
+                    if (IsSkippedPublicationSequence(nextSequence))
+                    {
+                        nextSequence += 1;
+                        Volatile.Write(ref _nextCatalogSequence, nextSequence);
+                        continue;
+                    }
+
+                    if (!bufferedPublications.Remove(nextSequence, out var nextPublication))
+                    {
+                        break;
+                    }
+
                     await _catalogWriter.EnqueueAsync(
                       new CpgShardLease(nextPublication.Shard.Lookup, nextPublication.Location),
                       nextPublication.Shard,
@@ -454,13 +530,22 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
             }
 
             var expectedPublicationCount = Volatile.Read(ref _publicationCount);
-            if (bufferedPublications.Count != 0 || nextSequence != expectedPublicationCount)
+            while (IsSkippedPublicationSequence(nextSequence))
+            {
+                nextSequence += 1;
+                Volatile.Write(ref _nextCatalogSequence, nextSequence);
+            }
+
+            var skippedPublicationCount = GetSkippedPublicationCount();
+            var expectedSequenceCount = expectedPublicationCount + skippedPublicationCount;
+            if (bufferedPublications.Count != 0 || nextSequence != expectedSequenceCount)
             {
                 throw new InvalidOperationException("CPG shard publication sequence was incomplete.");
             }
 
             if (seenSequences.Count != expectedPublicationCount ||
-                seenSequences.Any(sequence => sequence >= expectedPublicationCount))
+                seenSequences.Any(sequence => sequence < 0 || sequence >= expectedSequenceCount) ||
+                HasInvalidSkippedPublicationSequence(expectedSequenceCount, seenSequences))
             {
                 throw new InvalidOperationException("CPG shard publication sequence was incomplete.");
             }
@@ -538,6 +623,48 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     private void RecordPublicationFault(Exception exception)
     {
         Interlocked.CompareExchange(ref _publicationFault, exception, null);
+    }
+
+    private void RecordSkippedPublicationSequence(long? sourceSequence)
+    {
+        if (sourceSequence is not { } sequence)
+        {
+            return;
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(sequence);
+        lock (_sequenceGate)
+        {
+            if (!_skippedPublicationSequences.Add(sequence))
+            {
+                throw new InvalidOperationException("CPG shard publication sequence was skipped more than once.");
+            }
+        }
+    }
+
+    private bool IsSkippedPublicationSequence(long sequence)
+    {
+        lock (_sequenceGate)
+        {
+            return _skippedPublicationSequences.Contains(sequence);
+        }
+    }
+
+    private int GetSkippedPublicationCount()
+    {
+        lock (_sequenceGate)
+        {
+            return _skippedPublicationSequences.Count;
+        }
+    }
+
+    private bool HasInvalidSkippedPublicationSequence(long expectedSequenceCount, IReadOnlySet<long> seenSequences)
+    {
+        lock (_sequenceGate)
+        {
+            return _skippedPublicationSequences.Any(sequence =>
+              sequence < 0 || sequence >= expectedSequenceCount || seenSequences.Contains(sequence));
+        }
     }
 
     private void ThrowIfPublicationFaulted()

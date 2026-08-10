@@ -14,6 +14,22 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
 {
   private static readonly RuleSemanticTag LogicalReductionSemanticTag = RuleFactPorts.LiftLogicalReduction;
   private static readonly RuleSemanticTag LogicalExpressionFlowSemanticTag = RuleFactPorts.FlowLogicalExpression;
+  private static readonly RuleSemanticTag UnaryExpressionFlowSemanticTag = RuleFactPorts.FlowUnaryExpression;
+
+  private static readonly IReadOnlyList<SyntaxKind> UnaryExpressionNodeKinds = new[]
+  {
+    SyntaxKind.LogicalNotExpression,
+    SyntaxKind.UnaryPlusExpression,
+    SyntaxKind.UnaryMinusExpression,
+    SyntaxKind.BitwiseNotExpression,
+    SyntaxKind.PreIncrementExpression,
+    SyntaxKind.PreDecrementExpression,
+    SyntaxKind.PostIncrementExpression,
+    SyntaxKind.PostDecrementExpression,
+    SyntaxKind.AddressOfExpression,
+    SyntaxKind.AwaitExpression,
+    SyntaxKind.SuppressNullableWarningExpression
+  };
 
   public override string RuleId { get; } = "DEL-SOBJ-LIFT-LOGIC-001";
 
@@ -29,7 +45,8 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
     new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference),
     new RuleConsumedSyntax(
       new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
-      LogicalExpressionFlowSemanticTag)
+      LogicalExpressionFlowSemanticTag),
+    new RuleConsumedSyntax(UnaryExpressionNodeKinds, UnaryExpressionFlowSemanticTag)
   });
 
   public override RuleProducesContract Produces { get; } = new(new[]
@@ -48,17 +65,18 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
     IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
   {
     var operandMarks = seedMarks
+      .Where(mark => IsTopologyOperandOfLogicalHost(context, mark.SyntaxNode))
       .Concat(propagatedMarks
-        .Where(mark => mark.Mark.SemanticTag != LogicalExpressionFlowSemanticTag)
+        .Where(mark => mark.Mark.SemanticTag != LogicalExpressionFlowSemanticTag &&
+          mark.Mark.SemanticTag != UnaryExpressionFlowSemanticTag &&
+          !IsTerminalTopologyFact(mark))
         .Select(mark => mark.Mark))
       .ToList();
     var propagatedLogicalHosts = propagatedMarks
       .Where(mark => mark.Mark.SemanticTag == LogicalExpressionFlowSemanticTag)
       .Select(mark => mark.Mark.SyntaxNode)
       .OfType<BinaryExpressionSyntax>();
-    foreach (var host in operandMarks
-               .SelectMany(mark => mark.SyntaxNode.AncestorsAndSelf().OfType<BinaryExpressionSyntax>())
-               .Concat(propagatedLogicalHosts)
+    foreach (var host in propagatedLogicalHosts
                .Where(host => host.IsKind(SyntaxKind.LogicalAndExpression) || host.IsKind(SyntaxKind.LogicalOrExpression))
                .DistinctBy(LiftingCommon.BuildNodeKey))
     {
@@ -71,7 +89,12 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
       var sourceMark = propagatedMarks
         .Where(mark => mark.Mark.SemanticTag == LogicalExpressionFlowSemanticTag)
         .FirstOrDefault(mark => ReferenceEquals(mark.Mark.SyntaxNode, host))
-        ?.SourceMark ?? operandMarks.First(mark => host.Span.Contains(mark.SyntaxNode.Span));
+        ?.SourceMark ?? seedMarks.FirstOrDefault(mark => host.Span.Contains(mark.SyntaxNode.Span));
+      if (sourceMark is null)
+      {
+        continue;
+      }
+
       yield return new LiftedMarkRecord(
         RuleId,
         MarkRecordFactory.Create(RuleId, host, "Logical operands are reducible from token-level marks."),
@@ -80,6 +103,17 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
         Payload: payload);
     }
   }
+
+  private static bool IsTerminalTopologyFact(PropagatedMarkRecord mark) =>
+    mark.Payload is NLISSN.Core.Analysis.ExpressionPropagation.ExpressionTopologyPayload payload &&
+    !payload.CanContinueOutward;
+
+  private static bool IsTopologyOperandOfLogicalHost(ILiftRuleContext context, SyntaxNode syntaxNode) =>
+    syntaxNode is ExpressionSyntax expression &&
+    context.ResolveExpressionTopology(expression).Steps.Any(step =>
+      step.Host is BinaryExpressionSyntax binary &&
+      (binary.IsKind(SyntaxKind.LogicalAndExpression) || binary.IsKind(SyntaxKind.LogicalOrExpression)));
+
 }
 
 internal static class LogicalExpressionLiftingHelpers
