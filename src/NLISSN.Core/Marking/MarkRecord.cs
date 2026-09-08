@@ -23,17 +23,66 @@ public enum RuleOutputKind
 }
 
 /// 表示规则在标记阶段产出的一条直接命中记录。
-public sealed record MarkRecord(
-  /// 产生这条标记的规则标识。
-  string RuleId,
-  /// 规则命中的语法节点。
-  SyntaxNode SyntaxNode,
-  /// 为后续传播、决策或改写绑定到语法树上的注解。
-  SyntaxAnnotation? Annotation,
-  /// 与当前语法节点对齐的主图节点。
-  NLCPGNode? PrimaryGraphNode,
-  /// 说明本次命中的原因，供调试和结果输出使用。
-  string Reason,
-  RuleOutputKind? OutputKind = null,
-  RuleSemanticTag? SemanticTag = null,
-  RuleEvidenceOrigin Origins = RuleEvidenceOrigin.None);
+public sealed record MarkRecord
+{
+    public MarkRecord(
+      string ruleId,
+      SyntaxNode syntaxNode,
+      SyntaxAnnotation? annotation,
+      NLCPGNode? primaryGraphNode,
+      string reason,
+      RuleOutputKind? OutputKind = null,
+      RuleSemanticTag? SemanticTag = null,
+      RuleEvidenceOrigin Origins = RuleEvidenceOrigin.None,
+      RuleFactKind? FactKind = null)
+    {
+        RuleId = ruleId;
+        SyntaxNode = syntaxNode;
+        Annotation = annotation;
+        PrimaryGraphNode = primaryGraphNode;
+        Reason = reason;
+        this.OutputKind = OutputKind;
+        _semanticTag = SemanticTag;
+        this.Origins = Origins;
+        _factKind = FactKind;
+    }
+
+    /// 产生这条标记的规则标识。
+    public string RuleId { get; init; }
+
+    /// 规则命中的语法节点。
+    public SyntaxNode SyntaxNode { get; init; }
+
+    /// 为后续传播、决策或改写绑定到语法树上的注解。
+    public SyntaxAnnotation? Annotation { get; init; }
+
+    /// 与当前语法节点对齐的主图节点。
+    public NLCPGNode? PrimaryGraphNode { get; init; }
+
+    /// 说明本次命中的原因，供调试和结果输出使用。
+    public string Reason { get; init; }
+
+    public RuleOutputKind? OutputKind { get; init; }
+
+    /// 兼容旧 artifact 和测试规则的显示名称；内建路由使用 FactKind。
+    public RuleSemanticTag? SemanticTag
+    {
+        get => _semanticTag ?? (FactKind is { } knownKind
+          ? RuleFactKindDescriptor.ToSemanticTag(knownKind)
+          : null);
+        init => _semanticTag = value;
+    }
+
+    /// 内建事实的受控身份；自定义测试事实可以只保留 SemanticTag。
+    public RuleFactKind? FactKind
+    {
+        get => RuleFactKindDescriptor.Resolve(_factKind, _semanticTag);
+        init => _factKind = value;
+    }
+
+    public RuleEvidenceOrigin Origins { get; init; }
+
+    private RuleSemanticTag? _semanticTag;
+
+    private RuleFactKind? _factKind;
+}

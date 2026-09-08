@@ -13,9 +13,8 @@ public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
     private static readonly RuleConsumesContract TargetFactsConsumes =
       TargetProposalContracts.CreateFactsConsumes();
 
-    public override string CapabilityId { get; } = "propose.default-removal";
 
-    public override string RuleId { get; } = "DEL-SOBJ-PROPOSE-DEFAULT-001";
+    public override string RuleId { get; } = "propose.default-removal";
 
     public override RuleConsumesContract Consumes => TargetFactsConsumes;
 
@@ -36,7 +35,7 @@ public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
                      liftedMarks))
         {
             if (IsHandledBySpecializedRule(mark) ||
-                mark.SemanticTag == RuleFactPorts.FlowUnaryExpression ||
+                mark.FactKind == RuleFactKind.FlowUnaryExpression ||
                 IsTerminalTopologyInput(context, mark.SyntaxNode))
             {
                 continue;
@@ -104,14 +103,14 @@ internal static class TargetProposalContracts
     {
         return new RuleConsumesContract(new[]
         {
-            new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactPorts.TargetExpression),
-            new RuleConsumedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactPorts.TargetDeclaration),
-            new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactPorts.FlowAssignmentTarget),
-            new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactPorts.FlowLocalDefinition),
-            new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference),
-            new RuleConsumedSyntax(UnaryExpressionNodeKinds, RuleFactPorts.FlowUnaryExpression),
-            new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, RuleFactPorts.LiftExpressionHost),
-            new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause }, RuleFactPorts.LiftIfStructure)
+            new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactKind.TargetExpression),
+            new RuleConsumedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactKind.TargetDeclaration),
+            new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget),
+            new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition),
+            new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.FlowSymbolReference),
+            new RuleConsumedSyntax(UnaryExpressionNodeKinds, RuleFactKind.FlowUnaryExpression),
+            new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, RuleFactKind.LiftExpressionHost),
+            new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause }, RuleFactKind.LiftIfStructure)
         });
     }
 }

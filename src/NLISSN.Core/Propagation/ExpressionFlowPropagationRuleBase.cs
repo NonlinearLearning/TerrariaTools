@@ -6,7 +6,7 @@ namespace NLISSN.Core.Propagation;
 
 public abstract class ExpressionFlowPropagationRuleBase : RuleDefinitionPropagate
 {
-    private static readonly RuleSemanticTag TargetExpressionSemanticTag = RuleFactPorts.TargetExpression;
+    private static readonly RuleFactKind TargetExpressionFactKind = RuleFactKind.TargetExpression;
 
     public static readonly IReadOnlyList<SyntaxKind> TargetExpressionInputNodeKinds =
       new[]
@@ -117,13 +117,13 @@ public abstract class ExpressionFlowPropagationRuleBase : RuleDefinitionPropagat
     private static readonly RuleConsumesContract TargetExpressionConsumes = new(
       new[]
       {
-        new RuleConsumedSyntax(TargetExpressionNodeKinds, TargetExpressionSemanticTag)
+        new RuleConsumedSyntax(TargetExpressionNodeKinds, TargetExpressionFactKind)
       });
 
     private static readonly RuleProducesContract PropagatedTargetProduces = new(
       new[]
       {
-        new RuleProducedSyntax(SharedAllowedPropagateNodeKinds, TargetExpressionSemanticTag)
+        new RuleProducedSyntax(SharedAllowedPropagateNodeKinds, TargetExpressionFactKind)
       });
 
 

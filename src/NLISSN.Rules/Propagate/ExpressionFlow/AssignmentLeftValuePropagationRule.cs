@@ -12,11 +12,10 @@ public sealed class AssignmentLeftValuePropagationRule : ExpressionFlowPropagati
 {
     private static readonly RuleProducesContract AssignmentTargetProduces = new(new[]
     {
-        new RuleProducedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactPorts.FlowAssignmentTarget)
+        new RuleProducedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget)
     });
 
-    public override string CapabilityId { get; } = "propagate.target.assignment-left-value";
-    public override string RuleId { get; } = "DEL-SOBJ-PROP-ASSIGN-LHS-001";
+public override string RuleId { get; } = "propagate.target.assignment-left-value";
     public override RuleProducesContract Produces => AssignmentTargetProduces;
     public override string Name { get; } = "Propagate s-object marks from assignment right values to left values";
 

@@ -37,14 +37,14 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
     private static readonly RuleProducesContract LogicalExpressionProduces = new(
       new[]
       {
-        new RuleProducedSyntax(LogicalExpressionNodeKinds, RuleFactPorts.FlowLogicalExpression),
-        new RuleProducedSyntax(UnaryExpressionNodeKinds, RuleFactPorts.FlowUnaryExpression),
+        new RuleProducedSyntax(LogicalExpressionNodeKinds, RuleFactKind.FlowLogicalExpression),
+        new RuleProducedSyntax(UnaryExpressionNodeKinds, RuleFactKind.FlowUnaryExpression),
         new RuleProducedSyntax(
           new[] { SyntaxKind.ConditionalExpression },
-          RuleFactPorts.FlowConditionalExpression),
+          RuleFactKind.FlowConditionalExpression),
         new RuleProducedSyntax(
           ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds,
-          RuleFactPorts.TargetExpression)
+          RuleFactKind.TargetExpression)
       });
 
     private static readonly RuleConsumesContract LogicalExpressionConsumes = new(
@@ -52,18 +52,17 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
       {
         new RuleConsumedSyntax(
           ExpressionFlowPropagationRuleBase.TargetExpressionNodeKinds,
-          RuleFactPorts.TargetExpression),
+          RuleFactKind.TargetExpression),
         new RuleConsumedSyntax(
           LogicalExpressionNodeKinds,
-          RuleFactPorts.FlowLogicalExpression),
+          RuleFactKind.FlowLogicalExpression),
         new RuleConsumedSyntax(
           new[] { SyntaxKind.IdentifierName },
-          RuleFactPorts.FlowSymbolReference)
+          RuleFactKind.FlowSymbolReference)
       });
 
-    public override string CapabilityId { get; } = "propagate.target.logical-expression";
 
-    public override string RuleId { get; } = "DEL-SOBJ-PROP-LOGICAL-OPERAND-001";
+    public override string RuleId { get; } = "propagate.target.logical-expression";
 
     public override RuleConsumesContract Consumes => LogicalExpressionConsumes;
 
@@ -103,7 +102,7 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
             {
                 yield return CreateOperatorHostMark(
                   step.Host,
-                  RuleFactPorts.FlowUnaryExpression,
+                  RuleFactKind.FlowUnaryExpression,
                   "Atomic operand is marked; propagate to its unary expression.",
                   seedMark,
                   new ExpressionTopologyPayload(step, 0));
@@ -114,7 +113,7 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
             {
                 yield return CreateOperatorHostMark(
                   step.Host,
-                  RuleFactPorts.FlowConditionalExpression,
+                  RuleFactKind.FlowConditionalExpression,
                   "Atomic operand is marked; retain the conditional expression as one propagation boundary.",
                   seedMark,
                   new ExpressionTopologyPayload(step, 0));
@@ -125,7 +124,7 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
             {
                 yield return CreateOperatorHostMark(
                   step.Host,
-                  RuleFactPorts.TargetExpression,
+                  RuleFactKind.TargetExpression,
                   "Expression is preserved through an explicit topology wrapper.",
                   seedMark,
                   new ExpressionTopologyPayload(step, 0));
@@ -144,7 +143,7 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
                 {
                     yield return CreateOperatorHostMark(
                       binaryExpression,
-                      RuleFactPorts.FlowLogicalExpression,
+                      RuleFactKind.FlowLogicalExpression,
                       "Expression topology identifies the direct logical host.",
                       seedMark,
                       new ExpressionTopologyPayload(step, 0));
@@ -162,7 +161,7 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
                     {
                         yield return CreateOperatorHostMark(
                           sibling,
-                          RuleFactPorts.TargetExpression,
+                          RuleFactKind.TargetExpression,
                           "Logical-and topology permits its direct sibling operand.",
                           seedMark,
                           new ExpressionTopologyPayload(step, 0));
@@ -178,7 +177,7 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
             {
                 yield return CreateOperatorHostMark(
                   binaryExpression,
-                  RuleFactPorts.TargetExpression,
+                  RuleFactKind.TargetExpression,
                   "Binary operand is marked; propagate to its complete binary expression.",
                   seedMark,
                   new ExpressionTopologyPayload(step, 0));
@@ -188,7 +187,7 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
 
     private PropagatedMarkRecord CreateOperatorHostMark(
       ExpressionSyntax syntaxNode,
-      RuleSemanticTag semanticTag,
+      RuleFactKind semanticTag,
       string reason,
       MarkRecord seedMark,
       ExpressionTopologyPayload payload)
@@ -199,7 +198,7 @@ public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagation
             RuleId,
             syntaxNode,
             reason,
-            semanticTag: semanticTag),
+            factKind: semanticTag),
           seedMark,
           1,
           payload);

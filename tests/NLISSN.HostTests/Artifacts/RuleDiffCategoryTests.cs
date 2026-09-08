@@ -7,7 +7,7 @@ public sealed class RuleDiffCategoryTests
     [Fact]
     public void Resolve_AtomicExpressionProposal_UsesExpressionControlFlowCategory()
     {
-        var category = RuleDiffCategoryRegistry.Resolve("DEL-SOBJ-PROPOSE-DEFAULT-001");
+        var category = RuleDiffCategoryRegistry.Resolve("propose.default-removal");
 
         Assert.Equal(RuleDiffCategory.ExpressionControlFlow, category);
     }
@@ -16,7 +16,7 @@ public sealed class RuleDiffCategoryTests
     public void Resolve_KnownProposalRuleId_ReturnsItsStableCategory()
     {
         // Act
-        var category = RuleDiffCategoryRegistry.Resolve("DEL-CLASS-PROP-PARAM-001");
+        var category = RuleDiffCategoryRegistry.Resolve("propose.type.parameter");
 
         // Assert
         Assert.Equal(RuleDiffCategory.ParameterShrink, category);
@@ -27,10 +27,10 @@ public sealed class RuleDiffCategoryTests
     {
         // Act
         var exception = Assert.Throws<InvalidOperationException>(
-          () => RuleDiffCategoryRegistry.Resolve("DEL-UNKNOWN-PROP-001"));
+          () => RuleDiffCategoryRegistry.Resolve("unknown.proposal-rule"));
 
         // Assert
-        Assert.Contains("DEL-UNKNOWN-PROP-001", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("unknown.proposal-rule", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -12,7 +12,7 @@ dotnet run --project ..\src\NLISSN\NLISSN.csproj
 
 配置中的相对路径相对于 `nlissn.yml` 所在目录解析。所有运行制品均位于
 `artifacts.root/<runId>/`；未指定 `artifacts.root` 时为仓库根的 `Build/Result`。
-编辑器可关联 [`schemas/nlissn.schema.2.json`](../schemas/nlissn.schema.2.json)。schema 与运行时均拒绝未知属性；运行时还会一次返回可独立判断的字段诊断，随后才解析路径和执行。
+编辑器可关联 [`Miscellaneous/schemas/nlissn.schema.2.json`](../Miscellaneous/schemas/nlissn.schema.2.json)。schema 与运行时均拒绝未知属性；运行时还会一次返回可独立判断的字段诊断，随后才解析路径和执行。
 
 ## 配置示例
 

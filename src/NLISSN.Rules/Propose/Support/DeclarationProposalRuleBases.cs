@@ -11,7 +11,7 @@ namespace NLISSN.Rules;
 
 public abstract class DeclarationHostProposalRuleBase : RuleDefinitionPropose
 {
-    private static readonly RuleSemanticTag DeclarationHostSemanticTag = RuleFactPorts.RelationDeclarationHost;
+    private static readonly RuleFactKind DeclarationHostFactKind = RuleFactKind.RelationDeclarationHost;
 
     private static readonly RuleConsumesContract DeclarationHostConsumes =
       new(new[]
@@ -30,7 +30,7 @@ public abstract class DeclarationHostProposalRuleBase : RuleDefinitionPropose
             SyntaxKind.PropertyDeclaration,
             SyntaxKind.SimpleBaseType
           },
-          DeclarationHostSemanticTag)
+          DeclarationHostFactKind)
       });
 
     public override RuleConsumesContract Consumes => DeclarationHostConsumes;
@@ -38,7 +38,7 @@ public abstract class DeclarationHostProposalRuleBase : RuleDefinitionPropose
 
 public abstract class ParameterUsageProposalRuleBase : RuleDefinitionPropose
 {
-    private static readonly RuleSemanticTag ParameterUsageSemanticTag = RuleFactPorts.RelationParameterUsage;
+    private static readonly RuleFactKind ParameterUsageFactKind = RuleFactKind.RelationParameterUsage;
 
     private static readonly RuleConsumesContract ParameterUsageConsumes =
       new(new[]
@@ -52,7 +52,7 @@ public abstract class ParameterUsageProposalRuleBase : RuleDefinitionPropose
             SyntaxKind.InvocationExpression,
             SyntaxKind.ElementAccessExpression
           },
-          ParameterUsageSemanticTag)
+          ParameterUsageFactKind)
       });
 
     public override RuleConsumesContract Consumes => ParameterUsageConsumes;
@@ -60,7 +60,7 @@ public abstract class ParameterUsageProposalRuleBase : RuleDefinitionPropose
 
 public abstract class DelegateUsageProposalRuleBase : RuleDefinitionPropose
 {
-    private static readonly RuleSemanticTag DelegateUsageSemanticTag = RuleFactPorts.RelationDelegateUsage;
+    private static readonly RuleFactKind DelegateUsageFactKind = RuleFactKind.RelationDelegateUsage;
 
     private static readonly RuleConsumesContract DelegateUsageConsumes =
       new(new[]
@@ -76,7 +76,7 @@ public abstract class DelegateUsageProposalRuleBase : RuleDefinitionPropose
             SyntaxKind.AnonymousMethodExpression,
             SyntaxKind.InvocationExpression
           },
-          DelegateUsageSemanticTag)
+          DelegateUsageFactKind)
       });
 
     public override RuleConsumesContract Consumes => DelegateUsageConsumes;
@@ -84,14 +84,14 @@ public abstract class DelegateUsageProposalRuleBase : RuleDefinitionPropose
 
 public abstract class ExtensionMethodParameterUsageProposalRuleBase : RuleDefinitionPropose
 {
-    private static readonly RuleSemanticTag ExtensionMethodParameterUsageSemanticTag = RuleFactPorts.RelationExtensionUsage;
+    private static readonly RuleFactKind ExtensionMethodParameterUsageFactKind = RuleFactKind.RelationExtensionUsage;
 
     private static readonly RuleConsumesContract ExtensionMethodParameterUsageConsumes =
       new(new[]
       {
         new RuleConsumedSyntax(
           new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression },
-          ExtensionMethodParameterUsageSemanticTag)
+          ExtensionMethodParameterUsageFactKind)
       });
 
     public override RuleConsumesContract Consumes => ExtensionMethodParameterUsageConsumes;

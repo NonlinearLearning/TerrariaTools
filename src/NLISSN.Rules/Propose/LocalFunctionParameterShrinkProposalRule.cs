@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class LocalFunctionParameterShrinkProposalRule : ParameterUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.local-function-parameter-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-LOCALFUNC-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.local-function-parameter-shrink";
 
 
     public override string Name { get; } = "Shrink local function parameters whose type references the delete-class target";

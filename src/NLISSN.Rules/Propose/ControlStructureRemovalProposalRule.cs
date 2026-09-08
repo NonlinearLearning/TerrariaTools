@@ -12,9 +12,8 @@ public sealed class ControlStructureRemovalProposalRule : RuleDefinitionPropose
     private static readonly RuleConsumesContract StructuralFactsConsumes =
       StructuralControlProposalContracts.CreateConsumes();
 
-    public override string CapabilityId { get; } = "propose.control-structure-removal";
 
-    public override string RuleId { get; } = "DEL-SOBJ-PROPOSE-CTRL-001";
+    public override string RuleId { get; } = "propose.control-structure-removal";
 
     public override RuleConsumesContract Consumes => StructuralFactsConsumes;
 
@@ -62,10 +61,10 @@ internal static class StructuralControlProposalContracts
             SyntaxKind.ForStatement, SyntaxKind.ForEachStatement, SyntaxKind.ForEachVariableStatement,
             SyntaxKind.WhileStatement, SyntaxKind.DoStatement, SyntaxKind.ReturnStatement
           },
-          RuleFactPorts.LiftControlStructure),
+          RuleFactKind.LiftControlStructure),
         new RuleConsumedSyntax(
           new[] { SyntaxKind.SwitchSection, SyntaxKind.SwitchStatement },
-          RuleFactPorts.LiftSwitchStructure)
+          RuleFactKind.LiftSwitchStructure)
       });
     }
 }

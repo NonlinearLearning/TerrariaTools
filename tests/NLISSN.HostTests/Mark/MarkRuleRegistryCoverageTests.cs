@@ -96,7 +96,7 @@ public sealed class MarkRuleRegistryCoverageTests
   {
     const string source = "public sealed class Sample { public int Run(int target) { return target + target; } }";
     var (context, root) = CreateRuleContext(source, "target");
-    var rule = GetMarker("DEL-SOBJ-MARK-ID-001");
+    var rule = GetMarker("mark.target.identifier-name");
 
     var marks = rule.Mark(context.CreateMarkContext(), root).ToArray();
 
@@ -109,7 +109,7 @@ public sealed class MarkRuleRegistryCoverageTests
   {
     const string source = "public sealed class Sample { public int Run() { var label = \"target\"; // target\n return label.Length; } }";
     var (context, root) = CreateRuleContext(source, "target");
-    var rule = GetMarker("DEL-SOBJ-MARK-ID-001");
+    var rule = GetMarker("mark.target.identifier-name");
 
     var marks = rule.Mark(context.CreateMarkContext(), root).ToArray();
 
@@ -241,97 +241,97 @@ public sealed class MarkRuleRegistryCoverageTests
   public static IEnumerable<object[]> AtomicScenarios()
   {
     yield return Scenario(
-      "DEL-SOBJ-MARK-ID-001",
+      "mark.target.identifier-name",
       "public sealed class Sample { public int Run(int target) { return target; } }",
       "target",
       SyntaxKind.IdentifierName,
       "target");
     yield return Scenario(
-      "DEL-SOBJ-MARK-THIS-001",
+      "mark.target.this-expression",
       "public sealed class Sample { public Sample Run() { return this; } }",
       "this",
       SyntaxKind.ThisExpression,
       "this");
     yield return Scenario(
-      "DEL-SOBJ-MARK-BASE-001",
+      "mark.target.base-expression",
       "public class Base { } public sealed class Sample : Base { public Base Run() { return base; } }",
       "base",
       SyntaxKind.BaseExpression,
       "base");
     yield return Scenario(
-      "DEL-SOBJ-MARK-DECL-001",
+      "mark.target.variable-declarator",
       "public sealed class Sample { public int Run() { int target = 1; return target; } }",
       "target",
       SyntaxKind.VariableDeclarator,
       "target = 1");
     yield return Scenario(
-      "DEL-SOBJ-MARK-LIT-NUM-001",
+      "mark.target.numeric-literal",
       "public sealed class Sample { public int Run() { return 42; } }",
       "42",
       SyntaxKind.NumericLiteralExpression,
       "42");
     yield return Scenario(
-      "DEL-SOBJ-MARK-LIT-STR-001",
+      "mark.target.string-literal",
       "public sealed class Sample { public string Run() { return \"target\"; } }",
       "target",
       SyntaxKind.StringLiteralExpression,
       "\"target\"");
     yield return Scenario(
-      "DEL-SOBJ-MARK-LIT-TRUE-001",
+      "mark.target.true-literal",
       "public sealed class Sample { public bool Run() { return true; } }",
       "true",
       SyntaxKind.TrueLiteralExpression,
       "true");
     yield return Scenario(
-      "DEL-SOBJ-MARK-LIT-FALSE-001",
+      "mark.target.false-literal",
       "public sealed class Sample { public bool Run() { return false; } }",
       "false",
       SyntaxKind.FalseLiteralExpression,
       "false");
     yield return Scenario(
-      "DEL-SOBJ-MARK-LIT-NULL-001",
+      "mark.target.null-literal",
       "public sealed class Sample { public object? Run() { return null; } }",
       "null",
       SyntaxKind.NullLiteralExpression,
       "null");
     yield return Scenario(
-      "DEL-SOBJ-MARK-MEMBER-001",
+      "mark.target.member-access",
       "public sealed class Target { public int Value; } public sealed class Sample { public int Run(Target target) { return target.Value; } }",
       "Value",
       SyntaxKind.SimpleMemberAccessExpression,
       "target.Value");
     yield return Scenario(
-      "DEL-SOBJ-MARK-BINDING-001",
+      "mark.target.member-binding",
       "using System; public sealed class Sample { public int? Run(Func<int>? handler) { return handler?.Invoke(); } }",
       "Invoke",
       SyntaxKind.MemberBindingExpression,
       ".Invoke");
     yield return Scenario(
-      "DEL-SOBJ-MARK-INVOKE-001",
+      "mark.target.invocation",
       "public sealed class Sample { public int Run() { return target(); } private int target() { return 1; } }",
       "target",
       SyntaxKind.InvocationExpression,
       "target()");
     yield return Scenario(
-      "DEL-SOBJ-MARK-NEW-001",
+      "mark.target.object-creation",
       "public sealed class Target { } public sealed class Sample { public Target Run() { return new Target(); } }",
       "Target",
       SyntaxKind.ObjectCreationExpression,
       "new Target()");
     yield return Scenario(
-      "DEL-SOBJ-MARK-IMPLICIT-NEW-001",
+      "mark.target.implicit-object-creation",
       "public sealed class Target { } public sealed class Sample { public void Run() { Target target = new(); } }",
       "Target",
       SyntaxKind.ImplicitObjectCreationExpression,
       "new()");
     yield return Scenario(
-      "DEL-SOBJ-MARK-ELEMENT-001",
+      "mark.target.element-access",
       "public sealed class Sample { public int Run(int[] target) { return target[0]; } }",
       "target",
       SyntaxKind.ElementAccessExpression,
       "target[0]");
     yield return Scenario(
-      "DEL-SOBJ-MARK-CONDITIONAL-001",
+      "mark.target.conditional-access",
       "public sealed class Target { public int Value; } public sealed class Sample { public int? Run(Target? target) { return target?.Value; } }",
       "target",
       SyntaxKind.ConditionalAccessExpression,
@@ -347,37 +347,37 @@ public sealed class MarkRuleRegistryCoverageTests
   public static IEnumerable<object[]> NonTargetScenarios()
   {
     yield return Scenario(
-      "CLR-UNUSED-IFACE-IMPL-MARK-001",
+      "mark.clear-unused-interface-implementation",
       "public interface ITarget { void Remove(); } public sealed class Sample : ITarget { public void Remove() { } }",
       Options(("clear-unused-interface-implementations", "true")),
       SyntaxKind.MethodDeclaration,
       "public void Remove() { }");
     yield return Scenario(
-      "DEL-CLASS-MARK-DECL-001",
+      "mark.type.declaration",
       "public sealed class Target { } public sealed class Consumer { }",
       Options(("delete-class", "Target")),
       SyntaxKind.ClassDeclaration,
       "public sealed class Target { }");
     yield return Scenario(
-      "DEL-CLASS-MARK-EXPR-001",
+      "mark.type.expression",
       "public sealed class Target { } public sealed class Consumer { public Target Create() { return new Target(); } }",
       Options(("delete-class", "Target")),
       SyntaxKind.ObjectCreationExpression,
       "new Target()");
     yield return Scenario(
-      "DEL-CLASS-MARK-TYPE-001",
+      "mark.type.type-syntax",
       "public sealed class Target { } public sealed class Consumer { private Target _target; }",
       Options(("delete-class", "Target")),
       SyntaxKind.IdentifierName,
       "Target");
     yield return Scenario(
-      "DEL-DEAD-001",
+      "mark.unreachable-method",
       "public static class Program { public static void Main() { } private static void Dead() { } }",
       Options(),
       SyntaxKind.MethodDeclaration,
       "private static void Dead() { }");
     yield return Scenario(
-      "DEL-UNREF-METHOD-MARK-001",
+      "mark.unreferenced-method",
       "public sealed class Sample { public void Run() { } private void Remove() { } }",
       Options(("delete-unreferenced-methods", "true")),
       SyntaxKind.MethodDeclaration,
@@ -393,27 +393,27 @@ public sealed class MarkRuleRegistryCoverageTests
   public static IEnumerable<object[]> NonTargetNegativeScenarios()
   {
     yield return NegativeScenario(
-      "CLR-UNUSED-IFACE-IMPL-MARK-001",
+      "mark.clear-unused-interface-implementation",
       "public interface ITarget { void Remove(); } public sealed class Sample : ITarget { public void Remove() { } } public static class Use { public static void Run(ITarget target) { target.Remove(); } }",
       Options(("clear-unused-interface-implementations", "true")));
     yield return NegativeScenario(
-      "DEL-CLASS-MARK-DECL-001",
+      "mark.type.declaration",
       "public sealed class Target { }",
       Options(("delete-class", "Other")));
     yield return NegativeScenario(
-      "DEL-CLASS-MARK-EXPR-001",
+      "mark.type.expression",
       "public sealed class Target { } public sealed class Consumer { public Target Create() { return new Target(); } }",
       Options(("delete-class", "Other")));
     yield return NegativeScenario(
-      "DEL-CLASS-MARK-TYPE-001",
+      "mark.type.type-syntax",
       "public sealed class Target { } public sealed class Consumer { private Target _target; }",
       Options(("delete-class", "Other")));
     yield return NegativeScenario(
-      "DEL-DEAD-001",
+      "mark.unreachable-method",
       "public static class Program { public static void Main() { Live(); } private static void Live() { } }",
       Options());
     yield return NegativeScenario(
-      "DEL-UNREF-METHOD-MARK-001",
+      "mark.unreferenced-method",
       "public sealed class Sample { public void Run() { Remove(); } private void Remove() { } }",
       Options(("delete-unreferenced-methods", "true")));
     yield return NegativeScenario(
@@ -570,14 +570,14 @@ public sealed class MarkRuleRegistryCoverageTests
   private static RulePipeline CreateRules(string ruleId)
   {
     return RuleRegistry.CreateDefaultRules(
-      enableUnreachableMethodDeletion: string.Equals(ruleId, "DEL-DEAD-001", StringComparison.Ordinal),
+      enableUnreachableMethodDeletion: string.Equals(ruleId, "mark.unreachable-method", StringComparison.Ordinal),
       enableUnreferencedMethodDeletion: string.Equals(
         ruleId,
-        "DEL-UNREF-METHOD-MARK-001",
+        "mark.unreferenced-method",
         StringComparison.Ordinal),
       enableUnusedInterfaceImplementationCleanup: string.Equals(
         ruleId,
-        "CLR-UNUSED-IFACE-IMPL-MARK-001",
+        "mark.clear-unused-interface-implementation",
         StringComparison.Ordinal),
       enableInternalOnlyPublicMethodPrivatization: string.Equals(
         ruleId,

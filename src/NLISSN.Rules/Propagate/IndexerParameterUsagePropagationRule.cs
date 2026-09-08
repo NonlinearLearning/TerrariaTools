@@ -19,23 +19,22 @@ public sealed class IndexerParameterUsagePropagationRule : RuleDefinitionPropaga
           SyntaxKind.AliasQualifiedName,
           SyntaxKind.GenericName
         },
-        RuleFactPorts.TargetTypeSyntax)
+        RuleFactKind.TargetTypeSyntax)
     });
-    private static readonly RuleSemanticTag IndexerParameterUsageSemanticTag = RuleFactPorts.RelationParameterUsage;
+    private static readonly RuleFactKind IndexerParameterUsageFactKind = RuleFactKind.RelationParameterUsage;
 
     private static readonly RuleProducesContract IndexerParameterUsageProduces =
       new(new[]
       {
         new RuleProducedSyntax(
           new[] { SyntaxKind.IndexerDeclaration, SyntaxKind.ElementAccessExpression },
-          IndexerParameterUsageSemanticTag)
+          IndexerParameterUsageFactKind)
       });
 
     private readonly ParameterShrinkAnalyzer _analyzer = new();
 
-    public override string CapabilityId { get; } = "propagate.type.indexer-parameter-usage";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-INDEXER-PARAM-USAGE-001";
+    public override string RuleId { get; } = "propagate.type.indexer-parameter-usage";
 
     public override RuleProducesContract Produces => IndexerParameterUsageProduces;
 
@@ -70,7 +69,7 @@ public sealed class IndexerParameterUsagePropagationRule : RuleDefinitionPropaga
                   RuleId,
                   payload.Indexer,
                   "Indexer parameter type references the delete-class target; propagate to the owning indexer declaration.",
-                  semanticTag: IndexerParameterUsageSemanticTag),
+                  factKind: IndexerParameterUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -89,7 +88,7 @@ public sealed class IndexerParameterUsagePropagationRule : RuleDefinitionPropaga
                     RuleId,
                     access,
                     "Indexer access passes the delete-class typed parameter; propagate to a shrinkable access site.",
-                    semanticTag: IndexerParameterUsageSemanticTag),
+                    factKind: IndexerParameterUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -101,7 +100,7 @@ public sealed class IndexerParameterUsagePropagationRule : RuleDefinitionPropaga
     private bool TryBuildPayload(IPropagationRuleContext context, MarkRecord seedMark, out IndexerParameterUsagePayload payload)
     {
         payload = null!;
-        if (!string.Equals(seedMark.RuleId, "DEL-CLASS-MARK-TYPE-001", StringComparison.Ordinal) ||
+        if (!string.Equals(seedMark.RuleId, "mark.type.type-syntax", StringComparison.Ordinal) ||
             seedMark.SyntaxNode is not TypeSyntax typeSyntax)
         {
             return false;

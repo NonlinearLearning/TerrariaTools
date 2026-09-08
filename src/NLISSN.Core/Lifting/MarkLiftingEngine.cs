@@ -25,7 +25,7 @@ public sealed class MarkLiftingEngine
           {
               var tagged = candidate with
               {
-                  Mark = MarkingEngine.BindDeclaredSemanticTag(rule.Produces, candidate.Mark)
+                  Mark = MarkingEngine.BindDeclaredFactKind(rule.Produces, candidate.Mark)
               };
               ValidateLiftNode(rule, tagged.Mark.SyntaxNode);
               ValidateStructureKind(rule, tagged);
@@ -109,7 +109,7 @@ public sealed class MarkLiftingEngine
           .GetResult();
 
         return execution.Nodes
-          .Where(node => node.NodeId.Value.StartsWith("Lift:", StringComparison.Ordinal))
+          .Where(node => node.NodeId.Kind == RuleKind.Lift)
           .SelectMany(node => node.Result.Values)
           .OfType<LiftedMarkRecord>()
           .DistinctBy(mark => (
@@ -179,9 +179,9 @@ public sealed class MarkLiftingEngine
       IReadOnlyList<MarkRecord> seedMarks,
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
-        var values = node.Kind == RuleKind.Mark
-          ? seedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Mark:".Length..], StringComparison.Ordinal)).Cast<object>()
-          : propagatedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.Value["Propagate:".Length..], StringComparison.Ordinal)).Cast<object>();
+        var values = node.NodeId.Kind == RuleKind.Mark
+          ? seedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.RuleId, StringComparison.Ordinal)).Cast<object>()
+          : propagatedMarks.Where(mark => string.Equals(mark.RuleId, node.NodeId.RuleId, StringComparison.Ordinal)).Cast<object>();
         return RuleNodeResult.FromObservedValues(
           values.ToList(),
           new RuleProducesContract(node.ProducedSyntax));

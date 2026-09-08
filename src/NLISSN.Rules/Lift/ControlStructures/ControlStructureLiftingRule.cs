@@ -10,19 +10,18 @@ namespace NLISSN.Rules;
 /// <summary>Builds structural control conclusions only after their required expressions are covered.</summary>
 public sealed class ControlStructureLiftingRule : RuleDefinitionLift
 {
-  private static readonly RuleSemanticTag ControlStructureSemanticTag = RuleFactPorts.LiftControlStructure;
+  private static readonly RuleFactKind ControlStructureFactKind = RuleFactKind.LiftControlStructure;
 
-  public override string CapabilityId { get; } = "lift.target.control-structure";
 
-  public override string RuleId { get; } = "DEL-SOBJ-LIFT-CONTROL-001";
+  public override string RuleId { get; } = "lift.target.control-structure";
 
   public override RuleConsumesContract Consumes => new(new[]
   {
-    new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactPorts.TargetExpression),
-    new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactPorts.FlowAssignmentTarget),
-    new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactPorts.FlowLocalDefinition),
-    new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference),
-    new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, RuleFactPorts.LiftExpressionHost)
+    new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactKind.TargetExpression),
+    new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget),
+    new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition),
+    new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.FlowSymbolReference),
+    new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, RuleFactKind.LiftExpressionHost)
   });
 
   public override RuleProducesContract Produces => new(
@@ -35,7 +34,7 @@ public sealed class ControlStructureLiftingRule : RuleDefinitionLift
       SyntaxKind.WhileStatement,
       SyntaxKind.DoStatement,
       SyntaxKind.ReturnStatement
-    ], ControlStructureSemanticTag)
+    ], ControlStructureFactKind)
   ]);
 
   public override string Name { get; } = "Lift fully covered s-object loop and return structures";
@@ -65,7 +64,7 @@ public sealed class ControlStructureLiftingRule : RuleDefinitionLift
         Mark = mark.Mark with
         {
           OutputKind = RuleOutputKind.ExpressionHost,
-          SemanticTag = RuleFactPorts.LiftExpressionHost
+          FactKind = RuleFactKind.LiftExpressionHost
         }
       })
       .ToList();
@@ -87,7 +86,7 @@ public sealed class ControlStructureLiftingRule : RuleDefinitionLift
         .Select(mark => mark.Mark))
       .ToList();
     var candidates = existingLiftedMarks
-      .Where(mark => mark.Mark.SemanticTag == RuleFactPorts.LiftExpressionHost)
+      .Where(mark => mark.Mark.FactKind == RuleFactKind.LiftExpressionHost)
       .Select(mark => mark.Mark.SyntaxNode)
       .OfType<StatementSyntax>()
       .DistinctBy(LiftingCommon.BuildNodeKey);

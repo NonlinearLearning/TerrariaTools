@@ -39,7 +39,7 @@ public sealed class RewritePlanPersistenceTests : IDisposable
         _artifactService.Write(artifactRoot, _inputRoot, sourceFileCount: 1, new[] { plan });
         var (manifest, plans) = _artifactService.ReadAndValidate(artifactRoot, _inputRoot);
 
-        Assert.Equal(1, manifest.SchemaVersion);
+        Assert.Equal(2, manifest.SchemaVersion);
         Assert.Equal("delete-class", manifest.Operation);
         Assert.Equal(Path.GetFullPath(_inputRoot), manifest.InputRoot);
         Assert.Equal(1, manifest.SourceFileCount);
@@ -61,14 +61,38 @@ public sealed class RewritePlanPersistenceTests : IDisposable
         var plan = CreatePlan(
             "Sample.cs",
             source,
-            new RewritePlanEdit(19, 5, "value", "count", "DEL-SOBJ-PROPOSE-DEFAULT-001"));
+            new RewritePlanEdit(19, 5, "value", "count", "propose.default-removal"));
 
         // Act
         _artifactService.Write(artifactRoot, _inputRoot, sourceFileCount: 1, new[] { plan });
         var (_, plans) = _artifactService.ReadAndValidate(artifactRoot, _inputRoot);
 
         // Assert
-        Assert.Equal("DEL-SOBJ-PROPOSE-DEFAULT-001", Assert.Single(plans).Edits.Single().RuleId);
+        Assert.Equal("propose.default-removal", Assert.Single(plans).Edits.Single().RuleId);
+        var planJson = File.ReadAllText(Path.Combine(artifactRoot, "rewrite-plans.jsonl"));
+        Assert.Contains("\"ruleId\"", planJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("capabilityId", planJson, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("legacyRuleId", planJson, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ReadAndValidate_WhenManifestUsesSchemaOne_RejectsItWithoutFallback()
+    {
+        var sourcePath = WriteSource("Sample.cs", "class Sample { int value; }");
+        var artifactRoot = WriteArtifact(CreatePlan("Sample.cs", File.ReadAllText(sourcePath)));
+        var manifestPath = Path.Combine(artifactRoot, "manifest.json");
+        var manifest = JsonSerializer.Deserialize<RewritePlanManifest>(
+            File.ReadAllText(manifestPath),
+            JsonOptions)! with
+        {
+            SchemaVersion = 1
+        };
+        File.WriteAllText(manifestPath, JsonSerializer.Serialize(manifest, JsonOptions), new UTF8Encoding(false));
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => _artifactService.ReadAndValidate(artifactRoot, _inputRoot));
+
+        Assert.Equal("Rewrite-plan manifest schema is not supported.", exception.Message);
     }
 
     [Fact]

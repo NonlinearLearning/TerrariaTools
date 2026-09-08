@@ -14,6 +14,42 @@ namespace RoslynPrototype.Tests;
 public sealed class RuleStructureContractTests
 {
   [Fact]
+  public void RuleFactKind_BuiltInKindsExposeDomainAndDisplayName()
+  {
+    Assert.Equal(RuleFactDomain.Target, RuleFactKindDescriptor.GetDomain(RuleFactKind.TargetExpression));
+    Assert.Equal("Flow.SymbolReference", RuleFactKindDescriptor.GetDisplayName(RuleFactKind.FlowSymbolReference));
+    Assert.True(RuleFactKindDescriptor.TryGetKind(
+      new RuleSemanticTag("Relation.ParameterUsage"),
+      out var mappedKind));
+    Assert.Equal(RuleFactKind.RelationParameterUsage, mappedKind);
+  }
+
+  [Fact]
+  public void RuleFactKind_UnknownValueFailsClosed()
+  {
+    var unknownValues = new[] { RuleFactKind.Unknown, (RuleFactKind)ushort.MaxValue };
+
+    foreach (var unknown in unknownValues)
+    {
+      Assert.Throws<ArgumentOutOfRangeException>(() => RuleFactKindDescriptor.GetDomain(unknown));
+      Assert.Throws<ArgumentOutOfRangeException>(() => RuleFactKindDescriptor.GetDisplayName(unknown));
+    }
+  }
+
+  [Fact]
+  public void RuleSyntaxContractMatcher_DifferentFactKindsRemainIsolated()
+  {
+    var producer = new RuleProducedSyntax(
+      new[] { SyntaxKind.IdentifierName },
+      RuleFactKind.TargetExpression);
+    var consumer = new RuleConsumedSyntax(
+      new[] { SyntaxKind.IdentifierName },
+      RuleFactKind.FlowSymbolReference);
+
+    Assert.False(RuleSyntaxContractMatcher.IsCompatible(producer, consumer));
+  }
+
+  [Fact]
   public void StructuralKind_ContainsOnlyApprovedStructureConclusions()
   {
     Assert.Equal(
@@ -282,7 +318,7 @@ public sealed class RuleStructureContractTests
   [Fact]
   public void GetOutputs_WhenOriginsDiffer_RoutesAllFactsThroughTheSameSyntaxPort()
   {
-    var port = RuleFactPorts.TargetExpression;
+    var port = RuleFactKind.TargetExpression;
     var produces = new RuleProducesContract(
       new[] { new RuleProducedSyntax(new[] { SyntaxKind.IfStatement }, port) });
     var atomic = new MarkRecord(
@@ -291,7 +327,7 @@ public sealed class RuleStructureContractTests
       null,
       null,
       "test",
-      SemanticTag: port,
+      FactKind: port,
       Origins: RuleEvidenceOrigin.AtomicExpression);
     var declaration = atomic with
     {
@@ -365,7 +401,7 @@ public sealed class RuleStructureContractTests
       node.Dependencies,
       dependency =>
       {
-        if (node.Kind == RuleKind.Propagate && dependency.Producer.Value.StartsWith("Mark:", StringComparison.Ordinal))
+        if (node.Kind == RuleKind.Propagate && dependency.Producer.Kind == RuleKind.Mark)
         {
           Assert.Null(dependency.RequiredInput);
           return;
@@ -481,7 +517,7 @@ public sealed class RuleStructureContractTests
 
     public override RuleProducesContract Produces => new(new[]
     {
-      new RuleProducedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.TargetExpression)
+      new RuleProducedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.TargetExpression)
     });
 
     public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
@@ -497,7 +533,7 @@ public sealed class RuleStructureContractTests
         null,
         null,
         "Atomic expression seed.",
-        SemanticTag: RuleFactPorts.TargetExpression,
+        FactKind: RuleFactKind.TargetExpression,
         Origins: RuleEvidenceOrigin.AtomicExpression);
       yield return new MarkRecord(
         RuleId,
@@ -505,7 +541,7 @@ public sealed class RuleStructureContractTests
         null,
         null,
         "Declaration expression seed.",
-        SemanticTag: RuleFactPorts.TargetExpression,
+        FactKind: RuleFactKind.TargetExpression,
         Origins: RuleEvidenceOrigin.DeclarationExpression);
     }
   }
@@ -518,12 +554,12 @@ public sealed class RuleStructureContractTests
 
     public override RuleConsumesContract Consumes => new(new[]
     {
-      new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.TargetExpression)
+      new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.TargetExpression)
     });
 
     public override RuleProducesContract Produces => new(new[]
     {
-      new RuleProducedSyntax(new[] { SyntaxKind.IfStatement }, RuleFactPorts.LiftIfStructure)
+      new RuleProducedSyntax(new[] { SyntaxKind.IfStatement }, RuleFactKind.LiftIfStructure)
     });
 
     public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds => new[] { SyntaxKind.IfStatement };
@@ -542,7 +578,7 @@ public sealed class RuleStructureContractTests
           null,
           null,
           "Combined origin test lift.",
-          SemanticTag: RuleFactPorts.LiftIfStructure),
+          FactKind: RuleFactKind.LiftIfStructure),
         seedMarks[0],
         1,
         StructureKind: StructuralKind.If);

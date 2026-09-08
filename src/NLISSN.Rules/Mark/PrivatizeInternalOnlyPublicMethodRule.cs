@@ -17,9 +17,8 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
           InternalOnlyPublicMethodFacts.Marked)
       });
 
-    public override string CapabilityId { get; } = "mark.privatize-internal-only-public-method";
 
-    public override string RuleId => CapabilityId;
+    public override string RuleId { get; } = "mark.privatize-internal-only-public-method";
 
     public override RuleProducesContract Produces => InternalOnlyPublicMethodProduces;
 
@@ -61,7 +60,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
         RuleId,
         method,
         "Public method is referenced only from inside its declaring type.",
-        semanticTag: InternalOnlyPublicMethodFacts.Marked);
+        factKind: InternalOnlyPublicMethodFacts.Marked);
         }
     }
 

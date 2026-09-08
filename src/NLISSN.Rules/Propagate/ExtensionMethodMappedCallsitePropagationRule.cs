@@ -20,23 +20,22 @@ public sealed class ExtensionMethodMappedCallsitePropagationRule : RuleDefinitio
           SyntaxKind.AliasQualifiedName,
           SyntaxKind.GenericName
         },
-        RuleFactPorts.TargetTypeSyntax)
+        RuleFactKind.TargetTypeSyntax)
     });
-    private static readonly RuleSemanticTag ExtensionMethodParameterUsageSemanticTag = RuleFactPorts.RelationExtensionUsage;
+    private static readonly RuleFactKind ExtensionMethodParameterUsageFactKind = RuleFactKind.RelationExtensionUsage;
 
     private static readonly RuleProducesContract ExtensionMethodParameterUsageProduces =
       new(new[]
       {
         new RuleProducedSyntax(
           new[] { SyntaxKind.MethodDeclaration, SyntaxKind.InvocationExpression },
-          ExtensionMethodParameterUsageSemanticTag)
+          ExtensionMethodParameterUsageFactKind)
       });
 
     private readonly ParameterShrinkAnalyzer _analyzer = new();
 
-    public override string CapabilityId { get; } = "propagate.type.extension-method-mapped-callsite";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-EXT-MAPPED-001";
+    public override string RuleId { get; } = "propagate.type.extension-method-mapped-callsite";
 
     public override RuleProducesContract Produces => ExtensionMethodParameterUsageProduces;
 
@@ -71,7 +70,7 @@ public sealed class ExtensionMethodMappedCallsitePropagationRule : RuleDefinitio
                   RuleId,
                   payload.Method,
                   "Extension method non-receiver parameter type references the delete-class target; propagate to the owning method declaration.",
-                  semanticTag: ExtensionMethodParameterUsageSemanticTag),
+                  factKind: ExtensionMethodParameterUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -90,7 +89,7 @@ public sealed class ExtensionMethodMappedCallsitePropagationRule : RuleDefinitio
                     RuleId,
                     invocation,
                     "Extension method invocation passes the delete-class typed parameter; propagate to a shrinkable mapped callsite.",
-                    semanticTag: ExtensionMethodParameterUsageSemanticTag),
+                    factKind: ExtensionMethodParameterUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -102,7 +101,7 @@ public sealed class ExtensionMethodMappedCallsitePropagationRule : RuleDefinitio
     private bool TryBuildPayload(IPropagationRuleContext context, MarkRecord seedMark, out ExtensionMethodMappedCallsitePayload payload)
     {
         payload = null!;
-        if (!string.Equals(seedMark.RuleId, "DEL-CLASS-MARK-TYPE-001", StringComparison.Ordinal) ||
+        if (!string.Equals(seedMark.RuleId, "mark.type.type-syntax", StringComparison.Ordinal) ||
             seedMark.SyntaxNode is not TypeSyntax typeSyntax ||
             !_analyzer.TryBuildExtensionReceiverNonFirstParameterPlan(context, typeSyntax, out var plan))
         {

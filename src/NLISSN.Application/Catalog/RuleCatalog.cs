@@ -7,20 +7,20 @@ public static class RuleCatalog
     {
         ArgumentNullException.ThrowIfNull(rules);
 
-        var capabilityOwners = new Dictionary<string, Type>(StringComparer.Ordinal);
+        var ruleOwners = new Dictionary<string, Type>(StringComparer.Ordinal);
         foreach (var rule in rules)
         {
-            if (string.IsNullOrWhiteSpace(rule.CapabilityId))
+            if (string.IsNullOrWhiteSpace(rule.RuleId))
             {
                 throw new InvalidOperationException(
-                    $"Rule '{rule.GetType().FullName}' has a blank CapabilityId.");
+                    $"Rule '{rule.GetType().FullName}' has a blank RuleId.");
             }
 
-            if (!capabilityOwners.TryAdd(rule.CapabilityId, rule.GetType()))
+            if (!ruleOwners.TryAdd(rule.RuleId, rule.GetType()))
             {
                 throw new InvalidOperationException(
-                    $"Duplicate CapabilityId '{rule.CapabilityId}' in rules " +
-                    $"'{capabilityOwners[rule.CapabilityId].FullName}' and '{rule.GetType().FullName}'.");
+                    $"Duplicate RuleId '{rule.RuleId}' in rules " +
+                    $"'{ruleOwners[rule.RuleId].FullName}' and '{rule.GetType().FullName}'.");
             }
         }
     }

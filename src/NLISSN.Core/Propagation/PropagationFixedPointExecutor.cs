@@ -104,14 +104,19 @@ internal sealed class PropagationFixedPointExecutor
 
     private static bool IsCompatible(MarkRecord mark, RuleConsumedSyntax input)
     {
-        if (mark.SemanticTag is null)
+        if (mark.FactKind is null && mark.SemanticTag is null)
         {
             return false;
         }
 
-        var output = new RuleProducedSyntax(
-          new[] { (SyntaxKind)mark.SyntaxNode.RawKind },
-          mark.SemanticTag);
+        var factKind = RuleFactKindDescriptor.Resolve(mark.FactKind, mark.SemanticTag);
+        var output = factKind is { } knownFactKind
+          ? new RuleProducedSyntax(
+            new[] { (SyntaxKind)mark.SyntaxNode.RawKind },
+            knownFactKind)
+          : new RuleProducedSyntax(
+            new[] { (SyntaxKind)mark.SyntaxNode.RawKind },
+            mark.SemanticTag!);
         return RuleSyntaxContractMatcher.IsCompatible(output, input);
     }
 
@@ -135,7 +140,8 @@ internal sealed class PropagationFixedPointExecutor
       int SpanLength,
       int RawKind,
       string RuleId,
-      string SemanticTag) : IComparable<PropagationWorkItemPriority>
+      RuleFactKind? FactKind,
+      string? SemanticTag) : IComparable<PropagationWorkItemPriority>
     {
         public static PropagationWorkItemPriority Create(PropagationFactKey key)
         {
@@ -145,6 +151,7 @@ internal sealed class PropagationFixedPointExecutor
               key.SpanLength,
               key.RawKind,
               key.RuleId,
+              key.FactKind,
               key.SemanticTag);
         }
 
@@ -183,6 +190,21 @@ internal sealed class PropagationFixedPointExecutor
             if (ruleIdComparison != 0)
             {
                 return ruleIdComparison;
+            }
+
+            if (FactKind is { } leftFactKind && other.FactKind is { } rightFactKind)
+            {
+                return leftFactKind.CompareTo(rightFactKind);
+            }
+
+            if (FactKind is not null)
+            {
+                return -1;
+            }
+
+            if (other.FactKind is not null)
+            {
+                return 1;
             }
 
             return StringComparer.Ordinal.Compare(SemanticTag, other.SemanticTag);

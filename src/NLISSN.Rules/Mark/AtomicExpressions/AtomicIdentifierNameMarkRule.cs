@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicIdentifierNameMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.identifier-name";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-ID-001";
+    public override string RuleId { get; } = "mark.target.identifier-name";
     public override string Name { get; } = "Match s-rooted identifier expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.IdentifierName;
 }

@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class ParamsMethodParameterShrinkProposalRule : ParameterUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.params-method-parameter-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-PARAMS-METHOD-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.params-method-parameter-shrink";
 
 
     public override string Name { get; } = "Shrink params method parameters whose type references the delete-class target";

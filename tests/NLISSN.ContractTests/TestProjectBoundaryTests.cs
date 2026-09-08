@@ -83,7 +83,8 @@ public sealed class TestProjectBoundaryTests
   [Fact]
   public void InitScript_TargetsTheDeletionRuleCliProject()
   {
-    var initScript = File.ReadAllText(Path.Combine(ResolveRepositoryRoot(), "init.ps1"));
+    var initScript = File.ReadAllText(Path.Combine(
+      ResolveRepositoryRoot(), "Miscellaneous", "init.ps1"));
 
     Assert.Contains("src\\NLISSN\\NLISSN.csproj", initScript, StringComparison.Ordinal);
     Assert.DoesNotContain("src\\MinimalRoslynCpg\\MinimalRoslynCpg.csproj", initScript, StringComparison.Ordinal);
@@ -94,6 +95,7 @@ public sealed class TestProjectBoundaryTests
   {
     var checkerPath = Path.Combine(
       ResolveRepositoryRoot(),
+      "Miscellaneous",
       "scripts",
       "check-harness-consistency.ps1");
     var checker = File.ReadAllText(checkerPath);

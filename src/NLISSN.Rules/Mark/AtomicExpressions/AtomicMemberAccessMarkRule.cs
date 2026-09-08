@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicMemberAccessMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.member-access";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-MEMBER-001";
+    public override string RuleId { get; } = "mark.target.member-access";
     public override string Name { get; } = "Match s-rooted member access expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.SimpleMemberAccessExpression;
 }

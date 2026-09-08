@@ -1,7 +1,7 @@
 schemaVersion: 2
 runId: dop12-main-merged-20260804
 input:
-  path: ./Build/RandomSamples/run-20260802200403975-ecade51311b34d8a8ae0561b8b0e37b6/source/Terraria/Main.cs
+  path: ../Build/RandomSamples/run-20260802200403975-ecade51311b34d8a8ae0561b8b0e37b6/source/Terraria/Main.cs
 analysis:
   targetName: PlayerInput
   deleteClass: PlayerInput

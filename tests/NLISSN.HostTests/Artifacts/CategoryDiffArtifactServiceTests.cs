@@ -29,11 +29,11 @@ public sealed class CategoryDiffArtifactServiceTests : IDisposable
         {
             new RuleDecision(identifiers["left"], identifiers["left"], DecisionActionKind.Delete, "atomic")
             {
-                RuleId = "DEL-SOBJ-PROPOSE-DEFAULT-001",
+                RuleId = "propose.default-removal",
             },
             new RuleDecision(identifiers["right"], identifiers["right"], DecisionActionKind.Delete, "control-flow")
             {
-                RuleId = "DEL-SOBJ-PROPOSE-IF-001",
+                RuleId = "propose.if-structure",
             },
         };
 

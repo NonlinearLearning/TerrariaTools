@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class PublicParameterProposalRule : RuleDefinitionPropose
 {
-    public override string CapabilityId { get; } = "propose.type.public-parameter";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-PUBLIC-PARAM-001";
+    public override string RuleId { get; } = "propose.type.public-parameter";
 
 
     public override string Name { get; } = "Delete non-private methods whose parameter type references the delete-class target";

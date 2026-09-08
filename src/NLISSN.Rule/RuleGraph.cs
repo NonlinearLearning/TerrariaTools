@@ -10,26 +10,26 @@ public enum RuleKind
 
 public sealed record RuleNodeId
 {
-    public RuleNodeId(string value)
+    public RuleNodeId(RuleKind kind, string ruleId)
     {
-        Value = Validate(value);
+        if (string.IsNullOrWhiteSpace(ruleId))
+        {
+            throw new ArgumentException("Rule node rule ID cannot be empty.", nameof(ruleId));
+        }
+
+        Kind = kind;
+        RuleId = ruleId;
     }
 
-    public string Value { get; }
+    public RuleKind Kind { get; }
+
+    public string RuleId { get; }
+
+    public string Value => $"{Kind}:{RuleId}";
 
     public static RuleNodeId For(RuleKind kind, string ruleId)
     {
-        return new RuleNodeId($"{kind}:{ruleId}");
-    }
-
-    private static string Validate(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new ArgumentException("Rule node ID cannot be empty.", nameof(value));
-        }
-
-        return value;
+        return new RuleNodeId(kind, ruleId);
     }
 }
 

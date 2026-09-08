@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicFalseLiteralMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.false-literal";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-LIT-FALSE-001";
+    public override string RuleId { get; } = "mark.target.false-literal";
     public override string Name { get; } = "Match s-rooted false literal expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.FalseLiteralExpression;
 }

@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class BaseTypeProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.base-type";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-BASE-001";
+    public override string RuleId { get; } = "propose.type.base-type";
 
 
     public override string Name { get; } = "Remove base-list entries whose type references the delete-class target";

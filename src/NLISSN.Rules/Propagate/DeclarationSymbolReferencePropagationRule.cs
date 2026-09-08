@@ -10,15 +10,15 @@ namespace NLISSN.Rules;
 /// 把已收束到局部 declarator 的 delete-class 事实继续传播到同一作用域内、且出现在定义之后的引用点。
 public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPropagate
 {
-    private static readonly RuleSemanticTag LocalDefinitionSemanticTag =
-      RuleFactPorts.FlowLocalDefinition;
+    private static readonly RuleFactKind LocalDefinitionFactKind =
+      RuleFactKind.FlowLocalDefinition;
 
     private static readonly RuleConsumesContract LocalDefinitionConsumes =
       new(new[]
       {
         new RuleConsumedSyntax(
           new[] { SyntaxKind.VariableDeclarator },
-          LocalDefinitionSemanticTag)
+          LocalDefinitionFactKind)
       });
 
     private static readonly RuleProducesContract SymbolReferenceProduces = new(
@@ -26,12 +26,11 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
       {
         new RuleProducedSyntax(
           new[] { SyntaxKind.IdentifierName },
-          RuleFactPorts.FlowSymbolReference)
+          RuleFactKind.FlowSymbolReference)
       });
 
-    public override string CapabilityId { get; } = "propagate.type.symbol-reference";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-LOCAL-REF-001";
+    public override string RuleId { get; } = "propagate.type.symbol-reference";
 
     public override RuleConsumesContract Consumes => LocalDefinitionConsumes;
 
@@ -77,7 +76,7 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
                 RuleId,
                 reference,
                 $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked delete-class local definition.",
-                semanticTag: RuleFactPorts.FlowSymbolReference),
+                factKind: RuleFactKind.FlowSymbolReference),
               markedDefinition.SourceMark,
               1);
         }

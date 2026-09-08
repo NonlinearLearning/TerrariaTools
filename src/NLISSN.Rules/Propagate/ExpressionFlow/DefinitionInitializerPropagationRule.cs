@@ -11,15 +11,14 @@ namespace NLISSN.Rules;
 /// 把初始化表达式上的命中收束到变量声明点，避免后续规则直接依赖易碎的子表达式位置。
 public sealed class DefinitionInitializerPropagationRule : ExpressionFlowPropagationRuleBase
 {
-    private static readonly RuleSemanticTag LocalDefinitionSemanticTag = RuleFactPorts.FlowLocalDefinition;
+    private static readonly RuleFactKind LocalDefinitionFactKind = RuleFactKind.FlowLocalDefinition;
 
     private static readonly RuleProducesContract LocalDefinitionProduces = new(new[]
     {
-        new RuleProducedSyntax(new[] { SyntaxKind.VariableDeclarator }, LocalDefinitionSemanticTag)
+        new RuleProducedSyntax(new[] { SyntaxKind.VariableDeclarator }, LocalDefinitionFactKind)
     });
 
-    public override string CapabilityId { get; } = "propagate.target.definition-initializer";
-    public override string RuleId { get; } = "DEL-SOBJ-PROP-DECL-INIT-001";
+public override string RuleId { get; } = "propagate.target.definition-initializer";
     public override RuleProducesContract Produces => LocalDefinitionProduces;
     public override string Name { get; } = "Propagate s-object marks from definition initializers to declarators";
 
@@ -48,7 +47,7 @@ public sealed class DefinitionInitializerPropagationRule : ExpressionFlowPropaga
                     variableDeclarator,
                     "Definition initializer topology identifies the owning local definition.",
                     RuleOutputKind.LocalDefinitionFromInitializer,
-                    LocalDefinitionSemanticTag),
+                    factKind: LocalDefinitionFactKind),
                   seedMark,
                   1);
             }

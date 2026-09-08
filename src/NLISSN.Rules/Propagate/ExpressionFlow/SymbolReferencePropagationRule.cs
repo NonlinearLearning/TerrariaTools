@@ -12,16 +12,15 @@ public sealed class SymbolReferencePropagationRule : ExpressionFlowPropagationRu
 {
     private static readonly RuleProducesContract SymbolReferenceProduces = new(new[]
     {
-        new RuleProducedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference)
+        new RuleProducedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.FlowSymbolReference)
     });
 
     private static readonly RuleConsumesContract LocalDefinitionConsumes = new(new[]
     {
-        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactPorts.FlowLocalDefinition)
+        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition)
     });
 
-    public override string CapabilityId { get; } = "propagate.target.symbol-reference";
-    public override string RuleId { get; } = "DEL-SOBJ-PROP-SYMBOL-001";
+public override string RuleId { get; } = "propagate.target.symbol-reference";
     public override RuleConsumesContract Consumes => LocalDefinitionConsumes;
     public override RuleProducesContract Produces => SymbolReferenceProduces;
     public override string Name { get; } = "Propagate s-object marks from marked definitions to symbol references";
@@ -53,7 +52,7 @@ public sealed class SymbolReferencePropagationRule : ExpressionFlowPropagationRu
                 RuleId,
                 reference,
                 $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked definition.",
-                semanticTag: RuleFactPorts.FlowSymbolReference),
+                factKind: RuleFactKind.FlowSymbolReference),
               markedDefinition.SourceMark,
               1);
         }

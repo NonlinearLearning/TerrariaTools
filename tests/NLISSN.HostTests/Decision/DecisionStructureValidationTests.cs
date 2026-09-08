@@ -162,13 +162,13 @@ public sealed class DecisionStructureValidationTests
         var result = service.Analyze(source, "class-derived-logical-initializer.cs", options);
 
         Assert.Contains(result.PropagatedMarks, mark =>
-          mark.Mark.SemanticTag == RuleFactPorts.FlowUnaryExpression &&
+          mark.Mark.FactKind == RuleFactKind.FlowUnaryExpression &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "!PlayerInput.UsingGamepad", StringComparison.Ordinal));
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
-          mark.Mark.SemanticTag == RuleFactPorts.FlowLocalDefinition ||
-          mark.Mark.SemanticTag == RuleFactPorts.FlowSymbolReference);
+          mark.Mark.FactKind == RuleFactKind.FlowLocalDefinition ||
+          mark.Mark.FactKind == RuleFactKind.FlowSymbolReference);
         Assert.DoesNotContain(result.LiftedMarks, mark =>
-          mark.Mark.SemanticTag == RuleFactPorts.LiftIfStructure);
+          mark.Mark.FactKind == RuleFactKind.LiftIfStructure);
         Assert.DoesNotContain(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Delete &&
           (decision.FinalNode.IsKind(SyntaxKind.LocalDeclarationStatement) ||
@@ -265,7 +265,7 @@ public sealed class DecisionStructureValidationTests
         return new MarkingEngine()
           .Run(context, root, rules.Markers)
           .Where(mark =>
-            mark.SemanticTag == RuleFactPorts.TargetExpression &&
+            mark.FactKind == RuleFactKind.TargetExpression &&
             mark.Origins == RuleEvidenceOrigin.AtomicExpression)
           .ToList();
     }

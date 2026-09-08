@@ -19,23 +19,22 @@ public sealed class LocalFunctionParameterUsagePropagationRule : RuleDefinitionP
           SyntaxKind.AliasQualifiedName,
           SyntaxKind.GenericName
         },
-        RuleFactPorts.TargetTypeSyntax)
+        RuleFactKind.TargetTypeSyntax)
     });
-    private static readonly RuleSemanticTag LocalFunctionParameterUsageSemanticTag = RuleFactPorts.RelationParameterUsage;
+    private static readonly RuleFactKind LocalFunctionParameterUsageFactKind = RuleFactKind.RelationParameterUsage;
 
     private static readonly RuleProducesContract LocalFunctionParameterUsageProduces =
       new(new[]
       {
         new RuleProducedSyntax(
           new[] { SyntaxKind.LocalFunctionStatement, SyntaxKind.InvocationExpression },
-          LocalFunctionParameterUsageSemanticTag)
+          LocalFunctionParameterUsageFactKind)
       });
 
     private readonly ParameterShrinkAnalyzer _analyzer = new();
 
-    public override string CapabilityId { get; } = "propagate.type.local-function-parameter-usage";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-LOCALFUNC-PARAM-USAGE-001";
+    public override string RuleId { get; } = "propagate.type.local-function-parameter-usage";
 
     public override RuleProducesContract Produces => LocalFunctionParameterUsageProduces;
 
@@ -70,7 +69,7 @@ public sealed class LocalFunctionParameterUsagePropagationRule : RuleDefinitionP
                   RuleId,
                   payload.LocalFunction,
                   "Local function parameter type references the delete-class target; propagate to the owning local function.",
-                  semanticTag: LocalFunctionParameterUsageSemanticTag),
+                  factKind: LocalFunctionParameterUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -89,7 +88,7 @@ public sealed class LocalFunctionParameterUsagePropagationRule : RuleDefinitionP
                     RuleId,
                     invocation,
                     "Local function invocation passes the delete-class typed parameter; propagate to a shrinkable callsite.",
-                    semanticTag: LocalFunctionParameterUsageSemanticTag),
+                    factKind: LocalFunctionParameterUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -101,7 +100,7 @@ public sealed class LocalFunctionParameterUsagePropagationRule : RuleDefinitionP
     private bool TryBuildPayload(IPropagationRuleContext context, MarkRecord seedMark, out LocalFunctionParameterUsagePayload payload)
     {
         payload = null!;
-        if (!string.Equals(seedMark.RuleId, "DEL-CLASS-MARK-TYPE-001", StringComparison.Ordinal) ||
+        if (!string.Equals(seedMark.RuleId, "mark.type.type-syntax", StringComparison.Ordinal) ||
             seedMark.SyntaxNode is not TypeSyntax typeSyntax)
         {
             return false;

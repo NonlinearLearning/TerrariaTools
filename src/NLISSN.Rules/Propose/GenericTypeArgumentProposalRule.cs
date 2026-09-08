@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class GenericTypeArgumentProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.generic-type-argument";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-GENERIC-001";
+    public override string RuleId { get; } = "propose.type.generic-type-argument";
 
 
     public override string Name { get; } = "Delete local declarations whose generic type argument references the delete-class target";

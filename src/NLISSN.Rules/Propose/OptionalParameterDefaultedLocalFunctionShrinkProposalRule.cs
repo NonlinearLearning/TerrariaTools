@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class OptionalParameterDefaultedLocalFunctionShrinkProposalRule : ParameterUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.optional-parameter-defaulted-local-function-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-OPTIONAL-LOCALFUNC-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.optional-parameter-defaulted-local-function-shrink";
 
 
     public override string Name { get; } = "Shrink optional local function parameters whose type references the delete-class target";

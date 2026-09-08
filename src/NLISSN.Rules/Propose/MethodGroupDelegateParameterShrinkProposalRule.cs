@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class MethodGroupDelegateParameterShrinkProposalRule : DelegateUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.method-group-delegate-parameter-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-METHODGROUP-DELEGATE-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.method-group-delegate-parameter-shrink";
 
 
     public override string Name { get; } = "Shrink delegate parameters and method-group targets when the delete-class target flows through a custom delegate signature";

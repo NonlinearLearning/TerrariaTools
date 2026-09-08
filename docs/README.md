@@ -10,9 +10,9 @@
 | 理解项目在验证什么 | [核心概念](concepts.md) | [当前设计](../设计docs/目前设计/项目概览.md) |
 | 使用删除规则原型 | [CLI 参考](cli-reference.md) | [删除规则流水线](../设计docs/目前设计/deletion-pipeline.md) |
 | 改 CPG、规则或改写逻辑 | [开发者指南](developer-guide.md) | [贡献指南](contributing.md) |
-| 选择验证层级 | [Harness 验证矩阵](harness-verification-matrix.md) | 根目录 `progress.md` |
+| 选择验证层级 | [Harness 验证矩阵](harness-verification-matrix.md) | `Context/progress.md` |
 | 使用本地 harness 与运行时状态 | [Harness Runtime](harness-runtime.md) | [Harness 验证矩阵](harness-verification-matrix.md) |
-| 让代理处理仓库工作 | [docs/AGENTS.md](AGENTS.md) | 根目录 `AGENTS.md` |
+| 让代理处理仓库工作 | [docs/AGENTS.md](AGENTS.md) | `Context/AGENTS.md` |
 
 ## 页面职责
 
@@ -30,6 +30,6 @@
 
 门户说明当前稳定入口，不取代工作状态文件：
 
-- `feature_list.json` 是 feature 状态和完成条件的唯一来源。
-- `progress.md` 记录当前事实、验证边界和下一步。
-- `AGENTS.md` 定义工作顺序、局部约束和验证规则。
+- `Context/feature_list.json` 是 feature 状态和完成条件的唯一来源。
+- `Context/progress.md` 记录当前事实、验证边界和下一步。
+- `Context/AGENTS.md` 定义工作顺序、局部约束和验证规则。

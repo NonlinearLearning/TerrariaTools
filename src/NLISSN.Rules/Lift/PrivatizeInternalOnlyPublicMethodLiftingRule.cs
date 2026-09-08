@@ -11,10 +11,8 @@ namespace NLISSN.Rules;
 /// </summary>
 public sealed class PrivatizeInternalOnlyPublicMethodLiftingRule : RuleDefinitionLift
 {
-  public override string CapabilityId { get; } =
-    "lift.privatize-internal-only-public-method";
 
-  public override string RuleId { get; } = "PRIV-INTERNAL-PUBLIC-LIFT-001";
+  public override string RuleId { get; } = "lift.privatize-internal-only-public-method";
 
   public override RuleConsumesContract Consumes { get; } = new(new[]
   {
@@ -45,8 +43,8 @@ public sealed class PrivatizeInternalOnlyPublicMethodLiftingRule : RuleDefinitio
     _ = seedMarks;
     foreach (var propagatedMark in propagatedMarks)
     {
-      if (propagatedMark.RuleId != "PRIV-INTERNAL-PUBLIC-PROPAGATE-001" ||
-          propagatedMark.Mark.SemanticTag != InternalOnlyPublicMethodFacts.Propagated ||
+      if (propagatedMark.RuleId != "propagate.privatize-internal-only-public-method" ||
+          propagatedMark.Mark.FactKind != InternalOnlyPublicMethodFacts.Propagated ||
           propagatedMark.Mark.SyntaxNode is not MethodDeclarationSyntax method)
       {
         continue;
@@ -58,7 +56,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodLiftingRule : RuleDefinitio
           RuleId,
           method,
           "Internal-only public method is approved for accessibility replacement.",
-          semanticTag: InternalOnlyPublicMethodFacts.Lifted),
+          factKind: InternalOnlyPublicMethodFacts.Lifted),
         propagatedMark.SourceMark,
         propagatedMark.Depth);
     }

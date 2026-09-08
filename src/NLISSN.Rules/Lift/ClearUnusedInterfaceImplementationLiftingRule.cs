@@ -9,8 +9,7 @@ namespace NLISSN.Rules;
 /// Promotes an unused interface implementation into a body-replacement fact.
 public sealed class ClearUnusedInterfaceImplementationLiftingRule : RuleDefinitionLift
 {
-  public override string CapabilityId { get; } = "lift.clear-unused-interface-implementation";
-  public override string RuleId { get; } = "CLR-UNUSED-IFACE-IMPL-LIFT-001";
+public override string RuleId { get; } = "lift.clear-unused-interface-implementation";
   public override RuleConsumesContract Consumes { get; } = new(new[]
   {
     new RuleConsumedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnusedInterfaceImplementationFacts.Propagated)
@@ -28,7 +27,7 @@ public sealed class ClearUnusedInterfaceImplementationLiftingRule : RuleDefiniti
     _ = seedMarks;
     foreach (var propagatedMark in propagatedMarks)
     {
-      if (propagatedMark.Mark.SemanticTag != UnusedInterfaceImplementationFacts.Propagated ||
+      if (propagatedMark.Mark.FactKind != UnusedInterfaceImplementationFacts.Propagated ||
           propagatedMark.Mark.SyntaxNode is not MethodDeclarationSyntax method)
       {
         continue;
@@ -36,7 +35,7 @@ public sealed class ClearUnusedInterfaceImplementationLiftingRule : RuleDefiniti
 
       yield return new LiftedMarkRecord(
         RuleId,
-        MarkRecordFactory.Create(RuleId, method, "Unused interface implementation is approved for body cleanup.", semanticTag: UnusedInterfaceImplementationFacts.Lifted),
+        MarkRecordFactory.Create(RuleId, method, "Unused interface implementation is approved for body cleanup.", factKind: UnusedInterfaceImplementationFacts.Lifted),
         propagatedMark.SourceMark,
         propagatedMark.Depth);
     }

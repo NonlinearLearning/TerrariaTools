@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class ExtensionReceiverNonFirstParameterShrinkProposalRule : ExtensionMethodParameterUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.extension-receiver-non-first-parameter-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-EXT-NONRECV-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.extension-receiver-non-first-parameter-shrink";
 
 
     public override string Name { get; } = "Shrink non-receiver extension-method parameters whose type references the delete-class target";

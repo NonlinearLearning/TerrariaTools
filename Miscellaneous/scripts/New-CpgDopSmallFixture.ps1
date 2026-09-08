@@ -3,7 +3,7 @@ param(
   [string] $SourceRoot,
   [Parameter(Mandatory = $true)]
   [string] $OutputRoot,
-  [string] $ConfigPath = (Join-Path $PSScriptRoot '..\docs\benchmarks\cpg-dop-small-fixture.json'),
+  [string] $ConfigPath = (Join-Path $PSScriptRoot '..\..\docs\benchmarks\cpg-dop-small-fixture.json'),
   [switch] $CleanOutput
 )
 

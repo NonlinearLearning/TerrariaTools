@@ -8,26 +8,25 @@ namespace NLISSN.Rules;
 /// 将 switch 中可完整规约的分支事实提升为单一结构宿主。
 public sealed class SwitchStructureLiftingRule : RuleDefinitionLift
 {
-    private static readonly RuleSemanticTag IfStructureSemanticTag = RuleFactPorts.LiftIfStructure;
+    private static readonly RuleFactKind IfStructureFactKind = RuleFactKind.LiftIfStructure;
 
-    private static readonly RuleSemanticTag ExpressionHostSemanticTag = RuleFactPorts.LiftExpressionHost;
+    private static readonly RuleFactKind ExpressionHostFactKind = RuleFactKind.LiftExpressionHost;
 
-    private static readonly RuleSemanticTag SwitchStructureSemanticTag = RuleFactPorts.LiftSwitchStructure;
+    private static readonly RuleFactKind SwitchStructureFactKind = RuleFactKind.LiftSwitchStructure;
 
     private static readonly RuleConsumesContract SwitchConsumes = new(
       new[]
       {
         new RuleConsumedSyntax(
           LiftingCommon.AllowedLiftNodeKinds,
-          ExpressionHostSemanticTag),
+          ExpressionHostFactKind),
         new RuleConsumedSyntax(
           new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
-          IfStructureSemanticTag)
+          IfStructureFactKind)
       });
 
-    public override string CapabilityId { get; } = "lift.target.switch-structure";
 
-    public override string RuleId { get; } = "DEL-SOBJ-LIFT-SWITCH-001";
+    public override string RuleId { get; } = "lift.target.switch-structure";
 
     public override RuleConsumesContract Consumes => SwitchConsumes;
 
@@ -35,7 +34,7 @@ public sealed class SwitchStructureLiftingRule : RuleDefinitionLift
     {
       new RuleProducedSyntax(
         new[] { SyntaxKind.SwitchSection, SyntaxKind.SwitchStatement },
-        SwitchStructureSemanticTag)
+        SwitchStructureFactKind)
     });
 
 

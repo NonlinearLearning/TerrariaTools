@@ -134,9 +134,9 @@ public static class IfStructureLiftingHelpers
 
     private static bool IsDefinitionBackedSymbolReference(PropagatedMarkRecord fact)
     {
-        return fact.Mark.SemanticTag == RuleFactPorts.FlowSymbolReference &&
+        return fact.Mark.FactKind == RuleFactKind.FlowSymbolReference &&
           fact.Mark.SyntaxNode is IdentifierNameSyntax &&
-          fact.SourceMark.SemanticTag == RuleFactPorts.FlowLocalDefinition &&
+          fact.SourceMark.FactKind == RuleFactKind.FlowLocalDefinition &&
           fact.SourceMark.SyntaxNode is VariableDeclaratorSyntax &&
           fact.SourceMark.OutputKind == RuleOutputKind.LocalDefinitionFromInitializer;
     }

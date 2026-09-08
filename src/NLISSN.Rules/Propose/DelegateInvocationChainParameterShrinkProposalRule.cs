@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class DelegateInvocationChainParameterShrinkProposalRule : DelegateUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.delegate-invocation-chain-parameter-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-DELEGATE-INVOKE-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.delegate-invocation-chain-parameter-shrink";
 
 
     public override string Name { get; } = "Shrink delegate parameters and direct delegate invocation chains when the delete-class target flows through a custom delegate signature";

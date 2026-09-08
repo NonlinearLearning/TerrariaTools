@@ -120,7 +120,7 @@ if ($dopValues.Count -eq 0) {
   throw "Dop must contain one or more positive values."
 }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $env:DOTNET_CLI_HOME = $repoRoot
 $resolvedSource = (Resolve-Path -LiteralPath $SourceFile).Path
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) {

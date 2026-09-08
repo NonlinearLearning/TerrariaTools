@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class ExtensionReceiverProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.extension-receiver";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-EXT-RECV-001";
+    public override string RuleId { get; } = "propose.type.extension-receiver";
 
 
     public override string Name { get; } = "Delete extension methods whose receiver type references the delete-class target";

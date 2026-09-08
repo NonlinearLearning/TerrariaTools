@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class MethodReturnTypeProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.method-return-type";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-RETURN-001";
+    public override string RuleId { get; } = "propose.type.method-return-type";
 
 
     public override string Name { get; } = "Delete private methods whose return type references the delete-class target";

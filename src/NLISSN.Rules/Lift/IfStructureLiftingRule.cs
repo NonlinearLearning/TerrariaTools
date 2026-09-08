@@ -9,16 +9,16 @@ namespace NLISSN.Rules;
 /// 将 if 结构的完成态传播事实转换为结构化 Lift 记录。
 public sealed class IfStructureLiftingRule : RuleDefinitionLift
 {
-    private static readonly RuleSemanticTag IfStructureSemanticTag = RuleFactPorts.LiftIfStructure;
-    private static readonly RuleSemanticTag ExpressionHostSemanticTag = RuleFactPorts.LiftExpressionHost;
+    private static readonly RuleFactKind IfStructureFactKind = RuleFactKind.LiftIfStructure;
+    private static readonly RuleFactKind ExpressionHostFactKind = RuleFactKind.LiftExpressionHost;
 
     private static readonly RuleConsumesContract AtomicFactsConsumes = new(new[]
     {
-        new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactPorts.TargetExpression),
-        new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactPorts.FlowAssignmentTarget),
-        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactPorts.FlowLocalDefinition),
-        new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference),
-        new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, ExpressionHostSemanticTag),
+        new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactKind.TargetExpression),
+        new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget),
+        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition),
+        new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.FlowSymbolReference),
+        new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, ExpressionHostFactKind),
     });
 
     private static readonly RuleProducesContract IfStructureProduces = new(
@@ -26,12 +26,11 @@ public sealed class IfStructureLiftingRule : RuleDefinitionLift
       {
         new RuleProducedSyntax(
           new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
-          IfStructureSemanticTag)
+          IfStructureFactKind)
       });
 
-    public override string CapabilityId { get; } = "lift.target.if-structure";
 
-    public override string RuleId { get; } = "DEL-SOBJ-LIFT-IF-001";
+    public override string RuleId { get; } = "lift.target.if-structure";
 
     public override RuleConsumesContract Consumes => AtomicFactsConsumes;
 
@@ -54,7 +53,7 @@ public sealed class IfStructureLiftingRule : RuleDefinitionLift
           .Select(mark => mark.Mark with
           {
             OutputKind = RuleOutputKind.ExpressionHost,
-            SemanticTag = ExpressionHostSemanticTag
+            FactKind = ExpressionHostFactKind
           })
           .ToList();
         return IfStructureLiftingHelpers.BuildIfStructureLiftedMarks(
@@ -73,7 +72,7 @@ public sealed class IfStructureLiftingRule : RuleDefinitionLift
               Mark = mark.Mark with
               {
                 OutputKind = RuleOutputKind.IfStructure,
-                SemanticTag = IsIfStructureMember(mark.Mark.SyntaxNode) ? IfStructureSemanticTag : null
+                FactKind = IsIfStructureMember(mark.Mark.SyntaxNode) ? IfStructureFactKind : null
               },
               StructureKind = payload is null ? null : StructuralKind.If,
               Payload = payload
@@ -88,7 +87,7 @@ public sealed class IfStructureLiftingRule : RuleDefinitionLift
       IReadOnlyList<LiftedMarkRecord> existingLiftedMarks)
     {
         var hostMarks = existingLiftedMarks
-          .Where(mark => mark.Mark.SemanticTag == ExpressionHostSemanticTag &&
+          .Where(mark => mark.Mark.FactKind == ExpressionHostFactKind &&
             mark.Mark.SyntaxNode.RawKind is not (int)SyntaxKind.LogicalAndExpression and not (int)SyntaxKind.LogicalOrExpression)
           .Select(mark => mark.Mark)
           .ToList();

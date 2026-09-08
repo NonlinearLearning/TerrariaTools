@@ -81,7 +81,11 @@ public sealed class RuleStructureContractGraphCompiler
             {
                 var sameTagOutputs = declaredNodes
                   .SelectMany(producer => producer.Produces.Outputs.Select(output => (producer, output)))
-                  .Where(entry => entry.output.SemanticTag == input.SemanticTag)
+                  .Where(entry => RuleFactKindDescriptor.Matches(
+                    entry.output.FactKind,
+                    entry.output.SemanticTag,
+                    input.FactKind,
+                    input.SemanticTag))
                   .ToList();
                 var incompatibleOutput = sameTagOutputs
                   .FirstOrDefault(entry => !RuleSyntaxContractMatcher.IsCompatible(entry.output, input));
@@ -119,8 +123,8 @@ public sealed class RuleStructureContractGraphCompiler
 
     private static bool IsPropagationInternalEdge(RuleStructureContractEdge edge)
     {
-        return edge.Producer.Value.StartsWith("Propagate:", StringComparison.Ordinal) &&
-          edge.Consumer.Value.StartsWith("Propagate:", StringComparison.Ordinal);
+        return edge.Producer.Kind == RuleKind.Propagate &&
+          edge.Consumer.Kind == RuleKind.Propagate;
     }
 
     private static void ValidateDistinctInputs(RuleStructureContractGraphNode consumer)

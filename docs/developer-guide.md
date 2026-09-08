@@ -6,13 +6,13 @@
 
 ## 工作入口
 
-开始前阅读根目录 `AGENTS.md`、`progress.md` 与 `feature_list.json`，随后运行：
+开始前阅读 `Context/AGENTS.md`、`Context/progress.md` 与 `Context/feature_list.json`，随后运行：
 
 ```powershell
-pwsh -File .\init.ps1
+pwsh -File .\Miscellaneous\init.ps1
 ```
 
-`feature_list.json` 定义完成条件；`progress.md` 只记录当前事实与验证边界。
+`Context/feature_list.json` 定义完成条件；`Context/progress.md` 只记录当前事实与验证边界。
 
 ## 修改 NLCPG
 
@@ -77,7 +77,7 @@ dotnet test .\tests\NLISSN.HostTests\RoslynDeletionPrototype.HostTests.csproj --
 当需要区分目录 DOP 与每文件 CPG DOP 时，使用 `--cpg-max-degree-of-parallelism` 覆盖 builder 值，并比较 `(12,1)`、`(1,12)`、`(12,12)`。每组保持输入、规则、日志配置和 SDK 相同；阶段累计是逐文件 elapsed 总和，端到端裁决使用墙钟中位数。该诊断不会改变默认 DOP。
 
 ```powershell
-pwsh -File .\scripts\Run-ConcurrencyPoolPerformance.ps1 `
+pwsh -File .\Miscellaneous\scripts\Run-ConcurrencyPoolPerformance.ps1 `
   -SourceFile "D:\path\to\source\Example.cs" `
   -TargetName Example `
   -Dop "1,8,12,16"
@@ -93,7 +93,7 @@ pwsh -File .\scripts\Run-ConcurrencyPoolPerformance.ps1 `
 输入没有漂移：
 
 ```powershell
-pwsh -File .\scripts\New-CpgDopSmallFixture.ps1 `
+pwsh -File .\Miscellaneous\scripts\New-CpgDopSmallFixture.ps1 `
   -SourceRoot "D:\lodes\TR\Backup\New1.27\1.45 2\TR" `
   -OutputRoot .\Build\cpg-dop-small-fixture-20260724 `
   -CleanOutput
@@ -110,7 +110,7 @@ Microsoft Coyote PoC 未保留：在当前 `net10.0` 与 xUnit 组合中，它�
 rewrite 流程，且没有找到现有持久化、写入锁和取消覆盖之外的可复现调度。后续只有在
 出现无法用这些受控测试表达的交错缺陷时，才重新评估该隔离 PoC。
 
-运行前按根目录约束设置 `DOTNET_CLI_HOME`；`init.ps1` 会完成该设置。CLI、文档或 harness 改动应运行对应的 `dotnet build`、`dotnet test` 和 CLI smoke；随后使用 `pwsh -File .\scripts\check-harness-consistency.ps1` 核对当前入口、文档与状态文件。
+运行前按根目录约束设置 `DOTNET_CLI_HOME`；`Miscellaneous/init.ps1` 会完成该设置。CLI、文档或 harness 改动应运行对应的 `dotnet build`、`dotnet test` 和 CLI smoke；随后使用 `pwsh -File .\Miscellaneous\scripts\check-harness-consistency.ps1` 核对当前入口、文档与状态文件。
 
 绑定校验只在 `nlissn.yml` 显式设置 `analysis.validateBindings: true` 时运行。它在规则图输出归并和 rewrite 前检查 CPG、规则和决策关系；Error 会保留诊断报告并跳过写入，默认分析路径不承担全图校验成本。
 
@@ -120,8 +120,8 @@ Schema 2 配置按 `parse -> diagnostics -> resolve -> map -> execute` 处理。
 
 - 用户入口与命令：维护 `README.md`、`docs/quick-start.md`、`docs/cli-reference.md`。
 - 实现流程：维护 `docs/developer-guide.md`、`docs/contributing.md`。
-- 当前 feature：只在 `feature_list.json` 更新状态与完成条件。
-- 当前交接：仅在必要时精简更新 `progress.md`。
+- 当前 feature：只在 `Context/feature_list.json` 更新状态与完成条件。
+- 当前交接：仅在必要时精简更新 `Context/progress.md`。
 
 ## 下一步
 

@@ -23,7 +23,7 @@ public sealed class DefaultRemovalProposalRuleTests
       Array.Empty<LiftedMarkRecord>()).ToArray();
 
     var decision = Assert.Single(actual);
-    Assert.Equal("DEL-SOBJ-PROPOSE-DEFAULT-001", decision.RuleId);
+    Assert.Equal("propose.default-removal", decision.RuleId);
     Assert.Equal(DecisionActionKind.Delete, decision.Action);
     Assert.Equal(mark.SyntaxNode, Assert.Single(decision.SyntaxBindings.Values));
   }

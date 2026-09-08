@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class OptionalParameterDefaultedMethodShrinkProposalRule : ParameterUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.optional-parameter-defaulted-method-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-OPTIONAL-METHOD-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.optional-parameter-defaulted-method-shrink";
 
 
     public override string Name { get; } = "Shrink optional method parameters whose type references the delete-class target";

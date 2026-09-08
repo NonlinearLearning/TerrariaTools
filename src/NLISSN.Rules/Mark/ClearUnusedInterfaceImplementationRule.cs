@@ -17,9 +17,8 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
         UnusedInterfaceImplementationFacts.Marked)
     });
 
-  public override string CapabilityId { get; } = "mark.clear-unused-interface-implementation";
 
-    public override string RuleId { get; } = "CLR-UNUSED-IFACE-IMPL-MARK-001";
+    public override string RuleId { get; } = "mark.clear-unused-interface-implementation";
 
   public override RuleProducesContract Produces => UnusedInterfaceImplementationProduces;
 
@@ -69,7 +68,7 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
         RuleId,
         method,
         "Interface implementation is not referenced through its interface member or implementation method.",
-        semanticTag: UnusedInterfaceImplementationFacts.Marked);
+        factKind: UnusedInterfaceImplementationFacts.Marked);
     }
   }
 

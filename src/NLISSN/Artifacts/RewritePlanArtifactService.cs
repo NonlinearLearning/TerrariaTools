@@ -9,7 +9,7 @@ namespace NLISSN.Artifacts;
 /// 写入并验证可移植的重写计划制品，确保其通过验证后才能回放。
 public sealed class RewritePlanArtifactService
 {
-  internal const int SchemaVersion = 1;
+  internal const int SchemaVersion = 2;
   internal const string PlanFileName = "rewrite-plans.jsonl";
   internal const string ManifestFileName = "manifest.json";
 

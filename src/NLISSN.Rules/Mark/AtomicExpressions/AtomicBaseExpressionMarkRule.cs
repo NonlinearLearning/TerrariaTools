@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicBaseExpressionMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.base-expression";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-BASE-001";
+    public override string RuleId { get; } = "mark.target.base-expression";
     public override string Name { get; } = "Match s-rooted base expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.BaseExpression;
 }

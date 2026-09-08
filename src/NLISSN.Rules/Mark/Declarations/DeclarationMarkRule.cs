@@ -11,10 +11,9 @@ namespace NLISSN.Rules;
 
 public sealed class DeclarationMarkRule : RuleDefinitionMark
 {
-    private static readonly RuleSemanticTag DeclarationTargetSemanticTag = RuleFactPorts.TargetDeclaration;
-    public override string CapabilityId { get; } = "mark.type.declaration";
+    private static readonly RuleFactKind DeclarationTargetFactKind = RuleFactKind.TargetDeclaration;
 
-    public override string RuleId { get; } = "DEL-CLASS-MARK-DECL-001";
+    public override string RuleId { get; } = "mark.type.declaration";
 
 
     public override string Name { get; } = "Match class declarations by delete-class option";
@@ -23,7 +22,7 @@ public sealed class DeclarationMarkRule : RuleDefinitionMark
       new[] { SyntaxKind.ClassDeclaration };
     public override RuleProducesContract Produces { get; } = new(new[]
     {
-        new RuleProducedSyntax(new[] { SyntaxKind.ClassDeclaration }, DeclarationTargetSemanticTag)
+        new RuleProducedSyntax(new[] { SyntaxKind.ClassDeclaration }, DeclarationTargetFactKind)
     });
 
     // 仅对名称直接匹配 delete-class 目标的类声明生成 seed mark。
@@ -32,7 +31,7 @@ public sealed class DeclarationMarkRule : RuleDefinitionMark
         return DeclarationMarkRuleHelpers.BuildDeclarationMarks(context, root, RuleId)
           .Select(mark => mark with
           {
-            SemanticTag = DeclarationTargetSemanticTag,
+            FactKind = DeclarationTargetFactKind,
             Origins = RuleEvidenceOrigin.DeclarationName
           });
     }

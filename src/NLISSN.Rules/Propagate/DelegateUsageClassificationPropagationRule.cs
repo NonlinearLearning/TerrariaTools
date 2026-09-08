@@ -20,9 +20,9 @@ public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionP
           SyntaxKind.AliasQualifiedName,
           SyntaxKind.GenericName
         },
-        RuleFactPorts.TargetTypeSyntax)
+        RuleFactKind.TargetTypeSyntax)
     });
-    private static readonly RuleSemanticTag DelegateUsageSemanticTag = RuleFactPorts.RelationDelegateUsage;
+    private static readonly RuleFactKind DelegateUsageFactKind = RuleFactKind.RelationDelegateUsage;
 
     private static readonly RuleProducesContract DelegateUsageProduces =
       new(new[]
@@ -38,14 +38,13 @@ public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionP
             SyntaxKind.AnonymousMethodExpression,
             SyntaxKind.InvocationExpression
           },
-          DelegateUsageSemanticTag)
+          DelegateUsageFactKind)
       });
 
     private readonly ParameterShrinkAnalyzer _analyzer = new();
 
-    public override string CapabilityId { get; } = "propagate.type.delegate-usage-classification";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-DELEGATE-USAGE-001";
+    public override string RuleId { get; } = "propagate.type.delegate-usage-classification";
 
     public override RuleProducesContract Produces => DelegateUsageProduces;
 
@@ -85,7 +84,7 @@ public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionP
                   RuleId,
                   payload.DelegateDeclaration,
                   "Delegate parameter type references the delete-class target; propagate to the owning delegate declaration.",
-                  semanticTag: DelegateUsageSemanticTag),
+                  factKind: DelegateUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -104,7 +103,7 @@ public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionP
                     RuleId,
                     method,
                     "Delegate method-group target must shrink to stay compatible with the delete-class delegate signature.",
-                    semanticTag: DelegateUsageSemanticTag),
+                    factKind: DelegateUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -123,7 +122,7 @@ public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionP
                     RuleId,
                     localFunction,
                     "Delegate local-function target must shrink to stay compatible with the delete-class delegate signature.",
-                    semanticTag: DelegateUsageSemanticTag),
+                    factKind: DelegateUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -142,7 +141,7 @@ public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionP
                     RuleId,
                     lambda,
                     "Delegate lambda binding must shrink to stay compatible with the delete-class delegate signature.",
-                    semanticTag: DelegateUsageSemanticTag),
+                    factKind: DelegateUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -161,7 +160,7 @@ public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionP
                     RuleId,
                     invocation,
                     "Delegate invocation passes the delete-class typed parameter; propagate to a shrinkable invocation chain.",
-                    semanticTag: DelegateUsageSemanticTag),
+                    factKind: DelegateUsageFactKind),
                   seedMark,
                   1,
                   Payload: payload);
@@ -173,7 +172,7 @@ public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionP
     private bool TryBuildPayload(IPropagationRuleContext context, MarkRecord seedMark, out DelegateUsagePayload payload)
     {
         payload = null!;
-        if (!string.Equals(seedMark.RuleId, "DEL-CLASS-MARK-TYPE-001", StringComparison.Ordinal) ||
+        if (!string.Equals(seedMark.RuleId, "mark.type.type-syntax", StringComparison.Ordinal) ||
             seedMark.SyntaxNode is not TypeSyntax typeSyntax ||
             !ParameterShrinkAnalyzer.TryResolveDelegateParameter(
               typeSyntax,

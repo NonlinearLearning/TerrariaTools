@@ -359,7 +359,7 @@ public sealed class RuleDecisionEngine
           .GetAwaiter()
           .GetResult();
         var units = execution.Nodes
-          .Where(node => node.NodeId.Value.StartsWith("Propose:", StringComparison.Ordinal))
+          .Where(node => node.NodeId.Kind == RuleKind.Propose)
           .SelectMany(node => node.Result.Values)
           .OfType<DecisionUnit>()
           .ToList();
@@ -458,7 +458,7 @@ public sealed class RuleDecisionEngine
       IReadOnlyList<PropagatedMarkRecord> propagatedMarks,
       IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
-        var ruleId = node.NodeId.Value[(node.NodeId.Value.IndexOf(':') + 1)..];
+        var ruleId = node.NodeId.RuleId;
         var values = node.Kind switch
         {
             RuleKind.Mark => seedMarks.Where(mark => string.Equals(mark.RuleId, ruleId, StringComparison.Ordinal)).Cast<object>(),

@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class NamedArgumentMethodParameterShrinkProposalRule : ParameterUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.named-argument-method-parameter-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-NAMED-METHOD-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.named-argument-method-parameter-shrink";
 
 
     public override string Name { get; } = "Shrink method parameters whose type references the delete-class target when callsites use named arguments";

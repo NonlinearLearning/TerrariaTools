@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicImplicitObjectCreationMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.implicit-object-creation";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-IMPLICIT-NEW-001";
+    public override string RuleId { get; } = "mark.target.implicit-object-creation";
     public override string Name { get; } = "Match s-rooted implicit object creation expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.ImplicitObjectCreationExpression;
 }

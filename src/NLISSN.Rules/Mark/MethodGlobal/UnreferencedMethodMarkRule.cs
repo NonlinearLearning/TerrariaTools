@@ -11,17 +11,16 @@ namespace NLISSN.Rules;
 /// 在项目级 Compilation 内查找没有外部引用的普通私有方法声明。
 public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
 {
-    private static readonly RuleSemanticTag UnreferencedMethodSemanticTag = new("UnreferencedMethod");
+    private static readonly RuleFactKind UnreferencedMethodFactKind = RuleFactKind.UnreferencedMethod;
 
     private static readonly RuleProducesContract UnreferencedMethodProduces =
       new(new[]
       {
-        new RuleProducedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnreferencedMethodSemanticTag)
+        new RuleProducedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnreferencedMethodFactKind)
       });
 
-    public override string CapabilityId { get; } = "mark.unreferenced-method";
 
-    public override string RuleId { get; } = "DEL-UNREF-METHOD-MARK-001";
+    public override string RuleId { get; } = "mark.unreferenced-method";
 
     public override RuleProducesContract Produces => UnreferencedMethodProduces;
 
@@ -59,7 +58,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
               null,
               CreateMethodGraphNode(methodSymbol, method),
               "Private method has no references from methods that remain in the project.",
-              SemanticTag: UnreferencedMethodSemanticTag);
+              FactKind: UnreferencedMethodFactKind);
         }
     }
 

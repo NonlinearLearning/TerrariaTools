@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicStringLiteralMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.string-literal";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-LIT-STR-001";
+    public override string RuleId { get; } = "mark.target.string-literal";
     public override string Name { get; } = "Match s-rooted string literal expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.StringLiteralExpression;
 }

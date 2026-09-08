@@ -21,9 +21,8 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
           InternalOnlyPublicMethodFacts.Lifted)
       });
 
-    public override string CapabilityId { get; } = "propose.privatize-internal-only-public-method";
 
-    public override string RuleId { get; } = "PRIV-INTERNAL-PUBLIC-PROP-001";
+    public override string RuleId { get; } = "propose.privatize-internal-only-public-method";
 
     public override RuleConsumesContract Consumes => InternalOnlyPublicMethodConsumes;
 
@@ -45,7 +44,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefiniti
 
         foreach (var liftedMark in liftedMarks)
         {
-            if (liftedMark.Mark.SemanticTag != InternalOnlyPublicMethodFacts.Lifted ||
+            if (liftedMark.Mark.FactKind != InternalOnlyPublicMethodFacts.Lifted ||
                 liftedMark.Mark.SyntaxNode is not MethodDeclarationSyntax method ||
                 !TryBuildPrivateMethod(method, out var replacementMethod))
             {

@@ -9,14 +9,14 @@ namespace NLISSN.Rules;
 public abstract class AtomicExpressionMarkRuleBase : RuleDefinitionMark
 {
     private const string AtomicGroupKey = "DEL-SOBJ";
-    private static readonly RuleSemanticTag AtomicTargetSemanticTag = RuleFactPorts.TargetExpression;
+    private static readonly RuleFactKind AtomicTargetFactKind = RuleFactKind.TargetExpression;
 
 
     protected abstract SyntaxKind MarkKind { get; }
 
     public override RuleProducesContract Produces => new(new[]
     {
-        new RuleProducedSyntax(new[] { MarkKind }, AtomicTargetSemanticTag)
+        new RuleProducedSyntax(new[] { MarkKind }, AtomicTargetFactKind)
     });
 
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => new[] { MarkKind };
@@ -31,7 +31,7 @@ public abstract class AtomicExpressionMarkRuleBase : RuleDefinitionMark
           AllowedMarkNodeKinds)
           .Select(mark => mark with
           {
-            SemanticTag = AtomicTargetSemanticTag,
+            FactKind = AtomicTargetFactKind,
             Origins = RuleEvidenceOrigin.AtomicExpression
           });
     }

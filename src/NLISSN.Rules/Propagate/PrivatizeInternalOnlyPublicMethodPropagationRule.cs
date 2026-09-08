@@ -10,10 +10,8 @@ namespace NLISSN.Rules;
 /// </summary>
 public sealed class PrivatizeInternalOnlyPublicMethodPropagationRule : RuleDefinitionPropagate
 {
-  public override string CapabilityId { get; } =
-    "propagate.privatize-internal-only-public-method";
 
-  public override string RuleId { get; } = "PRIV-INTERNAL-PUBLIC-PROPAGATE-001";
+  public override string RuleId { get; } = "propagate.privatize-internal-only-public-method";
 
   public override RuleConsumesContract Consumes { get; } = new(new[]
   {
@@ -42,7 +40,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodPropagationRule : RuleDefin
     _ = context;
     foreach (var seedMark in seedMarks)
     {
-      if (seedMark.SemanticTag != InternalOnlyPublicMethodFacts.Marked ||
+      if (seedMark.FactKind != InternalOnlyPublicMethodFacts.Marked ||
           seedMark.SyntaxNode is not MethodDeclarationSyntax method)
       {
         continue;
@@ -54,7 +52,7 @@ public sealed class PrivatizeInternalOnlyPublicMethodPropagationRule : RuleDefin
           RuleId,
           method,
           "Verified internal-only public method is ready for visibility lifting.",
-          semanticTag: InternalOnlyPublicMethodFacts.Propagated),
+          factKind: InternalOnlyPublicMethodFacts.Propagated),
         seedMark,
         1);
     }

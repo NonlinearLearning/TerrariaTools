@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class InterfaceMethodProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.interface-method";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-IFACE-METHOD-001";
+    public override string RuleId { get; } = "propose.type.interface-method";
 
 
     public override string Name { get; } = "Delete interface methods whose signature references the delete-class target";

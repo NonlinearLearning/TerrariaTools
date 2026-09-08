@@ -56,7 +56,7 @@ public sealed class MarkingEngine
         var producedMarks = new List<MarkRecord>();
         foreach (var mark in rule.Mark(session.CreateMarkContext(), root))
         {
-            var taggedMark = BindDeclaredSemanticTag(rule.Produces, mark);
+            var taggedMark = BindDeclaredFactKind(rule.Produces, mark);
             ValidateMarkNode(rule, taggedMark.SyntaxNode);
               ValidateProducedSyntax(rule.Produces, taggedMark);
             producedMarks.Add(BindMarkRecord(session, taggedMark));
@@ -93,20 +93,20 @@ public sealed class MarkingEngine
 
     internal static void ValidateProducedSyntax(RuleProducesContract produces, MarkRecord mark)
     {
-        if (produces.Outputs.Count > 0 && mark.SemanticTag is not null)
+        if (produces.Outputs.Count > 0 && (mark.FactKind is not null || mark.SemanticTag is not null))
         {
             RuleSyntaxContractValidator.RequireProducedMark(produces, mark);
         }
     }
 
-    internal static MarkRecord BindDeclaredSemanticTag(
+    internal static MarkRecord BindDeclaredFactKind(
       RuleProducesContract produces,
       MarkRecord mark)
     {
         ArgumentNullException.ThrowIfNull(produces);
         ArgumentNullException.ThrowIfNull(mark);
 
-        if (mark.SemanticTag is not null)
+        if (mark.FactKind is not null || mark.SemanticTag is not null)
         {
             return mark;
         }
@@ -115,7 +115,11 @@ public sealed class MarkingEngine
           .Where(output => output.SyntaxKinds.Contains((SyntaxKind)mark.SyntaxNode.RawKind))
           .ToList();
         return matches.Count == 1
-          ? mark with { SemanticTag = matches[0].SemanticTag }
+          ? mark with
+          {
+              SemanticTag = matches[0].SemanticTag,
+              FactKind = matches[0].FactKind
+          }
           : mark;
     }
 

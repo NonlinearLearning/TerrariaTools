@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class DelegateProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.delegate";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-DELEGATE-001";
+    public override string RuleId { get; } = "propose.type.delegate";
 
 
     public override string Name { get; } = "Delete delegates whose signature references the delete-class target";

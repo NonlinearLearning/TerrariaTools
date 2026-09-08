@@ -21,9 +21,9 @@ public sealed class DeclarationHostPropagationRule : RuleDefinitionPropagate
           SyntaxKind.AliasQualifiedName,
           SyntaxKind.GenericName
         },
-        RuleFactPorts.TargetTypeSyntax)
+        RuleFactKind.TargetTypeSyntax)
     });
-    private static readonly RuleSemanticTag DeclarationHostSemanticTag = RuleFactPorts.RelationDeclarationHost;
+    private static readonly RuleFactKind DeclarationHostFactKind = RuleFactKind.RelationDeclarationHost;
 
     private static readonly RuleProducesContract DeclarationHostProduces =
       new(new[]
@@ -42,12 +42,11 @@ public sealed class DeclarationHostPropagationRule : RuleDefinitionPropagate
             SyntaxKind.PropertyDeclaration,
             SyntaxKind.SimpleBaseType
           },
-          DeclarationHostSemanticTag)
+          DeclarationHostFactKind)
       });
 
-    public override string CapabilityId { get; } = "propagate.type.declaration-host";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-DECL-HOST-001";
+    public override string RuleId { get; } = "propagate.type.declaration-host";
 
     public override RuleProducesContract Produces => DeclarationHostProduces;
 
@@ -95,7 +94,7 @@ public sealed class DeclarationHostPropagationRule : RuleDefinitionPropagate
                 RuleId,
                 payload.HostDeclaration,
                 reason,
-                semanticTag: DeclarationHostSemanticTag),
+                factKind: DeclarationHostFactKind),
               seedMark,
               1,
               Payload: payload);
@@ -107,7 +106,7 @@ public sealed class DeclarationHostPropagationRule : RuleDefinitionPropagate
     {
         payload = null!;
         reason = string.Empty;
-        if (!string.Equals(seedMark.RuleId, "DEL-CLASS-MARK-TYPE-001", StringComparison.Ordinal) ||
+        if (!string.Equals(seedMark.RuleId, "mark.type.type-syntax", StringComparison.Ordinal) ||
             seedMark.SyntaxNode is not TypeSyntax typeSyntax)
         {
             return false;

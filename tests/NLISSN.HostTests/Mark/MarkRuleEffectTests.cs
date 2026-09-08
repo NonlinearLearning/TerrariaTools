@@ -880,7 +880,7 @@ public sealed class MarkRuleEffectTests : IDisposable
         var mark = Assert.Single(result.LiftedMarks, mark =>
             IsNodeKind(mark.Mark.SyntaxNode, SyntaxKind.LogicalOrExpression) &&
             string.Equals(mark.Mark.SyntaxNode.ToString(), expectedText, StringComparison.Ordinal) &&
-            string.Equals(mark.Mark.SemanticTag?.Value, "Lift.LogicalReduction", StringComparison.Ordinal) &&
+            mark.Mark.FactKind == RuleFactKind.LiftLogicalReduction &&
             mark.Payload is LogicalExpressionReductionPayload);
         var payload = Assert.IsType<LogicalExpressionReductionPayload>(mark.Payload);
         Assert.Same(mark.Mark.SyntaxNode, payload.Host);

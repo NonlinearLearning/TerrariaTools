@@ -21,9 +21,8 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
           UnusedInterfaceImplementationFacts.Lifted)
       });
 
-    public override string CapabilityId { get; } = "propose.clear-unused-interface-implementation";
 
-    public override string RuleId { get; } = "CLR-UNUSED-IFACE-IMPL-PROP-001";
+    public override string RuleId { get; } = "propose.clear-unused-interface-implementation";
 
     public override RuleConsumesContract Consumes => UnusedInterfaceImplementationConsumes;
 
@@ -44,7 +43,7 @@ public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinit
 
         foreach (var liftedMark in liftedMarks)
         {
-            if (liftedMark.Mark.SemanticTag != UnusedInterfaceImplementationFacts.Lifted ||
+            if (liftedMark.Mark.FactKind != UnusedInterfaceImplementationFacts.Lifted ||
                 liftedMark.Mark.SyntaxNode is not MethodDeclarationSyntax method ||
                 context.SemanticModel.GetDeclaredSymbol(method, CancellationToken.None)
                   is not IMethodSymbol methodSymbol ||

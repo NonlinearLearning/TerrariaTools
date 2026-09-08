@@ -6,8 +6,10 @@ using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
 using NLISSN.Rules;
 using NLISSN.Application;
+using NLISSN.Artifacts;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -150,18 +152,31 @@ public sealed class RuleGraphCompilerTests
         Assert.Equal(Project(singleThreadResult.PropagatedMarks.Select(mark => mark.Mark)), Project(parallelResult.PropagatedMarks.Select(mark => mark.Mark)));
         Assert.Equal(Project(singleThreadResult.LiftedMarks.Select(mark => mark.Mark)), Project(parallelResult.LiftedMarks.Select(mark => mark.Mark)));
         Assert.Equal(
-          singleThreadResult.Decisions.Select(decision => $"{decision.Action}:{decision.FinalNode.SpanStart}:{decision.FinalNode.Span.Length}:{decision.Reason}"),
-          parallelResult.Decisions.Select(decision => $"{decision.Action}:{decision.FinalNode.SpanStart}:{decision.FinalNode.Span.Length}:{decision.Reason}"));
+          singleThreadResult.Decisions.Select(decision => $"{decision.RuleId}:{decision.Action}:{decision.FinalNode.SpanStart}:{decision.FinalNode.Span.Length}:{decision.Reason}"),
+          parallelResult.Decisions.Select(decision => $"{decision.RuleId}:{decision.Action}:{decision.FinalNode.SpanStart}:{decision.FinalNode.Span.Length}:{decision.Reason}"));
         Assert.Equal(singleThreadResult.RewrittenSource, parallelResult.RewrittenSource);
         Assert.Equal(singleThreadResult.Diff.ToString(), parallelResult.Diff.ToString());
+        Assert.Equal(
+          ProjectRewritePlans(singleThreadResult),
+          ProjectRewritePlans(parallelResult));
+        Assert.NotNull(singleThreadResult.Evidence);
+        Assert.NotNull(parallelResult.Evidence);
+        Assert.Equal(singleThreadResult.Evidence!.Nodes, parallelResult.Evidence!.Nodes);
+        Assert.Equal(singleThreadResult.Evidence.Edges, parallelResult.Evidence.Edges);
+        Assert.Equal(singleThreadResult.Evidence.Budget, parallelResult.Evidence.Budget);
+        Assert.Equal(
+          ProjectDecisionCategories(singleThreadResult),
+          ProjectDecisionCategories(parallelResult));
         Assert.NotNull(singleThreadResult.RuleGraphNodeStatuses);
         Assert.NotNull(parallelResult.RuleGraphNodeStatuses);
         Assert.Equal(
           singleThreadResult.RuleGraphNodeStatuses!
-            .OrderBy(entry => entry.Key.Value)
+            .OrderBy(entry => entry.Key.Kind)
+            .ThenBy(entry => entry.Key.RuleId, StringComparer.Ordinal)
             .Select(entry => (entry.Key, entry.Value)),
           parallelResult.RuleGraphNodeStatuses!
-            .OrderBy(entry => entry.Key.Value)
+            .OrderBy(entry => entry.Key.Kind)
+            .ThenBy(entry => entry.Key.RuleId, StringComparer.Ordinal)
             .Select(entry => (entry.Key, entry.Value)));
         Assert.NotNull(singleThreadResult.RuleGraphTelemetry);
         Assert.NotNull(parallelResult.RuleGraphTelemetry);
@@ -177,6 +192,30 @@ public sealed class RuleGraphCompilerTests
           parallelResult.RuleGraphTelemetry
             .Select(node => (node.NodeId, node.InputCount, node.OutputCount, node.Status)));
         Assert.All(singleThreadResult.RuleGraphTelemetry, node => Assert.True(node.InputCount >= 0 && node.OutputCount >= 0 && node.ElapsedMilliseconds >= 0));
+    }
+
+    private static IReadOnlyList<string> ProjectRewritePlans(PrototypeAnalysisResult result)
+    {
+        return (result.RewritePlans ?? Array.Empty<PrototypeFileRewritePlan>())
+          .OrderBy(plan => plan.FilePath, StringComparer.Ordinal)
+          .SelectMany(plan => plan.Operations
+            .OrderBy(operation => operation.Start)
+            .ThenBy(operation => operation.Length)
+            .Select(operation =>
+              $"{plan.FilePath}|{operation.Start}|{operation.Length}|{operation.OriginalText}|{operation.ReplacementText}"))
+          .ToArray();
+    }
+
+    private static IReadOnlyList<(string RuleId, RuleDiffCategory Category)> ProjectDecisionCategories(
+      PrototypeAnalysisResult result)
+    {
+        return result.Decisions
+          .Where(decision => decision.RuleId is not null)
+          .Select(decision =>
+            (RuleId: decision.RuleId!, Category: RuleDiffCategoryRegistry.Resolve(decision.RuleId!)))
+          .OrderBy(item => item.RuleId, StringComparer.Ordinal)
+          .ThenBy(item => item.Category)
+          .ToArray();
     }
 
     [Fact]
@@ -259,9 +298,11 @@ public sealed class RuleGraphCompilerTests
         Assert.Equal(expectedCount, graph.Nodes.Count);
         Assert.Equal(expectedCount, graph.Nodes.Select(node => node.NodeId).Distinct().Count());
         Assert.Contains(graph.Nodes, node =>
-          node.NodeId.Value == "Mark:DEL-SOBJ-MARK-ID-001" && node.Kind == RuleKind.Mark);
+          node.NodeId.Kind == RuleKind.Mark &&
+          node.NodeId.RuleId == "mark.target.identifier-name");
         Assert.Contains(graph.Nodes, node =>
-          node.NodeId.Value == "Propagate:DEL-SOBJ-PROP-SYMBOL-001" && node.Kind == RuleKind.Propagate);
+          node.NodeId.Kind == RuleKind.Propagate &&
+          node.NodeId.RuleId == "propagate.target.symbol-reference");
     }
 
     [Fact]
@@ -270,18 +311,18 @@ public sealed class RuleGraphCompilerTests
         var graph = RuleRegistry.CreateDefaultRules().CompileRuleGraph();
         var independentCompatibilityNodes = new[]
         {
-            "Propose:DEL-CLASS-PROP-PARAM-001",
-            "Propose:DEL-CLASS-PROP-PUBLIC-PARAM-001"
+            RuleNodeId.For(RuleKind.Propose, "propose.type.parameter"),
+            RuleNodeId.For(RuleKind.Propose, "propose.type.public-parameter")
         };
 
         Assert.All(
           graph.Nodes.Where(node =>
             node.Kind != RuleKind.Mark &&
-            !independentCompatibilityNodes.Contains(node.NodeId.Value)),
+            !independentCompatibilityNodes.Contains(node.NodeId)),
           node => Assert.NotEmpty(node.Dependencies));
         Assert.All(
           graph.Nodes.Where(node => node.Dependencies.Count == 0 && node.Kind != RuleKind.Mark),
-          node => Assert.Contains(node.NodeId.Value, independentCompatibilityNodes));
+          node => Assert.Contains(node.NodeId, independentCompatibilityNodes));
     }
 
     [Fact]
@@ -306,68 +347,76 @@ public sealed class RuleGraphCompilerTests
         var graph = RuleRegistry.CreateDefaultRules().CompileRuleGraph();
 
         var sObjectReference = graph.Nodes.Single(node =>
-          node.NodeId.Value == "Propagate:DEL-SOBJ-PROP-SYMBOL-001");
+          node.NodeId.Kind == RuleKind.Propagate &&
+          node.NodeId.RuleId == "propagate.target.symbol-reference");
         var classReference = graph.Nodes.Single(node =>
-          node.NodeId.Value == "Propagate:DEL-CLASS-PROP-LOCAL-REF-001");
+          node.NodeId.Kind == RuleKind.Propagate &&
+          node.NodeId.RuleId == "propagate.type.symbol-reference");
         var sObjectSwitch = graph.Nodes.Single(node =>
-          node.NodeId.Value == "Lift:DEL-SOBJ-LIFT-SWITCH-001");
+          node.NodeId.Kind == RuleKind.Lift &&
+          node.NodeId.RuleId == "lift.target.switch-structure");
 
         Assert.All(
           sObjectReference.Dependencies.Concat(classReference.Dependencies),
           dependency =>
           {
-              Assert.StartsWith("Mark:", dependency.Producer.Value, StringComparison.Ordinal);
+              Assert.Equal(RuleKind.Mark, dependency.Producer.Kind);
               Assert.Null(dependency.RequiredInput);
           });
         Assert.All(
           graph.Nodes
             .Where(node => node.Kind == RuleKind.Propagate)
             .SelectMany(node => node.Dependencies),
-          dependency => Assert.StartsWith("Mark:", dependency.Producer.Value, StringComparison.Ordinal));
+          dependency => Assert.Equal(RuleKind.Mark, dependency.Producer.Kind));
         AssertSwitchLiftDependencies(
           sObjectSwitch,
-          "Lift:DEL-SOBJ-LIFT-HOST-001",
-          "Lift:DEL-SOBJ-LIFT-IF-001",
-          "Lift.IfStructure");
+          RuleNodeId.For(RuleKind.Lift, "lift.target.expression-host"),
+          RuleNodeId.For(RuleKind.Lift, "lift.target.if-structure"),
+          RuleFactKind.LiftIfStructure);
     }
 
     [Fact]
-    public void CompileRuleGraph_WithDefaultPipeline_UsesNeutralFactPorts()
+    public void CompileRuleGraph_WithDefaultPipeline_UsesTypedFactKinds()
     {
         var graph = RuleRegistry.CreateDefaultRules().CompileRuleGraph();
 
         var logical = graph.Nodes.Single(node =>
-          node.NodeId.Value == "Propose:DEL-SOBJ-PROPOSE-LOGIC-001");
+          node.NodeId.Kind == RuleKind.Propose &&
+          node.NodeId.RuleId == "propose.logical-expression");
         var classReturn = graph.Nodes.Single(node =>
-          node.NodeId.Value == "Propose:DEL-CLASS-PROP-RETURN-001");
+          node.NodeId.Kind == RuleKind.Propose &&
+          node.NodeId.RuleId == "propose.type.method-return-type");
         var privateParameter = graph.Nodes.Single(node =>
-          node.NodeId.Value == "Propose:DEL-CLASS-PROP-PRIVATE-PARAM-SHRINK-001");
+          node.NodeId.Kind == RuleKind.Propose &&
+          node.NodeId.RuleId == "propose.type.private-method-parameter-shrink");
         var sObjectSwitch = graph.Nodes.Single(node =>
-          node.NodeId.Value == "Lift:DEL-SOBJ-LIFT-SWITCH-001");
+          node.NodeId.Kind == RuleKind.Lift &&
+          node.NodeId.RuleId == "lift.target.switch-structure");
 
         Assert.Equal(
-          new[] { "Lift:DEL-SOBJ-LIFT-LOGIC-001" },
-          logical.Dependencies.Select(dependency => dependency.Producer.Value));
+          new[] { RuleNodeId.For(RuleKind.Lift, "lift.atomic.logical-expression") },
+          logical.Dependencies.Select(dependency => dependency.Producer));
         var logicalDependency = Assert.Single(logical.Dependencies);
         Assert.Equal(
           new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
           logicalDependency.RequiredInput!.SyntaxKinds);
-        Assert.Equal("Lift.LogicalReduction", logicalDependency.RequiredInput.SemanticTag.Value);
+        Assert.Equal(RuleFactKind.LiftLogicalReduction, logicalDependency.RequiredInput.FactKind);
         Assert.Equal(
-          new[] { "Propagate:DEL-CLASS-PROP-DECL-HOST-001" },
-          classReturn.Dependencies.Select(dependency => dependency.Producer.Value));
+          new[] { RuleNodeId.For(RuleKind.Propagate, "propagate.type.declaration-host") },
+          classReturn.Dependencies.Select(dependency => dependency.Producer));
         var classReturnDependency = Assert.Single(classReturn.Dependencies);
-        Assert.Equal("Relation.DeclarationHost", classReturnDependency.RequiredInput!.SemanticTag.Value);
+        Assert.Equal(RuleFactKind.RelationDeclarationHost, classReturnDependency.RequiredInput!.FactKind);
         Assert.Contains(SyntaxKind.MethodDeclaration, classReturnDependency.RequiredInput.SyntaxKinds);
         Assert.Contains(
           privateParameter.Dependencies,
-          dependency => dependency.Producer.Value == "Propagate:DEL-CLASS-PROP-METHOD-PARAM-USAGE-001" &&
-            dependency.RequiredInput?.SemanticTag.Value == "Relation.ParameterUsage");
+          dependency => dependency.Producer.Kind == RuleKind.Propagate &&
+          dependency.Producer.RuleId == "propagate.type.method-parameter-usage" &&
+          dependency.RequiredInput?.FactKind == RuleFactKind.RelationParameterUsage);
         AssertSwitchLiftDependencies(
           sObjectSwitch,
-          "Lift:DEL-SOBJ-LIFT-HOST-001",
-          "Lift:DEL-SOBJ-LIFT-IF-001",
-          "Lift.IfStructure");
+          RuleNodeId.For(RuleKind.Lift, "lift.target.expression-host"),
+          RuleNodeId.For(RuleKind.Lift, "lift.target.if-structure"),
+          RuleFactKind.LiftIfStructure);
     }
 
     [Fact]
@@ -398,24 +447,21 @@ public sealed class RuleGraphCompilerTests
 
     private static void AssertSwitchLiftDependencies(
       RuleGraphNode switchNode,
-      string hostProducerId,
-      string ifProducerId,
-      string semanticTag)
+      RuleNodeId hostProducerId,
+      RuleNodeId ifProducerId,
+      RuleFactKind factKind)
     {
         Assert.Equal(2, switchNode.Dependencies.Count);
         Assert.Contains(switchNode.Dependencies, dependency =>
-           dependency.Producer.Value == hostProducerId &&
-          dependency.RequiredInput is
-          {
-            SemanticTag.Value: var tag
-          } && tag.EndsWith(".ExpressionHost", StringComparison.Ordinal));
+           dependency.Producer == hostProducerId &&
+          dependency.RequiredInput?.FactKind == RuleFactKind.LiftExpressionHost);
         var ifDependency = Assert.Single(switchNode.Dependencies, dependency =>
-          dependency.Producer.Value == ifProducerId);
+          dependency.Producer == ifProducerId);
         Assert.NotNull(ifDependency.RequiredInput);
         Assert.Equal(
           new[] { SyntaxKind.IfStatement, SyntaxKind.ElseClause },
           ifDependency.RequiredInput!.SyntaxKinds);
-        Assert.Equal(semanticTag, ifDependency.RequiredInput.SemanticTag.Value);
+        Assert.Equal(factKind, ifDependency.RequiredInput.FactKind);
     }
 
     [Fact]
@@ -425,7 +471,7 @@ public sealed class RuleGraphCompilerTests
         var consumer = Node(
           "propagate-a",
           RuleKind.Propagate,
-          new RuleDependency(new RuleNodeId("mark-a"), GraphInput));
+          new RuleDependency(RuleNodeId.For(RuleKind.Mark, "mark-a"), GraphInput));
         var graph = new RuleGraphCompiler().Compile(new[] { producer, consumer });
         var consumerCalls = 0;
 
@@ -439,28 +485,34 @@ public sealed class RuleGraphCompilerTests
               (inputs, _) =>
               {
                   consumerCalls++;
-                   Assert.Empty(inputs.GetValues(new RuleNodeId("mark-a")));
+                   Assert.Empty(inputs.GetValues(RuleNodeId.For(RuleKind.Mark, "mark-a")));
                   return Task.FromResult(RuleNodeResult.Empty);
               })
           },
           maxDegreeOfParallelism: 2);
 
         Assert.Equal(1, consumerCalls);
-        Assert.Equal(new[] { "mark-a", "propagate-a" }, result.Nodes.Select(node => node.NodeId.Value));
+        Assert.Equal(
+          new[]
+          {
+              RuleNodeId.For(RuleKind.Mark, "mark-a"),
+              RuleNodeId.For(RuleKind.Propagate, "propagate-a")
+          },
+          result.Nodes.Select(node => node.NodeId));
     }
 
     [Fact]
     public async Task ExecuteAsync_WhenConsumerHasTwoEdgesToOneProducer_ProvidesItsValuesOnce()
     {
         var producer = new RuleGraphNode(
-          new RuleNodeId("producer"),
+          RuleNodeId.For(RuleKind.Mark, "producer"),
           RuleKind.Mark,
           Array.Empty<RuleDependency>())
         {
           ProducedSyntax = new[] { GraphOutput }
         };
         var consumer = new RuleGraphNode(
-          new RuleNodeId("consumer"),
+          RuleNodeId.For(RuleKind.Propagate, "consumer"),
           RuleKind.Propagate,
           new RuleDependency(producer.NodeId, GraphInput));
         var graph = new RuleGraphCompiler().Compile(new[] { producer, consumer });
@@ -488,7 +540,13 @@ public sealed class RuleGraphCompilerTests
           },
           maxDegreeOfParallelism: 1);
 
-        Assert.Equal(new[] { "producer", "consumer" }, result.Nodes.Select(node => node.NodeId.Value));
+        Assert.Equal(
+          new[]
+          {
+              RuleNodeId.For(RuleKind.Mark, "producer"),
+              RuleNodeId.For(RuleKind.Propagate, "consumer")
+          },
+          result.Nodes.Select(node => node.NodeId));
     }
 
     [Fact]
@@ -548,13 +606,19 @@ public sealed class RuleGraphCompilerTests
           },
           maxDegreeOfParallelism: 2);
 
-        Assert.Equal(new[] { "slow", "fast" }, result.Nodes.Select(node => node.NodeId.Value));
+        Assert.Equal(
+          new[]
+          {
+              RuleNodeId.For(RuleKind.Mark, "slow"),
+              RuleNodeId.For(RuleKind.Mark, "fast")
+          },
+          result.Nodes.Select(node => node.NodeId));
         Assert.Equal(
           new object[] { "slow" },
-          result.Nodes.Single(node => node.NodeId == new RuleNodeId("slow")).Result.Values);
+          result.Nodes.Single(node => node.NodeId == RuleNodeId.For(RuleKind.Mark, "slow")).Result.Values);
         Assert.Equal(
           new object[] { "fast" },
-          result.Nodes.Single(node => node.NodeId == new RuleNodeId("fast")).Result.Values);
+          result.Nodes.Single(node => node.NodeId == RuleNodeId.For(RuleKind.Mark, "fast")).Result.Values);
     }
 
     [Fact]
@@ -590,14 +654,19 @@ public sealed class RuleGraphCompilerTests
             Node(
               "propagate-a",
               RuleKind.Propagate,
-              new RuleDependency(new RuleNodeId("mark-a"), GraphInput))
+              new RuleDependency(RuleNodeId.For(RuleKind.Mark, "mark-a"), GraphInput))
         };
 
         var compiled = new RuleGraphCompiler().Compile(nodes);
 
         Assert.Equal(
-          new[] { "mark-b", "mark-a", "propagate-a" },
-          compiled.Nodes.Select(node => node.NodeId.Value));
+          new[]
+          {
+              RuleNodeId.For(RuleKind.Mark, "mark-b"),
+              RuleNodeId.For(RuleKind.Mark, "mark-a"),
+              RuleNodeId.For(RuleKind.Propagate, "propagate-a")
+          },
+          compiled.Nodes.Select(node => node.NodeId));
     }
 
     [Fact]
@@ -606,12 +675,14 @@ public sealed class RuleGraphCompilerTests
         var node = Node(
           "propagate-a",
           RuleKind.Propagate,
-          new RuleDependency(new RuleNodeId("missing"), GraphInput));
+          new RuleDependency(RuleNodeId.For(RuleKind.Mark, "missing"), GraphInput));
 
         var exception = Assert.Throws<InvalidOperationException>(
           () => new RuleGraphCompiler().Compile(new[] { node }));
 
-        Assert.Equal("Rule node 'propagate-a' depends on unknown producer 'missing'.", exception.Message);
+        Assert.Equal(
+          "Rule node 'Propagate:propagate-a' depends on unknown producer 'Mark:missing'.",
+          exception.Message);
     }
 
     [Fact]
@@ -620,16 +691,18 @@ public sealed class RuleGraphCompilerTests
         var first = Node(
           "first",
           RuleKind.Mark,
-          new RuleDependency(new RuleNodeId("second"), GraphInput));
+          new RuleDependency(RuleNodeId.For(RuleKind.Propagate, "second"), GraphInput));
         var second = Node(
           "second",
           RuleKind.Propagate,
-          new RuleDependency(new RuleNodeId("first"), GraphInput));
+          new RuleDependency(RuleNodeId.For(RuleKind.Mark, "first"), GraphInput));
 
         var exception = Assert.Throws<InvalidOperationException>(
           () => new RuleGraphCompiler().Compile(new[] { first, second }));
 
-        Assert.Equal("Rule graph contains a cycle: first, second.", exception.Message);
+        Assert.Equal(
+          "Rule graph contains a cycle: Mark:first, Propagate:second.",
+          exception.Message);
     }
 
     private static RuleGraphNode Node(
@@ -638,7 +711,7 @@ public sealed class RuleGraphCompilerTests
       params RuleDependency[] dependencies)
     {
         return new RuleGraphNode(
-          new RuleNodeId(nodeId),
+          RuleNodeId.For(kind, nodeId),
           kind,
           dependencies)
         {

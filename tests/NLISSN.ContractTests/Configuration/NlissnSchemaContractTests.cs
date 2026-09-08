@@ -8,7 +8,8 @@ public sealed class NlissnSchemaContractTests
   [Fact]
   public void Schema2_ClosesAllConfigurationObjectsAndDocumentsRiskDefaults()
   {
-    using var document = JsonDocument.Parse(File.ReadAllText(RepositoryPath("schemas", "nlissn.schema.2.json")));
+    using var document = JsonDocument.Parse(File.ReadAllText(
+      RepositoryPath("Miscellaneous", "schemas", "nlissn.schema.2.json")));
     var root = document.RootElement;
 
     Assert.Equal("https://json-schema.org/draft/2020-12/schema", root.GetProperty("$schema").GetString());

@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicInvocationMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.invocation";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-INVOKE-001";
+    public override string RuleId { get; } = "mark.target.invocation";
     public override string Name { get; } = "Match s-rooted invocation expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.InvocationExpression;
 }

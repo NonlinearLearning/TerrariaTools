@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class NamedArgumentIndexerParameterShrinkProposalRule : ParameterUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.named-argument-indexer-parameter-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-NAMED-INDEXER-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.named-argument-indexer-parameter-shrink";
 
 
     public override string Name { get; } = "Shrink indexer parameters whose type references the delete-class target when accesses use named arguments";

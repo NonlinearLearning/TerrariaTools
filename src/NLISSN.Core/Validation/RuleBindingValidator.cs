@@ -134,17 +134,18 @@ public sealed class RuleBindingValidator
 
   private static bool HasMatchingRelationPort(PropagatedMarkRecord propagated)
   {
-    var expectedPort = propagated.Payload switch
+    RuleFactKind? expectedPort = propagated.Payload switch
     {
       MethodParameterUsagePayload or LocalFunctionParameterUsagePayload or IndexerParameterUsagePayload =>
-        RuleFactPorts.RelationParameterUsage,
-      DelegateUsagePayload => RuleFactPorts.RelationDelegateUsage,
-      ExtensionMethodMappedCallsitePayload => RuleFactPorts.RelationExtensionUsage,
-      DeclarationHostPayload => RuleFactPorts.RelationDeclarationHost,
+        RuleFactKind.RelationParameterUsage,
+      DelegateUsagePayload => RuleFactKind.RelationDelegateUsage,
+      ExtensionMethodMappedCallsitePayload => RuleFactKind.RelationExtensionUsage,
+      DeclarationHostPayload => RuleFactKind.RelationDeclarationHost,
       _ => null,
     };
 
-    return expectedPort is null || propagated.Mark.SemanticTag == expectedPort;
+    return expectedPort is null ||
+      RuleFactKindDescriptor.Resolve(propagated.Mark.FactKind, propagated.Mark.SemanticTag) == expectedPort;
   }
 
   private static bool ContainsPayload(object value)
@@ -157,7 +158,7 @@ public sealed class RuleBindingValidator
     MarkRecord mark,
     ICollection<ValidationIssue> issues)
   {
-    if (mark.SemanticTag is null)
+    if (mark.FactKind is null && mark.SemanticTag is null)
     {
       issues.Add(CreateIssue(
         "BIND002",
@@ -168,9 +169,7 @@ public sealed class RuleBindingValidator
     }
 
     var syntaxKind = (SyntaxKind)mark.SyntaxNode.RawKind;
-    var separator = node.NodeId.Value.IndexOf(':');
-    var expectedRuleId = separator >= 0 ? node.NodeId.Value[(separator + 1)..] : node.NodeId.Value;
-    if (!string.Equals(mark.RuleId, expectedRuleId, StringComparison.Ordinal))
+    if (!string.Equals(mark.RuleId, node.NodeId.RuleId, StringComparison.Ordinal))
     {
       issues.Add(CreateIssue(
         "BIND008",
@@ -180,11 +179,17 @@ public sealed class RuleBindingValidator
     }
 
     if (!node.ProducedSyntax.Any(output =>
-      output.SemanticTag == mark.SemanticTag && output.SyntaxKinds.Contains(syntaxKind)))
+      RuleFactKindDescriptor.Matches(
+        output.FactKind,
+        output.SemanticTag,
+        mark.FactKind,
+        mark.SemanticTag) &&
+      output.SyntaxKinds.Contains(syntaxKind)))
     {
       issues.Add(CreateIssue(
         "BIND003",
-        $"{node.NodeId.Value}:{mark.SyntaxNode.SpanStart}:{mark.SemanticTag.Value}",
+        $"{node.NodeId.Value}:{mark.SyntaxNode.SpanStart}:" +
+        $"{mark.SemanticTag?.Value ?? RuleFactKindDescriptor.GetDisplayName(mark.FactKind!.Value)}",
         "An emitted mark does not match the producer's declared syntax output.",
         mark.RuleId));
     }

@@ -9,12 +9,12 @@ namespace NLISSN.Rules;
 /// 把已传播的原子命中提升到可单独改写的表达式宿主，避免 Proposal 重复向上遍历语法树。
 public sealed class ExpressionHostLiftingRule : RuleDefinitionLift
 {
-    private static readonly RuleSemanticTag ExpressionHostSemanticTag = RuleFactPorts.LiftExpressionHost;
-    private static readonly RuleSemanticTag TargetSemanticTag = RuleFactPorts.TargetExpression;
-    private static readonly RuleSemanticTag ConditionalExpressionFlowSemanticTag =
-      RuleFactPorts.FlowConditionalExpression;
-    private static readonly RuleSemanticTag UnaryExpressionFlowSemanticTag =
-      RuleFactPorts.FlowUnaryExpression;
+    private static readonly RuleFactKind ExpressionHostFactKind = RuleFactKind.LiftExpressionHost;
+    private static readonly RuleFactKind TargetFactKind = RuleFactKind.TargetExpression;
+    private static readonly RuleFactKind ConditionalExpressionFlowFactKind =
+      RuleFactKind.FlowConditionalExpression;
+    private static readonly RuleFactKind UnaryExpressionFlowFactKind =
+      RuleFactKind.FlowUnaryExpression;
 
     private static readonly IReadOnlyList<SyntaxKind> UnaryExpressionNodeKinds = new[]
     {
@@ -33,14 +33,14 @@ public sealed class ExpressionHostLiftingRule : RuleDefinitionLift
 
     private static readonly RuleConsumesContract TargetFactsConsumes = new(new[]
     {
-        new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, TargetSemanticTag),
-        new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactPorts.FlowAssignmentTarget),
-        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactPorts.FlowLocalDefinition),
-        new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference),
+        new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, TargetFactKind),
+        new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget),
+        new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition),
+        new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.FlowSymbolReference),
         new RuleConsumedSyntax(
           new[] { SyntaxKind.ConditionalExpression },
-          ConditionalExpressionFlowSemanticTag),
-        new RuleConsumedSyntax(UnaryExpressionNodeKinds, UnaryExpressionFlowSemanticTag),
+          ConditionalExpressionFlowFactKind),
+        new RuleConsumedSyntax(UnaryExpressionNodeKinds, UnaryExpressionFlowFactKind),
     });
 
     private static readonly RuleProducesContract ExpressionHostProduces = new(
@@ -48,12 +48,11 @@ public sealed class ExpressionHostLiftingRule : RuleDefinitionLift
       {
         new RuleProducedSyntax(
           LiftingCommon.AllowedLiftNodeKinds,
-          ExpressionHostSemanticTag)
+          ExpressionHostFactKind)
       });
 
-    public override string CapabilityId { get; } = "lift.target.expression-host";
 
-    public override string RuleId { get; } = "DEL-SOBJ-LIFT-HOST-001";
+    public override string RuleId { get; } = "lift.target.expression-host";
 
     public override RuleConsumesContract Consumes => TargetFactsConsumes;
 
@@ -69,7 +68,7 @@ public sealed class ExpressionHostLiftingRule : RuleDefinitionLift
     public override IEnumerable<LiftedMarkRecord> Lift(ILiftRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks)
     {
         var conditionalFlows = propagatedMarks
-          .Where(mark => mark.Mark.SemanticTag == ConditionalExpressionFlowSemanticTag)
+          .Where(mark => mark.Mark.FactKind == ConditionalExpressionFlowFactKind)
           .ToList();
         var conditionalHosts = conditionalFlows
           .Select(mark => mark.Mark.SyntaxNode)
@@ -87,8 +86,8 @@ public sealed class ExpressionHostLiftingRule : RuleDefinitionLift
           .ToList();
         var genericPropagatedMarks = propagatedMarks
           .Where(mark =>
-            mark.Mark.SemanticTag != ConditionalExpressionFlowSemanticTag &&
-            mark.Mark.SemanticTag != UnaryExpressionFlowSemanticTag &&
+            mark.Mark.FactKind != ConditionalExpressionFlowFactKind &&
+            mark.Mark.FactKind != UnaryExpressionFlowFactKind &&
             !IsWithinConditionalHost(mark.Mark.SyntaxNode, conditionalHosts) &&
             !IsTerminalTopologyFact(mark))
           .ToList();
@@ -104,7 +103,7 @@ public sealed class ExpressionHostLiftingRule : RuleDefinitionLift
             Mark = mark.Mark with
             {
               OutputKind = RuleOutputKind.ExpressionHost,
-              SemanticTag = ExpressionHostSemanticTag
+              FactKind = ExpressionHostFactKind
             }
           });
     }

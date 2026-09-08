@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class TypeSyntaxDeclarationProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.type-syntax-declaration";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-TYPE-DECL-001";
+    public override string RuleId { get; } = "propose.type.type-syntax-declaration";
 
 
     public override string Name { get; } = "Delete declarations whose type syntax references the delete-class target";

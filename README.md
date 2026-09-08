@@ -12,7 +12,7 @@ NL 是一个以 Roslyn 为基础的 .NET 研究仓库，探索两条可运行的
 仓库根目录执行：
 
 ```powershell
-pwsh -File .\init.ps1
+pwsh -File .\Miscellaneous\init.ps1
 ```
 
 该命令设置本仓库的 `DOTNET_CLI_HOME`，读取 `global.json` 指定的 SDK，并构建删除规则 CLI 作为健康检查。
@@ -29,7 +29,7 @@ pwsh -File .\init.ps1
 | 修改代码或测试 | [开发者指南](docs/developer-guide.md) |
 | 提交可验证的改动 | [贡献指南](docs/contributing.md) |
 | 查看当前设计记录 | [设计文档索引](设计docs/README.md) |
-| 查看当前 feature 状态 | [feature_list.json](feature_list.json) |
+| 查看当前 feature 状态 | [Context/feature_list.json](Context/feature_list.json) |
 
 ## 可执行项目
 
@@ -51,4 +51,4 @@ pwsh -File .\init.ps1
 
 ## 开发约束
 
-提交改动前先阅读 [AGENTS.md](AGENTS.md)、[progress.md](progress.md) 和 [feature_list.json](feature_list.json)。它们定义当前工作边界、验收条件及运行前置步骤。
+提交改动前先阅读 [Context/AGENTS.md](Context/AGENTS.md)、[Context/progress.md](Context/progress.md) 和 [Context/feature_list.json](Context/feature_list.json)。它们定义当前工作边界、验收条件及运行前置步骤。

@@ -12,7 +12,7 @@
 ## 1. 初始化并检查环境
 
 ```powershell
-pwsh -File .\init.ps1
+pwsh -File .\Miscellaneous\init.ps1
 ```
 
 成功时会报告仓库根、SDK 版本，并通过 `src/NLISSN/NLISSN.csproj` 的构建健康检查。
@@ -89,7 +89,7 @@ input:
 
 对 `.sln` 输入，`input.project` 是 solution 内的项目选择器；对 `.cs` 输入，它是拥有该文件的 `.csproj`；`.csproj` 输入不再重复填写 `input.project`。`generatedSources: include` 允许已有或 MSBuild 可见的生成源参与语义分析，但生成源永远不会写回。`generators: enabled` 会执行 Workspace source-generator pipeline，并把 MSBuild 的 analyzer references、AdditionalFiles 和 analyzer config 传给 generator；对 `ProjectReference` 形式的 analyzer，所选 `Configuration`、`Platform` 和 `TargetFramework` 的 DLL 必须已经构建，缺失时以 `NLISSNWS024` fail closed，加载器不会隐式 build。默认 `disabled`，发现外部 generator reference 时只给出提示。默认不写回；只有确认 `Build\Result\<runId>\Diff` 后才将 `execution.writeBack` 设为 `true`。完整字段、全局规则开关和制品布局见 [配置参考](cli-reference.md)。
 
-编辑器可关联 [`schemas/nlissn.schema.2.json`](../schemas/nlissn.schema.2.json)。该 schema 关闭未知属性；运行时仍执行路径、制品隔离与 replay 互斥校验。
+编辑器可关联 [`Miscellaneous/schemas/nlissn.schema.2.json`](../Miscellaneous/schemas/nlissn.schema.2.json)。该 schema 关闭未知属性；运行时仍执行路径、制品隔离与 replay 互斥校验。
 
 ## 4. 运行回归测试
 
@@ -98,7 +98,7 @@ dotnet test .\tests\NLISSN.UnitTests\RoslynDeletionPrototype.UnitTests.csproj --
 dotnet test .\tests\NLISSN.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false
 ```
 
-测试输出以通过/失败计数结束。需要按层执行时，使用 `pwsh -File .\scripts\Run-TestTiers.ps1 -Fast`；更窄的验证选择见 [Harness 验证矩阵](harness-verification-matrix.md)。
+测试输出以通过/失败计数结束。需要按层执行时，使用 `pwsh -File .\Miscellaneous\scripts\Run-TestTiers.ps1 -Fast`；更窄的验证选择见 [Harness 验证矩阵](harness-verification-matrix.md)。
 
 ## 下一步
 

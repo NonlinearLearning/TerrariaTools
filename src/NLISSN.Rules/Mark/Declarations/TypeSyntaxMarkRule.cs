@@ -11,7 +11,7 @@ namespace NLISSN.Rules;
 
 public sealed class TypeSyntaxMarkRule : RuleDefinitionMark
 {
-    private static readonly RuleSemanticTag TypeSyntaxSemanticTag = RuleFactPorts.TargetTypeSyntax;
+    private static readonly RuleFactKind TypeSyntaxFactKind = RuleFactKind.TargetTypeSyntax;
     private static readonly IReadOnlyList<SyntaxKind> SupportedKinds =
       new[]
       {
@@ -21,9 +21,8 @@ public sealed class TypeSyntaxMarkRule : RuleDefinitionMark
         SyntaxKind.GenericName
       };
 
-    public override string CapabilityId { get; } = "mark.type.type-syntax";
 
-    public override string RuleId { get; } = "DEL-CLASS-MARK-TYPE-001";
+    public override string RuleId { get; } = "mark.type.type-syntax";
 
 
     public override string Name { get; } = "Match type syntax that references the delete-class target";
@@ -31,7 +30,7 @@ public sealed class TypeSyntaxMarkRule : RuleDefinitionMark
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => SupportedKinds;
     public override RuleProducesContract Produces { get; } = new(new[]
     {
-        new RuleProducedSyntax(SupportedKinds, TypeSyntaxSemanticTag)
+        new RuleProducedSyntax(SupportedKinds, TypeSyntaxFactKind)
     });
 
     // 标记处在声明位置上的目标类 TypeSyntax，供声明宿主传播规则继续收束。
@@ -44,7 +43,7 @@ public sealed class TypeSyntaxMarkRule : RuleDefinitionMark
           SupportedKinds)
           .Select(mark => mark with
           {
-            SemanticTag = TypeSyntaxSemanticTag,
+            FactKind = TypeSyntaxFactKind,
             Origins = RuleEvidenceOrigin.DeclarationType
           });
     }

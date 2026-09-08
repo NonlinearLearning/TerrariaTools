@@ -119,7 +119,7 @@ public sealed class BindingValidatorTests
 
     public override RuleProducesContract Produces => new(new[]
     {
-      new RuleProducedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactPorts.TargetExpression)
+      new RuleProducedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactKind.TargetExpression)
     });
 
     public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
@@ -131,7 +131,7 @@ public sealed class BindingValidatorTests
         null,
         null,
         "Test seed.",
-        SemanticTag: RuleFactPorts.TargetExpression,
+        FactKind: RuleFactKind.TargetExpression,
         Origins: RuleEvidenceOrigin.DeclarationType);
     }
   }
@@ -144,12 +144,12 @@ public sealed class BindingValidatorTests
 
     public override RuleConsumesContract Consumes => new(new[]
     {
-      new RuleConsumedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactPorts.TargetExpression)
+      new RuleConsumedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactKind.TargetExpression)
     });
 
     public override RuleProducesContract Produces => new(new[]
     {
-      new RuleProducedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactPorts.FlowAssignmentTarget)
+      new RuleProducedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactKind.FlowAssignmentTarget)
     });
 
     public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds => new[] { SyntaxKind.ClassDeclaration };
@@ -165,7 +165,7 @@ public sealed class BindingValidatorTests
         source with
         {
           RuleId = RuleId,
-          SemanticTag = RuleFactPorts.FlowAssignmentTarget
+          FactKind = RuleFactKind.FlowAssignmentTarget
         },
         source,
         1,

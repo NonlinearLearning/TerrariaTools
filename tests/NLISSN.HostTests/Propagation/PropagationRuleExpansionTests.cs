@@ -84,7 +84,7 @@ public sealed class PropagationRuleExpansionTests
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.AddressOfExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "&s.Seed", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowUnaryExpression);
+          mark.Mark.FactKind == RuleFactKind.FlowUnaryExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.FixedStatement));
     }
@@ -190,10 +190,10 @@ public sealed class PropagationRuleExpansionTests
 
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalAndExpression) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowLogicalExpression);
+          mark.Mark.FactKind == RuleFactKind.FlowLogicalExpression);
         Assert.Contains(result.PropagatedMarks, mark =>
           string.Equals(mark.Mark.SyntaxNode.ToString(), "survivor", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.IfStatement));
     }
@@ -220,7 +220,7 @@ public sealed class PropagationRuleExpansionTests
           "removable");
 
         var propagated = Assert.Single(result.PropagatedMarks, mark =>
-          mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001");
+          mark.RuleId == "propagate.target.logical-expression");
         Assert.Equal(SyntaxKind.LogicalOrExpression, propagated.Mark.SyntaxNode.Kind());
         Assert.Equal("removable || survivor", propagated.Mark.SyntaxNode.ToString());
     }
@@ -248,10 +248,10 @@ public sealed class PropagationRuleExpansionTests
 
         Assert.Contains(result.PropagatedMarks, mark =>
           string.Equals(mark.Mark.SyntaxNode.ToString(), "first && second && survivor", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowLogicalExpression);
+          mark.Mark.FactKind == RuleFactKind.FlowLogicalExpression);
         Assert.Contains(result.PropagatedMarks, mark =>
           string.Equals(mark.Mark.SyntaxNode.ToString(), "survivor", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
     }
 
     [Fact]
@@ -278,10 +278,10 @@ public sealed class PropagationRuleExpansionTests
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalAndExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "removable && second", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowLogicalExpression);
+          mark.Mark.FactKind == RuleFactKind.FlowLogicalExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
           string.Equals(mark.Mark.SyntaxNode.ToString(), "survivor", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
     }
 
     [Fact]
@@ -297,7 +297,7 @@ public sealed class PropagationRuleExpansionTests
             mark.Mark.SyntaxNode.ToString(),
             "CanExecuteCommand()",
             StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.Contains(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Delete &&
           decision.FinalNode.IsKind(SyntaxKind.IfStatement));
@@ -334,7 +334,7 @@ public sealed class PropagationRuleExpansionTests
             mark.Mark.SyntaxNode.ToString(),
             "(CanExecuteFirst() && CanExecuteSecond())",
             StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.Contains(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Delete &&
           decision.FinalNode.IsKind(SyntaxKind.IfStatement));
@@ -371,7 +371,7 @@ public sealed class PropagationRuleExpansionTests
             mark.Mark.SyntaxNode.ToString(),
             "CanExecuteFirst() && CanExecuteSecond()",
             StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.Contains(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Delete &&
           decision.FinalNode.IsKind(SyntaxKind.IfStatement));
@@ -414,17 +414,17 @@ public sealed class PropagationRuleExpansionTests
             mark.Mark.SyntaxNode.ToString(),
             "ItemID.Sets.OpenableBag(type)",
             StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.EqualsExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "context == 0", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalAndExpression) &&
           mark.Mark.SyntaxNode.ToString().Contains(
             "PlayerInput.UsingGamepadUI",
             StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowLogicalExpression);
+          mark.Mark.FactKind == RuleFactKind.FlowLogicalExpression);
         Assert.Contains(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Delete &&
           decision.FinalNode.IsKind(SyntaxKind.IfStatement));
@@ -443,7 +443,7 @@ public sealed class PropagationRuleExpansionTests
             mark.Mark.SyntaxNode.ToString(),
             "CanExecuteCommand()",
             StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.DoesNotContain(result.Decisions, decision =>
           decision.Action == DecisionActionKind.Delete &&
           decision.FinalNode.IsKind(SyntaxKind.IfStatement));
@@ -646,13 +646,13 @@ public sealed class PropagationRuleExpansionTests
         var result = AnalyzeDeleteClass(source, "parenthesized-logical-or-target.cs");
 
         Assert.Contains(result.PropagatedMarks, mark =>
-            mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001" &&
+            mark.RuleId == "propagate.target.logical-expression" &&
             string.Equals(mark.Mark.SyntaxNode.ToString(), "left", StringComparison.Ordinal) &&
-            mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+            mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
-            mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001" &&
+            mark.RuleId == "propagate.target.logical-expression" &&
             string.Equals(mark.Mark.SyntaxNode.ToString(), "fallback", StringComparison.Ordinal) &&
-            mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+            mark.Mark.FactKind == RuleFactKind.TargetExpression);
     }
 
     [Fact]
@@ -677,10 +677,10 @@ public sealed class PropagationRuleExpansionTests
           "text.Length");
 
         Assert.Contains(result.PropagatedMarks, mark =>
-          mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001" &&
+          mark.RuleId == "propagate.target.logical-expression" &&
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalNotExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "!removable", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
     }
 
     [Fact]
@@ -732,9 +732,9 @@ public sealed class PropagationRuleExpansionTests
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.ParenthesizedExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "(text.Length > 0 || i)", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression &&
+          mark.Mark.FactKind == RuleFactKind.TargetExpression &&
           (string.Equals(mark.Mark.SyntaxNode.ToString(), "i", StringComparison.Ordinal) ||
            string.Equals(mark.Mark.SyntaxNode.ToString(), "q", StringComparison.Ordinal)));
     }
@@ -761,15 +761,15 @@ public sealed class PropagationRuleExpansionTests
           "text.Length");
 
         Assert.Contains(result.PropagatedMarks, mark =>
-          mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001" &&
+          mark.RuleId == "propagate.target.logical-expression" &&
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalOrExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "text.Length > 0 || i", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowLogicalExpression);
+          mark.Mark.FactKind == RuleFactKind.FlowLogicalExpression);
         Assert.Contains(result.PropagatedMarks, mark =>
           string.Equals(mark.Mark.SyntaxNode.ToString(), "removable", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression &&
+          mark.Mark.FactKind == RuleFactKind.TargetExpression &&
           (string.Equals(mark.Mark.SyntaxNode.ToString(), "i", StringComparison.Ordinal) ||
            string.Equals(mark.Mark.SyntaxNode.ToString(), "q", StringComparison.Ordinal)));
     }
@@ -804,10 +804,10 @@ public sealed class PropagationRuleExpansionTests
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(expectedKind) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), expectedOperand, StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
           string.Equals(mark.Mark.SyntaxNode.ToString(), "right", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+          mark.Mark.FactKind == RuleFactKind.TargetExpression);
     }
 
     [Fact]
@@ -834,12 +834,9 @@ public sealed class PropagationRuleExpansionTests
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalNotExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "!removable", StringComparison.Ordinal) &&
-          string.Equals(
-            mark.Mark.SemanticTag?.Value,
-            "Flow.UnaryExpression",
-            StringComparison.Ordinal));
+          mark.Mark.FactKind == RuleFactKind.FlowUnaryExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression &&
+          mark.Mark.FactKind == RuleFactKind.TargetExpression &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "survivor", StringComparison.Ordinal));
         Assert.DoesNotContain(result.LiftedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalAndExpression));
@@ -869,11 +866,11 @@ public sealed class PropagationRuleExpansionTests
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode is VariableDeclaratorSyntax declarator &&
           string.Equals(declarator.Identifier.ValueText, "flag", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowLocalDefinition);
+          mark.Mark.FactKind == RuleFactKind.FlowLocalDefinition);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode is IdentifierNameSyntax identifier &&
           string.Equals(identifier.Identifier.ValueText, "flag", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowSymbolReference);
+          mark.Mark.FactKind == RuleFactKind.FlowSymbolReference);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalAndExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "smart && flag", StringComparison.Ordinal));
@@ -903,19 +900,16 @@ public sealed class PropagationRuleExpansionTests
         Assert.Contains(result.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.ConditionalExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "removable ? first : second", StringComparison.Ordinal) &&
-          string.Equals(
-            mark.Mark.SemanticTag?.Value,
-            "Flow.ConditionalExpression",
-            StringComparison.Ordinal));
+          mark.Mark.FactKind == RuleFactKind.FlowConditionalExpression);
         Assert.DoesNotContain(result.PropagatedMarks, mark =>
-          mark.Mark.SemanticTag == RuleFactPorts.TargetExpression &&
+          mark.Mark.FactKind == RuleFactKind.TargetExpression &&
           (string.Equals(mark.Mark.SyntaxNode.ToString(), "first", StringComparison.Ordinal) ||
            string.Equals(mark.Mark.SyntaxNode.ToString(), "second", StringComparison.Ordinal) ||
            string.Equals(mark.Mark.SyntaxNode.ToString(), "survivor", StringComparison.Ordinal)));
         Assert.Contains(result.LiftedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.ConditionalExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "removable ? first : second", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.LiftExpressionHost);
+          mark.Mark.FactKind == RuleFactKind.LiftExpressionHost);
         Assert.DoesNotContain(result.LiftedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalAndExpression));
     }
@@ -952,18 +946,18 @@ public sealed class PropagationRuleExpansionTests
           serial.PropagatedMarks,
           mark => mark.Mark.SyntaxNode is VariableDeclaratorSyntax declarator &&
             string.Equals(declarator.Identifier.ValueText, "flag", StringComparison.Ordinal) &&
-            mark.Mark.SemanticTag == RuleFactPorts.FlowLocalDefinition);
+            mark.Mark.FactKind == RuleFactKind.FlowLocalDefinition);
         Assert.Equal(1, serialDeclarator.Depth);
         var serialReference = Assert.Single(
           serial.PropagatedMarks,
           mark => mark.Mark.SyntaxNode is IdentifierNameSyntax identifier &&
             string.Equals(identifier.Identifier.ValueText, "flag", StringComparison.Ordinal) &&
-            mark.Mark.SemanticTag == RuleFactPorts.FlowSymbolReference);
+            mark.Mark.FactKind == RuleFactKind.FlowSymbolReference);
         Assert.Equal(2, serialReference.Depth);
         Assert.Contains(serial.PropagatedMarks, mark =>
           mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalAndExpression) &&
           string.Equals(mark.Mark.SyntaxNode.ToString(), "!Options.DisableQuickTrash && flag", StringComparison.Ordinal) &&
-          mark.Mark.SemanticTag == RuleFactPorts.FlowLogicalExpression);
+          mark.Mark.FactKind == RuleFactKind.FlowLogicalExpression);
 
         Assert.Equal(BuildFactSignature(serial), BuildFactSignature(parallel));
         Assert.Equal(BuildFactSignature(serial), BuildFactSignature(twoWorkers));
@@ -1007,14 +1001,14 @@ public sealed class PropagationRuleExpansionTests
         var result = AnalyzeDeleteClass(source, "flag-symbol-logical-host.cs");
 
         Assert.Contains(result.PropagatedMarks, mark =>
-            mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001" &&
+            mark.RuleId == "propagate.target.logical-expression" &&
             mark.Mark.SyntaxNode.IsKind(SyntaxKind.LogicalAndExpression) &&
             string.Equals(mark.Mark.SyntaxNode.ToString(), "smart && flag", StringComparison.Ordinal) &&
-            mark.Mark.SemanticTag == RuleFactPorts.FlowLogicalExpression);
+            mark.Mark.FactKind == RuleFactKind.FlowLogicalExpression);
         Assert.Contains(result.PropagatedMarks, mark =>
-            mark.RuleId == "DEL-SOBJ-PROP-LOGICAL-OPERAND-001" &&
+            mark.RuleId == "propagate.target.logical-expression" &&
             string.Equals(mark.Mark.SyntaxNode.ToString(), "smart", StringComparison.Ordinal) &&
-            mark.Mark.SemanticTag == RuleFactPorts.TargetExpression);
+            mark.Mark.FactKind == RuleFactKind.TargetExpression);
     }
 
     private static PrototypeAnalysisResult AnalyzeFlagChain(string source, int maxDegreeOfParallelism)
@@ -1062,7 +1056,9 @@ public sealed class PropagationRuleExpansionTests
               mark.Mark.SyntaxNode.SpanStart,
               mark.Mark.SyntaxNode.Span.Length,
               mark.Mark.SyntaxNode.RawKind,
-              mark.Mark.SemanticTag?.Value,
+              mark.Mark.FactKind is { } factKind
+                ? factKind.ToString()
+                : mark.Mark.SemanticTag?.Value,
               mark.Depth)));
     }
 
@@ -1188,7 +1184,7 @@ public sealed class PropagationRuleExpansionTests
 
     private sealed class ExactSyntaxSeedRule : RuleDefinitionMark
     {
-        private static readonly RuleSemanticTag AtomicTargetSemanticTag = RuleFactPorts.TargetExpression;
+        private static readonly RuleFactKind AtomicTargetFactKind = RuleFactKind.TargetExpression;
         private readonly IReadOnlyList<(SyntaxKind Kind, string Text)> _seeds;
 
         public ExactSyntaxSeedRule(IReadOnlyList<(SyntaxKind Kind, string Text)> seeds)
@@ -1196,7 +1192,7 @@ public sealed class PropagationRuleExpansionTests
             _seeds = seeds;
         }
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-MEMBER-001";
+    public override string RuleId { get; } = "mark.target.member-access";
 
 
         public override string Name { get; } = "Exact syntax seed for propagation tests";
@@ -1206,7 +1202,7 @@ public sealed class PropagationRuleExpansionTests
 
         public override RuleProducesContract Produces { get; } = new(new[]
         {
-          new RuleProducedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, AtomicTargetSemanticTag)
+          new RuleProducedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, AtomicTargetFactKind)
         });
 
         public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
@@ -1224,7 +1220,7 @@ public sealed class PropagationRuleExpansionTests
                       null,
                       null,
                       $"Test seed '{seed.Text}'.",
-                      SemanticTag: AtomicTargetSemanticTag,
+                      FactKind: AtomicTargetFactKind,
                       Origins: RuleEvidenceOrigin.AtomicExpression);
                 }
             }

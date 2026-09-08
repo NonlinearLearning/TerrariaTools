@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class ParameterProposalRule : RuleDefinitionPropose
 {
-    public override string CapabilityId { get; } = "propose.type.parameter";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-PARAM-001";
+    public override string RuleId { get; } = "propose.type.parameter";
 
 
     public override string Name { get; } = "Delete private methods whose parameter type references the delete-class target";

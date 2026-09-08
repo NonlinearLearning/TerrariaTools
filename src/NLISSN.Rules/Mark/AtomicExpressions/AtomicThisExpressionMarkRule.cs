@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicThisExpressionMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.this-expression";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-THIS-001";
+    public override string RuleId { get; } = "mark.target.this-expression";
     public override string Name { get; } = "Match s-rooted this expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.ThisExpression;
 }

@@ -12,9 +12,9 @@ namespace NLISSN.Rules;
 /// </summary>
 public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
 {
-  private static readonly RuleSemanticTag LogicalReductionSemanticTag = RuleFactPorts.LiftLogicalReduction;
-  private static readonly RuleSemanticTag LogicalExpressionFlowSemanticTag = RuleFactPorts.FlowLogicalExpression;
-  private static readonly RuleSemanticTag UnaryExpressionFlowSemanticTag = RuleFactPorts.FlowUnaryExpression;
+  private static readonly RuleFactKind LogicalReductionFactKind = RuleFactKind.LiftLogicalReduction;
+  private static readonly RuleFactKind LogicalExpressionFlowFactKind = RuleFactKind.FlowLogicalExpression;
+  private static readonly RuleFactKind UnaryExpressionFlowFactKind = RuleFactKind.FlowUnaryExpression;
 
   private static readonly IReadOnlyList<SyntaxKind> UnaryExpressionNodeKinds = new[]
   {
@@ -31,29 +31,28 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
     SyntaxKind.SuppressNullableWarningExpression
   };
 
-  public override string RuleId { get; } = "DEL-SOBJ-LIFT-LOGIC-001";
+  public override string RuleId { get; } = "lift.atomic.logical-expression";
 
-  public override string CapabilityId { get; } = "lift.atomic.logical-expression";
 
   public override string Name { get; } = "Lift s-object marks into logical expression reductions";
 
   public override RuleConsumesContract Consumes { get; } = new(new[]
   {
-    new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactPorts.TargetExpression),
-    new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactPorts.FlowAssignmentTarget),
-    new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactPorts.FlowLocalDefinition),
-    new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactPorts.FlowSymbolReference),
+    new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactKind.TargetExpression),
+    new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget),
+    new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition),
+    new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.FlowSymbolReference),
     new RuleConsumedSyntax(
       new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
-      LogicalExpressionFlowSemanticTag),
-    new RuleConsumedSyntax(UnaryExpressionNodeKinds, UnaryExpressionFlowSemanticTag)
+      LogicalExpressionFlowFactKind),
+    new RuleConsumedSyntax(UnaryExpressionNodeKinds, UnaryExpressionFlowFactKind)
   });
 
   public override RuleProducesContract Produces { get; } = new(new[]
   {
     new RuleProducedSyntax(
       new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
-      LogicalReductionSemanticTag)
+      LogicalReductionFactKind)
   });
 
   public override IReadOnlyList<SyntaxKind> AllowedLiftNodeKinds =>
@@ -67,13 +66,13 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
     var operandMarks = seedMarks
       .Where(mark => IsTopologyOperandOfLogicalHost(context, mark.SyntaxNode))
       .Concat(propagatedMarks
-        .Where(mark => mark.Mark.SemanticTag != LogicalExpressionFlowSemanticTag &&
-          mark.Mark.SemanticTag != UnaryExpressionFlowSemanticTag &&
+        .Where(mark => mark.Mark.FactKind != LogicalExpressionFlowFactKind &&
+          mark.Mark.FactKind != UnaryExpressionFlowFactKind &&
           !IsTerminalTopologyFact(mark))
         .Select(mark => mark.Mark))
       .ToList();
     var propagatedLogicalHosts = propagatedMarks
-      .Where(mark => mark.Mark.SemanticTag == LogicalExpressionFlowSemanticTag)
+      .Where(mark => mark.Mark.FactKind == LogicalExpressionFlowFactKind)
       .Select(mark => mark.Mark.SyntaxNode)
       .OfType<BinaryExpressionSyntax>();
     foreach (var host in propagatedLogicalHosts
@@ -87,7 +86,7 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
       }
 
       var sourceMark = propagatedMarks
-        .Where(mark => mark.Mark.SemanticTag == LogicalExpressionFlowSemanticTag)
+        .Where(mark => mark.Mark.FactKind == LogicalExpressionFlowFactKind)
         .FirstOrDefault(mark => ReferenceEquals(mark.Mark.SyntaxNode, host))
         ?.SourceMark ?? seedMarks.FirstOrDefault(mark => host.Span.Contains(mark.SyntaxNode.Span));
       if (sourceMark is null)

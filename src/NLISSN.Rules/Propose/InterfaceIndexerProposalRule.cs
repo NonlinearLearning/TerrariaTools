@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class InterfaceIndexerProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.interface-indexer";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-IFACE-INDEXER-001";
+    public override string RuleId { get; } = "propose.type.interface-indexer";
 
 
     public override string Name { get; } = "Delete interface indexers whose signature references the delete-class target";

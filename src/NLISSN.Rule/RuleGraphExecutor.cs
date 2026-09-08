@@ -31,7 +31,7 @@ public sealed record RuleNodeResult(IReadOnlyList<object> Values)
             foreach (var value in values)
             {
                 var mark = GetMarkedRecord(value);
-                if (mark?.SemanticTag is null)
+                if (mark?.FactKind is null && mark?.SemanticTag is null)
                 {
                     continue;
                 }

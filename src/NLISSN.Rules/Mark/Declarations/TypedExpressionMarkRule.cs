@@ -11,7 +11,7 @@ namespace NLISSN.Rules;
 
 public sealed class TypedExpressionMarkRule : RuleDefinitionMark
 {
-    private static readonly RuleSemanticTag ExpressionTargetSemanticTag = RuleFactPorts.TargetExpression;
+    private static readonly RuleFactKind ExpressionTargetFactKind = RuleFactKind.TargetExpression;
     private static readonly IReadOnlyList<SyntaxKind> SupportedKinds =
       new[]
       {
@@ -25,9 +25,8 @@ public sealed class TypedExpressionMarkRule : RuleDefinitionMark
         SyntaxKind.ImplicitObjectCreationExpression
       };
 
-    public override string CapabilityId { get; } = "mark.type.expression";
 
-    public override string RuleId { get; } = "DEL-CLASS-MARK-EXPR-001";
+    public override string RuleId { get; } = "mark.type.expression";
 
 
     public override string Name { get; } = "Match expressions that reference the delete-class target";
@@ -35,7 +34,7 @@ public sealed class TypedExpressionMarkRule : RuleDefinitionMark
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds => SupportedKinds;
     public override RuleProducesContract Produces { get; } = new(new[]
     {
-        new RuleProducedSyntax(SupportedKinds, ExpressionTargetSemanticTag)
+        new RuleProducedSyntax(SupportedKinds, ExpressionTargetFactKind)
     });
 
     // 标记语义上引用目标类的表达式，并过滤掉会被更大宿主覆盖的重复命中。
@@ -48,7 +47,7 @@ public sealed class TypedExpressionMarkRule : RuleDefinitionMark
           SupportedKinds)
           .Select(mark => mark with
           {
-            SemanticTag = ExpressionTargetSemanticTag,
+            FactKind = ExpressionTargetFactKind,
             Origins = RuleEvidenceOrigin.DeclarationExpression
           });
     }

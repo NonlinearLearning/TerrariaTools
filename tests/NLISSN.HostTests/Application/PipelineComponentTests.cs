@@ -28,9 +28,9 @@ public sealed class PipelineComponentTests : IDisposable
 {
     private static readonly string[] OptionalGlobalRuleIds =
     {
-        "DEL-DEAD-001",
-        "DEL-UNREF-METHOD-MARK-001",
-        "CLR-UNUSED-IFACE-IMPL-MARK-001",
+        "mark.unreachable-method",
+        "mark.unreferenced-method",
+        "mark.clear-unused-interface-implementation",
         "mark.privatize-internal-only-public-method"
     };
 
@@ -538,7 +538,7 @@ public sealed class PipelineComponentTests : IDisposable
               null,
               null,
               "Seed the first member access.",
-              SemanticTag: RuleFactPorts.TargetExpression)
+              FactKind: RuleFactKind.TargetExpression)
         };
 
         var propagatedMarks = new PropagationEngine().Run(
@@ -575,7 +575,7 @@ public sealed class PipelineComponentTests : IDisposable
               null,
               null,
               "Seed the first member access.",
-              SemanticTag: RuleFactPorts.TargetExpression)
+              FactKind: RuleFactKind.TargetExpression)
         };
 
         var propagatedMarks = new PropagationEngine().Run(
@@ -679,7 +679,7 @@ public sealed class PipelineComponentTests : IDisposable
           null,
           "This diagnostic text is intentionally unrelated.",
           RuleOutputKind.LocalDefinitionFromObjectCreation,
-          RuleFactPorts.FlowLocalDefinition);
+          FactKind: RuleFactKind.FlowLocalDefinition);
 
         var propagatedMarks = new PropagationEngine().Run(
           context,
@@ -728,7 +728,7 @@ public sealed class PipelineComponentTests : IDisposable
           null,
           "This diagnostic text is intentionally unrelated.",
           RuleOutputKind.LocalDefinitionFromInitializer,
-          RuleFactPorts.FlowLocalDefinition);
+          FactKind: RuleFactKind.FlowLocalDefinition);
 
         var propagatedMarks = new PropagationEngine().Run(
           context,
@@ -2207,7 +2207,7 @@ public sealed class PipelineComponentTests : IDisposable
         var typeSyntaxMarks = result.SeedMarks
           .Where(mark => string.Equals(
             mark.RuleId,
-            "DEL-CLASS-MARK-TYPE-001",
+            "mark.type.type-syntax",
             StringComparison.Ordinal))
           .Select(mark => mark.SyntaxNode.ToString())
           .ToList();
@@ -2309,7 +2309,7 @@ public sealed class PipelineComponentTests : IDisposable
           result.PropagatedMarks,
           mark => string.Equals(
               mark.RuleId,
-              "DEL-CLASS-PROP-NEW-DECL-001",
+              "propagate.type.object-creation-declaration",
               StringComparison.Ordinal) &&
             mark.Mark.SyntaxNode is VariableDeclaratorSyntax declarator &&
             string.Equals(declarator.Identifier.ValueText, "input", StringComparison.Ordinal));
@@ -2354,7 +2354,7 @@ public sealed class PipelineComponentTests : IDisposable
           result.PropagatedMarks,
           mark => string.Equals(
               mark.RuleId,
-              "DEL-CLASS-PROP-LOCAL-REF-001",
+              "propagate.type.symbol-reference",
               StringComparison.Ordinal) &&
             mark.Mark.SyntaxNode is IdentifierNameSyntax identifier &&
             string.Equals(identifier.Identifier.ValueText, "input", StringComparison.Ordinal));
@@ -4626,8 +4626,8 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.NotEmpty(result.SeedMarks);
         Assert.NotEmpty(result.Decisions);
-        Assert.Contains(result.PropagatedMarks, mark => mark.RuleId == "CLR-UNUSED-IFACE-IMPL-PROPAGATE-001");
-        Assert.Contains(result.LiftedMarks, mark => mark.RuleId == "CLR-UNUSED-IFACE-IMPL-LIFT-001");
+        Assert.Contains(result.PropagatedMarks, mark => mark.RuleId == "propagate.clear-unused-interface-implementation");
+        Assert.Contains(result.LiftedMarks, mark => mark.RuleId == "lift.clear-unused-interface-implementation");
         Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Replace);
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
         TextDiffAssert.Contains("value = new global::Demo.Payload();", rewrittenServiceSource, result.Diff);
@@ -4734,10 +4734,10 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(result.Edits);
         Assert.Contains(
           result.PropagatedMarks,
-          mark => mark.RuleId == "PRIV-INTERNAL-PUBLIC-PROPAGATE-001");
+          mark => mark.RuleId == "propagate.privatize-internal-only-public-method");
         Assert.Contains(
           result.LiftedMarks,
-          mark => mark.RuleId == "PRIV-INTERNAL-PUBLIC-LIFT-001");
+          mark => mark.RuleId == "lift.privatize-internal-only-public-method");
         var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
         TextDiffAssert.Contains("public int Run()", rewrittenServiceSource, result.Diff);
         TextDiffAssert.Contains("private int Helper()", rewrittenServiceSource, result.Diff);
@@ -4915,7 +4915,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "DefinitionInitializerPropagationRule", StringComparison.Ordinal));
         Assert.Contains(rules.Propagators, rule => rule is LogicalExpressionPropagationRule);
         Assert.Contains(rules.Propagators, rule => string.Equals(rule.GetType().Name, "SymbolReferencePropagationRule", StringComparison.Ordinal));
-        Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId == "DEL-SOBJ-PROP-IF-COMPLETE-001");
+        Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId == "unknown.propagate.if-complete.sobj");
         Assert.True(rules.Lifters.Count >= 4);
         Assert.Contains(rules.Lifters, rule => string.Equals(rule.GetType().Name, "ExpressionHostLiftingRule", StringComparison.Ordinal));
         Assert.Contains(rules.Lifters, rule => rule is LogicalExpressionLiftingRule);
@@ -4931,7 +4931,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.DoesNotContain(rules.Proposers, rule => rule is ClearUnusedInterfaceImplementationProposalRule);
         Assert.DoesNotContain(rules.Proposers, rule => rule is PrivatizeInternalOnlyPublicMethodProposalRule);
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "TypeSyntaxDeclarationProposalRule", StringComparison.Ordinal));
-        Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId == "DEL-CLASS-PROP-IF-COMPLETE-001");
+        Assert.DoesNotContain(rules.Propagators, rule => rule.RuleId == "unknown.propagate.if-complete.class");
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "MethodReturnTypeProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "PublicMethodReturnTypeProposalRule", StringComparison.Ordinal));
         Assert.Contains(rules.Proposers, rule => string.Equals(rule.GetType().Name, "ParameterProposalRule", StringComparison.Ordinal));
@@ -5089,8 +5089,8 @@ public sealed class PipelineComponentTests : IDisposable
           "--no-diff"
         });
 
-        Assert.DoesNotContain(defaultResult.SeedMarks, mark => mark.RuleId == "DEL-DEAD-001");
-        Assert.Contains(enabledResult.SeedMarks, mark => mark.RuleId == "DEL-DEAD-001");
+        Assert.DoesNotContain(defaultResult.SeedMarks, mark => mark.RuleId == "mark.unreachable-method");
+        Assert.Contains(enabledResult.SeedMarks, mark => mark.RuleId == "mark.unreachable-method");
         Assert.DoesNotContain("Dead", enabledResult.RewrittenSource, StringComparison.Ordinal);
     }
 
@@ -5151,9 +5151,9 @@ public sealed class PipelineComponentTests : IDisposable
 
         var result = CreateCommandHost().Analyze(YamlConfigurationLoader.Load(configurationPath));
 
-        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "DEL-DEAD-001");
-        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "DEL-UNREF-METHOD-MARK-001");
-        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "CLR-UNUSED-IFACE-IMPL-MARK-001");
+        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "mark.unreachable-method");
+        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "mark.unreferenced-method");
+        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "mark.clear-unused-interface-implementation");
         Assert.Contains(result.SeedMarks, mark =>
           mark.RuleId == "mark.privatize-internal-only-public-method");
     }
@@ -5186,9 +5186,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Theory]
-    [InlineData("deleteUnreachableMethods", "DEL-DEAD-001")]
-    [InlineData("deleteUnreferencedMethods", "DEL-UNREF-METHOD-MARK-001")]
-    [InlineData("clearUnusedInterfaceImplementations", "CLR-UNUSED-IFACE-IMPL-MARK-001")]
+    [InlineData("deleteUnreachableMethods", "mark.unreachable-method")]
+    [InlineData("deleteUnreferencedMethods", "mark.unreferenced-method")]
+    [InlineData("clearUnusedInterfaceImplementations", "mark.clear-unused-interface-implementation")]
     [InlineData("privatizeInternalOnlyPublicMethods", "mark.privatize-internal-only-public-method")]
     public void Analyze_ConfigurationFile_EnablesOnlyTheSelectedOptionalGlobalRule(
         string policyName,
@@ -5223,23 +5223,23 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void DefaultRulePipeline_ExposesUniqueCapabilityIds()
+    public void DefaultRulePipeline_ExposesUniqueRuleIds()
     {
         var pipeline = RuleRegistry.CreateDefaultRules();
-        var capabilityIds = pipeline.Markers.Cast<IRuleDefinition>()
+        var ruleIds = pipeline.Markers.Cast<IRuleDefinition>()
           .Concat(pipeline.Propagators)
           .Concat(pipeline.Lifters)
           .Concat(pipeline.Proposers)
-          .Select(rule => rule.CapabilityId)
+          .Select(rule => rule.RuleId)
           .ToList();
 
-        Assert.Equal(capabilityIds.Count, capabilityIds.Distinct(StringComparer.Ordinal).Count());
-        Assert.All(capabilityIds, capabilityId =>
+        Assert.Equal(ruleIds.Count, ruleIds.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(ruleIds, ruleId =>
         {
-            Assert.False(string.IsNullOrWhiteSpace(capabilityId));
-            Assert.DoesNotContain("-001", capabilityId, StringComparison.Ordinal);
-            Assert.DoesNotContain(".sobject.", capabilityId, StringComparison.Ordinal);
-            Assert.DoesNotContain(".class.", capabilityId, StringComparison.Ordinal);
+            Assert.False(string.IsNullOrWhiteSpace(ruleId));
+            Assert.DoesNotContain("-001", ruleId, StringComparison.Ordinal);
+            Assert.DoesNotContain(".sobject.", ruleId, StringComparison.Ordinal);
+            Assert.DoesNotContain(".class.", ruleId, StringComparison.Ordinal);
         });
     }
 
@@ -5513,7 +5513,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
-          .Where(rule => rule.RuleId.StartsWith("DEL-SOBJ-MARK-", StringComparison.Ordinal))
+          .Where(rule => rule.RuleId.StartsWith("mark.target.", StringComparison.Ordinal))
           .ToList();
     }
 
@@ -5521,7 +5521,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
         return markerRules
-          .Where(rule => rule.RuleId.StartsWith("DEL-CLASS-MARK-", StringComparison.Ordinal))
+          .Where(rule => rule.RuleId.StartsWith("mark.type.", StringComparison.Ordinal))
           .ToList();
     }
 
@@ -5793,7 +5793,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         private static readonly RuleSemanticTag IfSemanticTag = new("Test.Propagation.If");
 
-        public override string RuleId { get; } = "DEL-SOBJ-TEST-PROP-001";
+        public override string RuleId { get; } = "test.duplicate-propagation";
 
 
         public override string Name { get; } = "Emit duplicated propagated marks";
@@ -5838,7 +5838,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override RuleProducesContract Produces =>
           CreateSyntaxProduces(
             new[] { SyntaxKind.SimpleMemberAccessExpression },
-            RuleFactPorts.TargetExpression);
+            RuleFactKind.TargetExpression);
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
           new[] { SyntaxKind.SimpleMemberAccessExpression };
@@ -5865,7 +5865,7 @@ public sealed class PipelineComponentTests : IDisposable
                     null,
                     null,
                     "Propagate to the direct member-access parent.",
-                    SemanticTag: RuleFactPorts.TargetExpression),
+                    FactKind: RuleFactKind.TargetExpression),
                   sourceMark,
                   0);
             }
@@ -5931,7 +5931,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override RuleProducesContract Produces =>
           CreateSyntaxProduces(
             new[] { SyntaxKind.SimpleMemberAccessExpression },
-            RuleFactPorts.TargetExpression);
+            RuleFactKind.TargetExpression);
 
         public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
           new[] { SyntaxKind.SimpleMemberAccessExpression };
@@ -5958,7 +5958,7 @@ public sealed class PipelineComponentTests : IDisposable
                     null,
                     null,
                     "Return the fact to the target channel.",
-                    SemanticTag: RuleFactPorts.TargetExpression),
+                    FactKind: RuleFactKind.TargetExpression),
                   sourceMark,
                   0);
             }
@@ -5974,7 +5974,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override RuleProducesContract Produces =>
           CreateSyntaxProduces(
             new[] { SyntaxKind.SimpleMemberAccessExpression },
-            RuleFactPorts.TargetExpression);
+            RuleFactKind.TargetExpression);
 
         public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } =
           new[] { SyntaxKind.SimpleMemberAccessExpression };
@@ -5991,7 +5991,7 @@ public sealed class PipelineComponentTests : IDisposable
               null,
               null,
               "Seed the first member access.",
-              SemanticTag: RuleFactPorts.TargetExpression);
+              FactKind: RuleFactKind.TargetExpression);
         }
     }
 
@@ -6008,7 +6008,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override RuleConsumesContract Consumes =>
           CreateSyntaxConsumes(
             new[] { SyntaxKind.SimpleMemberAccessExpression },
-            RuleFactPorts.TargetExpression);
+            RuleFactKind.TargetExpression);
 
         public override RuleProducesContract Produces =>
           CreateSyntaxProduces(new[] { SyntaxKind.SimpleMemberAccessExpression }, LiftTag);
@@ -6298,7 +6298,7 @@ public sealed class PipelineComponentTests : IDisposable
         {
             new RuleConsumedSyntax(
                 ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds,
-                RuleFactPorts.TargetExpression),
+                RuleFactKind.TargetExpression),
             new RuleConsumedSyntax(new[] { SyntaxKind.IfStatement }, IfSemanticTag)
         });
 
@@ -6481,6 +6481,16 @@ public sealed class PipelineComponentTests : IDisposable
         });
     }
 
+    private static RuleProducesContract CreateSyntaxProduces(
+      IReadOnlyList<SyntaxKind> syntaxKinds,
+      RuleFactKind factKind)
+    {
+        return new RuleProducesContract(new[]
+        {
+            new RuleProducedSyntax(syntaxKinds, factKind)
+        });
+    }
+
     private static RuleConsumesContract CreateSyntaxConsumes(
       IReadOnlyList<SyntaxKind> syntaxKinds,
       RuleSemanticTag semanticTag)
@@ -6491,11 +6501,21 @@ public sealed class PipelineComponentTests : IDisposable
         });
     }
 
+    private static RuleConsumesContract CreateSyntaxConsumes(
+      IReadOnlyList<SyntaxKind> syntaxKinds,
+      RuleFactKind factKind)
+    {
+        return new RuleConsumesContract(new[]
+        {
+            new RuleConsumedSyntax(syntaxKinds, factKind)
+        });
+    }
+
     private static RuleConsumesContract CreateTargetAtomicConsumes()
     {
         return CreateSyntaxConsumes(
           ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds,
-          RuleFactPorts.TargetExpression);
+          RuleFactKind.TargetExpression);
     }
 
     private static void AssertEquivalentAnalysisResults(PrototypeAnalysisResult expected, PrototypeAnalysisResult actual)
@@ -6563,7 +6583,9 @@ public sealed class PipelineComponentTests : IDisposable
         mark.Mark.SyntaxNode.SpanStart,
         mark.Mark.SyntaxNode.Span.Length,
         mark.Mark.SyntaxNode.RawKind,
-        mark.Mark.SemanticTag?.Value,
+        mark.Mark.FactKind is { } factKind
+          ? factKind.ToString()
+          : mark.Mark.SemanticTag?.Value,
         mark.Depth,
         mark.Payload is NLISSN.Core.Analysis.ExpressionPropagation.ExpressionTopologyPayload payload
           ? payload.StepIndex
@@ -6577,7 +6599,9 @@ public sealed class PipelineComponentTests : IDisposable
         mark.Mark.SyntaxNode.SpanStart,
         mark.Mark.SyntaxNode.Span.Length,
         mark.Mark.SyntaxNode.RawKind,
-        mark.Mark.SemanticTag?.Value,
+        mark.Mark.FactKind is { } factKind
+          ? factKind.ToString()
+          : mark.Mark.SemanticTag?.Value,
         mark.Depth)).ToList();
 
     private static string BuildDecisionKey(RuleDecision decision)

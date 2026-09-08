@@ -49,13 +49,13 @@ internal sealed class RuleGraphAnalysisExecutor
           .GetResult();
 
         var seedMarks = execution.Nodes
-          .Where(node => node.NodeId.Value.StartsWith("Mark:", StringComparison.Ordinal))
+          .Where(node => node.NodeId.Kind == RuleKind.Mark)
           .SelectMany(node => node.Result.Values)
           .OfType<MarkRecord>()
           .DistinctBy(mark => (mark.RuleId, mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length))
           .ToList();
         var propagatedMarks = execution.Nodes
-          .Where(node => node.NodeId.Value.StartsWith("Propagate:", StringComparison.Ordinal))
+          .Where(node => node.NodeId.Kind == RuleKind.Propagate)
           .SelectMany(node => node.Result.Values)
           .OfType<PropagatedMarkRecord>()
           .DistinctBy(mark => (
@@ -65,7 +65,7 @@ internal sealed class RuleGraphAnalysisExecutor
             mark.Mark.SyntaxNode.RawKind))
           .ToList();
         var liftedMarks = execution.Nodes
-          .Where(node => node.NodeId.Value.StartsWith("Lift:", StringComparison.Ordinal))
+          .Where(node => node.NodeId.Kind == RuleKind.Lift)
           .SelectMany(node => node.Result.Values)
           .OfType<LiftedMarkRecord>()
           .DistinctBy(mark => (
@@ -75,7 +75,7 @@ internal sealed class RuleGraphAnalysisExecutor
             mark.Mark.SyntaxNode.RawKind))
           .ToList();
         var units = execution.Nodes
-          .Where(node => node.NodeId.Value.StartsWith("Propose:", StringComparison.Ordinal))
+          .Where(node => node.NodeId.Kind == RuleKind.Propose)
           .SelectMany(node => node.Result.Values)
           .OfType<DecisionUnit>()
           .ToList();
@@ -138,7 +138,7 @@ internal sealed class RuleGraphAnalysisExecutor
                   mark.SyntaxNode.SpanStart,
                   mark.SyntaxNode.Span.Length,
                   mark.SyntaxNode.RawKind,
-                  mark.SemanticTag))
+                  (RuleFactKindDescriptor.Resolve(mark.FactKind, mark.SemanticTag), mark.SemanticTag)))
                 .ToList();
               var outputs = propagationRegion.Run(seedMarks)
                 .Where(mark => string.Equals(mark.RuleId, rule.RuleId, StringComparison.Ordinal))

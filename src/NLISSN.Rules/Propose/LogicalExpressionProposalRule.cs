@@ -11,19 +11,18 @@ namespace NLISSN.Rules;
 /// 为逻辑表达式的可删操作数选择保持短路语义的规约决策。
 public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleSemanticTag LogicalReductionSemanticTag = RuleFactPorts.LiftLogicalReduction;
+    private static readonly RuleFactKind LogicalReductionFactKind = RuleFactKind.LiftLogicalReduction;
 
     private static readonly RuleConsumesContract LogicalHostConsumes =
       new(new[]
       {
         new RuleConsumedSyntax(
           new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression },
-          LogicalReductionSemanticTag)
+          LogicalReductionFactKind)
       });
 
-    public override string CapabilityId { get; } = "propose.logical-expression";
 
-    public override string RuleId { get; } = "DEL-SOBJ-PROPOSE-LOGIC-001";
+    public override string RuleId { get; } = "propose.logical-expression";
 
     public override RuleConsumesContract Consumes => LogicalHostConsumes;
 

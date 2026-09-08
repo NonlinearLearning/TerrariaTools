@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class InterfacePropertyProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.interface-property";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-IFACE-PROPERTY-001";
+    public override string RuleId { get; } = "propose.type.interface-property";
 
 
     public override string Name { get; } = "Delete interface properties whose signature references the delete-class target";

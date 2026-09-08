@@ -15,23 +15,22 @@ public sealed class ObjectCreationDeclarationPropagationRule : RuleDefinitionPro
     {
       new RuleConsumedSyntax(
         ExpressionFlowPropagationRuleBase.TargetExpressionNodeKinds,
-        RuleFactPorts.TargetExpression)
+        RuleFactKind.TargetExpression)
     });
 
-    private static readonly RuleSemanticTag LocalDefinitionSemanticTag =
-      RuleFactPorts.FlowLocalDefinition;
+    private static readonly RuleFactKind LocalDefinitionFactKind =
+      RuleFactKind.FlowLocalDefinition;
 
     private static readonly RuleProducesContract LocalDefinitionProduces =
       new(new[]
       {
         new RuleProducedSyntax(
           new[] { SyntaxKind.VariableDeclarator },
-          LocalDefinitionSemanticTag)
+          LocalDefinitionFactKind)
       });
 
-    public override string CapabilityId { get; } = "propagate.type.object-creation-declaration";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-NEW-DECL-001";
+    public override string RuleId { get; } = "propagate.type.object-creation-declaration";
 
     public override RuleConsumesContract Consumes => ObjectCreationConsumes;
 
@@ -73,7 +72,7 @@ public sealed class ObjectCreationDeclarationPropagationRule : RuleDefinitionPro
                 declarator,
                 "Object creation initializer is marked; propagate mark to local declarator.",
                 RuleOutputKind.LocalDefinitionFromObjectCreation,
-                LocalDefinitionSemanticTag),
+                factKind: LocalDefinitionFactKind),
               seedMark,
               1);
         }

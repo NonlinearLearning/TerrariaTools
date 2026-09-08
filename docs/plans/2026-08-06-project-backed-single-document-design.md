@@ -29,7 +29,7 @@
 - Modify: `src/NLISSN.Infrastructure/Workspace/WorkspaceInputOptions.cs`
 - Modify: `src/NLISSN.Infrastructure/Configuration/YamlConfigurationLoader.cs`
 - Modify: `src/NLISSN.Infrastructure/Configuration/ResolvedConfigurationArtifact.cs`
-- Modify: `schemas/nlissn.schema.2.json`
+- Modify: `Miscellaneous/schemas/nlissn.schema.2.json`
 
 **Steps:**
 1. Add a target document path to `WorkspaceInputOptions` while retaining the project/solution path used by MSBuild.
@@ -68,10 +68,10 @@
 - Modify: `docs/quick-start.md`
 - Modify: `docs/cli-reference.md`
 - Modify: `docs/developer-guide.md`
-- Modify: `progress.md`
-- Modify: `feature_list.json`
+- Modify: `Context/progress.md`
+- Modify: `Context/feature_list.json`
 
 **Steps:**
 1. Document `.cs` plus `input.project`, project compilation scope, and rewrite limitations.
 2. Run focused Workspace/Host tests, project builds, full Host and Contract tiers, and harness consistency.
-3. Record only current verification facts and remaining boundaries in `progress.md` and `feature_list.json`.
+3. Record only current verification facts and remaining boundaries in `Context/progress.md` and `Context/feature_list.json`.

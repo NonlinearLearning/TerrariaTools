@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Application;
 using NLISSN.Composition;
+using NLISSN.Core.Pipeline;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -39,8 +40,8 @@ public sealed class DirectoryAnalysisUseCaseTests
 
     var mark = Assert.Single(
       outcome.Result.SeedMarks,
-      mark => string.Equals(mark.RuleId, "DEL-UNREF-METHOD-MARK-001", StringComparison.Ordinal));
-    Assert.Equal("UnreferencedMethod", mark.SemanticTag?.Value);
+      mark => string.Equals(mark.RuleId, "mark.unreferenced-method", StringComparison.Ordinal));
+    Assert.Equal(RuleFactKind.UnreferencedMethod, mark.FactKind);
     Assert.NotNull(mark.PrimaryGraphNode);
     var file = Assert.Single(outcome.FileResults);
     Assert.DoesNotContain("Removed", file.Result.RewrittenSource, StringComparison.Ordinal);
@@ -91,7 +92,7 @@ public sealed class DirectoryAnalysisUseCaseTests
     Assert.Null(file.Result.RewrittenSource);
     Assert.DoesNotContain(
       outcome.Result.SeedMarks,
-      mark => string.Equals(mark.RuleId, "DEL-UNREF-METHOD-MARK-001", StringComparison.Ordinal));
+      mark => string.Equals(mark.RuleId, "mark.unreferenced-method", StringComparison.Ordinal));
     Assert.Empty(outcome.Result.Edits);
     Assert.Equal(0, outcome.Result.Stats?.DeletedMethodCount);
   }
@@ -133,7 +134,7 @@ public sealed class DirectoryAnalysisUseCaseTests
 
     Assert.DoesNotContain(
       outcome.Result.SeedMarks,
-      mark => mark.RuleId is "DEL-DEAD-001" or "DEL-UNREF-METHOD-MARK-001");
+      mark => mark.RuleId is "mark.unreachable-method" or "mark.unreferenced-method");
     Assert.Empty(outcome.Result.Edits);
   }
 
@@ -191,7 +192,7 @@ public sealed class DirectoryAnalysisUseCaseTests
       AnalysisRuntime.CreateDefault());
 
     var methodGlobalMarks = outcome.Result.SeedMarks
-      .Where(mark => mark.RuleId is "DEL-DEAD-001" or "DEL-UNREF-METHOD-MARK-001")
+      .Where(mark => mark.RuleId is "mark.unreachable-method" or "mark.unreferenced-method")
       .ToArray();
     Assert.DoesNotContain(methodGlobalMarks, mark => HasMethodName(mark, "A"));
     Assert.DoesNotContain(methodGlobalMarks, mark => HasMethodName(mark, "B"));
@@ -245,7 +246,7 @@ public sealed class DirectoryAnalysisUseCaseTests
 
     Assert.DoesNotContain(
       outcome.Result.SeedMarks,
-      mark => mark.RuleId == "DEL-UNREF-METHOD-MARK-001" &&
+      mark => mark.RuleId == "mark.unreferenced-method" &&
         (HasMethodName(mark, "Target") || HasMethodName(mark, "LambdaTarget")));
   }
 
@@ -312,11 +313,11 @@ public sealed class DirectoryAnalysisUseCaseTests
     var result = outcome.Result;
     return new MethodGlobalSnapshot(
       result.SeedMarks
-        .Where(mark => mark.RuleId is "DEL-DEAD-001" or "DEL-UNREF-METHOD-MARK-001")
+        .Where(mark => mark.RuleId is "mark.unreachable-method" or "mark.unreferenced-method")
         .Select(mark => $"{mark.RuleId}|{mark.SyntaxNode.SyntaxTree.FilePath}|{mark.SyntaxNode.Span}|{mark.SyntaxNode}")
         .ToArray(),
       result.Decisions
-        .Where(decision => decision.RuleId is "DEL-DEAD-001" or "DEL-UNREF-METHOD-PROP-001")
+        .Where(decision => decision.RuleId is "propose.unreachable-method" or "propose.unreferenced-method")
         .Select(decision => $"{decision.RuleId}|{decision.Action}|{decision.FinalNode.SyntaxTree.FilePath}|{decision.FinalNode.Span}")
         .ToArray(),
       result.RewritePlans!

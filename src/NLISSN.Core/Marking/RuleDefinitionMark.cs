@@ -10,8 +10,6 @@ public abstract class RuleDefinitionMark : IRuleDefinition
     public virtual IReadOnlyCollection<NLCPGCapability> RequiredCapabilities =>
         new[] { NLCPGCapability.Default };
 
-    public virtual string CapabilityId => RuleId;
-
     public abstract string RuleId { get; }
 
     public virtual RuleInputCardinality InputCardinality => RuleInputCardinality.All;

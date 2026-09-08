@@ -30,7 +30,7 @@ public sealed class PropagationEngine
           {
               var tagged = candidate with
               {
-                  Mark = MarkingEngine.BindDeclaredSemanticTag(rule.Produces, candidate.Mark)
+                  Mark = MarkingEngine.BindDeclaredFactKind(rule.Produces, candidate.Mark)
               };
               ValidatePropagateNode(rule, tagged.Mark.SyntaxNode);
               ValidatePropagationPayload(rule, tagged.Payload);

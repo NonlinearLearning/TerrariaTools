@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class LambdaDelegateParameterShrinkProposalRule : DelegateUsageProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.lambda-delegate-parameter-shrink";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-LAMBDA-DELEGATE-PARAM-SHRINK-001";
+    public override string RuleId { get; } = "propose.type.lambda-delegate-parameter-shrink";
 
 
     public override string Name { get; } = "Shrink delegate parameters and lambda bindings when the delete-class target flows through a custom delegate signature";

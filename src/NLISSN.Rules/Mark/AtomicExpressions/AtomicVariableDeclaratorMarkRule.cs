@@ -9,15 +9,14 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicVariableDeclaratorMarkRule : RuleDefinitionMark
 {
-    private static readonly RuleSemanticTag AtomicTargetSemanticTag = RuleFactPorts.TargetExpression;
-    public override string CapabilityId { get; } = "mark.target.variable-declarator";
+    private static readonly RuleFactKind AtomicTargetFactKind = RuleFactKind.TargetExpression;
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-DECL-001";
+    public override string RuleId { get; } = "mark.target.variable-declarator";
     public override string Name { get; } = "Match s-rooted variable declarators";
     public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds { get; } = new[] { SyntaxKind.VariableDeclarator };
     public override RuleProducesContract Produces { get; } = new(new[]
     {
-        new RuleProducedSyntax(new[] { SyntaxKind.VariableDeclarator }, AtomicTargetSemanticTag)
+        new RuleProducedSyntax(new[] { SyntaxKind.VariableDeclarator }, AtomicTargetFactKind)
     });
 
     // 把命中目标名称的变量定义点收束为 declarator，供后续符号传播沿定义继续扩展。
@@ -26,7 +25,7 @@ public sealed class AtomicVariableDeclaratorMarkRule : RuleDefinitionMark
         return AtomicMarkRuleHelpers.BuildDefinitionLeftValueMarks(context, root, RuleId)
           .Select(mark => mark with
           {
-            SemanticTag = AtomicTargetSemanticTag,
+            FactKind = AtomicTargetFactKind,
             Origins = RuleEvidenceOrigin.AtomicExpression
           });
     }

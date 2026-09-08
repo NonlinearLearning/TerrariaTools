@@ -517,7 +517,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
         return new MarkingEngine()
             .Run(context, root, rules.Markers)
             .Where(mark =>
-              mark.SemanticTag == RuleFactPorts.TargetExpression &&
+              mark.FactKind == RuleFactKind.TargetExpression &&
               mark.Origins == RuleEvidenceOrigin.AtomicExpression)
             .ToList();
     }

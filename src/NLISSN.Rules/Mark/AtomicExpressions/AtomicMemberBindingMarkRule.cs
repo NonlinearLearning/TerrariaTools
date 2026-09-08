@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicMemberBindingMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.member-binding";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-BINDING-001";
+    public override string RuleId { get; } = "mark.target.member-binding";
     public override string Name { get; } = "Match s-rooted member binding expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.MemberBindingExpression;
 }

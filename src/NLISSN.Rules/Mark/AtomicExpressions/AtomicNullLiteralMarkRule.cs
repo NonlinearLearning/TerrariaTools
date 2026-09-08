@@ -9,9 +9,8 @@ namespace NLISSN.Rules;
 
 public sealed class AtomicNullLiteralMarkRule : AtomicExpressionMarkRuleBase
 {
-    public override string CapabilityId { get; } = "mark.target.null-literal";
 
-    public override string RuleId { get; } = "DEL-SOBJ-MARK-LIT-NULL-001";
+    public override string RuleId { get; } = "mark.target.null-literal";
     public override string Name { get; } = "Match s-rooted null literal expressions";
     protected override SyntaxKind MarkKind => SyntaxKind.NullLiteralExpression;
 }

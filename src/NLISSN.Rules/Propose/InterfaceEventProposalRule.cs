@@ -11,9 +11,8 @@ namespace NLISSN.Rules;
 
 public sealed class InterfaceEventProposalRule : DeclarationHostProposalRuleBase
 {
-    public override string CapabilityId { get; } = "propose.type.interface-event";
 
-    public override string RuleId { get; } = "DEL-CLASS-PROP-IFACE-EVENT-001";
+    public override string RuleId { get; } = "propose.type.interface-event";
 
 
     public override string Name { get; } = "Delete interface events whose signature references the delete-class target";
