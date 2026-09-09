@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -21,6 +22,8 @@ public sealed class ApplicationService
     private readonly CompiledRuleGraph _compiledRuleGraph;
     private readonly PrototypeRewriter _rewriter;
     private readonly ICallFlowResolver? _callFlowResolver;
+    private readonly ConcurrentDictionary<Compilation, ICallFlowResolver> _defaultCallFlowResolvers =
+        new(ReferenceEqualityComparer.Instance);
 
     // 用完整规则管道初始化单文件分析服务，并准备四个阶段的执行器和改写器。
     public ApplicationService(RulePipeline pipeline, ICallFlowResolver? callFlowResolver = null)
@@ -211,11 +214,15 @@ public sealed class ApplicationService
       SemanticModel semanticModel,
       SyntaxNode root)
     {
+        var callFlowResolver = _callFlowResolver ??
+          _defaultCallFlowResolvers.GetOrAdd(
+            semanticModel.Compilation,
+            FlowSummaryResolverFactory.Create);
         var builderOptions = NLCPGBuilderOptions.CreateDefault() with
         {
             MaxDegreeOfParallelism = runtime.CurrentCpgBuildAdmissionLease!.GrantedDegree,
             RequestedCapabilities = _pipeline.GetRequiredCapabilities(),
-            CallFlowResolver = _callFlowResolver,
+            CallFlowResolver = callFlowResolver,
         };
         var builder = new NLCPGBuilder(builderOptions);
         var graph = builder.BuildFromSemanticModel(
@@ -232,7 +239,7 @@ public sealed class ApplicationService
           semanticModel,
           root,
           availableCapabilities,
-          CallFlowResolver: _callFlowResolver);
+          CallFlowResolver: callFlowResolver);
         var session = new AnalysisSession(cpgAnalysisContext, settings, runtime: runtime);
 
         return new AnalysisContext(
