@@ -105,6 +105,9 @@ internal static class TargetProposalContracts
         return new RuleConsumesContract(new[]
         {
             new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.TargetExpressionInputNodeKinds, RuleFactKind.TargetExpression),
+            new RuleConsumedSyntax(
+              ExternalSummaryFlowPropagationRule.SourceNodeKinds,
+              ExternalSummaryFlowPayload.SemanticTag),
             new RuleConsumedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactKind.TargetDeclaration),
             new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget),
             new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition),

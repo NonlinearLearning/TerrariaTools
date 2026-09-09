@@ -116,9 +116,19 @@ public static class ProposalHelpers
         var protectedSeedKeys = propagatedMarks
           .Where(mark => mark.Payload is ExternalSummaryFlowPayload
           {
-              IsParameterToReturn: true
+              ProtectsInput: true
           })
-          .Select(mark => BuildNodeKey(mark.Mark.SyntaxNode))
+          .SelectMany(mark =>
+          {
+              var payload = (ExternalSummaryFlowPayload)mark.Payload!;
+              return new[]
+              {
+                  mark.Mark.SyntaxNode,
+                  payload.SourceSyntax,
+                  payload.InvocationSyntax,
+              }.Where(node => node is not null).Cast<SyntaxNode>();
+          })
+          .Select(BuildNodeKey)
           .ToHashSet();
 
         foreach (var seedMark in seedMarks)
