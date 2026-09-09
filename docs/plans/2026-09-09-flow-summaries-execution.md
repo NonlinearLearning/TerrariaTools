@@ -356,6 +356,8 @@ git diff --check
 
 Expected: harness consistency 和 whitespace check 均通过；若 CLI 或开发流程契约发生变化，再同步检查 `docs/quick-start.md`、`docs/cli-reference.md`、`docs/developer-guide.md` 和 `docs/contributing.md`。
 
+本次收口实际执行了 `git diff --check` 并通过；当前隔离 worktree 不包含 `Context/AGENTS.md`，使用主 checkout 中的同一脚本并以本 worktree 作为 `-RepoRoot` 执行时在该缺失基线文件处失败，因此该项保持未勾选。
+
 **Step 4: Update implementation evidence**
 
 在计划的 Definition of Done 中只勾选实际运行并通过的项目；记录默认启用的候选、排除项、metrics 行为和跨文件 project boundary 的剩余限制。
