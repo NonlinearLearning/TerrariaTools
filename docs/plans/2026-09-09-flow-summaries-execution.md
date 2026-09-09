@@ -356,7 +356,7 @@ git diff --check
 
 Expected: harness consistency 和 whitespace check 均通过；若 CLI 或开发流程契约发生变化，再同步检查 `docs/quick-start.md`、`docs/cli-reference.md`、`docs/developer-guide.md` 和 `docs/contributing.md`。
 
-本次收口实际执行了 `git diff --check` 并通过；当前隔离 worktree 不包含 `Context/AGENTS.md`，使用主 checkout 中的同一脚本并以本 worktree 作为 `-RepoRoot` 执行时在该缺失基线文件处失败，因此该项保持未勾选。
+本次收口实际执行了 `git diff --check` 并通过；当前隔离 worktree 不包含被 `.gitignore` 管理的 `Context/` 和 harness 脚本，因此临时提供同一主 checkout 基线的 `Context/`，使用主 checkout 中的脚本并以本 worktree 作为 `-RepoRoot` 执行，结果为 `[check-harness-consistency] OK`。验证副本随后已删除，未进入提交。
 
 **Step 4: Update implementation evidence**
 
@@ -381,4 +381,4 @@ Expected: harness consistency 和 whitespace check 均通过；若 CLI 或开发
 - [x] 至少一个真实稳定外部 API（`System.Object.ToString()`）完成默认启用；`Path.Combine`、`Task.FromResult` 等候选已验证未加入默认目录。
 - [x] LINQ 元素流、`TryGetValue` 条件 out、副作用 API 和跨文件项目 helper 没有被错误地用摘要覆盖。
 - [x] CPG、规则传播、删除保护、证据、持久化、DOP 稳定性和 Workspace 边界测试通过。
-- [ ] `check-harness-consistency.ps1` 和 `git diff --check` 通过，文档只记录实际完成的范围。
+- [x] `check-harness-consistency.ps1` 和 `git diff --check` 通过，文档只记录实际完成的范围。
