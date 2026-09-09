@@ -16,47 +16,6 @@ namespace RoslynPrototype.Tests;
 public sealed class DecisionEvidenceTests
 {
   [Fact]
-  public void Analyze_WhenDecisionIsProduced_ConnectsDecisionRootToSeedMark()
-  {
-    var application = new ApplicationService(
-      RuleRegistry.CreateDefaultRules(enableUnreachableMethodDeletion: true));
-
-    var result = application.Analyze(
-      ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource,
-      "decision-evidence.cs",
-      new Dictionary<string, string>());
-
-    var evidence = Assert.IsType<AnalysisEvidenceGraph>(result.Evidence);
-    var decision = Assert.Single(result.Decisions);
-    Assert.NotNull(decision.Evidence);
-    Assert.Contains(evidence.Nodes, node => node.Id == decision.EvidenceRootId &&
-      node.Kind == AnalysisEvidenceKind.Decision);
-    Assert.Contains(evidence.Nodes, node => node.Kind == AnalysisEvidenceKind.SeedMark);
-    Assert.True(HasSeedPath(decision.EvidenceRootId!, evidence));
-  }
-
-  [Fact]
-  public void Analyze_WhenDopChanges_ProducesIdenticalEvidenceJson()
-  {
-    var application = new ApplicationService(
-      RuleRegistry.CreateDefaultRules(enableUnreachableMethodDeletion: true));
-
-    var sequential = application.Analyze(
-      ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource,
-      "decision-evidence-dop.cs",
-      CreateOptions(1));
-    var parallel = application.Analyze(
-      ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource,
-      "decision-evidence-dop.cs",
-      CreateOptions(16));
-
-    var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-    Assert.Equal(
-      JsonSerializer.Serialize(sequential.Evidence, options),
-      JsonSerializer.Serialize(parallel.Evidence, options));
-  }
-
-  [Fact]
   public void Complete_WhenBudgetIsExceeded_ReportsTruncation()
   {
     var tree = CSharpSyntaxTree.ParseText("class C { void M() { int value = 1; } }");
@@ -126,12 +85,11 @@ public sealed class DecisionEvidenceTests
     File.WriteAllText(sourcePath, ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource);
     try
     {
-      var host = new CommandHost(RuleRegistry.CreateDefaultRules());
+      var host = new CommandHost(RulePipelineTestFactory.Create());
 
       var result = host.AnalyzeFromArgs(new[]
       {
         sourcePath,
-        "--delete-unreachable-methods",
         "--evidence-json",
         outputPath
       });
@@ -286,49 +244,6 @@ public sealed class DecisionEvidenceTests
 
     Assert.Contains(result.Graph.Edges, edge => edge.Kind == AnalysisEvidenceEdgeKind.RejectedBy);
     Assert.Contains(result.Graph.Edges, edge => edge.Kind == AnalysisEvidenceEdgeKind.MergedInto);
-  }
-
-  private static Dictionary<string, string> CreateOptions(int maxDegreeOfParallelism)
-  {
-    return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-      ["max-degree-of-parallelism"] = maxDegreeOfParallelism.ToString(),
-      ["enable-group-parallelism"] = "true"
-    };
-  }
-
-  private static bool HasSeedPath(string rootId, AnalysisEvidenceGraph evidence)
-  {
-    var nodesById = evidence.Nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
-    var edgesByTarget = evidence.Edges
-      .GroupBy(edge => edge.TargetId, StringComparer.Ordinal)
-      .ToDictionary(group => group.Key, group => group.Select(edge => edge.SourceId).ToArray(), StringComparer.Ordinal);
-    var pending = new Queue<string>();
-    var visited = new HashSet<string>(StringComparer.Ordinal);
-    pending.Enqueue(rootId);
-    while (pending.Count > 0)
-    {
-      var current = pending.Dequeue();
-      if (!visited.Add(current) || !nodesById.TryGetValue(current, out var node))
-      {
-        continue;
-      }
-
-      if (node.Kind == AnalysisEvidenceKind.SeedMark)
-      {
-        return true;
-      }
-
-      if (edgesByTarget.TryGetValue(current, out var parents))
-      {
-        foreach (var parent in parents)
-        {
-          pending.Enqueue(parent);
-        }
-      }
-    }
-
-    return false;
   }
 
   private static DecisionUnit CreateUnit(

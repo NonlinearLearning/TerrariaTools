@@ -9,6 +9,7 @@ namespace NLISSN.Rules;
 
 /// 把 delete-class 对象创建命中收束到局部声明点，
 /// 让后续局部符号引用传播只依赖稳定 declarator，而不是具体 new 表达式形状。
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class ObjectCreationDeclarationPropagationRule : RuleDefinitionPropagate
 {
     private static readonly RuleConsumesContract ObjectCreationConsumes = new(new[]

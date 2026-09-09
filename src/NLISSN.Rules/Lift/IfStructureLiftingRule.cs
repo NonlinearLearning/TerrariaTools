@@ -7,6 +7,7 @@ using NLISSN.Core.Decision;
 namespace NLISSN.Rules;
 
 /// 将 if 结构的完成态传播事实转换为结构化 Lift 记录。
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class IfStructureLiftingRule : RuleDefinitionLift
 {
     private static readonly RuleFactKind IfStructureFactKind = RuleFactKind.LiftIfStructure;

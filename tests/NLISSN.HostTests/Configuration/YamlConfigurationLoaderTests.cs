@@ -271,7 +271,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
     var configuration = YamlConfigurationLoader.Load(configurationPath);
 
     YamlConfigurationLoader.PrepareRunArtifacts(configuration);
-    var result = new CommandHost(RuleRegistry.CreateDefaultRules()).Analyze(configuration);
+    var result = new CommandHost(RulePipelineTestFactory.Create()).Analyze(configuration);
 
     Assert.NotEmpty(result.Edits);
     Assert.True(File.Exists(configuration.Artifacts.ResolvedConfigurationPath));
@@ -476,7 +476,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       "mode: none");
 
     YamlConfigurationLoader.PrepareRunArtifacts(configuration);
-    var result = new CommandHost(RuleRegistry.CreateDefaultRules()).Analyze(configuration);
+    var result = new CommandHost(RulePipelineTestFactory.Create()).Analyze(configuration);
 
     Assert.NotEmpty(result.Edits);
     Assert.Equal(configuration.Artifacts.DiffRoot, result.DiffFilePath);
@@ -495,7 +495,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       "writeBack: false",
       "mode: capture");
     YamlConfigurationLoader.PrepareRunArtifacts(capture);
-    var host = new CommandHost(RuleRegistry.CreateDefaultRules());
+    var host = new CommandHost(RulePipelineTestFactory.Create());
     var captured = host.Analyze(capture);
 
     var replay = LoadConfiguration(
@@ -538,7 +538,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
         "mode: none",
         degreeOfParallelism);
       YamlConfigurationLoader.PrepareRunArtifacts(configuration);
-      var result = new CommandHost(RuleRegistry.CreateDefaultRules()).Analyze(configuration);
+      var result = new CommandHost(RulePipelineTestFactory.Create()).Analyze(configuration);
       outcomes.Add((
         result,
         configuration,

@@ -20,33 +20,6 @@ namespace RoslynPrototype.Tests;
 public sealed class DecisionStructureValidationTests
 {
     [Fact]
-    public void RuleDecisionEngine_UsesProposalModelDirectly()
-    {
-        var source = MinimalSources.EmptyMainWithDeadMethodSource;
-
-        var (context, root, rules) = CreateContextAndRules(source);
-        var markRule = rules.Markers.OfType<UnreachableMethodMarkRule>().Single();
-        var proposalRule = rules.Proposers.OfType<UnreachableMethodProposalRule>().Single();
-        var seedMarks = markRule.Mark(context.CreateMarkContext(), root).ToList();
-        var proposals = proposalRule.Propose(
-          context.CreateProposeContext(),
-          seedMarks,
-          Array.Empty<PropagatedMarkRecord>(),
-          Array.Empty<LiftedMarkRecord>()).ToList();
-        var engine = new RuleDecisionEngine();
-        var engineDecisions = engine.Decide(
-          context,
-          seedMarks,
-          Array.Empty<PropagatedMarkRecord>(),
-          Array.Empty<LiftedMarkRecord>(),
-          rules.Proposers).ToList();
-
-        Assert.NotEmpty(seedMarks);
-        Assert.All(proposals, proposal => Assert.Equal(DecisionActionKind.Delete, proposal.Action));
-        Assert.Equal(seedMarks.Count, engineDecisions.Count);
-    }
-
-    [Fact]
     public void RuleDecisionEngine_CollapsesSeedAndStructuralHostInsideSameConflictDomain()
     {
         var source = AtomicControlFlowSources.IfHostConflictSource;
@@ -110,7 +83,7 @@ public sealed class DecisionStructureValidationTests
         {
           ["delete-class"] = "PlayerInput"
         };
-        var service = new ApplicationService(RuleRegistry.CreateDefaultRules());
+        var service = new ApplicationService(RulePipelineTestFactory.Create());
 
         var result = service.Analyze(source, "class-derived-logical-if.cs", options);
 
@@ -157,7 +130,7 @@ public sealed class DecisionStructureValidationTests
         {
           ["delete-class"] = "PlayerInput"
         };
-        var service = new ApplicationService(RuleRegistry.CreateDefaultRules());
+        var service = new ApplicationService(RulePipelineTestFactory.Create());
 
         var result = service.Analyze(source, "class-derived-logical-initializer.cs", options);
 
@@ -241,7 +214,7 @@ public sealed class DecisionStructureValidationTests
         var context = new AnalysisSession(
           new CpgAnalysisContext(graph, semanticModel, root),
           AnalysisLegacyOptionsTestExtensions.CreateSettings(options));
-        var rules = RuleRegistry.CreateDefaultRules(enableUnreachableMethodDeletion: true);
+        var rules = RulePipelineTestFactory.Create();
         return (context, root, rules);
     }
 

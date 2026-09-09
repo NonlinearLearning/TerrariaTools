@@ -7,6 +7,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// Promotes an unused interface implementation into a body-replacement fact.
+[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
 public sealed class ClearUnusedInterfaceImplementationLiftingRule : RuleDefinitionLift
 {
 public override string RuleId { get; } = "lift.clear-unused-interface-implementation";

@@ -7,6 +7,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 为方法参数删除汇总声明宿主与调用点，并把不同调用约束编码成 mode，供后续收缩提案选择正确改写策略。
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class MethodParameterUsagePropagationRule : RuleDefinitionPropagate
 {
     private static readonly RuleConsumesContract TypeSyntaxFactsConsumes = new(new[]

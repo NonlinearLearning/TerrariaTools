@@ -11,6 +11,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 删除已确认不再需要的接口实现方法体，同时保留接口声明的其他契约。
+[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
 public sealed class ClearUnusedInterfaceImplementationProposalRule : RuleDefinitionPropose
 {
     private static readonly RuleConsumesContract UnusedInterfaceImplementationConsumes =

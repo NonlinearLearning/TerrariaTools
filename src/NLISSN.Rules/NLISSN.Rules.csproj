@@ -13,6 +13,7 @@
     <Using Include="NLISSN.Core.Pipeline" />
     <Using Include="NLISSN.Core.Propagation" />
     <ProjectReference Include="..\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
+    <ProjectReference Include="..\NLISSN.Rule.Generator\NLISSN.Rule.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\NLISSN.Core\NLISSN.Core.csproj" />
     <ProjectReference Include="..\NLCPG\NLCPG.csproj" />
   </ItemGroup>

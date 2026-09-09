@@ -26,20 +26,6 @@ namespace RoslynPrototype.Tests;
 
 public sealed class PipelineComponentTests : IDisposable
 {
-    private static readonly string[] OptionalGlobalRuleIds =
-    {
-        "mark.unreachable-method",
-        "mark.unreferenced-method",
-        "mark.clear-unused-interface-implementation",
-        "mark.privatize-internal-only-public-method"
-    };
-
-    private const string OptionalGlobalRulesSource =
-        "public interface IUnused { void Clear(); } " +
-        "public sealed class Sample : IUnused { public void Clear() { } " +
-        "public void Internal() { } public void Run() { Internal(); } private void Remove() { } } " +
-        "public static class Program { public static void Main() { } private static void Dead() { } }";
-
     private readonly string _tempDirectory;
 
     public PipelineComponentTests()
@@ -71,7 +57,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_WithSkipRewrite_DoesNotRetainRewrittenSource()
     {
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1559,7 +1545,7 @@ public sealed class PipelineComponentTests : IDisposable
             "Cli");
         BuildDiffArtifactWriter.InitializeDiffFile(aggregateDiffPath);
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1582,7 +1568,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "delete-s-object-readable.cs");
         var rawDiffPath = Path.Combine(_tempDirectory, "delete-s-object-readable.diff");
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1603,7 +1589,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_UsesDefaultSourceWhenInputPathIsMissing()
     {
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[] { "--target-name", "s" });
 
@@ -1620,7 +1606,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "no-edits-sample.cs");
         File.WriteAllText(filePath, MinimalSources.EmptyMainSource);
         var explicitDiffPath = Path.Combine(_tempDirectory, "no-edits.diff");
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1644,7 +1630,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "single-file-no-diff.cs");
         var expectedDiffPath = Path.Combine(_tempDirectory, "single-file-no-diff.rewrite.diff");
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1704,7 +1690,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1788,7 +1774,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var serialResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1869,7 +1855,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_WithInvalidCpgDopOverride_ThrowsArgumentException()
     {
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var exception = Assert.Throws<ArgumentException>(() => CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1912,7 +1898,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var defaultResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1937,70 +1923,6 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.NotEmpty(defaultResult.Edits);
         Assert.NotEmpty(helperSerialResult.Edits);
         AssertEquivalentAnalysisResults(defaultResult, helperSerialResult);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteUnreferencedMethods_WithNoDiff_WritesBackWithoutCreatingDiffArtifacts()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "delete-unreferenced-no-diff-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        var callerFilePath = Path.Combine(projectDirectory, "Caller.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Worker
-          {
-            public int Run()
-            {
-              return KeepAlive();
-            }
-
-            private int KeepAlive()
-            {
-              return 1;
-            }
-
-            private int DeadPrivate()
-            {
-              return 2;
-            }
-          }
-          """);
-        File.WriteAllText(
-          callerFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Caller
-          {
-            public int Run()
-            {
-              return new Worker().Run();
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--delete-unreferenced-methods",
-          "--write-back",
-          "--no-diff"
-        });
-
-        Assert.NotEmpty(result.Edits);
-        Assert.Null(result.DiffFilePath);
-        Assert.Empty(Directory.EnumerateFiles(
-          projectDirectory,
-          "*.rewrite.diff",
-          SearchOption.AllDirectories));
-        var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("private int KeepAlive()", rewrittenServiceSource, result.Diff);
-        Assert.DoesNotContain("private int DeadPrivate()", rewrittenServiceSource, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -2035,7 +1957,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2081,7 +2003,7 @@ public sealed class PipelineComponentTests : IDisposable
         File.WriteAllText(
           Path.Combine(systemsDirectory, "Renderer.cs"),
           DirectorySources.RendererWithBlockBodyUsingPlayerInputSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
         var diffRootPath = Path.Combine(_tempDirectory, "concurrent-diff-output");
         var resultsByDegree = new Dictionary<int, PrototypeAnalysisResult>();
         var diffBytesByDegree = new Dictionary<int, IReadOnlyDictionary<string, byte[]>>();
@@ -2129,7 +2051,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-large-asset-project");
         LargeSources.WriteLargeProject(projectDirectory);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2191,7 +2113,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2245,7 +2167,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2293,7 +2215,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2340,7 +2262,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2388,7 +2310,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2444,7 +2366,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2506,7 +2428,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2573,7 +2495,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2634,7 +2556,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2689,7 +2611,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2753,7 +2675,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2814,7 +2736,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2880,7 +2802,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2940,7 +2862,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3003,7 +2925,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3067,7 +2989,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3126,7 +3048,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3189,7 +3111,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3244,7 +3166,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3297,7 +3219,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3350,7 +3272,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3391,7 +3313,7 @@ public sealed class PipelineComponentTests : IDisposable
 
           public delegate int Keep(int frame);
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3444,7 +3366,7 @@ public sealed class PipelineComponentTests : IDisposable
             int Keep();
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3504,7 +3426,7 @@ public sealed class PipelineComponentTests : IDisposable
             int Keep { get; }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3557,7 +3479,7 @@ public sealed class PipelineComponentTests : IDisposable
             event System.Action KeepAlive;
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3613,7 +3535,7 @@ public sealed class PipelineComponentTests : IDisposable
             int this[string key] { get; }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3658,7 +3580,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3716,7 +3638,7 @@ public sealed class PipelineComponentTests : IDisposable
           {
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3776,7 +3698,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3824,7 +3746,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3865,7 +3787,7 @@ public sealed class PipelineComponentTests : IDisposable
 
           public delegate void Keep(int frame);
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3930,7 +3852,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4011,7 +3933,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4057,7 +3979,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4095,7 +4017,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4153,7 +4075,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4212,7 +4134,7 @@ public sealed class PipelineComponentTests : IDisposable
             public int Count() => 42;
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4265,7 +4187,7 @@ public sealed class PipelineComponentTests : IDisposable
             public int Count() => 42;
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4279,581 +4201,6 @@ public sealed class PipelineComponentTests : IDisposable
         var stats = Assert.IsType<AnalysisStats>(result.Stats);
         Assert.Equal(3, stats.ScannedFileCount);
         Assert.Equal(3, stats.AnalyzedFileCount);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteUnreferencedMethods_RemovesOnlyDeadPrivateMethods()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "delete-unreferenced-method-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        var callerFilePath = Path.Combine(projectDirectory, "Caller.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Worker
-          {
-            public int Run()
-            {
-              return Used() + 1;
-            }
-
-            private int Used()
-            {
-              return Helper();
-            }
-
-            private int Helper()
-            {
-              return 1;
-            }
-
-            private int Unused()
-            {
-              return 2;
-            }
-
-            private int DeadCaller()
-            {
-              return DeadCallee();
-            }
-
-            private int DeadCallee()
-            {
-              return 3;
-            }
-
-            private int SelfRecursive()
-            {
-              return SelfRecursive();
-            }
-
-            private int DeadCycleA()
-            {
-              return DeadCycleB();
-            }
-
-            private int DeadCycleB()
-            {
-              return DeadCycleA();
-            }
-          }
-          """);
-        File.WriteAllText(
-          callerFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Caller
-          {
-            public int Run()
-            {
-              return new Worker().Run();
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--delete-unreferenced-methods",
-          "--write-back"
-        });
-
-        Assert.NotEmpty(result.SeedMarks);
-        Assert.NotEmpty(result.Edits);
-        var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("private int Used()", rewrittenServiceSource, result.Diff);
-        TextDiffAssert.Contains("private int Helper()", rewrittenServiceSource, result.Diff);
-        Assert.DoesNotContain("private int Unused()", rewrittenServiceSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("private int DeadCaller()", rewrittenServiceSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("private int DeadCallee()", rewrittenServiceSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("private int SelfRecursive()", rewrittenServiceSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("private int DeadCycleA()", rewrittenServiceSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("private int DeadCycleB()", rewrittenServiceSource, StringComparison.Ordinal);
-        Assert.NotNull(result.Stats);
-        Assert.Equal(2, result.Stats!.ScannedFileCount);
-        Assert.Equal(8, result.Stats.CandidateMethodCount);
-        Assert.Equal(6, result.Stats.DeletedMethodCount);
-
-        var rewrittenTrees = new[]
-        {
-            CSharpSyntaxTree.ParseText(rewrittenServiceSource, path: serviceFilePath),
-            CSharpSyntaxTree.ParseText(File.ReadAllText(callerFilePath), path: callerFilePath)
-        };
-        var compilation = CreateCompilation(rewrittenTrees);
-        var errors = compilation.GetDiagnostics()
-          .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-          .ToList();
-        Assert.Empty(errors);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteUnreferencedMethods_KeepsPublicMethods()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "delete-unreferenced-public-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Worker
-          {
-            public int PublicApi()
-            {
-              return 1;
-            }
-
-            private int PrivateDead()
-            {
-              return 2;
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--delete-unreferenced-methods",
-          "--write-back"
-        });
-
-        Assert.NotEmpty(result.Edits);
-        var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("public int PublicApi()", rewrittenServiceSource, result.Diff);
-        Assert.DoesNotContain("private int PrivateDead()", rewrittenServiceSource, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteUnreferencedMethods_KeepsPrivateMethodsUsedByLocalFunctionAndDelegate()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "delete-unreferenced-local-function-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          using System;
-
-          namespace Demo;
-
-          public sealed class Worker
-          {
-            public int Run()
-            {
-              Func<int> thunk = DelegateTarget;
-              return thunk() + UseLocal();
-
-              int UseLocal()
-              {
-                return LocalTarget();
-              }
-            }
-
-            private int DelegateTarget()
-            {
-              return 1;
-            }
-
-            private int LocalTarget()
-            {
-              return 2;
-            }
-
-            private int DeadPrivate()
-            {
-              return 3;
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--delete-unreferenced-methods",
-          "--write-back"
-        });
-
-        Assert.NotEmpty(result.Edits);
-        var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("private int DelegateTarget()", rewrittenServiceSource, result.Diff);
-        TextDiffAssert.Contains("private int LocalTarget()", rewrittenServiceSource, result.Diff);
-        Assert.DoesNotContain("private int DeadPrivate()", rewrittenServiceSource, StringComparison.Ordinal);
-
-        var rewrittenTrees = new[]
-        {
-            CSharpSyntaxTree.ParseText(rewrittenServiceSource, path: serviceFilePath)
-        };
-        var compilation = CreateCompilation(rewrittenTrees);
-        var errors = compilation.GetDiagnostics()
-          .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-          .ToList();
-        Assert.Empty(errors);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryDeleteUnreferencedMethods_KeepsPrivateMethodsReferencedAcrossPartialFilesAndConstructor()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "delete-unreferenced-partial-project");
-        Directory.CreateDirectory(projectDirectory);
-        var firstPartialPath = Path.Combine(projectDirectory, "Worker.Part1.cs");
-        var secondPartialPath = Path.Combine(projectDirectory, "Worker.Part2.cs");
-        File.WriteAllText(
-          firstPartialPath,
-          """
-          namespace Demo;
-
-          public sealed partial class Worker
-          {
-            public Worker()
-            {
-              Initialize();
-            }
-
-            public int Run()
-            {
-              return UseShared();
-            }
-          }
-          """);
-        File.WriteAllText(
-          secondPartialPath,
-          """
-          namespace Demo;
-
-          public sealed partial class Worker
-          {
-            private int UseShared()
-            {
-              return SharedHelper();
-            }
-
-            private int SharedHelper()
-            {
-              return 1;
-            }
-
-            private void Initialize()
-            {
-              SharedHelper();
-            }
-
-            private int DeadPartial()
-            {
-              return 2;
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--delete-unreferenced-methods",
-          "--write-back"
-        });
-
-        Assert.NotEmpty(result.Edits);
-        var rewrittenSecondPartialSource = File.ReadAllText(secondPartialPath);
-        TextDiffAssert.Contains("private int UseShared()", rewrittenSecondPartialSource, result.Diff);
-        TextDiffAssert.Contains("private int SharedHelper()", rewrittenSecondPartialSource, result.Diff);
-        TextDiffAssert.Contains("private void Initialize()", rewrittenSecondPartialSource, result.Diff);
-        Assert.DoesNotContain("private int DeadPartial()", rewrittenSecondPartialSource, StringComparison.Ordinal);
-
-        var rewrittenTrees = new[]
-        {
-            CSharpSyntaxTree.ParseText(File.ReadAllText(firstPartialPath), path: firstPartialPath),
-            CSharpSyntaxTree.ParseText(rewrittenSecondPartialSource, path: secondPartialPath)
-        };
-        var compilation = CreateCompilation(rewrittenTrees);
-        var errors = compilation.GetDiagnostics()
-          .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-          .ToList();
-        Assert.Empty(errors);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryClearUnusedInterfaceImplementations_ReplacesBodiesWithCompileSafeStubs()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "clear-unused-interface-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Payload
-          {
-          }
-
-          public interface IWorker
-          {
-            Payload Create(out Payload value);
-
-            void Ping();
-          }
-
-          public sealed class Worker : IWorker
-          {
-            public Payload Create(out Payload value)
-            {
-              value = new Payload();
-              return value;
-            }
-
-            public void Ping()
-            {
-              var payload = new Payload();
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--clear-unused-interface-implementations",
-          "--write-back"
-        });
-
-        Assert.NotEmpty(result.SeedMarks);
-        Assert.NotEmpty(result.Decisions);
-        Assert.Contains(result.PropagatedMarks, mark => mark.RuleId == "propagate.clear-unused-interface-implementation");
-        Assert.Contains(result.LiftedMarks, mark => mark.RuleId == "lift.clear-unused-interface-implementation");
-        Assert.Contains(result.Decisions, decision => decision.Action == DecisionActionKind.Replace);
-        var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("value = new global::Demo.Payload();", rewrittenServiceSource, result.Diff);
-        TextDiffAssert.Contains("return new global::Demo.Payload();", rewrittenServiceSource, result.Diff);
-        Assert.DoesNotContain("return value;", rewrittenServiceSource, StringComparison.Ordinal);
-        Assert.DoesNotContain("var payload = new Payload();", rewrittenServiceSource, StringComparison.Ordinal);
-
-        var rewrittenTrees = new[]
-        {
-            CSharpSyntaxTree.ParseText(rewrittenServiceSource, path: serviceFilePath)
-        };
-        var compilation = CreateCompilation(rewrittenTrees);
-        var errors = compilation.GetDiagnostics()
-          .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-          .ToList();
-        Assert.Empty(errors);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryClearUnusedInterfaceImplementations_KeepsCalledInterfaceMembers()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "clear-called-interface-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        var callerFilePath = Path.Combine(projectDirectory, "Caller.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          namespace Demo;
-
-          public interface IWorker
-          {
-            void Ping();
-          }
-
-          public sealed class Worker : IWorker
-          {
-            public void Ping()
-            {
-              System.Console.WriteLine(1);
-            }
-          }
-          """);
-        File.WriteAllText(
-          callerFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Caller
-          {
-            public void Run(IWorker worker)
-            {
-              worker.Ping();
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--clear-unused-interface-implementations",
-          "--write-back"
-        });
-
-        Assert.Empty(result.Edits);
-        TextDiffAssert.Contains("System.Console.WriteLine(1);", File.ReadAllText(serviceFilePath), result.Diff);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryPrivatizeInternalOnlyPublicMethods_RewritesInternalPublicMethodToPrivate()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "privatize-internal-public-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Worker
-          {
-            public int Run()
-            {
-              return Helper();
-            }
-
-            public int Helper()
-            {
-              return 1;
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--privatize-internal-only-public-methods",
-          "--write-back"
-        });
-
-        Assert.NotEmpty(result.SeedMarks);
-        Assert.NotEmpty(result.Edits);
-        Assert.Contains(
-          result.PropagatedMarks,
-          mark => mark.RuleId == "propagate.privatize-internal-only-public-method");
-        Assert.Contains(
-          result.LiftedMarks,
-          mark => mark.RuleId == "lift.privatize-internal-only-public-method");
-        var rewrittenServiceSource = File.ReadAllText(serviceFilePath);
-        TextDiffAssert.Contains("public int Run()", rewrittenServiceSource, result.Diff);
-        TextDiffAssert.Contains("private int Helper()", rewrittenServiceSource, result.Diff);
-        Assert.DoesNotContain("public int Helper()", rewrittenServiceSource, StringComparison.Ordinal);
-
-        var rewrittenTrees = new[]
-        {
-            CSharpSyntaxTree.ParseText(rewrittenServiceSource, path: serviceFilePath)
-        };
-        var compilation = CreateCompilation(rewrittenTrees);
-        var errors = compilation.GetDiagnostics()
-          .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
-          .ToList();
-        Assert.Empty(errors);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryPrivatizeInternalOnlyPublicMethods_KeepsExternallyCalledPublicMethods()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "privatize-external-public-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        var callerFilePath = Path.Combine(projectDirectory, "Caller.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Worker
-          {
-            public int Run()
-            {
-              return Helper();
-            }
-
-            public int Helper()
-            {
-              return 1;
-            }
-          }
-          """);
-        File.WriteAllText(
-          callerFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Caller
-          {
-            public int Run(Worker worker)
-            {
-              return worker.Helper();
-            }
-          }
-          """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--privatize-internal-only-public-methods",
-          "--write-back"
-        });
-
-        Assert.Empty(result.Edits);
-        TextDiffAssert.Contains("public int Helper()", File.ReadAllText(serviceFilePath), result.Diff);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_ForDirectoryPrivatizeInternalOnlyPublicMethods_KeepsMethodsCalledThroughDynamicReceiver()
-    {
-        var projectDirectory = Path.Combine(_tempDirectory, "privatize-dynamic-external-public-project");
-        Directory.CreateDirectory(projectDirectory);
-        var serviceFilePath = Path.Combine(projectDirectory, "Worker.cs");
-        var callerFilePath = Path.Combine(projectDirectory, "Caller.cs");
-        File.WriteAllText(
-          serviceFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Worker
-          {
-            public int Run()
-            {
-              return Helper();
-            }
-
-            public int Helper()
-            {
-              return 1;
-            }
-          }
-          """);
-        File.WriteAllText(
-          callerFilePath,
-          """
-          namespace Demo;
-
-          public sealed class Caller
-          {
-            public int Run(Worker worker)
-            {
-              dynamic receiver = worker;
-              return receiver.Helper();
-            }
-          }
-          """);
-
-        var result = CreateCommandHost().AnalyzeFromArgs(new[]
-        {
-          projectDirectory,
-          "--privatize-internal-only-public-methods",
-          "--write-back"
-        });
-
-        Assert.Empty(result.Edits);
-        TextDiffAssert.Contains("public int Helper()", File.ReadAllText(serviceFilePath), result.Diff);
     }
 
     [Fact]
@@ -4876,9 +4223,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_ReturnsStableRuleSet()
+    public void RulePipelineComposer_ReturnsStableRuleSet()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineTestFactory.Create();
         var contractAssembly = typeof(RuleDefinitionMark).Assembly;
         var implementationAssembly = typeof(AtomicIdentifierNameMarkRule).Assembly;
         var markRuleType = contractAssembly.GetType("NLISSN.Core.Marking.RuleDefinitionMark");
@@ -4897,7 +4244,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.True(propagateRuleType!.IsClass);
         Assert.True(liftRuleType!.IsClass);
         Assert.True(proposeRuleType!.IsClass);
-        Assert.NotSame(typeof(RuleRegistry).Assembly, implementationAssembly);
+        Assert.NotSame(typeof(RulePipelineComposer).Assembly, implementationAssembly);
         Assert.NotSame(contractAssembly, implementationAssembly);
 
         Assert.True(rules.Markers.Count >= 10);
@@ -4967,12 +4314,12 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_UsesFlatStageRegistrationWithoutRuleFamilyTypes()
+    public void RulePipelineComposer_UsesFlatStageRegistrationWithoutRuleFamilyTypes()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineTestFactory.Create();
 
         Assert.DoesNotContain(
-          typeof(RuleRegistry).Assembly.GetTypes(),
+          typeof(RulePipelineComposer).Assembly.GetTypes(),
           type => type.Name.EndsWith("RuleSet", StringComparison.Ordinal) &&
             (type.Name.StartsWith("Type", StringComparison.Ordinal) ||
              type.Name.StartsWith("Target", StringComparison.Ordinal)));
@@ -4988,9 +4335,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_ExcludesUnreachableMethodRules()
+    public void RulePipelineComposer_ExcludesOptionalMethodRulesByDefault()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineTestFactory.Create();
 
         Assert.DoesNotContain(rules.Markers, rule => rule is UnreachableMethodMarkRule);
         Assert.DoesNotContain(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
@@ -4998,7 +4345,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.DoesNotContain(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
         Assert.DoesNotContain(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
         Assert.DoesNotContain(
-          typeof(RuleRegistry).Assembly.GetTypes(),
+          typeof(RulePipelineComposer).Assembly.GetTypes(),
           type => type.Name.Contains("RuleSet", StringComparison.Ordinal));
     }
 
@@ -5038,63 +4385,6 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_WhenOptionalGlobalRulesEnabled_RegistersRulePairs()
-    {
-        var rules = RuleRegistry.CreateDefaultRules(
-          enableUnreachableMethodDeletion: true,
-          enableUnreferencedMethodDeletion: true,
-          enableUnusedInterfaceImplementationCleanup: true,
-          enableInternalOnlyPublicMethodPrivatization: true);
-
-        Assert.Contains(rules.Markers, rule => rule is UnreachableMethodMarkRule);
-        Assert.Contains(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
-        Assert.Contains(rules.Markers, rule => rule is UnreferencedMethodMarkRule);
-        Assert.Contains(rules.Proposers, rule => rule is UnreferencedMethodProposalRule);
-        Assert.Contains(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
-        Assert.Contains(rules.Proposers, rule => rule is ClearUnusedInterfaceImplementationProposalRule);
-        Assert.Contains(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
-        Assert.Contains(rules.Proposers, rule => rule is PrivatizeInternalOnlyPublicMethodProposalRule);
-        Assert.NotEmpty(rules.CompileRuleGraph().Nodes);
-    }
-
-    [Fact]
-    public void RuleRegistry_CreateDefaultRules_ExcludesOptionalGlobalRulesUntilEnabled()
-    {
-        var rules = RuleRegistry.CreateDefaultRules();
-
-        Assert.DoesNotContain(rules.Markers, rule => rule is UnreachableMethodMarkRule);
-        Assert.DoesNotContain(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
-        Assert.DoesNotContain(rules.Markers, rule => rule is UnreferencedMethodMarkRule);
-        Assert.DoesNotContain(rules.Proposers, rule => rule is UnreferencedMethodProposalRule);
-        Assert.DoesNotContain(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
-        Assert.DoesNotContain(rules.Proposers, rule => rule is ClearUnusedInterfaceImplementationProposalRule);
-        Assert.DoesNotContain(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
-        Assert.DoesNotContain(rules.Proposers, rule => rule is PrivatizeInternalOnlyPublicMethodProposalRule);
-    }
-
-    [Fact]
-    public void AnalyzeFromArgs_WhenUnreachableMethodDeletionEnabled_DeletesOnlyAfterExplicitOptIn()
-    {
-        var sourcePath = Path.Combine(_tempDirectory, "unreachable-method.cs");
-        File.WriteAllText(
-          sourcePath,
-          "public static class Program { public static void Main() { } private static void Dead() { } }");
-        var host = CreateCommandHost();
-
-        var defaultResult = host.AnalyzeFromArgs(new[] { sourcePath, "--no-diff" });
-        var enabledResult = host.AnalyzeFromArgs(new[]
-        {
-          sourcePath,
-          "--delete-unreachable-methods",
-          "--no-diff"
-        });
-
-        Assert.DoesNotContain(defaultResult.SeedMarks, mark => mark.RuleId == "mark.unreachable-method");
-        Assert.Contains(enabledResult.SeedMarks, mark => mark.RuleId == "mark.unreachable-method");
-        Assert.DoesNotContain("Dead", enabledResult.RewrittenSource, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public void Analyze_ConfigurationFile_SuppressesUnsafeLocalDeclarationRewrite()
     {
         var sourcePath = Path.Combine(_tempDirectory, "configured-input.cs");
@@ -5124,108 +4414,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void Analyze_ConfigurationFile_EnablesOptionalGlobalRules()
-    {
-        var sourcePath = Path.Combine(_tempDirectory, "optional-rules.cs");
-        var configurationPath = Path.Combine(_tempDirectory, "optional-rules.yml");
-        File.WriteAllText(sourcePath, OptionalGlobalRulesSource);
-        File.WriteAllText(
-          configurationPath,
-          """
-          schemaVersion: 2
-          runId: optional-rules
-          input:
-            path: optional-rules.cs
-          analysis:
-            deleteUnreachableMethods: true
-            deleteUnreferencedMethods: true
-            clearUnusedInterfaceImplementations: true
-            privatizeInternalOnlyPublicMethods: true
-          execution:
-            maxDegreeOfParallelism: 1
-          artifacts:
-            root: artifacts
-            diff:
-              enabled: false
-          """);
-
-        var result = CreateCommandHost().Analyze(YamlConfigurationLoader.Load(configurationPath));
-
-        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "mark.unreachable-method");
-        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "mark.unreferenced-method");
-        Assert.Contains(result.SeedMarks, mark => mark.RuleId == "mark.clear-unused-interface-implementation");
-        Assert.Contains(result.SeedMarks, mark =>
-          mark.RuleId == "mark.privatize-internal-only-public-method");
-    }
-
-    [Fact]
-    public void Analyze_ConfigurationFile_DefaultPolicy_DoesNotActivateOptionalGlobalRules()
-    {
-        var sourcePath = Path.Combine(_tempDirectory, "default-optional-rules.cs");
-        var configurationPath = Path.Combine(_tempDirectory, "default-optional-rules.yml");
-        File.WriteAllText(sourcePath, OptionalGlobalRulesSource);
-        File.WriteAllText(
-          configurationPath,
-          """
-          schemaVersion: 2
-          runId: default-optional-rules
-          input:
-            path: default-optional-rules.cs
-          analysis: {}
-          execution:
-            maxDegreeOfParallelism: 1
-          artifacts:
-            root: artifacts
-            diff:
-              enabled: false
-          """);
-
-        var result = CreateCommandHost().Analyze(YamlConfigurationLoader.Load(configurationPath));
-
-        AssertNoOptionalGlobalRuleMarks(result);
-    }
-
-    [Theory]
-    [InlineData("deleteUnreachableMethods", "mark.unreachable-method")]
-    [InlineData("deleteUnreferencedMethods", "mark.unreferenced-method")]
-    [InlineData("clearUnusedInterfaceImplementations", "mark.clear-unused-interface-implementation")]
-    [InlineData("privatizeInternalOnlyPublicMethods", "mark.privatize-internal-only-public-method")]
-    public void Analyze_ConfigurationFile_EnablesOnlyTheSelectedOptionalGlobalRule(
-        string policyName,
-        string expectedRuleId)
-    {
-        var sourceFileName = $"{policyName}.cs";
-        var sourcePath = Path.Combine(_tempDirectory, sourceFileName);
-        var configurationPath = Path.Combine(_tempDirectory, $"{policyName}.yml");
-        File.WriteAllText(sourcePath, OptionalGlobalRulesSource);
-        File.WriteAllText(
-          configurationPath,
-          $$"""
-          schemaVersion: 2
-          runId: {{policyName}}
-          input:
-            path: {{sourceFileName}}
-          analysis:
-            {{policyName}}: true
-          execution:
-            maxDegreeOfParallelism: 1
-          artifacts:
-            root: artifacts
-            diff:
-              enabled: false
-          """);
-
-        var result = CreateCommandHost().Analyze(YamlConfigurationLoader.Load(configurationPath));
-
-        Assert.Contains(result.SeedMarks, mark => mark.RuleId == expectedRuleId);
-        Assert.All(OptionalGlobalRuleIds.Where(ruleId => ruleId != expectedRuleId), ruleId =>
-          Assert.DoesNotContain(result.SeedMarks, mark => mark.RuleId == ruleId));
-    }
-
-    [Fact]
     public void DefaultRulePipeline_ExposesUniqueRuleIds()
     {
-        var pipeline = RuleRegistry.CreateDefaultRules();
+        var pipeline = RulePipelineTestFactory.Create();
         var ruleIds = pipeline.Markers.Cast<IRuleDefinition>()
           .Concat(pipeline.Propagators)
           .Concat(pipeline.Lifters)
@@ -5244,9 +4435,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_Assembly_DoesNotExposeLegacyAtomicPropagationHelpers()
+    public void RulePipelineComposer_Assembly_DoesNotExposeLegacyAtomicPropagationHelpers()
     {
-        var assembly = typeof(RuleRegistry).Assembly;
+        var assembly = typeof(RulePipelineComposer).Assembly;
 
         Assert.Null(assembly.GetType("NLISSN.Rules.PropagationState"));
         Assert.Null(assembly.GetType("NLISSN.Rules.LogicalConditionPropagationStep"));
@@ -5254,9 +4445,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_WhenDisabledRuleTypeProvided_FiltersMatchingTypeOnly()
+    public void RulePipelineComposer_WhenDisabledRuleTypeProvided_FiltersMatchingTypeOnly()
     {
-        var rules = RuleRegistry.CreateDefaultRules(new[] { "AtomicMemberAccessMarkRule" });
+        var rules = RulePipelineTestFactory.Create(new[] { "AtomicMemberAccessMarkRule" });
 
         Assert.DoesNotContain(
           rules.Markers,
@@ -5272,7 +4463,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void AnalyzeFromArgs_WhenDisabledRuleTypeProvided_DisablesOnlyMatchingType()
     {
         var host = new  CommandHost(
-          RuleRegistry.CreateDefaultRules(new[] { "AtomicMemberAccessMarkRule" }));
+          RulePipelineTestFactory.Create(new[] { "AtomicMemberAccessMarkRule" }));
 
         var result = host.AnalyzeFromArgs(new[]
         {
@@ -5288,9 +4479,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_AtomicMarkRulesHaveUniqueRuleIds()
+    public void RulePipelineComposer_AtomicMarkRulesHaveUniqueRuleIds()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineTestFactory.Create();
         var deleteTargetMarkRules = GetAtomicMarkRules(rules);
 
         Assert.True(deleteTargetMarkRules.Count >= 10);
@@ -5377,7 +4568,7 @@ public sealed class PipelineComponentTests : IDisposable
 
     private static  CommandHost CreateCommandHost()
     {
-        return new  CommandHost(RuleRegistry.CreateDefaultRules());
+        return new  CommandHost(RulePipelineTestFactory.Create());
     }
 
     [Fact]
@@ -5511,7 +4702,7 @@ public sealed class PipelineComponentTests : IDisposable
 
     private static IReadOnlyList<RuleDefinitionMark> GetAtomicMarkRules( RulePipeline? rules = null)
     {
-        var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
+        var markerRules = rules?.Markers ?? RulePipelineTestFactory.Create().Markers;
         return markerRules
           .Where(rule => rule.RuleId.StartsWith("mark.target.", StringComparison.Ordinal))
           .ToList();
@@ -5519,7 +4710,7 @@ public sealed class PipelineComponentTests : IDisposable
 
     private static IReadOnlyList<RuleDefinitionMark> GetDeclarationMarkRules( RulePipeline? rules = null)
     {
-        var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
+        var markerRules = rules?.Markers ?? RulePipelineTestFactory.Create().Markers;
         return markerRules
           .Where(rule => rule.RuleId.StartsWith("mark.type.", StringComparison.Ordinal))
           .ToList();
@@ -6566,12 +5757,6 @@ public sealed class PipelineComponentTests : IDisposable
             mark.Reason,
             mark.PrimaryGraphNode!.NodeId))
           .ToList();
-    }
-
-    private static void AssertNoOptionalGlobalRuleMarks(PrototypeAnalysisResult result)
-    {
-        Assert.All(OptionalGlobalRuleIds, ruleId =>
-            Assert.DoesNotContain(result.SeedMarks, mark => mark.RuleId == ruleId));
     }
 
     private static IReadOnlyList<string> BuildPropagatedMarkKeys(

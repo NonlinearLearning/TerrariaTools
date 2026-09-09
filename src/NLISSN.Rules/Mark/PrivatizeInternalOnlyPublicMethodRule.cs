@@ -7,6 +7,7 @@ using NLISSN.Core.Marking;
 namespace NLISSN.Rules;
 
 /// 命中只被同一类型内部调用的 public 方法，供后续改成 private。
+[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
 public sealed class PrivatizeInternalOnlyPublicMethodRule : RuleDefinitionMark
 {
     private static readonly RuleProducesContract InternalOnlyPublicMethodProduces =

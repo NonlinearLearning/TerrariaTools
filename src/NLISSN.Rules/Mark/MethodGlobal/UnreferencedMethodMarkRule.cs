@@ -9,6 +9,7 @@ using NLISSN.Core.Marking;
 namespace NLISSN.Rules;
 
 /// 在项目级 Compilation 内查找没有外部引用的普通私有方法声明。
+[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
 public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
 {
     private static readonly RuleFactKind UnreferencedMethodFactKind = RuleFactKind.UnreferencedMethod;

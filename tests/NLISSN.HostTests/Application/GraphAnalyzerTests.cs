@@ -272,32 +272,6 @@ public sealed class GraphAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_UnreachableMethodsSample_DeletesConfiguredMethods()
-    {
-        var application = CreateApplication(enableUnreachableMethodDeletion: true);
-        var source = ReachabilitySources.UnreachableMethodsSource;
-
-        var result = application.Analyze(source, "unreachable-method-sample.cs", CreateOptions(unreachableMethods: "DeadA,DeadB"));
-
-        Assert.Equal(2, result.SeedMarks.Count);
-        Assert.Empty(result.PropagatedMarks);
-        Assert.All(result.SeedMarks, mark => Assert.Equal("Method", mark.PrimaryGraphNode!.DisplayKind));
-
-        Assert.Equal(2, result.Decisions.Count);
-        Assert.All(result.Decisions, decision =>
-        {
-            Assert.Equal(DecisionActionKind.Delete, decision.Action);
-            Assert.Equal(SyntaxKind.MethodDeclaration, GetNodeKind(decision.FinalNode));
-        });
-
-        Assert.Equal(2, result.Edits.Count);
-        TextDiffAssert.Contains("Main", result.RewrittenSource, result.Diff);
-        TextDiffAssert.Contains("Live", result.RewrittenSource, result.Diff);
-        TextDiffAssert.DoesNotContain("DeadA", result.RewrittenSource, result.Diff);
-        TextDiffAssert.DoesNotContain("DeadB", result.RewrittenSource, result.Diff);
-    }
-
-    [Fact]
     public void Analyze_LogicalAndCondition_RightTargetDeletesIf()
     {
         var application = CreateApplication();
@@ -615,23 +589,6 @@ public sealed class GraphAnalyzerTests
     }
 
     [Fact]
-    public void Analyze_UnreachableMethodsWithoutEntryPoint_ProducesNoMarks()
-    {
-        var application = CreateApplication(enableUnreachableMethodDeletion: true);
-        var source = ReachabilitySources.NoEntryPointSource;
-
-        var result = application.Analyze(source, "no-entry-point.cs", CreateOptions(unreachableMethods: "Dead"));
-
-        Assert.Empty(result.SeedMarks);
-        Assert.Empty(result.PropagatedMarks);
-        Assert.Empty(result.Decisions);
-        Assert.Empty(result.Edits);
-        TextDiffAssert.Contains("MainEntry", result.RewrittenSource, result.Diff);
-        TextDiffAssert.Contains("Dead();", result.RewrittenSource, result.Diff);
-        TextDiffAssert.Contains("public static void Dead()", result.RewrittenSource, result.Diff);
-    }
-
-    [Fact]
     public void AnalyzeFromArgs_ExplicitDiffOutPath_SuppressesUnsafeLocalDeclarationRewrite()
     {
         var filePath = Path.Combine(Path.GetTempPath(), $"roslyn-prototype-explicit-diff-{Guid.NewGuid():N}.cs");
@@ -705,30 +662,24 @@ public sealed class GraphAnalyzerTests
         Assert.Contains("MethodDeclaration", exception.Message);
     }
 
-    private static ApplicationService CreateApplication(bool enableUnreachableMethodDeletion = false)
+    private static ApplicationService CreateApplication()
     {
         return new ApplicationService(
-          RuleRegistry.CreateDefaultRules(
-            enableUnreachableMethodDeletion: enableUnreachableMethodDeletion));
+          RulePipelineTestFactory.Create());
     }
 
     private static  CommandHost CreateCommandHost()
     {
-        return new  CommandHost(RuleRegistry.CreateDefaultRules());
+        return new  CommandHost(RulePipelineTestFactory.Create());
     }
 
-    private static Dictionary<string, string> CreateOptions(string? targetName = null, string? unreachableMethods = null)
+    private static Dictionary<string, string> CreateOptions(string? targetName = null)
     {
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (!string.IsNullOrWhiteSpace(targetName))
         {
             options["target-name"] = targetName;
-        }
-
-        if (!string.IsNullOrWhiteSpace(unreachableMethods))
-        {
-            options["unreachable-methods"] = unreachableMethods;
         }
 
         return options;

@@ -62,6 +62,7 @@ public sealed class  LayoutArchitectureTests
       new[]
       {
         "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
+        "..\\NLISSN.Rule.Generator\\NLISSN.Rule.Generator.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj"
       },
@@ -126,7 +127,9 @@ public sealed class  LayoutArchitectureTests
       (new[] { "src", "NLISSN", "Artifacts", "DiffPathResolver.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanArtifactService.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanReplayService.cs" }, "NLISSN.Artifacts"),
-      (new[] { "src", "NLISSN", "Composition", "RuleRegistry.cs" }, "NLISSN.Composition"),
+      (new[] { "src", "NLISSN", "Composition", "RulePipelineComposer.cs" }, "NLISSN.Composition"),
+      (new[] { "src", "NLISSN", "Composition", "RuleSelection.cs" }, "NLISSN.Composition"),
+      (new[] { "src", "NLISSN", "Composition", "RuleSelectionAdapter.cs" }, "NLISSN.Composition"),
       (new[] { "src", "NLISSN", "Telemetry", "RuntimeMeasurementLog.cs" }, "NLISSN.Telemetry")
     };
 

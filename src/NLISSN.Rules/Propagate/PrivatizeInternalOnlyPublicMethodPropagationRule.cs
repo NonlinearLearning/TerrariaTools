@@ -8,6 +8,7 @@ namespace NLISSN.Rules;
 /// <summary>
 /// Carries a verified internal-only public method into the stage handoff port.
 /// </summary>
+[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
 public sealed class PrivatizeInternalOnlyPublicMethodPropagationRule : RuleDefinitionPropagate
 {
 

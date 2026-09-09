@@ -10,6 +10,7 @@ namespace NLISSN.Rules;
 /// <summary>
 /// Reduces a logical expression from token-level marks without classifying it as a structure.
 /// </summary>
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
 {
   private static readonly RuleFactKind LogicalReductionFactKind = RuleFactKind.LiftLogicalReduction;

@@ -8,6 +8,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 先把 delegate 参数删除影响分类成单一改写通道，再把同一份 payload 发给声明、method group、lambda 或调用链。
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class DelegateUsageClassificationPropagationRule : RuleDefinitionPropagate
 {
     private static readonly RuleConsumesContract TypeSyntaxFactsConsumes = new(new[]

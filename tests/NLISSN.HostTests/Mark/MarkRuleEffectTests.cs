@@ -817,12 +817,12 @@ public sealed class MarkRuleEffectTests : IDisposable
 
     private static  ApplicationService CreateApplication()
     {
-        return new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        return new  ApplicationService(RulePipelineTestFactory.Create());
     }
 
     private static  CommandHost CreateCommandHost()
     {
-        return new  CommandHost(RuleRegistry.CreateDefaultRules());
+        return new  CommandHost(RulePipelineTestFactory.Create());
     }
 
     private string WriteSourceFile(string fileName, string source)

@@ -32,9 +32,7 @@ public sealed class TestCodeSetCoverageTests
   public void Analyze_AllTestCodeSetSources_BuildsGraphAndRunsApplicationPipeline(TestSourceCase testCase)
   {
     var graph = new NLCPGBuilder().BuildFromSource(testCase.Source, testCase.FilePath);
-    var application = new ApplicationService(
-      RuleRegistry.CreateDefaultRules(
-        enableUnreachableMethodDeletion: ShouldEnableUnreachableMethodDeletion(testCase.CaseName)));
+    var application = new ApplicationService(RulePipelineTestFactory.Create());
 
     var result = application.Analyze(testCase.Source, testCase.FilePath, testCase.Options);
 
@@ -129,12 +127,7 @@ public sealed class TestCodeSetCoverageTests
         "MinimalSources.EmptyMainSource" or
         "MinimalSources.EmptyMainWithDeadMethodSource")
     {
-      return caseName switch
-      {
-        "ReachabilitySources.UnreachableMethodsSource" => 2,
-        "MinimalSources.EmptyMainWithDeadMethodSource" => 1,
-        _ => 0
-      };
+      return 0;
     }
 
       return caseName.StartsWith("RewriteSources.", StringComparison.Ordinal)
@@ -164,12 +157,6 @@ public sealed class TestCodeSetCoverageTests
     {
       ["target-name"] = ResolveTargetName(caseName)
     };
-  }
-
-  private static bool ShouldEnableUnreachableMethodDeletion(string caseName)
-  {
-    return caseName.StartsWith("ReachabilitySources.", StringComparison.Ordinal) ||
-      caseName is "MinimalSources.EmptyMainSource" or "MinimalSources.EmptyMainWithDeadMethodSource";
   }
 
   private static string ResolveTargetName(string caseName)

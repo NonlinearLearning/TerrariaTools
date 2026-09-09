@@ -7,6 +7,7 @@ namespace NLISSN.Rules;
 
 /// 为 s-object 删除规则登记允许作为最小 seed mark 的原子表达式种类。
 
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class AtomicTrueLiteralMarkRule : AtomicExpressionMarkRuleBase
 {
 

@@ -85,7 +85,7 @@ internal static class RandomSampleHelper
             Directory.CreateDirectory(Path.GetDirectoryName(copiedPath)!);
             File.Copy(sourcePath, copiedPath, overwrite: true);
         }
-        var commandHost = new CommandHost(RuleRegistry.CreateDefaultRules());
+        var commandHost = new CommandHost(RulePipelineTestFactory.Create());
         var args = new List<string>
         {
             copiedSourceRoot,

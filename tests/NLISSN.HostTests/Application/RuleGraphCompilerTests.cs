@@ -134,8 +134,8 @@ public sealed class RuleGraphCompilerTests
               int Run(PlayerInput s) { var value = s.Value; return value + field.Value; }
           }
           """;
-        var singleThread = new ApplicationService(RuleRegistry.CreateDefaultRules());
-        var parallel = new ApplicationService(RuleRegistry.CreateDefaultRules());
+        var singleThread = new ApplicationService(RulePipelineTestFactory.Create());
+        var parallel = new ApplicationService(RulePipelineTestFactory.Create());
         var baseOptions = new Dictionary<string, string>
         {
             ["target-name"] = "s",
@@ -181,7 +181,7 @@ public sealed class RuleGraphCompilerTests
         Assert.NotNull(singleThreadResult.RuleGraphTelemetry);
         Assert.NotNull(parallelResult.RuleGraphTelemetry);
         Assert.Equal(
-          RuleRegistry.CreateDefaultRules().CompileRuleGraph().Nodes.Count,
+          RulePipelineTestFactory.Create().CompileRuleGraph().Nodes.Count,
           singleThreadResult.RuleGraphTelemetry!.Count);
         Assert.Equal(
           singleThreadResult.RuleGraphTelemetry.Select(node => node.NodeId),
@@ -222,7 +222,7 @@ public sealed class RuleGraphCompilerTests
     public void Analyze_WithGroupParallelismDisabled_RunsRuleGraphSerially()
     {
         const string source = "public sealed class Demo { int Run(int s) { return s; } }";
-        var service = new ApplicationService(RuleRegistry.CreateDefaultRules());
+        var service = new ApplicationService(RulePipelineTestFactory.Create());
         var options = new Dictionary<string, string>
         {
             ["target-name"] = "s",
@@ -287,7 +287,7 @@ public sealed class RuleGraphCompilerTests
     [Fact]
     public void CompileRuleGraph_WithDefaultPipeline_CreatesOneNodePerRule()
     {
-        var pipeline = RuleRegistry.CreateDefaultRules();
+        var pipeline = RulePipelineTestFactory.Create();
 
         var graph = pipeline.CompileRuleGraph();
 
@@ -308,7 +308,7 @@ public sealed class RuleGraphCompilerTests
     [Fact]
     public void CompileRuleGraph_WithDefaultPipeline_UsesExplicitInputsForEveryConsumerNode()
     {
-        var graph = RuleRegistry.CreateDefaultRules().CompileRuleGraph();
+        var graph = RulePipelineTestFactory.Create().CompileRuleGraph();
         var independentCompatibilityNodes = new[]
         {
             RuleNodeId.For(RuleKind.Propose, "propose.type.parameter"),
@@ -344,7 +344,7 @@ public sealed class RuleGraphCompilerTests
     [Fact]
     public void CompileRuleGraph_WithDefaultPipeline_ExcludesPropagationInternalDependencies()
     {
-        var graph = RuleRegistry.CreateDefaultRules().CompileRuleGraph();
+        var graph = RulePipelineTestFactory.Create().CompileRuleGraph();
 
         var sObjectReference = graph.Nodes.Single(node =>
           node.NodeId.Kind == RuleKind.Propagate &&
@@ -378,7 +378,7 @@ public sealed class RuleGraphCompilerTests
     [Fact]
     public void CompileRuleGraph_WithDefaultPipeline_UsesTypedFactKinds()
     {
-        var graph = RuleRegistry.CreateDefaultRules().CompileRuleGraph();
+        var graph = RulePipelineTestFactory.Create().CompileRuleGraph();
 
         var logical = graph.Nodes.Single(node =>
           node.NodeId.Kind == RuleKind.Propose &&
@@ -726,7 +726,7 @@ public sealed class RuleGraphCompilerTests
 
     private static RulePipeline CreateTargetPipeline()
     {
-        var defaults = RuleRegistry.CreateDefaultRules();
+        var defaults = RulePipelineTestFactory.Create();
         return new RulePipeline(
           defaults.Markers.Where(rule => rule.GetType().Name.StartsWith("Target", StringComparison.Ordinal)).ToList(),
           defaults.Propagators.Where(rule => rule.GetType().Name.StartsWith("Target", StringComparison.Ordinal)).ToList(),
@@ -740,7 +740,7 @@ public sealed class RuleGraphCompilerTests
 
     private static RulePipeline CreateTypePipeline()
     {
-        var defaults = RuleRegistry.CreateDefaultRules();
+        var defaults = RulePipelineTestFactory.Create();
         return new RulePipeline(
           defaults.Markers.Where(rule => rule.GetType().Name.StartsWith("Type", StringComparison.Ordinal)).ToList(),
           defaults.Propagators.Where(rule => rule.GetType().Name.StartsWith("Type", StringComparison.Ordinal)).ToList(),

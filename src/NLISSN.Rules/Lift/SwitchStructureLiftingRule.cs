@@ -6,6 +6,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 将 switch 中可完整规约的分支事实提升为单一结构宿主。
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class SwitchStructureLiftingRule : RuleDefinitionLift
 {
     private static readonly RuleFactKind IfStructureFactKind = RuleFactKind.LiftIfStructure;

@@ -458,7 +458,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         File.WriteAllText(
           secondConsumerPath,
           PerformanceSources.CleanupSecondConsumerSource);
-        var commandHost = new CommandHost(RuleRegistry.CreateDefaultRules());
+        var commandHost = new CommandHost(RulePipelineTestFactory.Create());
 
         var result = commandHost.AnalyzeFromArgs(new[]
         {
@@ -491,7 +491,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         File.WriteAllText(
           secondFilePath,
           PerformanceSources.SecondEmptyNamespaceSource);
-        var commandHost = new CommandHost(RuleRegistry.CreateDefaultRules());
+        var commandHost = new CommandHost(RulePipelineTestFactory.Create());
 
         var result = commandHost.AnalyzeFromArgs(new[]
         {
@@ -679,7 +679,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         };
         var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
         var stopwatch = Stopwatch.StartNew();
-        var result = new  ApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
+        var result = new  ApplicationService(RulePipelineTestFactory.Create()).Analyze(
           source,
           "mark-performance.cs",
           options,

@@ -179,7 +179,7 @@ public sealed class MarkRuleRegistryCoverageTests
         }
       }
       """;
-    var result = new  ApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
+    var result = new  ApplicationService(RulePipelineTestFactory.Create()).Analyze(
       source,
       "ReturnReplacement.cs",
       Options(("target-name", "target")));
@@ -203,11 +203,7 @@ public sealed class MarkRuleRegistryCoverageTests
   [Fact]
   public void CreateDefaultRules_Markers_RequireAnExplicitScenarioForEveryRule()
   {
-    var registeredRuleIds = RuleRegistry.CreateDefaultRules(
-        enableUnreachableMethodDeletion: true,
-        enableUnreferencedMethodDeletion: true,
-        enableUnusedInterfaceImplementationCleanup: true,
-        enableInternalOnlyPublicMethodPrivatization: true)
+    var registeredRuleIds = RulePipelineTestFactory.Create()
       .Markers
       .Select(rule => rule.RuleId)
       .ToHashSet(StringComparer.Ordinal);
@@ -347,12 +343,6 @@ public sealed class MarkRuleRegistryCoverageTests
   public static IEnumerable<object[]> NonTargetScenarios()
   {
     yield return Scenario(
-      "mark.clear-unused-interface-implementation",
-      "public interface ITarget { void Remove(); } public sealed class Sample : ITarget { public void Remove() { } }",
-      Options(("clear-unused-interface-implementations", "true")),
-      SyntaxKind.MethodDeclaration,
-      "public void Remove() { }");
-    yield return Scenario(
       "mark.type.declaration",
       "public sealed class Target { } public sealed class Consumer { }",
       Options(("delete-class", "Target")),
@@ -370,32 +360,10 @@ public sealed class MarkRuleRegistryCoverageTests
       Options(("delete-class", "Target")),
       SyntaxKind.IdentifierName,
       "Target");
-    yield return Scenario(
-      "mark.unreachable-method",
-      "public static class Program { public static void Main() { } private static void Dead() { } }",
-      Options(),
-      SyntaxKind.MethodDeclaration,
-      "private static void Dead() { }");
-    yield return Scenario(
-      "mark.unreferenced-method",
-      "public sealed class Sample { public void Run() { } private void Remove() { } }",
-      Options(("delete-unreferenced-methods", "true")),
-      SyntaxKind.MethodDeclaration,
-      "private void Remove() { }");
-    yield return Scenario(
-      "mark.privatize-internal-only-public-method",
-      "public sealed class Sample { public void Target() { } public void Run() { Target(); } }",
-      Options(("privatize-internal-only-public-methods", "true")),
-      SyntaxKind.MethodDeclaration,
-      "public void Target() { }");
   }
 
   public static IEnumerable<object[]> NonTargetNegativeScenarios()
   {
-    yield return NegativeScenario(
-      "mark.clear-unused-interface-implementation",
-      "public interface ITarget { void Remove(); } public sealed class Sample : ITarget { public void Remove() { } } public static class Use { public static void Run(ITarget target) { target.Remove(); } }",
-      Options(("clear-unused-interface-implementations", "true")));
     yield return NegativeScenario(
       "mark.type.declaration",
       "public sealed class Target { }",
@@ -408,18 +376,6 @@ public sealed class MarkRuleRegistryCoverageTests
       "mark.type.type-syntax",
       "public sealed class Target { } public sealed class Consumer { private Target _target; }",
       Options(("delete-class", "Other")));
-    yield return NegativeScenario(
-      "mark.unreachable-method",
-      "public static class Program { public static void Main() { Live(); } private static void Live() { } }",
-      Options());
-    yield return NegativeScenario(
-      "mark.unreferenced-method",
-      "public sealed class Sample { public void Run() { Remove(); } private void Remove() { } }",
-      Options(("delete-unreferenced-methods", "true")));
-    yield return NegativeScenario(
-      "mark.privatize-internal-only-public-method",
-      "public sealed class Sample { public void Target() { } } public sealed class Consumer { public void Run(Sample sample) { sample.Target(); } }",
-      Options(("privatize-internal-only-public-methods", "true")));
   }
 
   private static object[] Scenario(string ruleId, string source, string targetName, SyntaxKind expectedKind, string expectedText)
@@ -569,20 +525,7 @@ public sealed class MarkRuleRegistryCoverageTests
 
   private static RulePipeline CreateRules(string ruleId)
   {
-    return RuleRegistry.CreateDefaultRules(
-      enableUnreachableMethodDeletion: string.Equals(ruleId, "mark.unreachable-method", StringComparison.Ordinal),
-      enableUnreferencedMethodDeletion: string.Equals(
-        ruleId,
-        "mark.unreferenced-method",
-        StringComparison.Ordinal),
-      enableUnusedInterfaceImplementationCleanup: string.Equals(
-        ruleId,
-        "mark.clear-unused-interface-implementation",
-        StringComparison.Ordinal),
-      enableInternalOnlyPublicMethodPrivatization: string.Equals(
-        ruleId,
-        "mark.privatize-internal-only-public-method",
-        StringComparison.Ordinal));
+    return RulePipelineTestFactory.Create();
   }
 
   private static (AnalysisSession Context, SyntaxNode Root) CreateRuleContext(string source, string targetName)

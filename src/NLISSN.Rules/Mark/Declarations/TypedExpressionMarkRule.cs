@@ -9,6 +9,7 @@ namespace NLISSN.Rules;
 
 /// 删除类规则的 seed mark 入口：分别定位声明、表达式和 TypeSyntax，后续阶段再决定删除范围。
 
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class TypedExpressionMarkRule : RuleDefinitionMark
 {
     private static readonly RuleFactKind ExpressionTargetFactKind = RuleFactKind.TargetExpression;

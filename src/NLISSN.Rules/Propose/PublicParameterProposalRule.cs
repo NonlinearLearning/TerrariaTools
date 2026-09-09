@@ -9,6 +9,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class PublicParameterProposalRule : RuleDefinitionPropose
 {
 

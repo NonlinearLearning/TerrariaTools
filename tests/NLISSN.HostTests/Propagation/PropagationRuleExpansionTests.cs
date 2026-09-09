@@ -1013,7 +1013,7 @@ public sealed class PropagationRuleExpansionTests
 
     private static PrototypeAnalysisResult AnalyzeFlagChain(string source, int maxDegreeOfParallelism)
     {
-        var application = new ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new ApplicationService(RulePipelineTestFactory.Create());
         return application.Analyze(
           source,
           "flag-chain.cs",
@@ -1074,7 +1074,7 @@ public sealed class PropagationRuleExpansionTests
 
     private static PrototypeAnalysisResult Analyze(string source, string filePath, string targetName)
     {
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineTestFactory.Create());
         return application.Analyze(
           source,
           filePath,
@@ -1086,7 +1086,7 @@ public sealed class PropagationRuleExpansionTests
 
     private static PrototypeAnalysisResult AnalyzeDeleteClass(string source, string filePath)
     {
-        var application = new ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new ApplicationService(RulePipelineTestFactory.Create());
         return application.Analyze(
           source,
           filePath,
@@ -1130,7 +1130,7 @@ public sealed class PropagationRuleExpansionTests
     {
         var application = new  ApplicationService(
           new RuleDefinitionMark[] { new ExactSyntaxSeedRule(seeds) },
-          RuleRegistry.CreateDefaultRules().Propagators
+          RulePipelineTestFactory.Create().Propagators
             .OfType<ExpressionFlowPropagationRuleBase>()
             .ToList(),
           new RuleDefinitionLift[]

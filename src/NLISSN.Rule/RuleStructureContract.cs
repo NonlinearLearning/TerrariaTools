@@ -58,6 +58,7 @@ public enum RuleFactKind : ushort
     UnusedInterfaceImplementationPropagated,
     UnusedInterfaceImplementationLifted,
 
+    // Retained for compatibility with serialized legacy fact tags.
     UnreachableMethod,
     UnreferencedMethod
 }

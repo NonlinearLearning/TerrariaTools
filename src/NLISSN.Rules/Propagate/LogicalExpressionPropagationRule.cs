@@ -9,6 +9,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// Propagates an atomic logical operand to its containing logical expression chain.
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class LogicalExpressionPropagationRule : ExpressionFlowPropagationRuleBase
 {
     private static readonly IReadOnlyList<SyntaxKind> LogicalExpressionNodeKinds =

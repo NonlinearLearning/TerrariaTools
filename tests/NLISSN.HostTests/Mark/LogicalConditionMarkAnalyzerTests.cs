@@ -513,7 +513,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
 
     private static List<MarkRecord> RunAtomicMarks(AnalysisSession context, SyntaxNode root)
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineTestFactory.Create();
         return new MarkingEngine()
             .Run(context, root, rules.Markers)
             .Where(mark =>
@@ -524,7 +524,7 @@ public sealed class LogicalConditionMarkAnalyzerTests
 
     private static List<PropagatedMarkRecord> RunAtomicPropagations(AnalysisSession context, IReadOnlyList<MarkRecord> marks)
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineTestFactory.Create();
         return new PropagationEngine()
             .Run(
                 context,

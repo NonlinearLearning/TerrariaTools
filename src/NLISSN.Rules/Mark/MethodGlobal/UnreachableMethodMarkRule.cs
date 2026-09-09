@@ -10,6 +10,7 @@ using NLISSN.Rules;
 namespace NLISSN.Rules;
 
 /// 基于最小调用图可达性，命中从入口点不可达的方法声明。
+[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
 public sealed class UnreachableMethodMarkRule : RuleDefinitionMark
 {
     private static readonly RuleFactKind UnreachableMethodFactKind = RuleFactKind.UnreachableMethod;

@@ -388,7 +388,7 @@ public sealed class RuleStructureContractTests
   [Fact]
   public void DefaultPipeline_UsesOnlySyntaxTagDependencies()
   {
-    var pipeline = RuleRegistry.CreateDefaultRules();
+    var pipeline = RulePipelineTestFactory.Create();
     var graph = pipeline.CompileRuleGraph();
 
     Assert.DoesNotContain(

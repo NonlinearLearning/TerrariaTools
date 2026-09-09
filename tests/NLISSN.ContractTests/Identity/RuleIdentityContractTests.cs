@@ -72,11 +72,7 @@ public sealed class RuleIdentityContractTests
 
     private static IReadOnlyList<(RuleKind Stage, IRuleDefinition Rule)> GetAllRules()
     {
-        var pipeline = RuleRegistry.CreateDefaultRules(
-          enableUnreachableMethodDeletion: true,
-          enableUnreferencedMethodDeletion: true,
-          enableUnusedInterfaceImplementationCleanup: true,
-          enableInternalOnlyPublicMethodPrivatization: true);
+        var pipeline = RulePipelineTestFactory.Create();
 
         return pipeline.Markers
           .Cast<IRuleDefinition>()

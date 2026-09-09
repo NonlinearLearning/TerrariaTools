@@ -8,6 +8,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 为没有更专门语法宿主的有效标记生成默认删除决策。
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class DefaultRemovalProposalRule : RuleDefinitionPropose
 {
     private static readonly RuleConsumesContract TargetFactsConsumes =

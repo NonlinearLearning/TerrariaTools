@@ -9,6 +9,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 为逻辑表达式的可删操作数选择保持短路语义的规约决策。
+[global::NLISSN.Core.Pipeline.RuleRegistration]
 public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
 {
     private static readonly RuleFactKind LogicalReductionFactKind = RuleFactKind.LiftLogicalReduction;
