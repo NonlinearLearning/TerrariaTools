@@ -87,6 +87,95 @@ public sealed class FlowSummaryResolverTests
     }
 
     [Fact]
+    public void DefaultFrameworkCatalog_BindsObjectToStringFromCurrentCompilation()
+    {
+        var (compilation, invocation) = CreateObjectToStringInvocation("FlowSummaryDefaultCatalog");
+        var methodKey = FlowSummaryMethodKey.From(invocation.TargetMethod);
+        var summaries = NLCPGDefaultFlowSummaries.CreateForCompilation(compilation);
+
+        var summary = Assert.Single(summaries);
+        Assert.Equal(methodKey.StableKey, summary.MethodKey.StableKey);
+        Assert.Equal(
+            invocation.TargetMethod.ContainingAssembly.Identity.ToString(),
+            summary.MethodKey.AssemblyIdentity);
+
+        var resolver = new CallFlowResolver(new NLCPGFlowSummaryRegistry(
+            projectSummaries: null,
+            userSummaries: null,
+            frameworkSummaries: summaries));
+        var resolved = resolver.Resolve(
+            invocation,
+            FlowSummaryEndpoint.Receiver,
+            FlowSummaryEndpoint.Return);
+
+        Assert.Equal(ResolvedCallFlowStatus.Resolved, resolved.Status);
+        Assert.Equal(FlowSummaryResolution.Framework, resolved.Resolution);
+        Assert.Equal(FlowSummaryMappingKind.Explicit, resolved.Mapping!.Kind);
+    }
+
+    [Fact]
+    public void DefaultFrameworkCatalog_UsesTheBoundReferenceIdentityForEachCompilation()
+    {
+        var first = CreateObjectToStringInvocation("FlowSummaryReferenceOne");
+        var second = CreateObjectToStringInvocation("FlowSummaryReferenceTwo");
+
+        var firstSummary = Assert.Single(
+            NLCPGDefaultFlowSummaries.CreateForCompilation(first.Compilation));
+        var secondSummary = Assert.Single(
+            NLCPGDefaultFlowSummaries.CreateForCompilation(second.Compilation));
+
+        Assert.Equal(
+            first.Invocation.TargetMethod.ContainingAssembly.Identity.ToString(),
+            firstSummary.MethodKey.AssemblyIdentity);
+        Assert.Equal(
+            second.Invocation.TargetMethod.ContainingAssembly.Identity.ToString(),
+            secondSummary.MethodKey.AssemblyIdentity);
+        Assert.Equal(firstSummary.MethodKey.StableKey, secondSummary.MethodKey.StableKey);
+    }
+
+    [Fact]
+    public void DefaultFrameworkCatalog_LeavesUndeclaredMethodsUnknown()
+    {
+        var (compilation, invocation) = CreateObjectToStringInvocation("FlowSummaryUnknownCatalog");
+        var registry = new NLCPGFlowSummaryRegistry(
+            projectSummaries: null,
+            userSummaries: null,
+            frameworkSummaries: NLCPGDefaultFlowSummaries.CreateForCompilation(compilation));
+
+        var resolved = registry.Resolve(FlowSummaryMethodKey.From(invocation.TargetMethod) with
+        {
+            MethodName = "Missing"
+        });
+
+        Assert.Equal(FlowSummaryResolution.Unknown, resolved.Resolution);
+        Assert.Empty(resolved.Mappings);
+    }
+
+    [Fact]
+    public void Registry_RejectsDuplicateCompleteKeysWithinEverySourceLayer()
+    {
+        var (compilation, invocation) = CreateObjectToStringInvocation("FlowSummaryDuplicateCatalog");
+        var summary = Assert.Single(NLCPGDefaultFlowSummaries.CreateForCompilation(compilation));
+
+        foreach (var source in new[] { "Project", "User", "Framework" })
+        {
+            var exception = Assert.Throws<InvalidOperationException>(() => source switch
+            {
+                "Project" => new NLCPGFlowSummaryRegistry(
+                    new[] { summary, summary }, null, null),
+                "User" => new NLCPGFlowSummaryRegistry(
+                    null, new[] { summary, summary }, null),
+                _ => new NLCPGFlowSummaryRegistry(
+                    null, null, new[] { summary, summary }),
+            });
+
+            Assert.Equal(
+                $"Flow summary source '{source}' contains duplicate method key '{summary.MethodKey.StableKey}'.",
+                exception.Message);
+        }
+    }
+
+    [Fact]
     public void Resolve_ExtensionMethodWithNamedRefArgument_UsesNormalizedMethodKeyAndExactEndpointKinds()
     {
         const string source = """
@@ -185,8 +274,92 @@ public sealed class FlowSummaryResolverTests
 
         Assert.Equal(1, builder.LastFlowSummaryMetrics.ResolvedMappings);
         Assert.Equal(1, builder.LastFlowSummaryMetrics.TruncatedMappings);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.CutReasons["SummaryMappingsPerCallSite"]);
         Assert.Single(graph.Edges.Where(edge =>
             edge.StructuredLabel?.InterproceduralBridgeKind == NLCPGInterproceduralBridgeKind.SummaryMapping));
+    }
+
+    [Fact]
+    public void BuildFromSource_MissingResolverRecordsConservativeCut()
+    {
+        var options = NLCPGBuilderOptions.CreateDefault() with
+        {
+            RequestedCapabilities = new[] { NLCPGCapability.InterproceduralDataFlow },
+        };
+        var builder = new NLCPGBuilder(options);
+
+        var graph = builder.BuildFromSource(
+            "public sealed class Sample { public string Run(object value) => value.ToString(); }",
+            "summary-missing-resolver.cs");
+
+        Assert.DoesNotContain(
+            graph.Edges,
+            edge => edge.StructuredLabel?.InterproceduralBridgeKind == NLCPGInterproceduralBridgeKind.SummaryMapping);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.UnknownCalls);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.CutReasons["MissingResolver"]);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.CutReasons["SummaryUnknown"]);
+    }
+
+    [Fact]
+    public void BuildFromSource_EmptyResolverRecordsMissingSummary()
+    {
+        var options = NLCPGBuilderOptions.CreateDefault() with
+        {
+            RequestedCapabilities = new[] { NLCPGCapability.InterproceduralDataFlow },
+            CallFlowResolver = new EmptyFlowResolver(),
+        };
+        var builder = new NLCPGBuilder(options);
+
+        _ = builder.BuildFromSource(
+            "public sealed class Sample { public string Run(object value) => value.ToString(); }",
+            "summary-empty-resolver.cs");
+
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.UnknownCalls);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.CutReasons["MissingSummary"]);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.CutReasons["SummaryUnknown"]);
+    }
+
+    [Fact]
+    public void BuildFromSource_BlockedSummaryDoesNotCreateBridge()
+    {
+        var options = NLCPGBuilderOptions.CreateDefault() with
+        {
+            RequestedCapabilities = new[] { NLCPGCapability.InterproceduralDataFlow },
+            CallFlowResolver = new BlockedFlowResolver(),
+        };
+        var builder = new NLCPGBuilder(options);
+
+        var graph = builder.BuildFromSource(
+            "public sealed class Sample { public string Run(object value) => value.ToString(); }",
+            "summary-blocked.cs");
+
+        Assert.DoesNotContain(
+            graph.Edges,
+            edge => edge.StructuredLabel?.InterproceduralBridgeKind == NLCPGInterproceduralBridgeKind.SummaryMapping);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.BlockedMappings);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.CutReasons["SummaryBlocked"]);
+    }
+
+    [Fact]
+    public void BuildFromSource_ResolvedMappingWithoutEndpointNodeIsRejected()
+    {
+        var options = NLCPGBuilderOptions.CreateDefault() with
+        {
+            RequestedCapabilities = new[] { NLCPGCapability.InterproceduralDataFlow },
+            CallFlowResolver = new ParameterWithoutArgumentResolver(),
+        };
+        var builder = new NLCPGBuilder(options);
+
+        var graph = builder.BuildFromSource(
+            "public sealed class Sample { public string Run(object value) => value.ToString(); }",
+            "summary-endpoint-mismatch.cs");
+
+        Assert.DoesNotContain(
+            graph.Edges,
+            edge => edge.StructuredLabel?.InterproceduralBridgeKind == NLCPGInterproceduralBridgeKind.SummaryMapping);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.RejectedEndpoints);
+        Assert.Equal(1, builder.LastFlowSummaryMetrics.CutReasons["SummaryEndpointUnavailable"]);
+        Assert.Equal(0, builder.LastFlowSummaryMetrics.ResolvedMappings);
     }
 
     [Fact]
@@ -280,6 +453,63 @@ public sealed class FlowSummaryResolverTests
         }
     }
 
+    private sealed class EmptyFlowResolver : ICallFlowResolver
+    {
+        public ResolvedCallFlow Resolve(
+            IInvocationOperation invocation,
+            FlowSummaryEndpoint source,
+            FlowSummaryEndpoint target) =>
+            new(
+                ResolvedCallFlowStatus.Unknown,
+                FlowSummaryResolution.Unknown,
+                FlowSummaryMethodKey.From(invocation.TargetMethod),
+                null,
+                "No summary is configured.");
+
+        public IReadOnlyList<ResolvedCallFlow> ResolveAll(IInvocationOperation invocation) =>
+            Array.Empty<ResolvedCallFlow>();
+    }
+
+    private sealed class BlockedFlowResolver : ICallFlowResolver
+    {
+        public ResolvedCallFlow Resolve(
+            IInvocationOperation invocation,
+            FlowSummaryEndpoint source,
+            FlowSummaryEndpoint target) =>
+            new(
+                ResolvedCallFlowStatus.Blocked,
+                FlowSummaryResolution.Project,
+                FlowSummaryMethodKey.From(invocation.TargetMethod),
+                new FlowSummaryMapping(
+                    FlowSummaryEndpoint.Receiver,
+                    FlowSummaryEndpoint.Return,
+                    FlowSummaryMappingKind.Block),
+                "The summary blocks this endpoint pair.");
+
+        public IReadOnlyList<ResolvedCallFlow> ResolveAll(IInvocationOperation invocation) =>
+            new[] { Resolve(invocation, FlowSummaryEndpoint.Receiver, FlowSummaryEndpoint.Return) };
+    }
+
+    private sealed class ParameterWithoutArgumentResolver : ICallFlowResolver
+    {
+        public ResolvedCallFlow Resolve(
+            IInvocationOperation invocation,
+            FlowSummaryEndpoint source,
+            FlowSummaryEndpoint target) =>
+            new(
+                ResolvedCallFlowStatus.Resolved,
+                FlowSummaryResolution.Project,
+                FlowSummaryMethodKey.From(invocation.TargetMethod),
+                new FlowSummaryMapping(
+                    FlowSummaryEndpoint.Parameter(0),
+                    FlowSummaryEndpoint.Return,
+                    FlowSummaryMappingKind.Explicit),
+                null);
+
+        public IReadOnlyList<ResolvedCallFlow> ResolveAll(IInvocationOperation invocation) =>
+            new[] { Resolve(invocation, FlowSummaryEndpoint.Parameter(0), FlowSummaryEndpoint.Return) };
+    }
+
     private static NLCPGFlowSummary CreateLegacySummary()
     {
         return new NLCPGFlowSummary(
@@ -289,5 +519,26 @@ public sealed class FlowSummaryResolverTests
             0,
             new[] { NLCPGFlowSummaryEndpoint.Parameter(0) },
             NLCPGFlowSummaryEndpoint.Return);
+    }
+
+    private static (CSharpCompilation Compilation, IInvocationOperation Invocation) CreateObjectToStringInvocation(
+        string assemblyName)
+    {
+        const string source = "public sealed class Sample { public string Run(object value) => value.ToString(); }";
+        var tree = CSharpSyntaxTree.ParseText(source, path: $"{assemblyName}.cs");
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            new[] { tree },
+            new[]
+            {
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+            },
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var invocationSyntax = tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Single();
+        var invocation = Assert.IsAssignableFrom<IInvocationOperation>(
+            compilation.GetSemanticModel(tree).GetOperation(invocationSyntax));
+        return (compilation, invocation);
     }
 }

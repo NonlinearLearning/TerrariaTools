@@ -101,6 +101,52 @@ public sealed class FlowSummaryDeletionSafetyTests
         Assert.Empty(decisions);
     }
 
+    [Fact]
+    public void ProductionSummaryRule_EmitsReceiverFactWithProvenanceWithoutDeleteDecision()
+    {
+        const string source = "class C { string M(object value) => value.ToString(); }";
+        var application = new ApplicationService(
+            CreateProductionSummaryPipeline(),
+            new ResolvedFlowResolver());
+
+        var result = application.Analyze(
+            source,
+            "production-summary-receiver.cs",
+            new Dictionary<string, string> { ["skip-rewrite"] = "true" });
+
+        var propagated = Assert.Single(result.PropagatedMarks);
+        var payload = Assert.IsType<ExternalSummaryFlowPayload>(propagated.Payload);
+        Assert.True(payload.Flow.IsResolved);
+        Assert.True(payload.IsInputToReturn);
+        Assert.Equal(FlowSummaryEndpoint.Receiver, payload.SourceEndpoint);
+        Assert.Equal("value", payload.SourceSyntax!.ToString());
+        Assert.Equal("value", propagated.Mark.SyntaxNode.ToString());
+        Assert.Empty(result.Decisions);
+        Assert.Contains(
+            result.Evidence!.Nodes,
+            node => node.Kind == AnalysisEvidenceKind.UsesSummary);
+    }
+
+    [Fact]
+    public void ProductionSummaryRule_UnknownFlowProtectsInputFromDefaultDeletion()
+    {
+        const string source = "class C { string M(object value) => value.ToString(); }";
+        var application = new ApplicationService(
+            CreateProductionSummaryPipeline(),
+            new StatusFlowResolver(ResolvedCallFlowStatus.Unknown, "No summary is configured."));
+
+        var result = application.Analyze(
+            source,
+            "production-summary-unknown.cs",
+            new Dictionary<string, string> { ["skip-rewrite"] = "true" });
+
+        var propagated = Assert.Single(result.PropagatedMarks);
+        var payload = Assert.IsType<ExternalSummaryFlowPayload>(propagated.Payload);
+        Assert.Equal(ResolvedCallFlowStatus.Unknown, payload.Flow.Status);
+        Assert.True(payload.ProtectsInput);
+        Assert.Empty(result.Decisions);
+    }
+
     [Theory]
     [MemberData(nameof(SummaryResolutionCases))]
     public void Analyze_WhenSummaryFlowResolutionVaries_OnlyResolvedFlowCreatesDeletionCandidate(
@@ -298,6 +344,41 @@ public sealed class FlowSummaryDeletionSafetyTests
                     DecisionCpgFactory.CreateSyntaxBindings((fragment, propagated.Mark.SyntaxNode)),
                     reason: "Resolved summary payload candidate.");
             }
+        }
+    }
+
+    private static RulePipeline CreateProductionSummaryPipeline()
+    {
+        return new RulePipeline(
+            new RuleDefinitionMark[] { new TargetExpressionInvocationMarkRule() },
+            new RuleDefinitionPropagate[] { new ExternalSummaryFlowPropagationRule() },
+            Array.Empty<NLISSN.Core.Lifting.RuleDefinitionLift>(),
+            new RuleDefinitionPropose[] { new DefaultRemovalProposalRule() });
+    }
+
+    private sealed class TargetExpressionInvocationMarkRule : RuleDefinitionMark
+    {
+        public override string RuleId => "TEST-SUMMARY-TARGET-MARK-001";
+
+        public override string Name => "Mark an invocation as a target expression.";
+
+        public override IReadOnlyList<SyntaxKind> AllowedMarkNodeKinds =>
+            new[] { SyntaxKind.InvocationExpression };
+
+        public override RuleProducesContract Produces => new(new[]
+        {
+            new RuleProducedSyntax(new[] { SyntaxKind.InvocationExpression }, RuleFactKind.TargetExpression),
+        });
+
+        public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
+        {
+            _ = context;
+            var invocation = root.DescendantNodes().OfType<InvocationExpressionSyntax>().Single();
+            yield return MarkRecordFactory.Create(
+                RuleId,
+                invocation,
+                "Target expression invocation seed.",
+                factKind: RuleFactKind.TargetExpression);
         }
     }
 }

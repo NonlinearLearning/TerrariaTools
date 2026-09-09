@@ -39,15 +39,15 @@
 
 | 具体调用点 | 可表达的摘要映射 | 结论 |
 | --- | --- | --- |
-| `src/NLCPG/Builder/CpgShardBuildCoordinator.cs:164`、`src/NLCPG/Builder/CpgShardBuildSession.cs:164`、`:166` 的 `Path.Combine` | 对具体 overload 的每个 path 参数建立 `Parameter(i) -> Return` | 可作为第二批候选；必须按 overload 完整键登记，不能按 `Path.Combine` 方法名合并 |
-| `src/NLCPG/Builder/NLCPGBuildContext.cs:89`、`:93`、`:114`、`:115`、`:138` 的 `Path.GetFullPath`、`GetFileName`、`GetFileNameWithoutExtension` | `Parameter(0) -> Return` | 比多参数 `Combine` 更容易验证，可作为首批之后的低风险候选；仍需按具体 overload 和 nullable return 语义测试 |
-| `src/NLCPG/Analysis/CpgRelationQueryService.cs:68` 的 `Task.FromResult`；`src/NLISSN.Application/Analysis/RuleGraphAnalysisExecutor.cs:119`、`:146`、`:161`、`:190`、`:217` 的 `Task.FromResult` | `Parameter(0) -> Return` | 可作为第二批候选；需要覆盖泛型 arity、构造后的参数类型和 `Task` 返回包装，且不能把分析器内部异步调度语义误当成业务流 |
+| `src/NLCPG/Builder/CpgShardBuildCoordinator.cs:164`、`src/NLCPG/Builder/CpgShardBuildSession.cs:164`、`:166` 的 `Path.Combine` | 对具体 overload 的每个 path 参数建立 `Parameter(i) -> Return` | 已验证为默认目录外的候选；后续若晋级，必须按 overload 完整键登记，不能按 `Path.Combine` 方法名合并 |
+| `src/NLCPG/Builder/NLCPGBuildContext.cs:89`、`:93`、`:114`、`:115`、`:138` 的 `Path.GetFullPath`、`GetFileName`、`GetFileNameWithoutExtension` | `Parameter(0) -> Return` | 当前仍未登记；需要具体 overload、nullable return 和删除保护测试后再评估 |
+| `src/NLCPG/Analysis/CpgRelationQueryService.cs:68` 的 `Task.FromResult`；`src/NLISSN.Application/Analysis/RuleGraphAnalysisExecutor.cs:119`、`:146`、`:161`、`:190`、`:217` 的 `Task.FromResult` | `Parameter(0) -> Return` | 已验证为默认目录外的候选；需要泛型 arity、构造后的参数类型和 `Task` 返回包装测试后再评估 |
 | `src/NLCPG/Cli/NLCPGCli.cs:338`、`src/NLISSN/Artifacts/RewritePlanArtifactService.cs:38`、`:53`、`src/NLISSN/Artifacts/AnalysisEvidenceArtifactService.cs:57` 的 `JsonSerializer.Serialize` | 序列化输入对象到字符串返回值，理论上是参数到返回 | 不进入首批默认目录；generic/overload 和对象图语义复杂，且这些调用属于 artifact 边界，先用 unknown 保守处理 |
-| `src/NLISSN.Rules/Mark/MethodGlobal/UnreferencedMethodMarkRule.cs:95`、`src/NLISSN.Rules/Mark/MethodGlobal/UnreachableMethodMarkRule.cs:82` 的 `IMethodSymbol.ToString()` | receiver 到 return | 可作为 Roslyn 专用候选，但必须与 `System.Object.ToString()` 使用不同的完整 method key；首批不合并 |
+| `src/NLISSN.Rules/Mark/MethodGlobal/UnreferencedMethodMarkRule.cs:95`、`src/NLISSN.Rules/Mark/MethodGlobal/UnreachableMethodMarkRule.cs:82` 的 `IMethodSymbol.ToString()` | receiver 到 return | 已验证与 `System.Object.ToString()` 共享 Roslyn method key 但受 receiver type constraint 拒绝；不进入默认目录 |
 | `src/NLISSN/Hosting/CommandHost.cs:131`、`src/NLISSN/Hosting/DirectoryAnalysisService.cs:76`、`src/NLCPG/Builder/CpgShardBuildSession.cs:369` 等 `File.WriteAllText` | 无返回值；输入影响外部文件副作用 | 明确排除；FlowSummary 不能替代副作用/纯度分析 |
 | `src/NLCPG/Builder/NLCPGBuilder.cs` 多处 `TryGetValue`、`src/NLISSN.Application/Analysis/DirectoryAnalysisUseCase.cs:267` | cache/index lookup，部分带条件性 `out` | 明确排除；这些是内部索引控制流，不应作为外部 API 数据流摘要 |
 
-因此，当前最可靠的首批是“符号精确的无参数 receiver-to-return 摘要”，而不是对所有看起来返回数据的框架方法做 broad mapping。`Path.Combine` 和 `Task.FromResult` 适合在首批完成后按具体签名逐项晋级；`JsonSerializer`、`File.WriteAllText`、LINQ 和 `TryGetValue` 应保留为 unknown/显式排除。
+因此，当前实际启用的首批只有“符号精确的 `System.Object.ToString()` 无参数 receiver-to-return 摘要”，而不是对所有看起来返回数据的框架方法做 broad mapping。真实调用点测试确认 `Path.Combine`、`Task.FromResult`、Roslyn `IMethodSymbol.ToString()`、LINQ、`TryGetValue` 和 `File.WriteAllText` 均未进入默认目录；它们继续返回 unknown 或由显式摘要决定。跨文件项目 helper 也经过 Workspace project-compilation 回归测试，未命中 framework catalog。
 
 ## 2. 不变量和非范围
 
@@ -356,6 +356,8 @@ git diff --check
 
 Expected: harness consistency 和 whitespace check 均通过；若 CLI 或开发流程契约发生变化，再同步检查 `docs/quick-start.md`、`docs/cli-reference.md`、`docs/developer-guide.md` 和 `docs/contributing.md`。
 
+本次收口实际执行了 `git diff --check` 并通过；当前隔离 worktree 不包含被 `.gitignore` 管理的 `Context/` 和 harness 脚本，因此临时提供同一主 checkout 基线的 `Context/`，使用主 checkout 中的脚本并以本 worktree 作为 `-RepoRoot` 执行，结果为 `[check-harness-consistency] OK`。验证副本随后已删除，未进入提交。
+
 **Step 4: Update implementation evidence**
 
 在计划的 Definition of Done 中只勾选实际运行并通过的项目；记录默认启用的候选、排除项、metrics 行为和跨文件 project boundary 的剩余限制。
@@ -371,12 +373,12 @@ Expected: harness consistency 和 whitespace check 均通过；若 CLI 或开发
 
 ## 10. Definition of Done
 
-- [ ] 当前 `Compilation` 能构造不依赖运行时版本硬编码的 framework summary key；registry precedence、重复键和 signature mismatch 有测试。
-- [ ] 单文件、目录和 Workspace 生产入口都使用同一默认 resolver；显式 custom resolver 仍可覆盖。
-- [ ] `InterproceduralDataFlow` 只在 summary 生产规则请求时启用；默认 pipeline 的 capability、CPG edge 和 label 可观察。
-- [ ] resolved summary 只生成 typed payload/evidence，不直接授权删除；receiver/parameter/ref/out endpoint provenance 完整。
-- [ ] unknown、blocked、歧义、无法映射和 truncation 都保持保守，metrics/evidence/cut reason 稳定。
-- [ ] 至少一个真实稳定外部 API（`System.Object.ToString()`）完成默认启用；`Path.Combine`、`Task.FromResult` 等候选逐个验证，未证明者不加入默认目录。
-- [ ] LINQ 元素流、`TryGetValue` 条件 out、副作用 API 和跨文件项目 helper 没有被错误地用摘要覆盖。
-- [ ] CPG、规则传播、删除保护、证据、持久化、DOP 稳定性和 Workspace 边界测试通过。
-- [ ] `check-harness-consistency.ps1` 和 `git diff --check` 通过，文档只记录实际完成的范围。
+- [x] 当前 `Compilation` 能构造不依赖运行时版本硬编码的 framework summary key；registry precedence、重复键和 signature mismatch 有测试。
+- [x] 单文件、目录和 Workspace 生产入口都使用同一默认 resolver；显式 custom resolver 仍可覆盖。
+- [x] `InterproceduralDataFlow` 只在 summary 生产规则请求时启用；默认 pipeline 的 capability、CPG edge 和 label 可观察。
+- [x] resolved summary 只生成 typed payload/evidence，不直接授权删除；receiver/parameter/ref/out endpoint provenance 完整。
+- [x] unknown、blocked、歧义、无法映射和 truncation 都保持保守，metrics/evidence/cut reason 稳定。
+- [x] 至少一个真实稳定外部 API（`System.Object.ToString()`）完成默认启用；`Path.Combine`、`Task.FromResult` 等候选已验证未加入默认目录。
+- [x] LINQ 元素流、`TryGetValue` 条件 out、副作用 API 和跨文件项目 helper 没有被错误地用摘要覆盖。
+- [x] CPG、规则传播、删除保护、证据、持久化、DOP 稳定性和 Workspace 边界测试通过。
+- [x] `check-harness-consistency.ps1` 和 `git diff --check` 通过，文档只记录实际完成的范围。
