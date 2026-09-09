@@ -128,7 +128,10 @@ public sealed record FlowSummaryMapping(
 /// <summary>
 /// Holds all ordered endpoint mappings for one external method.
 /// </summary>
-public sealed record FlowSummary(FlowSummaryMethodKey MethodKey, IReadOnlyList<FlowSummaryMapping> Mappings);
+public sealed record FlowSummary(
+    FlowSummaryMethodKey MethodKey,
+    IReadOnlyList<FlowSummaryMapping> Mappings,
+    string? ReceiverTypeShape = null);
 
 public enum FlowSummaryResolution
 {

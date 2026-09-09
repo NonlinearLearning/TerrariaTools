@@ -68,6 +68,21 @@ public sealed class CallFlowResolver : ICallFlowResolver
                 "The matched flow summary does not declare the requested endpoint pair.");
         }
 
+        if (mapping.Source.Kind == FlowSummaryEndpointKind.Receiver &&
+            lookup.Summary?.ReceiverTypeShape is { } receiverTypeShape &&
+            !string.Equals(
+                invocation.Instance?.Type?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                receiverTypeShape,
+                StringComparison.Ordinal))
+        {
+            return new ResolvedCallFlow(
+                ResolvedCallFlowStatus.SignatureMismatch,
+                lookup.Resolution,
+                methodKey,
+                null,
+                "The summary receiver type constraint does not match the bound invocation receiver.");
+        }
+
         var status = mapping.Kind == FlowSummaryMappingKind.Block
             ? ResolvedCallFlowStatus.Blocked
             : ResolvedCallFlowStatus.Resolved;

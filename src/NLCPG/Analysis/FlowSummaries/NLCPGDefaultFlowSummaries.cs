@@ -83,7 +83,8 @@ public static class NLCPGDefaultFlowSummaries
 
             return new FlowSummary(
                 FlowSummaryMethodKey.From(candidates[0]),
-                Mappings);
+                Mappings,
+                candidates[0].ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
         }
 
         private bool MatchesParameters(IMethodSymbol method)

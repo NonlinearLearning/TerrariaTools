@@ -167,5 +167,11 @@ public sealed record NLCPGFlowSummaryMetrics(
   int RejectedEndpoints,
   int TruncatedMappings)
 {
+    /// <summary>
+    /// Stable reasons for boundary cuts made while evaluating interprocedural flow.
+    /// </summary>
+    public IReadOnlyDictionary<string, int> CutReasons { get; init; } =
+      new Dictionary<string, int>(StringComparer.Ordinal);
+
     public static NLCPGFlowSummaryMetrics Empty { get; } = new(0, 0, 0, 0, 0, 0);
 }

@@ -667,7 +667,6 @@ public sealed partial class NLCPGBuilder
         var plans = new List<InterproceduralDataFlowPlan>();
         var summaryBudget = new FlowSummaryBudget(_options.EffectiveFlowSummaryOptions);
         var recordedReturnMethods = new HashSet<string>(StringComparer.Ordinal);
-        var cuts = new Dictionary<string, int>(StringComparer.Ordinal);
         var options = _options.EffectiveInterproceduralDataFlowOptions;
         var methodBoundaryNodes = graph.Nodes
           .Where(node => node.Kind is NLCPGNodeKind.MethodParameter or NLCPGNodeKind.MethodReturn)
@@ -695,13 +694,13 @@ public sealed partial class NLCPGBuilder
             if (targets.Length == 0)
             {
                 AddExternalSummaryMappings(callSite, graph, summaryBudget);
-                RecordCut(cuts, "UnresolvedTarget");
+                summaryBudget.RecordCut("UnresolvedTarget");
                 continue;
             }
 
             if (targets.Length > options.MaxCallTargetsPerSite)
             {
-                RecordCut(cuts, "AmbiguousTarget");
+                summaryBudget.RecordCut("AmbiguousTarget");
                 continue;
             }
 
@@ -709,7 +708,7 @@ public sealed partial class NLCPGBuilder
             if (!TryGetSymbolKey(targetMethodNode, out var targetMethodSymbolKey))
             {
                 AddExternalSummaryMappings(callSite, graph, summaryBudget);
-                RecordCut(cuts, "UnresolvedTarget");
+                summaryBudget.RecordCut("UnresolvedTarget");
                 continue;
             }
 
@@ -717,7 +716,7 @@ public sealed partial class NLCPGBuilder
             if (!hasInternalBoundary)
             {
                 AddExternalSummaryMappings(callSite, graph, summaryBudget);
-                RecordCut(cuts, "ExternalTarget");
+                summaryBudget.RecordCut("ExternalTarget");
                 continue;
             }
 
@@ -769,14 +768,14 @@ public sealed partial class NLCPGBuilder
 
             if (callSitePlans.Count == 0)
             {
-                RecordCut(cuts, "MissingIntraFacts");
+                summaryBudget.RecordCut("MissingIntraFacts");
                 continue;
             }
 
             plans.AddRange(callSitePlans.Take(options.MaxBoundaryEdgesPerMethod));
             if (callSitePlans.Count > options.MaxBoundaryEdgesPerMethod)
             {
-                RecordCut(cuts, "BoundaryEdgeBudget");
+                summaryBudget.RecordCut("BoundaryEdgeBudget");
             }
         }
 
@@ -809,6 +808,9 @@ public sealed partial class NLCPGBuilder
     {
         if (_options.CallFlowResolver is null)
         {
+            budget.BeginCallSite();
+            budget.RecordRejected(ResolvedCallFlowStatus.Unknown);
+            budget.RecordCut("MissingResolver");
             return;
         }
 
@@ -816,35 +818,57 @@ public sealed partial class NLCPGBuilder
           .FirstOrDefault(pair => pair.Value == callSite).Key;
         if (invocation is null)
         {
+            budget.RecordCut("MissingInvocationOperation");
             return;
         }
 
         var context = BuildPendingNodeCallSiteContext(callSite);
         budget.BeginCallSite();
-        var resolvedMappings = _options.CallFlowResolver.ResolveAll(invocation);
-        foreach (var resolved in resolvedMappings.Where(result => !result.IsResolved || result.Mapping is null))
+        var resolvedMappings = _options.CallFlowResolver.ResolveAll(invocation).ToArray();
+        if (resolvedMappings.Length == 0)
         {
-            budget.RecordRejected(resolved.Status);
+            budget.RecordRejected(ResolvedCallFlowStatus.Unknown);
+            budget.RecordCut("MissingSummary");
+            return;
+        }
+
+        foreach (var resolved in resolvedMappings.Where(result =>
+          !result.IsResolved ||
+          result.Mapping is null ||
+          result.Mapping.Kind == FlowSummaryMappingKind.Block))
+        {
+            budget.RecordRejected(resolved);
         }
 
         foreach (var resolved in resolvedMappings
-          .Where(result => result.IsResolved && result.Mapping is not null)
+          .Where(result =>
+            result.IsResolved &&
+            result.Mapping is not null &&
+            result.Mapping.Kind != FlowSummaryMappingKind.Block)
           .OrderBy(result => result.MethodKey.StableKey, StringComparer.Ordinal)
           .ThenBy(result => result.Mapping!.Source.Kind)
           .ThenBy(result => result.Mapping!.Source.ParameterOrdinal)
           .ThenBy(result => result.Mapping!.Target.Kind)
-          .ThenBy(result => result.Mapping!.Target.ParameterOrdinal))
+          .ThenBy(result => result.Mapping!.Target.ParameterOrdinal)
+          .ThenBy(result => result.Mapping!.Kind)
+          .DistinctBy(result => new
+          {
+              result.MethodKey.StableKey,
+              result.Resolution,
+              Mapping = result.Mapping!
+          }))
         {
-            if (!budget.TryConsume(resolved.MethodKey.StableKey))
-            {
-                continue;
-            }
-
             var source = ResolveInvocationEndpointNode(invocation, callSite, resolved.Mapping!.Source, graph);
             var target = ResolveInvocationEndpointNode(invocation, callSite, resolved.Mapping.Target, graph);
             if (source is null || target is null)
             {
                 budget.RejectedEndpoints += 1;
+                budget.RecordCut("SummaryEndpointUnavailable");
+                continue;
+            }
+
+            if (!budget.TryConsume(resolved.MethodKey.StableKey))
+            {
                 continue;
             }
 
@@ -881,7 +905,30 @@ public sealed partial class NLCPGBuilder
 
         var argument = invocation.Arguments.FirstOrDefault(candidate =>
           candidate.Parameter?.Ordinal == endpoint.ParameterOrdinal);
-        return argument is null ? null : GetOrCreateOperationNode(argument.Value, graph);
+        if (argument is null || !IsCompatibleArgumentEndpoint(argument, endpoint))
+        {
+            return null;
+        }
+
+        return GetOrCreateOperationNode(argument.Value, graph);
+    }
+
+    private static bool IsCompatibleArgumentEndpoint(
+      IArgumentOperation argument,
+      FlowSummaryEndpoint endpoint)
+    {
+        if (argument.Parameter is null)
+        {
+            return false;
+        }
+
+        return endpoint.Kind switch
+        {
+            FlowSummaryEndpointKind.Parameter => argument.Parameter.RefKind == RefKind.None,
+            FlowSummaryEndpointKind.RefParameter => argument.Parameter.RefKind == RefKind.Ref,
+            FlowSummaryEndpointKind.OutParameter => argument.Parameter.RefKind == RefKind.Out,
+            _ => false,
+        };
     }
 
     private bool IsMethodBoundaryNode(NLCPGNode boundaryNode, string targetMethodSymbolKey)
@@ -916,15 +963,11 @@ public sealed partial class NLCPGBuilder
         return _symbolKeysByNode.TryGetValue(node, out symbolKey!);
     }
 
-    private static void RecordCut(IDictionary<string, int> cuts, string reason)
-    {
-        cuts[reason] = cuts.TryGetValue(reason, out var count) ? count + 1 : 1;
-    }
-
     private sealed class FlowSummaryBudget
     {
         private readonly NLCPGFlowSummaryOptions _options;
         private readonly Dictionary<string, int> _methodCounts = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _cutReasons = new(StringComparer.Ordinal);
         private int _callSiteCount;
 
         internal FlowSummaryBudget(NLCPGFlowSummaryOptions options)
@@ -940,6 +983,13 @@ public sealed partial class NLCPGBuilder
         internal int RejectedEndpoints { get; set; }
         internal int TruncatedMappings { get; private set; }
 
+        internal void RecordCut(string reason)
+        {
+            _cutReasons[reason] = _cutReasons.TryGetValue(reason, out var count)
+                ? count + 1
+                : 1;
+        }
+
         internal bool TryConsume(string methodKey)
         {
             var methodCount = _methodCounts.GetValueOrDefault(methodKey);
@@ -948,6 +998,21 @@ public sealed partial class NLCPGBuilder
                 methodCount >= _options.MaxMappingsPerMethod)
             {
                 TruncatedMappings += 1;
+                if (_callSiteCount >= _options.MaxMappingsPerCallSite)
+                {
+                    RecordCut("SummaryMappingsPerCallSite");
+                }
+
+                if (ResolvedMappings >= _options.MaxMappingsPerBuild)
+                {
+                    RecordCut("SummaryMappingsPerBuild");
+                }
+
+                if (methodCount >= _options.MaxMappingsPerMethod)
+                {
+                    RecordCut("SummaryMappingsPerMethod");
+                }
+
                 return false;
             }
 
@@ -962,24 +1027,53 @@ public sealed partial class NLCPGBuilder
             _callSiteCount = 0;
         }
 
+        internal void RecordRejected(ResolvedCallFlow resolved)
+        {
+            var status = resolved.Status;
+            if (status == ResolvedCallFlowStatus.Resolved && resolved.Mapping is null)
+            {
+                status = ResolvedCallFlowStatus.SignatureMismatch;
+            }
+
+            if (resolved.Mapping?.Kind == FlowSummaryMappingKind.Block)
+            {
+                status = ResolvedCallFlowStatus.Blocked;
+            }
+
+            RecordRejected(status);
+        }
+
         internal void RecordRejected(ResolvedCallFlowStatus status)
         {
             switch (status)
             {
                 case ResolvedCallFlowStatus.Unknown:
                     UnknownCalls += 1;
+                    RecordCut("SummaryUnknown");
                     break;
                 case ResolvedCallFlowStatus.SignatureMismatch:
                     SignatureMismatches += 1;
+                    RecordCut("SummarySignatureMismatch");
                     break;
                 case ResolvedCallFlowStatus.Blocked:
                     BlockedMappings += 1;
+                    RecordCut("SummaryBlocked");
                     break;
             }
         }
 
         internal NLCPGFlowSummaryMetrics ToMetrics() => new(
-          ResolvedMappings, UnknownCalls, SignatureMismatches, BlockedMappings, RejectedEndpoints, TruncatedMappings);
+          ResolvedMappings,
+          UnknownCalls,
+          SignatureMismatches,
+          BlockedMappings,
+          RejectedEndpoints,
+          TruncatedMappings)
+        {
+            CutReasons = _cutReasons
+              .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+              .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal),
+        };
     }
 
     private void RunPipeline(IReadOnlyList<INLCPGPass> pipeline, NLCPGBuildContext context)
