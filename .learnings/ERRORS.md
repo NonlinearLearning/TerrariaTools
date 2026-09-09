@@ -27,6 +27,151 @@ Validate the exact absolute input path before starting the rule host.
 - **Notes**: Corrected the configuration path before rerunning.
 
 ---
+## [ERR-20260909-MARKDOWN-LINK-LINE] markdown-link-check
+
+**Logged**: 2026-09-09T22:29:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: docs
+
+### Summary
+The first successful parse of the local Markdown-link checker treated repository links with a trailing `:line` locator as literal filenames.
+
+### Error
+```text
+docs/research/2026-09-09-analysis-pipeline-performance-study.md -> ../../src/NLISSN/Hosting/CommandHost.cs:38
+```
+
+### Context
+- The report uses repository file links with one-based line locators.
+- The checker removed URL fragments but did not remove the optional numeric line suffix before calling `Test-Path`.
+- The referenced source files exist at the path before `:line`.
+
+### Suggested Fix
+Strip a trailing `:\d+` locator from relative local targets before resolving the filesystem path.
+
+### Metadata
+- Reproducible: yes
+- Related Files: docs/research/2026-09-09-analysis-pipeline-performance-study.md
+
+### Resolution
+- **Resolved**: 2026-09-09
+- **Notes**: Updated the one-off checker expression to normalize `path:line` targets before existence checks.
+
+---
+## [ERR-20260909-POWERSHELL-QUOTE] markdown-link-check
+
+**Logged**: 2026-09-09T22:28:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: docs
+
+### Summary
+The first local Markdown-link check failed because an outer PowerShell command expanded inner `$` variables before passing the script to `pwsh`.
+
+### Error
+```text
+ParserError: Missing variable name after foreach. The correct form is: foreach ($a in $b) {...}
+```
+
+### Context
+- The check was passed as a double-quoted `pwsh -Command` argument from an outer PowerShell process.
+- The outer process removed `$docPaths`, `$broken`, and loop variables before the inner parser received the command.
+- No repository content was modified by the failed check.
+
+### Suggested Fix
+Use an outer single-quoted command string with inner double-quoted path literals, or run the check from a temporary script file when nested PowerShell syntax is required.
+
+### Metadata
+- Reproducible: yes
+- Related Files: docs/research/2026-09-09-analysis-pipeline-performance-study.md; 设计docs/目前设计/性能分析组件.md
+
+### Resolution
+- **Resolved**: 2026-09-09
+- **Notes**: Rewrote the checker invocation so the inner PowerShell variables remain intact.
+
+---
+
+## [ERR-20260909-GITHUB-EOF] github-raw-fetch
+
+**Logged**: 2026-09-09T18:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: docs
+
+### Summary
+A parallel PowerShell fetch of GitHub raw source files ended with an unexpected EOF.
+
+### Error
+Received an unexpected EOF or 0 bytes from the transport stream.
+
+### Context
+- Attempted to fetch LLVM LNT, LLVM Test Suite, and Roslyn benchmark sources with Invoke-WebRequest.
+- The failure affected the transport request; it did not establish that any source URL was unavailable.
+
+### Suggested Fix
+Retry through curl.exe or the GitHub HTML/API endpoint and record only facts confirmed by the returned source.
+
+### Metadata
+- Reproducible: unknown
+- Related Files: docs/research/2026-09-09-analysis-pipeline-performance-study.md
+
+---
+
+### Resolution
+- **Resolved**: 2026-09-09
+- **Notes**: GitHub HTML/blob pages returned HTTP 200 and were used to verify the added source links; raw/curl transport remained unreliable, so no raw response was treated as evidence.
+
+## [ERR-20260909-DOTNET-LOCK] parameter-shrink-test-build
+
+**Logged**: 2026-09-09T18:00:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: tests
+
+### Summary
+The targeted ParameterShrink regression build failed because NLCPG.dll was locked by another compiler process.
+
+### Error
+    CSC : error CS2012: Cannot open Build/src/obj/NLCPG/Debug/net10.0/NLCPG.dll for writing because it is being used by another process.
+
+### Context
+- Command: dotnet test tests/NLISSN.PerformanceTests/RoslynDeletionPrototype.PerformanceTests.csproj --filter FullyQualifiedName~PerformanceOptimizationRegressionTests --no-restore
+- The failure occurred during project compilation before the test filter ran.
+
+### Suggested Fix
+Retry with a single build process or an isolated intermediate/output directory after confirming no stale compiler process holds the file.
+
+### Metadata
+- Reproducible: unknown
+- Related Files: tests/NLISSN.PerformanceTests/RoslynDeletionPrototype.PerformanceTests.csproj
+
+---
+
+## [ERR-20260909-TEMP-PROBE] temporary-parameter-shrink-test
+
+**Logged**: 2026-09-09T18:10:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tests
+
+### Summary
+The temporary review probe initially failed on an invalid C# interface assertion and was corrected before the probe passed.
+
+### Error
+The first probe run used Assert.IsType<IMethodSymbol> for a Roslyn public wrapper whose runtime type is an implementation type.
+
+### Context
+- Temporary file: tests/NLISSN.PerformanceTests/ParameterShrinkReviewTemporaryTests.cs
+- The probe was deleted after verification.
+
+### Suggested Fix
+Use Assert.IsAssignableFrom for Roslyn interface symbols in temporary tests.
+
+### Metadata
+- Reproducible: no
+- Related Files: tests/NLISSN.PerformanceTests/ParameterShrinkReviewTemporaryTests.cs
+
 ## [ERR-20260909-MSBUILD-COMPILE-GENERATED-PATH] global-compiler-generated-path
 
 **Logged**: 2026-09-09T16:20:00+08:00
