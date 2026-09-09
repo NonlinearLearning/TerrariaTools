@@ -87,6 +87,95 @@ public sealed class FlowSummaryResolverTests
     }
 
     [Fact]
+    public void DefaultFrameworkCatalog_BindsObjectToStringFromCurrentCompilation()
+    {
+        var (compilation, invocation) = CreateObjectToStringInvocation("FlowSummaryDefaultCatalog");
+        var methodKey = FlowSummaryMethodKey.From(invocation.TargetMethod);
+        var summaries = NLCPGDefaultFlowSummaries.CreateForCompilation(compilation);
+
+        var summary = Assert.Single(summaries);
+        Assert.Equal(methodKey.StableKey, summary.MethodKey.StableKey);
+        Assert.Equal(
+            invocation.TargetMethod.ContainingAssembly.Identity.ToString(),
+            summary.MethodKey.AssemblyIdentity);
+
+        var resolver = new CallFlowResolver(new NLCPGFlowSummaryRegistry(
+            projectSummaries: null,
+            userSummaries: null,
+            frameworkSummaries: summaries));
+        var resolved = resolver.Resolve(
+            invocation,
+            FlowSummaryEndpoint.Receiver,
+            FlowSummaryEndpoint.Return);
+
+        Assert.Equal(ResolvedCallFlowStatus.Resolved, resolved.Status);
+        Assert.Equal(FlowSummaryResolution.Framework, resolved.Resolution);
+        Assert.Equal(FlowSummaryMappingKind.Explicit, resolved.Mapping!.Kind);
+    }
+
+    [Fact]
+    public void DefaultFrameworkCatalog_UsesTheBoundReferenceIdentityForEachCompilation()
+    {
+        var first = CreateObjectToStringInvocation("FlowSummaryReferenceOne");
+        var second = CreateObjectToStringInvocation("FlowSummaryReferenceTwo");
+
+        var firstSummary = Assert.Single(
+            NLCPGDefaultFlowSummaries.CreateForCompilation(first.Compilation));
+        var secondSummary = Assert.Single(
+            NLCPGDefaultFlowSummaries.CreateForCompilation(second.Compilation));
+
+        Assert.Equal(
+            first.Invocation.TargetMethod.ContainingAssembly.Identity.ToString(),
+            firstSummary.MethodKey.AssemblyIdentity);
+        Assert.Equal(
+            second.Invocation.TargetMethod.ContainingAssembly.Identity.ToString(),
+            secondSummary.MethodKey.AssemblyIdentity);
+        Assert.Equal(firstSummary.MethodKey.StableKey, secondSummary.MethodKey.StableKey);
+    }
+
+    [Fact]
+    public void DefaultFrameworkCatalog_LeavesUndeclaredMethodsUnknown()
+    {
+        var (compilation, invocation) = CreateObjectToStringInvocation("FlowSummaryUnknownCatalog");
+        var registry = new NLCPGFlowSummaryRegistry(
+            projectSummaries: null,
+            userSummaries: null,
+            frameworkSummaries: NLCPGDefaultFlowSummaries.CreateForCompilation(compilation));
+
+        var resolved = registry.Resolve(FlowSummaryMethodKey.From(invocation.TargetMethod) with
+        {
+            MethodName = "Missing"
+        });
+
+        Assert.Equal(FlowSummaryResolution.Unknown, resolved.Resolution);
+        Assert.Empty(resolved.Mappings);
+    }
+
+    [Fact]
+    public void Registry_RejectsDuplicateCompleteKeysWithinEverySourceLayer()
+    {
+        var (compilation, invocation) = CreateObjectToStringInvocation("FlowSummaryDuplicateCatalog");
+        var summary = Assert.Single(NLCPGDefaultFlowSummaries.CreateForCompilation(compilation));
+
+        foreach (var source in new[] { "Project", "User", "Framework" })
+        {
+            var exception = Assert.Throws<InvalidOperationException>(() => source switch
+            {
+                "Project" => new NLCPGFlowSummaryRegistry(
+                    new[] { summary, summary }, null, null),
+                "User" => new NLCPGFlowSummaryRegistry(
+                    null, new[] { summary, summary }, null),
+                _ => new NLCPGFlowSummaryRegistry(
+                    null, null, new[] { summary, summary }),
+            });
+
+            Assert.Equal(
+                $"Flow summary source '{source}' contains duplicate method key '{summary.MethodKey.StableKey}'.",
+                exception.Message);
+        }
+    }
+
+    [Fact]
     public void Resolve_ExtensionMethodWithNamedRefArgument_UsesNormalizedMethodKeyAndExactEndpointKinds()
     {
         const string source = """
@@ -289,5 +378,26 @@ public sealed class FlowSummaryResolverTests
             0,
             new[] { NLCPGFlowSummaryEndpoint.Parameter(0) },
             NLCPGFlowSummaryEndpoint.Return);
+    }
+
+    private static (CSharpCompilation Compilation, IInvocationOperation Invocation) CreateObjectToStringInvocation(
+        string assemblyName)
+    {
+        const string source = "public sealed class Sample { public string Run(object value) => value.ToString(); }";
+        var tree = CSharpSyntaxTree.ParseText(source, path: $"{assemblyName}.cs");
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            new[] { tree },
+            new[]
+            {
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Console).Assembly.Location),
+                MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+            },
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+        var invocationSyntax = tree.GetRoot().DescendantNodes().OfType<InvocationExpressionSyntax>().Single();
+        var invocation = Assert.IsAssignableFrom<IInvocationOperation>(
+            compilation.GetSemanticModel(tree).GetOperation(invocationSyntax));
+        return (compilation, invocation);
     }
 }
