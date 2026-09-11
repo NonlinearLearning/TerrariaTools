@@ -134,8 +134,9 @@ public sealed class  CommandHost
             var result = application.Analyze(source, filePath, settings, runtime);
             result =  PostRewriteDiagnostics.AddSingleFileDiagnostics(
               result,
+              source,
               filePath,
-                PostRewriteDiagnostics.ShouldSkipDeclarationDiagnostics(settings));
+              PostRewriteDiagnostics.ShouldSkipDeclarationDiagnostics(settings));
 
             if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
             {

@@ -2,12 +2,14 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NL.Concurrency;
+using Microsoft.CodeAnalysis.Text;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Pipeline;
+using NLISSN.Core.Rewrite;
 
 namespace NLISSN.Core.Decision;
 
@@ -56,6 +58,12 @@ public sealed record RuleDecision
 
     /// Candidate footprint projected onto the final decision for diagnostics.
     public DecisionFootprint? Footprint { get; init; }
+    /// 产生此最终决策的规则标识；只由冲突解析后的决策单元赋值。
+    /// 规则声明的转换契约标识；未声明契约的既有规则保持为空。
+    public string? ContractId { get; init; }
+
+    /// 最终决策的可验证授权范围与显式效果。
+    public RewriteDecisionWitness? VerificationWitness { get; init; }
 
     // 记录一条最终决策及其改写原因，供 rewrite 阶段直接消费。
     public RuleDecision(
@@ -116,8 +124,34 @@ public sealed record DecisionUnit
     /// Candidate intent produced by the proposal stage, before planning.
     public EditIntent Intent { get; init; }
 
+    /// 规则声明的转换契约；候选阶段只能携带声明，不能直接构成改写授权。
+    public RuleTransformationContract? TransformationContract { get; init; }
+
+    /// 当前候选决策声明的控制流效果。
+    public IReadOnlyList<RewriteControlFlowEffect> ControlFlowEffects { get; init; }
+
+    /// 结构改写后必须保留的原始观察点，最终通过计划映射到改写后 CFG。
+    public IReadOnlyList<TextSpan> PreservedSpans { get; init; }
+
+    public string? GroupKey { get; init; }
+
     // 描述单条规则提出的一组相关片段、关系和冲突信息，供决策策略统一收口。
-    public DecisionUnit(string ruleId, DecisionActionKind action, NLCPGNode unitNode, IReadOnlyList<NLCPGNode> fragments, IReadOnlyList<NLCPGEdge> relations, IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "", DecisionFootprint? footprint = null, EditIntent? intent = null)
+    public DecisionUnit(
+      string ruleId,
+      DecisionActionKind action,
+      NLCPGNode unitNode,
+      IReadOnlyList<NLCPGNode> fragments,
+      IReadOnlyList<NLCPGEdge> relations,
+      IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings,
+      string? conflictKey = null,
+      string? mergeKey = null,
+      string reason = "",
+      DecisionFootprint? footprint = null,
+      EditIntent? intent = null,
+      string? groupKey = null,
+      RuleTransformationContract? transformationContract = null,
+      IReadOnlyList<RewriteControlFlowEffect>? controlFlowEffects = null,
+      IReadOnlyList<TextSpan>? preservedSpans = null)
     {
         RuleId = ruleId;
         Action = action;
@@ -135,6 +169,10 @@ public sealed record DecisionUnit
           : throw new InvalidOperationException($"Decision unit '{ruleId}' has no bound anchor fragment.");
         Footprint = footprint ?? DecisionFootprint.Compatibility(ruleId, anchor, action);
         Intent = intent ?? EditIntent.Compatibility(this);
+        GroupKey = groupKey;
+        TransformationContract = transformationContract;
+        ControlFlowEffects = controlFlowEffects ?? Array.Empty<RewriteControlFlowEffect>();
+        PreservedSpans = preservedSpans ?? Array.Empty<TextSpan>();
     }
 }
 
@@ -167,10 +205,10 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
               .FirstOrDefault(fragment => string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal))
               ?? winner.Fragments.Last();
             var replacement = ResolveBoundSyntaxNode(winner, replacementFragment);
-            return new RuleDecision(node, node, winner.Action, winner.Reason, replacement, winner.RuleId);
+            return CreateFinalDecision(winner, node, replacement);
         }
 
-        return new RuleDecision(node, node, winner.Action, winner.Reason, ruleId: winner.RuleId);
+        return CreateFinalDecision(winner, node, replacementNode: null);
     }
 
     internal DecisionUnit ResolveToUnitForTesting(IReadOnlyList<DecisionUnit> units)
@@ -187,6 +225,38 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
 
         throw new InvalidOperationException(
           $"Decision fragment '{DecisionCpgFactory.BuildNodeKey(fragment)}' does not have a bound syntax node.");
+    }
+
+    private static RuleDecision CreateFinalDecision(
+        DecisionUnit winner,
+        SyntaxNode node,
+        SyntaxNode? replacementNode)
+    {
+        var witness = winner.TransformationContract is null
+            ? null
+            : new RewriteDecisionWitness(
+                winner.RuleId,
+                winner.TransformationContract.ContractId,
+                winner.Action,
+                node.SyntaxTree.FilePath,
+                node.Span,
+                new[] { node.Span },
+                winner.ControlFlowEffects,
+                winner.PreservedSpans);
+
+        return new RuleDecision(
+          node,
+          node,
+          winner.Action,
+          winner.Reason,
+          replacementNode,
+          winner.RuleId,
+          winner.Intent,
+          winner.Footprint)
+        {
+            ContractId = winner.TransformationContract?.ContractId,
+            VerificationWitness = witness,
+        };
     }
 
     private static IEnumerable<DecisionUnit> MergeBySyntaxCoverage(IReadOnlyList<DecisionUnit> units)
@@ -270,7 +340,13 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
           syntaxBindings,
           conflictKey: coveringRoot.ConflictKey,
           mergeKey: coveringRoot.MergeKey,
-          reason: reason);
+          reason: reason,
+          footprint: coveringRoot.Footprint,
+          intent: coveringRoot.Intent,
+          groupKey: coveringRoot.GroupKey,
+          transformationContract: coveringRoot.TransformationContract,
+          controlFlowEffects: coveringRoot.ControlFlowEffects,
+          preservedSpans: coveringRoot.PreservedSpans);
     }
 
     private static SyntaxNode? TryResolveAnchorNode(DecisionUnit unit)

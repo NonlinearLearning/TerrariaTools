@@ -5,6 +5,7 @@ using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
 
 namespace NLISSN.Rules;
 
@@ -36,6 +37,13 @@ public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       ProposalHelpers.MergeableNodeKinds;
 
+    public override RuleTransformationContract TransformationContract { get; } = new(
+      "rewrite.logical-condition",
+      new HashSet<DecisionActionKind> { DecisionActionKind.Replace },
+      new HashSet<RewriteControlFlowEffect> { RewriteControlFlowEffect.SimplifyLogicalCondition },
+      true,
+      false);
+
     // 根据逻辑宿主 payload 生成保持短路语义的 Replace 决策。
     public override IEnumerable<DecisionUnit> Propose(IProposeRuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
@@ -60,7 +68,11 @@ public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
                 yield return ProposalHelpers.CreateLogicalReplaceDecision(
                   RuleId,
                   payload,
-                  replacementNode);
+                  replacementNode) with
+                {
+                    TransformationContract = TransformationContract,
+                    ControlFlowEffects = new[] { RewriteControlFlowEffect.SimplifyLogicalCondition }
+                };
             }
         }
     }

@@ -147,6 +147,23 @@ public sealed class ApplicationService
             analysisContext.Root,
             analysisContext.SemanticModel,
             executablePlan);
+        var originalSources = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [analysisContext.Root.SyntaxTree.FilePath] = analysisContext.Root.ToFullString()
+        };
+        var rewrittenSources = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [analysisContext.Root.SyntaxTree.FilePath] = rewriteResult.RewrittenSource ?? analysisContext.Root.ToFullString()
+        };
+        var operationsByFile = new Dictionary<string, IReadOnlyList<RewritePlanEdit>>(StringComparer.Ordinal)
+        {
+            [analysisContext.Root.SyntaxTree.FilePath] = rewriteResult.Operations ?? Array.Empty<RewritePlanEdit>()
+        };
+        var verification = new RewriteVerifier().Verify(
+            originalSources,
+            rewrittenSources,
+            filteredDecisions,
+            operationsByFile);
 
         return new PrototypeAnalysisResult(
           seedMarks,
@@ -176,7 +193,8 @@ public sealed class ApplicationService
               null,
               rewriteResult.Edits.Count,
               rewriteResult.Diff.Files.Count),
-            PerformanceStatus.Completed));
+            PerformanceStatus.Completed),
+          Verification: verification);
     }
 
     private AnalysisContext BuildAnalysisContext(

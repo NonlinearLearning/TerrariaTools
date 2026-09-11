@@ -46,7 +46,9 @@ public sealed record PrototypeAnalysisResult(
   /// 显式启用绑定校验时产生的稳定诊断；默认路径为空。
   AnalysisValidationReport? ValidationReport = null,
   /// 当前单个 analysis item 的性能事实；不包含目录或 Run children。
-  ApplicationPerformanceFacts? Performance = null)
+  ApplicationPerformanceFacts? Performance = null,
+  /// 改写授权、编译诊断和后续控制流验证的报告模式结果。
+  RewriteVerificationResult? Verification = null)
 {
   public DiffSummary DiffSummary => Diff.Summary;
 }

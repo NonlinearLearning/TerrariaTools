@@ -5,6 +5,7 @@ using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
 
 namespace NLISSN.Core.Decision;
 
@@ -20,6 +21,9 @@ public abstract class RuleDefinitionPropose : IRuleDefinition
     public virtual RuleConsumesContract Consumes => RuleConsumesContract.Empty;
 
     public virtual RuleProducesContract Produces => RuleProducesContract.Empty;
+
+    /// Declares the verifier contract for structural transformations produced by this rule.
+    public virtual RuleTransformationContract? TransformationContract => null;
 
     public abstract string Name { get; }
 
