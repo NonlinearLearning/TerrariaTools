@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using NLISSN.Rules;
+using NLISSN.Core.Lifting;
 
 namespace NLISSN.Rules;
 
@@ -106,6 +107,25 @@ public static class ReplaceDecisionFactory
           conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
           mergeKey: DecisionCpgFactory.BuildNodeKey(anchorNode));
 
+        var anchorKey = DecisionCpgFactory.BuildNodeKey(anchorNode);
+        var footprint = DecisionFootprint.Create(
+          ruleId,
+          anchorNode,
+          DecisionActionKind.Replace,
+          new[] { anchorKey },
+          DecisionComposition.Composable,
+          proofKind: CoverageGoal.ExpressionReplacement.ToString(),
+          candidateDiscriminator: DecisionCpgFactory.BuildNodeKey(replacementNode));
+        var intent = EditIntent.Create(
+          footprint.CandidateId,
+          anchorNode,
+          DecisionActionKind.Replace,
+          consumedNodeKeys: new[] { anchorKey },
+          writeNodeKeys: new[] { DecisionCpgFactory.BuildNodeKey(replacementNode) },
+          proofReferences: new[] { $"proof:{CoverageGoal.ExpressionReplacement}:{anchorKey}" },
+          composition: DecisionComposition.Composable,
+          status: EditIntentStatus.Complete);
+
         return new DecisionUnit(
           ruleId,
           DecisionActionKind.Replace,
@@ -125,7 +145,9 @@ public static class ReplaceDecisionFactory
             (replacementFragment, replacementNode.WithoutTrivia())),
           conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
           mergeKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
-          reason: reason);
+          reason: reason,
+          footprint: footprint,
+          intent: intent);
     }
 
     private static NLCPGNode CreateFragment(SyntaxNode node, string role, DecisionActionKind action)

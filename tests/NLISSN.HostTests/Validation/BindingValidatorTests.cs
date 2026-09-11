@@ -8,6 +8,7 @@ using NLISSN.Core.Pipeline;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Validation;
 using NLISSN.Rules;
+using RoslynPrototype.Tests.TestCodeSet.Decision;
 using Xunit;
 
 namespace RoslynPrototype.Tests.Validation;
@@ -65,6 +66,84 @@ public sealed class BindingValidatorTests
     Assert.Equal(
       new[] { "DEC005", "DEC009", "DEC011" },
       report.Issues.Select(issue => issue.Code));
+  }
+
+  [Fact]
+  public void Validate_WhenReplacementFragmentBindsOutputTree_DoesNotReportDec004()
+  {
+    var originalRoot = CSharpSyntaxTree.ParseText("value + target", path: "replacement-binding.cs").GetRoot();
+    var anchor = originalRoot.DescendantNodes().OfType<BinaryExpressionSyntax>().Single();
+    var replacement = CSharpSyntaxTree.ParseText("value - target", path: "replacement-binding-output.cs")
+      .GetRoot()
+      .DescendantNodes()
+      .OfType<BinaryExpressionSyntax>()
+      .Single();
+    var anchorFragment = DecisionCpgFactory.CreateFragment(
+      "anchor", anchor, "anchor", DecisionActionKind.Replace);
+    var replacementFragment = DecisionCpgFactory.CreateFragment(
+      "replacement", replacement, "replacement", DecisionActionKind.Replace);
+    var unitNode = DecisionCpgFactory.CreateUnit(
+      "replacement-test", DecisionActionKind.Replace, anchorFragment, "replacement-test");
+    var unit = new DecisionUnit(
+      "replacement-test",
+      DecisionActionKind.Replace,
+      unitNode,
+      new[] { anchorFragment, replacementFragment },
+      new[]
+      {
+        DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
+        DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
+      },
+      DecisionCpgFactory.CreateSyntaxBindings(
+        (anchorFragment, anchor),
+        (replacementFragment, replacement)),
+      reason: "replacement-test");
+    var report = new DecisionBindingValidator().Validate(
+      originalRoot,
+      new[] { unit },
+      Array.Empty<RuleDecision>(),
+      AnalysisEvidenceGraph.Empty);
+
+    Assert.DoesNotContain(report.Issues, issue => issue.Code == "DEC004");
+  }
+
+  [Fact]
+  public void Analyze_WhenLogicalFlowUsesRegisteredPayloads_DoesNotReportBind005()
+  {
+    var result = CreateApplication().Analyze(
+      DecisionComplexSources.NestedLogicalOrReductionSource,
+      "logical-flow-payload.cs",
+      new Dictionary<string, string>
+      {
+        ["target-name"] = "s",
+        ["validate-bindings"] = "true",
+      });
+
+    Assert.DoesNotContain(result.ValidationReport?.Issues ?? Array.Empty<ValidationIssue>(), issue => issue.Code == "BIND005");
+    Assert.DoesNotContain(result.ValidationReport?.Issues ?? Array.Empty<ValidationIssue>(), issue => issue.Code == "DEC004");
+    Assert.DoesNotContain(result.ValidationReport?.Issues ?? Array.Empty<ValidationIssue>(), issue => issue.Code == "PLAN008");
+  }
+
+  [Fact]
+  public void Analyze_WhenPropagationUsesUnknownPayload_ReportsBind005()
+  {
+    var application = new ApplicationService(
+      new RuleDefinitionMark[] { new InvalidRelationPayloadMarkRule() },
+      new RuleDefinitionPropagate[] { new UnknownPayloadPropagationRule() },
+      Array.Empty<NLISSN.Core.Lifting.RuleDefinitionLift>(),
+      Array.Empty<NLISSN.Core.Decision.RuleDefinitionPropose>());
+
+    var result = application.Analyze(
+      "class Demo { }",
+      "unknown-propagation-payload.cs",
+      new Dictionary<string, string>
+      {
+        ["validate-bindings"] = "true",
+        ["skip-rewrite"] = "true",
+      });
+
+    Assert.NotNull(result.ValidationReport);
+    Assert.Contains(result.ValidationReport!.Issues, issue => issue.Code == "BIND005");
   }
 
   [Fact]
@@ -170,6 +249,44 @@ public sealed class BindingValidatorTests
         source,
         1,
         new DeclarationHostPayload(declaration, DeclarationHostKind.FieldDeclaration));
+    }
+  }
+
+  private sealed class UnknownPayloadPropagationRule : RuleDefinitionPropagate
+  {
+    public override string RuleId => "TEST-PROP-UNKNOWN-PAYLOAD-001";
+
+    public override string Name => "Emit an unregistered propagation payload";
+
+    public override RuleConsumesContract Consumes => new(new[]
+    {
+      new RuleConsumedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactKind.TargetExpression)
+    });
+
+    public override RuleProducesContract Produces => new(new[]
+    {
+      new RuleProducedSyntax(new[] { SyntaxKind.ClassDeclaration }, RuleFactKind.FlowAssignmentTarget)
+    });
+
+    public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds => new[] { SyntaxKind.ClassDeclaration };
+
+    public override IEnumerable<PropagatedMarkRecord> Propagate(
+      IPropagationRuleContext context,
+      IReadOnlyList<MarkRecord> seedMarks)
+    {
+      var source = Assert.Single(seedMarks);
+      var declaration = context.Root.DescendantNodes().OfType<ClassDeclarationSyntax>().Single();
+      yield return new PropagatedMarkRecord(
+        RuleId,
+        source with
+        {
+          RuleId = RuleId,
+          SyntaxNode = declaration,
+          FactKind = RuleFactKind.FlowAssignmentTarget
+        },
+        source,
+        1,
+        new object());
     }
   }
 }

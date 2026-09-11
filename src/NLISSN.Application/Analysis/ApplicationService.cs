@@ -117,9 +117,17 @@ public sealed class ApplicationService
         var validationReport = graphResult.ValidationReport;
 
         var filteredDecisions = FilterUnsafeLocalDeclarationDeletes(
-          FilterNestedDeleteDecisions(decisions),
+          decisions,
           analysisContext.SemanticModel);
-        var rewriteResult = ShouldSkipRewrite(analysisContext.Session) || validationReport is { IsValid: false }
+        var executablePlan = graphResult.ExecutablePlan is { } validatedPlan &&
+          filteredDecisions.Count == validatedPlan.Decisions.Count
+            ? validatedPlan
+            : graphResult.ExecutablePlan is { } plan
+              ? new ExecutablePlan(plan.DecisionPlan, filteredDecisions)
+              : null;
+        var rewriteResult = ShouldSkipRewrite(analysisContext.Session) ||
+          executablePlan is null ||
+          validationReport is { IsValid: false }
           ? new PrototypeRewriteResult(
             null,
             Array.Empty<RewriteEdit>(),
@@ -127,7 +135,7 @@ public sealed class ApplicationService
           : _rewriter.Rewrite(
             analysisContext.Root,
             analysisContext.SemanticModel,
-            filteredDecisions);
+            executablePlan);
 
         return new PrototypeAnalysisResult(
           seedMarks,
@@ -249,50 +257,9 @@ public sealed class ApplicationService
           cpgAnalysisContext);
     }
 
-    private static IReadOnlyList<RuleDecision> FilterNestedDeleteDecisions(IReadOnlyList<RuleDecision> decisions)
-    {
-        var ordered = decisions
-          .OrderByDescending(decision => decision.FinalNode.Span.Length)
-          .ToList();
-
-        var filtered = new List<RuleDecision>();
-        foreach (var decision in ordered)
-        {
-            if (decision.Action == DecisionActionKind.Delete &&
-                IsCoveredByReplaceDecision(decision, ordered))
-            {
-                continue;
-            }
-
-            if (decision.Action != DecisionActionKind.Delete)
-            {
-                filtered.Add(decision);
-                continue;
-            }
-
-            if (filtered.Any(existing =>
-                  existing.Action == DecisionActionKind.Delete &&
-                  existing.FinalNode.Span.Contains(decision.FinalNode.Span)))
-            {
-                continue;
-            }
-
-            filtered.Add(decision);
-        }
-
-        return filtered;
-    }
-
     private static bool ShouldSkipRewrite(AnalysisSession session)
     {
         return session.Settings.SkipRewrite;
-    }
-
-    private static bool IsCoveredByReplaceDecision(RuleDecision deleteDecision, IReadOnlyList<RuleDecision> decisions)
-    {
-        return decisions.Any(decision =>
-          decision.Action == DecisionActionKind.Replace &&
-          decision.FinalNode.Span.Contains(deleteDecision.FinalNode.Span));
     }
 
     private static IReadOnlyList<RuleDecision> FilterUnsafeLocalDeclarationDeletes(

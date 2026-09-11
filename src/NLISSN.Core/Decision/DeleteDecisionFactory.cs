@@ -1,12 +1,44 @@
 using Microsoft.CodeAnalysis;
 using NLISSN.Core.Marking;
+using NLISSN.Core.Lifting;
 
 namespace NLISSN.Core.Decision;
 
 public static class DeleteDecisionFactory
 {
+    // 为完整声明边界创建可支配其内部候选的删除决策。
+    public static DecisionUnit CreateDeclarationDeleteDecision(
+      string ruleId,
+      SyntaxNode declarationNode,
+      string reason,
+      SyntaxNode? sourceNode = null,
+      string? conflictKey = null)
+    {
+        ArgumentNullException.ThrowIfNull(declarationNode);
+        return CreateDeleteDecision(
+          ruleId,
+          declarationNode,
+          reason,
+          sourceNode,
+          conflictKey,
+          consumedNodes: declarationNode.DescendantNodesAndSelf(),
+          composition: DecisionComposition.OpaqueDominates,
+          dominatesChildren: true,
+          declarationBoundary: true);
+    }
+
     // 为一个锚点语法节点创建删除决策单元，并在需要时附带来源片段关系。
-    public static DecisionUnit CreateDeleteDecision(string ruleId, SyntaxNode anchorNode, string reason, SyntaxNode? sourceNode = null, string? conflictKey = null)
+    public static DecisionUnit CreateDeleteDecision(
+      string ruleId,
+      SyntaxNode anchorNode,
+      string reason,
+      SyntaxNode? sourceNode = null,
+      string? conflictKey = null,
+      IEnumerable<SyntaxNode>? consumedNodes = null,
+      CoverageProof? proof = null,
+      DecisionComposition composition = DecisionComposition.Unknown,
+      bool dominatesChildren = false,
+      bool declarationBoundary = false)
     {
         var anchorFragment = CreateFragment(anchorNode, "anchor", DecisionActionKind.Delete);
         var fragments = new List<NLCPG.Model.NLCPGNode> { anchorFragment };
@@ -40,6 +72,56 @@ public static class DeleteDecisionFactory
             relations.Insert(1, DecisionCpgFactory.CreateContainment(unitNode, fragments[1]));
         }
 
+        var consumedKeys = (consumedNodes ?? new[] { anchorNode })
+          .Select(DecisionCpgFactory.BuildNodeKey)
+          .ToArray();
+        var proofGoal = proof?.Goal.ToString() ??
+          (declarationBoundary ? "DeclarationBoundary" : CoverageGoal.AtomicTarget.ToString());
+        var resolvedComposition = composition == DecisionComposition.Unknown
+          ? DecisionComposition.Independent
+          : composition;
+        var intent = EditIntent.Create(
+          DecisionFootprint.Create(
+            ruleId,
+            anchorNode,
+            DecisionActionKind.Delete,
+            consumedKeys,
+            resolvedComposition,
+            proofGoal.ToString(),
+            dominatesChildren,
+            candidateDiscriminator: sourceNode is null
+              ? null
+              : DecisionCpgFactory.BuildNodeKey(sourceNode)).CandidateId,
+          anchorNode,
+          DecisionActionKind.Delete,
+          consumedNodeKeys: consumedKeys,
+          proofReferences: new[] { $"proof:{proofGoal}:{DecisionCpgFactory.BuildNodeKey(anchorNode)}" },
+          behaviorBudget: proof is null
+            ? null
+            : new BehaviorBudget(proof.PreservedObligations
+              .Select(obligation => Enum.TryParse<BehaviorObligationKind>(obligation.Kind, true, out var kind)
+                ? (BehaviorObligationKind?)kind
+                : null)
+              .Where(kind => kind is not null)
+              .Select(kind => kind!.Value)),
+          composition: resolvedComposition,
+          status: proof is null || proof.Status == CoverageProofStatus.Complete
+            ? EditIntentStatus.Complete
+            : EditIntentStatus.Unknown,
+          dominatesChildren: dominatesChildren,
+          declarationBoundary: declarationBoundary);
+        var footprint = DecisionFootprint.Create(
+          ruleId,
+          anchorNode,
+          DecisionActionKind.Delete,
+          consumedKeys,
+          resolvedComposition,
+          proofGoal.ToString(),
+          dominatesChildren,
+          candidateDiscriminator: sourceNode is null
+            ? null
+            : DecisionCpgFactory.BuildNodeKey(sourceNode));
+
         return new DecisionUnit(
           ruleId,
           DecisionActionKind.Delete,
@@ -48,7 +130,9 @@ public static class DeleteDecisionFactory
           relations,
           DecisionCpgFactory.CreateSyntaxBindings(bindings.ToArray()),
           conflictKey: resolvedConflictKey,
-          reason: reason);
+          reason: reason,
+          footprint: footprint,
+          intent: intent);
     }
 
     private static NLCPG.Model.NLCPGNode CreateFragment(SyntaxNode node, string role, DecisionActionKind? localAction = null)

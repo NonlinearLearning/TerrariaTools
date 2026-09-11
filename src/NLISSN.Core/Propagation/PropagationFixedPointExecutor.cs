@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Pipeline;
 
@@ -47,7 +48,11 @@ internal sealed class PropagationFixedPointExecutor
                     var sourceKey = PropagationFactKey.Create(
                       candidate.SourceMark.RuleId,
                       candidate.SourceMark);
-                    if (!sourceFacts.TryGetValue(sourceKey, out var candidateSource))
+                    if (!TryResolveSourceFact(
+                          sourceFacts,
+                          sourceKey,
+                          candidate.SourceMark,
+                          out var candidateSource))
                     {
                         throw new InvalidOperationException(
                           $"Rule '{rule.RuleId}' emitted a propagation fact from an unknown source mark.");
@@ -81,6 +86,38 @@ internal sealed class PropagationFixedPointExecutor
           .OrderBy(entry => PropagationWorkItemPriority.Create(entry.Key))
           .Select(entry => entry.Value)
           .ToList();
+    }
+
+    private static bool TryResolveSourceFact(
+      IReadOnlyDictionary<PropagationFactKey, PropagationSourceFact> sourceFacts,
+      PropagationFactKey exactKey,
+      MarkRecord sourceMark,
+      out PropagationSourceFact sourceFact)
+    {
+        if (sourceFacts.TryGetValue(exactKey, out sourceFact!))
+        {
+            return true;
+        }
+
+        // A propagated record keeps payload/provenance beside its MarkRecord;
+        // the next rule receives the mark projection as SourceMark and cannot
+        // reproduce that payload-bearing key. Resolve that source by the
+        // immutable fact identity that is available on the mark, while the
+        // full payload-bearing keys remain distinct in admittedFacts.
+        var sourceNodeKey = FactIdentity.BuildNodeKey(sourceMark.SyntaxNode);
+        var sourceFactKind = RuleFactKindDescriptor.Resolve(sourceMark.FactKind, sourceMark.SemanticTag);
+        sourceFact = sourceFacts
+          .Where(entry =>
+            string.Equals(entry.Key.RuleId, exactKey.RuleId, StringComparison.Ordinal) &&
+            string.Equals(entry.Key.SourceTreeVersion, sourceMark.SourceTreeVersion, StringComparison.Ordinal) &&
+            string.Equals(entry.Key.AnchorNodeKey, sourceNodeKey, StringComparison.Ordinal) &&
+            entry.Key.FactKind == sourceFactKind)
+          .OrderBy(entry => entry.Value.Depth)
+          .ThenBy(entry => entry.Key.PayloadIdentity, StringComparer.Ordinal)
+          .ThenBy(entry => entry.Key.ProvenanceIdentity, StringComparer.Ordinal)
+          .Select(entry => entry.Value)
+          .FirstOrDefault()!;
+        return sourceFact is not null;
     }
 
     private static IEnumerable<RuleDefinitionPropagate> GetCompatibleRules(
@@ -141,7 +178,11 @@ internal sealed class PropagationFixedPointExecutor
       int RawKind,
       string RuleId,
       RuleFactKind? FactKind,
-      string? SemanticTag) : IComparable<PropagationWorkItemPriority>
+      string? SemanticTag,
+      string SourceTreeVersion,
+      string AnchorNodeKey,
+      string PayloadIdentity,
+      string ProvenanceIdentity) : IComparable<PropagationWorkItemPriority>
     {
         public static PropagationWorkItemPriority Create(PropagationFactKey key)
         {
@@ -152,7 +193,11 @@ internal sealed class PropagationFixedPointExecutor
               key.RawKind,
               key.RuleId,
               key.FactKind,
-              key.SemanticTag);
+              key.SemanticTag,
+              key.SourceTreeVersion,
+              key.AnchorNodeKey,
+              key.PayloadIdentity,
+              key.ProvenanceIdentity);
         }
 
         public int CompareTo(PropagationWorkItemPriority? other)
@@ -207,7 +252,28 @@ internal sealed class PropagationFixedPointExecutor
                 return 1;
             }
 
-            return StringComparer.Ordinal.Compare(SemanticTag, other.SemanticTag);
+            var semanticTagComparison = StringComparer.Ordinal.Compare(SemanticTag, other.SemanticTag);
+            if (semanticTagComparison != 0)
+            {
+                return semanticTagComparison;
+            }
+
+            var sourceTreeComparison = StringComparer.Ordinal.Compare(SourceTreeVersion, other.SourceTreeVersion);
+            if (sourceTreeComparison != 0)
+            {
+                return sourceTreeComparison;
+            }
+
+            var anchorComparison = StringComparer.Ordinal.Compare(AnchorNodeKey, other.AnchorNodeKey);
+            if (anchorComparison != 0)
+            {
+                return anchorComparison;
+            }
+
+            var payloadComparison = StringComparer.Ordinal.Compare(PayloadIdentity, other.PayloadIdentity);
+            return payloadComparison != 0
+              ? payloadComparison
+              : StringComparer.Ordinal.Compare(ProvenanceIdentity, other.ProvenanceIdentity);
         }
     }
 }

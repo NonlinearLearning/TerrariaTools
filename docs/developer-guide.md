@@ -87,6 +87,37 @@ pwsh -File .\Miscellaneous\scripts\Run-ConcurrencyPoolPerformance.ps1 `
 `summary.csv` 和按 DOP/阶段隔离的日志。脚本会拒绝缺少成功终态日志或与 DOP 1
 图/规则快照不一致的样本。该命令仅用于有意的性能决策；常规回归继续使用分层测试。
 
+### 外部 profile 关联
+
+`dotnet-trace`、`dotnet-counters` 和 `dotnet-gcdump` 是独立的开发机诊断工具，
+不会由 NLISSN 自动安装，也不会在 `normal` 或普通 `benchmark` 测试中启动。需要
+验证代表性 Roslyn fixture 的 profile attachment 时，先在开发机安装并确认三个命令
+都位于 `PATH`：
+
+```powershell
+dotnet tool install --global dotnet-trace
+dotnet tool install --global dotnet-counters
+dotnet tool install --global dotnet-gcdump
+dotnet-trace --version
+dotnet-counters --version
+dotnet-gcdump --version
+```
+
+然后显式启用外部诊断测试：
+
+```powershell
+$env:NLISSN_RUN_EXTERNAL_DIAGNOSTIC_TESTS = "1"
+dotnet test .\tests\NLISSN.PerformanceTests\RoslynDeletionPrototype.PerformanceTests.csproj `
+  --no-restore -p:UseSharedCompilation=false `
+  --filter "FullyQualifiedName~ExternalDiagnosticIntegrationTests"
+```
+
+该测试对当前测试进程运行受控的短时 fixture workload，并将每个工具的命令、版本、
+开始/结束时间、退出码和相对 artifact 路径写入临时 manifest；manifest 只用同一个
+`runId`/`stageId` 关联 attachment，不解析外部二进制内容。测试结束会清理临时目录。
+工具未安装、环境变量未设置或工具命令失败都不会伪造成功 profile；未满足前置条件时
+测试显式标记为 skipped。profile attachment 也不进入普通性能样本的 median/p95。
+
 针对目录 DOP 与 CPG DOP 的拆分诊断，可先生成固定的 103 文件小型输入集：不超过
 512 KiB 的 3 个最大 C# 文件加 100 个最小 C# 文件。选择按字节数排序，并以规范化相对路径作为并列排序键；
 脚本会复制文件并写出包含字节数和 SHA-256 的 `manifest.json`，因此每次运行都能核对

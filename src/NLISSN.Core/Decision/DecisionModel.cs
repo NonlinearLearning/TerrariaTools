@@ -51,6 +51,12 @@ public sealed record RuleDecision
     /// Immutable budget summary associated with the evidence root.
     public DecisionEvidence? Evidence { get; init; }
 
+    /// Original-tree intent that was selected by DecisionPlanner, when present.
+    public EditIntent? Intent { get; init; }
+
+    /// Candidate footprint projected onto the final decision for diagnostics.
+    public DecisionFootprint? Footprint { get; init; }
+
     // 记录一条最终决策及其改写原因，供 rewrite 阶段直接消费。
     public RuleDecision(
       SyntaxNode originalNode,
@@ -58,7 +64,9 @@ public sealed record RuleDecision
       DecisionActionKind action,
       string reason,
       SyntaxNode? replacementNode = null,
-      string? ruleId = null)
+      string? ruleId = null,
+      EditIntent? intent = null,
+      DecisionFootprint? footprint = null)
     {
         RuleId = ruleId;
         OriginalNode = originalNode;
@@ -66,6 +74,8 @@ public sealed record RuleDecision
         Action = action;
         Reason = reason;
         ReplacementNode = replacementNode;
+        Intent = intent;
+        Footprint = footprint;
     }
 }
 
@@ -99,8 +109,15 @@ public sealed record DecisionUnit
     /// 当前决策单元的人类可读原因说明。
     public string Reason { get; init; }
 
+    /// Explicit original-tree footprint. Legacy callers receive a compatibility
+    /// footprint and are treated as untrusted by the formal planner.
+    public DecisionFootprint Footprint { get; init; }
+
+    /// Candidate intent produced by the proposal stage, before planning.
+    public EditIntent Intent { get; init; }
+
     // 描述单条规则提出的一组相关片段、关系和冲突信息，供决策策略统一收口。
-    public DecisionUnit(string ruleId, DecisionActionKind action, NLCPGNode unitNode, IReadOnlyList<NLCPGNode> fragments, IReadOnlyList<NLCPGEdge> relations, IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "")
+    public DecisionUnit(string ruleId, DecisionActionKind action, NLCPGNode unitNode, IReadOnlyList<NLCPGNode> fragments, IReadOnlyList<NLCPGEdge> relations, IReadOnlyDictionary<NodeId, SyntaxNode> syntaxBindings, string? conflictKey = null, string? mergeKey = null, string reason = "", DecisionFootprint? footprint = null, EditIntent? intent = null)
     {
         RuleId = ruleId;
         Action = action;
@@ -111,6 +128,13 @@ public sealed record DecisionUnit
         ConflictKey = conflictKey;
         MergeKey = mergeKey;
         Reason = reason;
+        var anchor = fragments.FirstOrDefault(fragment =>
+          fragment.NodeId is { } nodeId && syntaxBindings.ContainsKey(nodeId)) is { NodeId: { } anchorId } anchorFragment &&
+          syntaxBindings.TryGetValue(anchorId, out var boundAnchor)
+          ? boundAnchor
+          : throw new InvalidOperationException($"Decision unit '{ruleId}' has no bound anchor fragment.");
+        Footprint = footprint ?? DecisionFootprint.Compatibility(ruleId, anchor, action);
+        Intent = intent ?? EditIntent.Compatibility(this);
     }
 }
 

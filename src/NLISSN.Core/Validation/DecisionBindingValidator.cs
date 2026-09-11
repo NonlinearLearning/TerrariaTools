@@ -60,11 +60,19 @@ public sealed class DecisionBindingValidator
         continue;
       }
 
-      if (!IsInOriginalTree(compilationRoot, syntaxNode) ||
+      var isReplacementFragment = string.Equals(fragment.Name, "replacement", StringComparison.Ordinal);
+      if ((!isReplacementFragment && !IsInOriginalTree(compilationRoot, syntaxNode)) ||
           !string.Equals(fragment.FilePath, syntaxNode.SyntaxTree.FilePath, StringComparison.Ordinal) ||
           fragment.SpanStart != syntaxNode.SpanStart || fragment.SpanEnd != syntaxNode.Span.End)
       {
-        issues.Add(CreateIssue("DEC004", $"{unit.RuleId}:{nodeId}", "A decision fragment binding is outside the original syntax tree or span.", unit.RuleId, nodeId));
+        issues.Add(CreateIssue(
+          "DEC004",
+          $"{unit.RuleId}:{nodeId}",
+          isReplacementFragment
+            ? "A replacement fragment binding does not match its output tree or span."
+            : "A decision fragment binding is outside the original syntax tree or span.",
+          unit.RuleId,
+          nodeId));
       }
     }
 

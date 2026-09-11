@@ -87,6 +87,27 @@ public sealed class RuleStructureContractTests
   }
 
   [Fact]
+  public void IfStructureProposal_RejectsPayloadWithoutCompleteStructureProof()
+  {
+    var root = CSharpSyntaxTree.ParseText("if (s.IsReady) { Run(); }").GetRoot();
+    var ifStatement = root.DescendantNodes().OfType<IfStatementSyntax>().Single();
+    var payload = new IfStructureLiftPayload(
+      ifStatement,
+      null,
+      null,
+      IfStructureLiftKind.DeleteWholeIf);
+
+    var accepted = ProposalHelpers.TryBuildIfStructureDecisionFromMark(
+      "test.if-structure",
+      payload,
+      out var decision,
+      out _);
+
+    Assert.False(accepted);
+    Assert.Null(decision);
+  }
+
+  [Fact]
   public void MarkCoverage_WhenOnlyOneConditionSiblingIsMarked_ReturnsFalse()
   {
     var condition = CSharpSyntaxTree.ParseText(

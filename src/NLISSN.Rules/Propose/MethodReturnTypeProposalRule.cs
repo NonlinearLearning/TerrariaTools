@@ -44,7 +44,7 @@ public sealed class MethodReturnTypeProposalRule : DeclarationHostProposalRuleBa
                 continue;
             }
 
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               method,
               "Private method return type references the delete-class target.",

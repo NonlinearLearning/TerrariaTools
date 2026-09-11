@@ -211,6 +211,13 @@
   },
   {
     "stage": "Propagate",
+    "type": "NLISSN.Rules.ExternalSummaryFlowPropagationRule",
+    "sourceCapability": "propagate.external-summary-flow",
+    "observedRuleId": "propagate.external-summary-flow",
+    "targetRuleId": "propagate.external-summary-flow"
+  },
+  {
+    "stage": "Propagate",
     "type": "NLISSN.Rules.IndexerParameterUsagePropagationRule",
     "sourceCapability": "propagate.type.indexer-parameter-usage",
     "observedRuleId": "DEL-CLASS-PROP-INDEXER-PARAM-USAGE-001",

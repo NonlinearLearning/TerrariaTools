@@ -22,6 +22,21 @@ public sealed class ControlStructureLiftingRule : RuleDefinitionLift
     new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget),
     new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition),
     new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.FlowSymbolReference),
+    new RuleConsumedSyntax(new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression }, RuleFactKind.FlowLogicalExpression),
+    new RuleConsumedSyntax(new[]
+    {
+      SyntaxKind.LogicalNotExpression,
+      SyntaxKind.UnaryPlusExpression,
+      SyntaxKind.UnaryMinusExpression,
+      SyntaxKind.BitwiseNotExpression,
+      SyntaxKind.PreIncrementExpression,
+      SyntaxKind.PreDecrementExpression,
+      SyntaxKind.PostIncrementExpression,
+      SyntaxKind.PostDecrementExpression,
+      SyntaxKind.AddressOfExpression,
+      SyntaxKind.AwaitExpression,
+      SyntaxKind.SuppressNullableWarningExpression
+    }, RuleFactKind.FlowUnaryExpression),
     new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, RuleFactKind.LiftExpressionHost)
   });
 
@@ -95,8 +110,16 @@ public sealed class ControlStructureLiftingRule : RuleDefinitionLift
     foreach (var candidate in candidates)
     {
       if (!TryGetRequiredExpressions(context, candidate, out var requiredExpressions) ||
-          requiredExpressions.Count == 0 ||
-          !requiredExpressions.All(expression => MarkCoverage.IsCovered(expression, marks)))
+          requiredExpressions.Count == 0)
+      {
+        continue;
+      }
+
+      var proof = MarkCoverage.EvaluateStructureComplete(
+        candidate,
+        marks.Select(mark => CoverageEvidence.FromMark(mark)),
+        requiredExpressions);
+      if (!proof.IsComplete)
       {
         continue;
       }
@@ -107,7 +130,8 @@ public sealed class ControlStructureLiftingRule : RuleDefinitionLift
         MarkRecordFactory.Create(RuleId, candidate, $"All required {candidate.Kind()} expressions are marked."),
         source,
         1,
-        GetStructureKind(candidate));
+        GetStructureKind(candidate),
+        new ControlStructureLiftPayload(candidate, proof));
     }
   }
 

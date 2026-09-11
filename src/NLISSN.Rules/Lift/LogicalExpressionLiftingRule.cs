@@ -76,11 +76,27 @@ public sealed class LogicalExpressionLiftingRule : RuleDefinitionLift
       .Where(mark => mark.Mark.FactKind == LogicalExpressionFlowFactKind)
       .Select(mark => mark.Mark.SyntaxNode)
       .OfType<BinaryExpressionSyntax>();
+    var evidence = seedMarks
+      .Select(mark => CoverageEvidence.FromMark(mark))
+      .Concat(propagatedMarks.Select(mark => CoverageEvidence.FromPropagated(mark)))
+      .ToList();
     foreach (var host in propagatedLogicalHosts
                .Where(host => host.IsKind(SyntaxKind.LogicalAndExpression) || host.IsKind(SyntaxKind.LogicalOrExpression))
                .DistinctBy(LiftingCommon.BuildNodeKey))
     {
-      var payload = LogicalExpressionLiftingHelpers.TryBuildPayload(host, operandMarks.Select(mark => mark.SyntaxNode));
+      var proof = MarkCoverage.Evaluate(
+        CoverageGoal.LogicalReduction,
+        host,
+        evidence);
+      if (!proof.IsComplete)
+      {
+        continue;
+      }
+
+      var payload = LogicalExpressionLiftingHelpers.TryBuildPayload(
+        host,
+        operandMarks.Select(mark => mark.SyntaxNode),
+        proof);
       if (payload is null)
       {
         continue;
@@ -120,7 +136,8 @@ internal static class LogicalExpressionLiftingHelpers
 {
   public static LogicalExpressionReductionPayload? TryBuildPayload(
     BinaryExpressionSyntax host,
-    IEnumerable<SyntaxNode> sourceNodes)
+    IEnumerable<SyntaxNode> sourceNodes,
+    CoverageProof? proof = null)
   {
     var markedNodes = sourceNodes
       .Where(node => host.Span.Contains(node.Span))
@@ -134,7 +151,7 @@ internal static class LogicalExpressionLiftingHelpers
       .ToList();
     var survivors = operands.Where(operand => !removable.Contains(operand)).ToList();
     return removable.Count > 0 && survivors.Count > 0
-      ? new LogicalExpressionReductionPayload(host, removable, survivors)
+      ? new LogicalExpressionReductionPayload(host, removable, survivors, proof)
       : null;
   }
 

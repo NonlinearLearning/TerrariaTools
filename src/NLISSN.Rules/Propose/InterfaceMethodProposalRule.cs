@@ -42,7 +42,7 @@ public sealed class InterfaceMethodProposalRule : DeclarationHostProposalRuleBas
                 continue;
             }
 
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               method,
               "Interface method signature references the delete-class target.",

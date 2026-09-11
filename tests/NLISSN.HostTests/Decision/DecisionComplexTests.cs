@@ -44,6 +44,47 @@ public sealed class DecisionComplexTests
     }
 
     [Fact]
+    public void Analyze_MixedLogicalCondition_RewritesLogicalOrWithoutIfDelete()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class Box
+          {
+            public bool IsReady { get; set; }
+          }
+
+          public sealed class Sample
+          {
+            public int Compute(Box s, bool ready, bool fallback)
+            {
+              if (s.IsReady && ready || fallback)
+              {
+                return 1;
+              }
+
+              return 0;
+            }
+          }
+          """;
+        var application = CreateApplication();
+
+        var result = application.Analyze(
+          source,
+          "mixed-logical-if.cs",
+          CreateOptions("s"));
+
+        Assert.DoesNotContain(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Delete &&
+          IsNodeKind(decision.FinalNode, SyntaxKind.IfStatement));
+        Assert.Contains(result.Decisions, decision =>
+          decision.Action == DecisionActionKind.Replace &&
+          IsNodeKind(decision.FinalNode, SyntaxKind.LogicalOrExpression));
+        TextDiffAssert.Contains("if (fallback)", result.RewrittenSource, result.Diff);
+        TextDiffAssert.DoesNotContain("s.IsReady", result.RewrittenSource, result.Diff);
+      }
+
+    [Fact]
     public void Analyze_WhenParentControlHostDeletes_NestedBodyDecisionsCollapseIntoParent()
     {
         var application = CreateApplication();

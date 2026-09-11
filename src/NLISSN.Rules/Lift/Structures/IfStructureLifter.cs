@@ -20,8 +20,16 @@ public static class IfStructureLiftingHelpers
               markedNode,
               new IfStructureAnalyzer(),
               out var ifAnalysis) ||
-            ifAnalysis is null ||
-            !MarkCoverage.IsCovered(ifAnalysis.AnchorIf.Condition, allMarks))
+            ifAnalysis is null)
+        {
+            return null;
+        }
+
+        var proof = MarkCoverage.EvaluateStructureComplete(
+          ifAnalysis.AnchorIf,
+          allMarks.Select(mark => CoverageEvidence.FromMark(mark)),
+          new[] { ifAnalysis.AnchorIf.Condition });
+        if (!proof.IsComplete)
         {
             return null;
         }
@@ -32,35 +40,41 @@ public static class IfStructureLiftingHelpers
             {
                 return new IfStructureLiftPayload(
                   ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, ifAnalysis.TailSection.Node,
-                  IfStructureLiftKind.ReplaceIfWithElseIfTail);
+                  IfStructureLiftKind.ReplaceIfWithElseIfTail,
+                  proof);
             }
 
             if (ifAnalysis.AnchorVariant == IfStructureVariant.HeadIf)
             {
                 return new IfStructureLiftPayload(
                   ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, ifAnalysis.TailSection.Node,
-                  IfStructureLiftKind.DeleteWholeIf);
+                  IfStructureLiftKind.DeleteWholeIf,
+                  proof);
             }
 
             if (ifAnalysis.ParentElseClause is not null)
             {
                 return new IfStructureLiftPayload(
                   ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, ifAnalysis.TailSection.Node,
-                  IfStructureLiftKind.ReplaceOwningElseWithElseTail);
+                  IfStructureLiftKind.ReplaceOwningElseWithElseTail,
+                  proof);
             }
 
             return new IfStructureLiftPayload(
               ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, ifAnalysis.TailSection.Node,
-              IfStructureLiftKind.ReplaceIfWithElseTail);
+              IfStructureLiftKind.ReplaceIfWithElseTail,
+              proof);
         }
 
         return ifAnalysis.AnchorVariant == IfStructureVariant.ElseIf && ifAnalysis.ParentElseClause is not null
           ? new IfStructureLiftPayload(
             ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, null,
-            IfStructureLiftKind.DeleteOwningElseClause)
+            IfStructureLiftKind.DeleteOwningElseClause,
+            proof)
           : new IfStructureLiftPayload(
             ifAnalysis.AnchorIf, ifAnalysis.ParentElseClause, null,
-            IfStructureLiftKind.DeleteWholeIf);
+            IfStructureLiftKind.DeleteWholeIf,
+            proof);
     }
 
     // 从已有 seed / propagated mark 推导完整的 if 结构标记，并避免重复提升同一宿主。
@@ -73,7 +87,10 @@ public static class IfStructureLiftingHelpers
         var allMarks = seedMarks.Concat(propagatedMarks.Select(item => item.Mark)).ToList();
         foreach (var (candidateIf, sourceMark) in GetCandidateIfs(context, allMarks, propagatedMarks))
         {
-            if (!MarkCoverage.IsCovered(candidateIf.Condition, allMarks))
+            if (!MarkCoverage.EvaluateStructureComplete(
+                  candidateIf,
+                  allMarks.Select(mark => CoverageEvidence.FromMark(mark)),
+                  new[] { candidateIf.Condition }).IsComplete)
             {
                 continue;
             }

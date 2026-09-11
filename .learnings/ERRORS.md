@@ -27,6 +27,96 @@ Validate the exact absolute input path before starting the rule host.
 - **Notes**: Corrected the configuration path before rerunning.
 
 ---
+
+## [ERR-20260911-PARALLEL-BUILD-LOCK] parallel-focused-build
+
+**Logged**: 2026-09-11T20:20:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+Running two focused `dotnet test` commands concurrently against the shared `Build/src/obj` output caused file-lock failures.
+
+### Error
+```text
+CS2012: cannot open Build/src/obj/NLISSN.Workspace/Debug/net10.0/NLISSN.Workspace.dll for writing because it is being used by another process.
+MSB4018 CreateAppHost: access to Build/src/obj/NLCPG/Debug/net10.0/apphost.exe was denied.
+```
+
+### Context
+- Two test projects were started in parallel from the same repository checkout.
+- The projects share intermediate and output directories configured under `Build`.
+- No application assertion was obtained from this run.
+
+### Suggested Fix
+Run Unit, Contract, Host, and Performance project commands serially when they use the shared output tree; use `UseSharedCompilation=false` and `MSBuildNodeReuse=false` as already required by the plan.
+
+### Metadata
+- Reproducible: yes
+- Related Files: Build/src/obj, tests/NLISSN.UnitTests/RoslynDeletionPrototype.UnitTests.csproj, tests/NLISSN.HostTests/RoslynDeletionPrototype.HostTests.csproj
+
+### Resolution
+- **Resolved**: 2026-09-11T20:20:00+08:00
+- **Notes**: Subsequent verification will be serial.
+
+---
+
+## [ERR-20260910-PATCH-001] apply_patch-replace-file
+
+**Logged**: 2026-09-10T00:00:00+08:00
+**Priority**: low
+**Status**: pending
+**Area**: docs
+
+### Summary
+An attempt to replace a Markdown file used delete and add operations for the same path in one patch, which the patch tool rejects.
+
+### Error
+```text
+apply_patch verification failed: invalid patch: multiple operations target D:\ProjectItem\SourceCode\Net\NL\设计docs\目前设计\性能分析组件.md
+```
+
+### Context
+- The current design document was going to be replaced with the adopted performance-fact propagation design.
+- The patch was rejected before changing the file.
+
+### Suggested Fix
+Use an update patch with targeted sections, or create a separate design document and append a superseding decision section to the current design page.
+
+### Metadata
+- Reproducible: yes
+- Related Files: 设计docs/目前设计/性能分析组件.md
+
+---
+
+## [ERR-20260910-SUBAGENT-ARGS] multi-agent-fork-arguments
+
+**Logged**: 2026-09-10T00:00:00+08:00
+**Priority**: low
+**Status**: pending
+**Area**: docs
+
+### Summary
+The delegated research call rejected an incompatible combination of full-history fork and explicit agent type.
+
+### Error
+```text
+Full-history forked agents inherit the parent agent type; omit agent_type, or spawn without a full-history fork.
+```
+
+### Context
+- The research skill required a background researcher for the GitHub-source comparison.
+- The first call supplied both fork_context=true and agent_type=researcher.
+
+### Suggested Fix
+Use a non-forked researcher or omit the explicit agent type when forking full history.
+
+### Metadata
+- Reproducible: yes
+- Related Files: docs/research/2026-09-10-coverage-decision-composition-research.md
+
+---
 ## [ERR-20260909-MARKDOWN-LINK-LINE] markdown-link-check
 
 **Logged**: 2026-09-09T22:29:00+08:00
@@ -347,5 +437,101 @@ Use `-v:m` for local verification on this environment.
 ### Metadata
 - Reproducible: yes
 - Related Files: docs/plans/2026-09-08-rule-catalog-source-generator-execution.md
+
+---
+
+## [ERR-20260910-SUBAGENT-503] multi-agent-research
+
+**Logged**: 2026-09-10T00:00:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: docs
+
+### Summary
+Parallel research and review subagents could not complete because the external responses service returned 503 or disconnected.
+
+### Error
+```text
+unexpected status 503 Service Unavailable: Service temporarily unavailable
+stream disconnected before completion: error sending request
+```
+
+### Context
+- Three bounded read-only subagent tasks were started for GitHub research and current-code/design review.
+- All failed before producing usable findings; their output was not used as evidence.
+- Local source inspection, focused tests, and direct GitHub raw-source reads remained available.
+
+### Suggested Fix
+Retry the delegated task only after the external responses service is healthy; keep a local-source fallback for research and review work.
+
+### Metadata
+- Reproducible: unknown
+- Related Files: docs/plans/2026-09-10-general-coverage-decision-model.md, docs/research/2026-09-10-coverage-decision-composition-research.md
+
+---
+
+## [ERR-20260910-HOST-FULL-SUITE] full-host-test-suite
+
+**Logged**: 2026-09-10T03:30:15+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: tests
+
+### Summary
+The full HostTests run reported three failures and then produced no further output until it was interrupted.
+
+### Error
+The run reported:
+
+    GeneratedRuleCatalogEquivalenceTests.Composer_DefaultMatchesFrozenIdentitySnapshot
+    WorkspaceConfigurationTests.Load_LegacySourceInputDoesNotCreateWorkspaceOptions
+    TestCodeSetCoverageTests.Analyze_AllTestCodeSetSources_BuildsGraphAndRunsApplicationPipeline
+
+The first failure showed an unexpected ExternalSummaryFlowPropagation catalog entry; the second could not locate the repository root; the third expected at least one seed mark. The process was interrupted after approximately two minutes without additional output.
+
+### Context
+- Command: dotnet test .\tests\NLISSN.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false -p:MSBuildNodeReuse=false --logger console;verbosity=minimal
+- The focused decision/structure filter completed separately with 31 passed and 0 failed.
+- No HostTests or vstest process remained after interruption.
+
+### Suggested Fix
+Run the three failing tests independently from a clean repository-root configuration, then repair or classify the existing baseline failures before using the full suite as a release gate.
+
+### Metadata
+- Reproducible: unknown
+- Related Files: tests/NLISSN.HostTests/Application/GeneratedRuleCatalogEquivalenceTests.cs, tests/NLISSN.HostTests/Workspace/WorkspaceConfigurationTests.cs, tests/NLISSN.HostTests/TestCodeSetCoverageTests.cs
+
+---
+
+## [ERR-20260911-UNIT-PROJECT-PATH] focused-unit-test-command
+
+**Logged**: 2026-09-11T20:01:58+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: tests
+
+### Summary
+The focused Decision unit test command used a non-existent project filename.
+
+### Error
+```text
+MSBUILD : error MSB1009: 项目文件不存在。
+开关:.\\tests\\NLISSN.UnitTests\\RoslynPrototype.UnitTests.csproj
+```
+
+### Context
+- The repository project is `tests/NLISSN.UnitTests/RoslynDeletionPrototype.UnitTests.csproj`.
+- The command was assembled from the plan's older project name and failed before compilation.
+
+### Suggested Fix
+Use the actual project names from `rg --files -g '*.csproj'` before running focused tests.
+
+### Metadata
+- Reproducible: yes
+- Related Files: tests/NLISSN.UnitTests/RoslynDeletionPrototype.UnitTests.csproj
+
+### Resolution
+- **Resolved**: 2026-09-11T20:01:58+08:00
+- **Notes**: Correct project path identified; no repository production code was affected.
 
 ---

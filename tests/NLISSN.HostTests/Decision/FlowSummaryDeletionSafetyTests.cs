@@ -325,24 +325,10 @@ public sealed class FlowSummaryDeletionSafetyTests
                     continue;
                 }
 
-                var fragment = DecisionCpgFactory.CreateFragment(
-                    $"summary-fragment:{propagated.Mark.SyntaxNode.SpanStart}",
+                yield return DeleteDecisionFactory.CreateDeleteDecision(
+                    RuleId,
                     propagated.Mark.SyntaxNode,
-                    "anchor",
-                    DecisionActionKind.Delete);
-                var unitNode = DecisionCpgFactory.CreateUnit(
-                    RuleId,
-                    DecisionActionKind.Delete,
-                    fragment,
                     "Resolved summary payload candidate.");
-                yield return new DecisionUnit(
-                    RuleId,
-                    DecisionActionKind.Delete,
-                    unitNode,
-                    new[] { fragment },
-                    new[] { DecisionCpgFactory.CreateContainment(unitNode, fragment) },
-                    DecisionCpgFactory.CreateSyntaxBindings((fragment, propagated.Mark.SyntaxNode)),
-                    reason: "Resolved summary payload candidate.");
             }
         }
     }

@@ -33,7 +33,8 @@ public sealed class ControlStructureRemovalProposalRule : RuleDefinitionPropose
         _ = context;
 
         foreach (var liftedMark in liftedMarks.Where(mark =>
-                   mark.StructureKind is StructuralKind.Loop or StructuralKind.Switch or StructuralKind.Return))
+                   mark.StructureKind is StructuralKind.Loop or StructuralKind.Switch or StructuralKind.Return &&
+                   HasCompleteStructureProof(mark)))
         {
             var kind = (SyntaxKind)liftedMark.Mark.SyntaxNode.RawKind;
             if (!DecisionConflictNodeKinds.Contains(kind))
@@ -45,8 +46,28 @@ public sealed class ControlStructureRemovalProposalRule : RuleDefinitionPropose
               RuleId,
               liftedMark.Mark.SyntaxNode,
               liftedMark.Mark.Reason,
-              liftedMark.SourceMark.SyntaxNode);
+              liftedMark.SourceMark.SyntaxNode,
+              proof: liftedMark.Payload switch
+              {
+                ControlStructureLiftPayload control => control.Proof,
+                SwitchStructureLiftPayload @switch => @switch.Proof,
+                _ => null
+              },
+              composition: DecisionComposition.OpaqueDominates,
+              dominatesChildren: true);
         }
+    }
+
+    private static bool HasCompleteStructureProof(LiftedMarkRecord liftedMark)
+    {
+        return liftedMark.Payload switch
+        {
+            ControlStructureLiftPayload control =>
+              control.Proof.Goal == CoverageGoal.StructureComplete && control.Proof.IsComplete,
+            SwitchStructureLiftPayload @switch =>
+              @switch.Proof.Goal == CoverageGoal.StructureComplete && @switch.Proof.IsComplete,
+            _ => false
+        };
     }
 }
 

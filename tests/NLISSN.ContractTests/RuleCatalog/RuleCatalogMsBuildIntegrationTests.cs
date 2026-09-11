@@ -12,7 +12,7 @@ public sealed class RuleCatalogMsBuildIntegrationTests
     {
         var descriptors = GetAllDescriptors().ToArray();
 
-        Assert.Equal(68, descriptors.Length);
+        Assert.Equal(69, descriptors.Length);
     }
 
     [Fact]
@@ -20,7 +20,7 @@ public sealed class RuleCatalogMsBuildIntegrationTests
     {
         var descriptors = GetAllDescriptors().ToArray();
 
-        Assert.Equal(68, descriptors.Length);
+        Assert.Equal(69, descriptors.Length);
         Assert.Equal(
           descriptors.Length,
           descriptors.Select(descriptor => descriptor.RuleId)

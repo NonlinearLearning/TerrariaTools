@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NL.Concurrency;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Marking;
@@ -42,12 +43,19 @@ public sealed class MarkingEngine
           .OfType<MarkRecord>()
           .ToList();
 
-        // 同一规则可能通过多条路径命中同一个语法节点，这里按规则和语法位置去重。
+        // 同一规则可能通过多条路径命中同一个语法节点；只合并真正相同的
+        // fact identity，不能让不同 FactKind 或 provenance 静默互相覆盖。
         return seedMarks
-        .DistinctBy(mark => (
-          mark.RuleId,
-          mark.SyntaxNode.SpanStart,
-          mark.SyntaxNode.Span.Length))
+        .DistinctBy(mark => new
+        {
+            mark.RuleId,
+            Identity = FactIdentity.Create(
+              mark.SyntaxNode,
+              mark.SourceTreeVersion,
+              mark.FactKind,
+              payload: null,
+              mark.Provenance ?? FactProvenance.ForMark(mark.RuleId)).StableKey
+        })
         .ToList();
     }
 

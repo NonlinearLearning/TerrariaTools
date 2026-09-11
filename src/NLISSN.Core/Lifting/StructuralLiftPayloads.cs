@@ -11,7 +11,11 @@ public interface ILiftPayload
 public sealed record LogicalExpressionReductionPayload(
   BinaryExpressionSyntax Host,
   IReadOnlyList<ExpressionSyntax> RemovableOperands,
-  IReadOnlyList<ExpressionSyntax> SurvivorOperands) : ILiftPayload;
+  IReadOnlyList<ExpressionSyntax> SurvivorOperands,
+  CoverageProof? Proof = null) : ILiftPayload
+{
+    public bool DominatesChildren => false;
+}
 
 public enum IfStructureLiftKind
 {
@@ -27,4 +31,15 @@ public sealed record IfStructureLiftPayload(
   IfStatementSyntax AnchorIf,
   ElseClauseSyntax? ParentElseClause,
   SyntaxNode? TailNode,
-  IfStructureLiftKind Kind) : ILiftPayload;
+  IfStructureLiftKind Kind,
+  CoverageProof? Proof = null) : ILiftPayload;
+
+/// <summary>Lift-only proof payload for loop and return structure candidates.</summary>
+public sealed record ControlStructureLiftPayload(
+  SyntaxNode Anchor,
+  CoverageProof Proof) : ILiftPayload;
+
+/// <summary>Lift-only proof payload for switch section and switch candidates.</summary>
+public sealed record SwitchStructureLiftPayload(
+  SyntaxNode Anchor,
+  CoverageProof Proof) : ILiftPayload;

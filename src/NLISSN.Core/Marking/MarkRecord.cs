@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using NLCPG.Model;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Marking;
@@ -34,7 +35,11 @@ public sealed record MarkRecord
       RuleOutputKind? OutputKind = null,
       RuleSemanticTag? SemanticTag = null,
       RuleEvidenceOrigin Origins = RuleEvidenceOrigin.None,
-      RuleFactKind? FactKind = null)
+      RuleFactKind? FactKind = null,
+      FactCapability Capability = FactCapability.Unknown,
+      FactCertainty Certainty = FactCertainty.Available,
+      FactProvenance? Provenance = null,
+      string? SourceTreeVersion = null)
     {
         RuleId = ruleId;
         SyntaxNode = syntaxNode;
@@ -45,6 +50,10 @@ public sealed record MarkRecord
         _semanticTag = SemanticTag;
         this.Origins = Origins;
         _factKind = FactKind;
+        this.Capability = Capability;
+        this.Certainty = Certainty;
+        this.Provenance = Provenance ?? FactProvenance.ForMark(ruleId);
+        this.SourceTreeVersion = SourceTreeVersion ?? FactIdentity.ForSourceTree(syntaxNode);
     }
 
     /// 产生这条标记的规则标识。
@@ -81,6 +90,18 @@ public sealed record MarkRecord
     }
 
     public RuleEvidenceOrigin Origins { get; init; }
+
+    /// The typed capability of this observation; it is not rewrite authority.
+    public FactCapability Capability { get; init; }
+
+    /// Certainty of the observation. Unknown certainty is fail-closed downstream.
+    public FactCertainty Certainty { get; init; }
+
+    /// Structured provenance retained across stage boundaries.
+    public FactProvenance? Provenance { get; init; }
+
+    /// Identity of the source syntax tree used for this fact.
+    public string SourceTreeVersion { get; init; }
 
     private RuleSemanticTag? _semanticTag;
 

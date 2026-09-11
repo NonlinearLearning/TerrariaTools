@@ -43,7 +43,7 @@ public sealed class RuleCatalogBaselineTests
     {
         var defaultPipeline = CreatePipeline();
 
-        Assert.Equal((19, 12, 5, 32), GetStageCounts(defaultPipeline));
+        Assert.Equal((19, 13, 5, 32), GetStageCounts(defaultPipeline));
 
         var snapshot = LoadIdentitySnapshot();
         var expected = snapshot

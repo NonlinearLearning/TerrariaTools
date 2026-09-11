@@ -15,6 +15,17 @@ public sealed class PrototypeRewriter
   private readonly TextDiffRenderer _textDiffRenderer = new();
   private readonly record struct RewritePlanEntry(RewritePlanEdit Operation, RewriteEdit Edit);
 
+  // 正式执行入口只接受经过 Planner 和 PlanValidator 认证的权限令牌。
+  public PrototypeRewriteResult Rewrite(
+    SyntaxNode root,
+    SemanticModel semanticModel,
+    ExecutablePlan executablePlan)
+  {
+    ValidateExecutablePlan(root, executablePlan);
+    var plan = BuildPlan(root, semanticModel, executablePlan);
+    return ExecutePlan(root.ToFullString(), root.SyntaxTree.FilePath, plan);
+  }
+
   // 把规则决策直接转换成改写计划并执行，返回源码、编辑和 diff。
   public PrototypeRewriteResult Rewrite(SyntaxNode root, SemanticModel semanticModel, IEnumerable<RuleDecision> decisions)
   {
@@ -23,12 +34,29 @@ public sealed class PrototypeRewriter
     return ExecutePlan(root.ToFullString(), root.SyntaxTree.FilePath, plan);
   }
 
+  // 从已认证计划生成改写操作；正式调用方不会重新接受任意决策集合。
+  public PrototypeRewritePlan BuildPlan(
+    SyntaxNode root,
+    SemanticModel semanticModel,
+    ExecutablePlan executablePlan)
+  {
+    ValidateExecutablePlan(root, executablePlan);
+    return BuildPlan(root, semanticModel, executablePlan.Decisions);
+  }
+
   // 根据规则决策生成可移植文本操作和显示用编辑列表，但不立即应用到源码。
   public PrototypeRewritePlan BuildPlan(SyntaxNode root, SemanticModel semanticModel, IEnumerable<RuleDecision> decisions)
   {
+    ArgumentNullException.ThrowIfNull(root);
+    ArgumentNullException.ThrowIfNull(semanticModel);
+    ArgumentNullException.ThrowIfNull(decisions);
+
+    var effectiveDecisions = ComposeResidualReplacements(
+      decisions.ToArray(),
+      semanticModel);
     var rewritePlan = new List<RewritePlanEntry>();
 
-    foreach (var decision in decisions.OrderByDescending(item => item.FinalNode.Span.Length)) {
+    foreach (var decision in effectiveDecisions.OrderByDescending(item => item.FinalNode.Span.Length)) {
       if (decision.Action == DecisionActionKind.Skip) {
         continue;
       }
@@ -304,6 +332,209 @@ public sealed class PrototypeRewriter
       originalNode.Span.Length,
       originalText,
       replacementText);
+  }
+
+  private static IReadOnlyList<RuleDecision> ComposeResidualReplacements(
+    IReadOnlyList<RuleDecision> decisions,
+    SemanticModel semanticModel)
+  {
+    var result = decisions.ToList();
+    var consumed = new HashSet<RuleDecision>();
+    var parents = decisions
+      .Where(decision =>
+        decision.Action == DecisionActionKind.Replace &&
+        decision.ReplacementNode is not null &&
+        decision.Intent?.Composition == DecisionComposition.Composable &&
+        decision.Intent.ResidualMapping is not null)
+      .OrderByDescending(decision => decision.FinalNode.Span.Length)
+      .ToArray();
+
+    foreach (var parent in parents)
+    {
+      if (consumed.Contains(parent) || parent.ReplacementNode is null)
+      {
+        continue;
+      }
+
+      var replacementRoot = CloneReplacementNode(parent.ReplacementNode);
+      var composed = false;
+      foreach (var child in decisions
+        .Where(candidate =>
+          !ReferenceEquals(candidate, parent) &&
+          !consumed.Contains(candidate) &&
+          IsDescendantOf(candidate.FinalNode, parent.FinalNode))
+        .OrderBy(candidate => candidate.FinalNode.Span.Length)
+        .ThenBy(candidate => candidate.FinalNode.SpanStart))
+      {
+        var childKey = DecisionCpgFactory.BuildNodeKey(child.FinalNode);
+        if (!parent.Intent!.ResidualMapping!.TryMap(childKey, out var mapping))
+        {
+          continue;
+        }
+
+        if (mapping.Kind is not (ResidualMappingKind.Retained or ResidualMappingKind.Replaced))
+        {
+          throw new InvalidOperationException(
+            $"Residual mapping for child '{childKey}' is {mapping.Kind} and cannot compose a child edit.");
+        }
+
+        var residualTarget = FindResidualNode(replacementRoot, mapping.NewNodeKey);
+        if (residualTarget is null)
+        {
+          throw new InvalidOperationException(
+            $"Residual mapping for child '{childKey}' does not resolve in the parent replacement tree.");
+        }
+
+        replacementRoot = ApplyNestedDecision(
+          replacementRoot,
+          residualTarget,
+          child,
+          semanticModel);
+        consumed.Add(child);
+        composed = true;
+      }
+
+      if (composed)
+      {
+        var replacementIndex = result.FindIndex(candidate => ReferenceEquals(candidate, parent));
+        result[replacementIndex] = parent with { ReplacementNode = replacementRoot };
+      }
+    }
+
+    return result
+      .Where(decision => !consumed.Contains(decision))
+      .ToArray();
+  }
+
+  private static bool IsDescendantOf(SyntaxNode candidate, SyntaxNode ancestor)
+  {
+    return candidate.Ancestors().Any(node => ReferenceEquals(node, ancestor));
+  }
+
+  private static SyntaxNode? FindResidualNode(SyntaxNode replacementRoot, string? newNodeKey)
+  {
+    if (string.IsNullOrWhiteSpace(newNodeKey))
+    {
+      return null;
+    }
+
+    var nodes = replacementRoot.DescendantNodesAndSelf().ToArray();
+    var exact = nodes.FirstOrDefault(node =>
+      string.Equals(DecisionCpgFactory.BuildNodeKey(node), newNodeKey, StringComparison.Ordinal));
+    if (exact is not null)
+    {
+      return exact;
+    }
+
+    // Cloning a replacement reparses it and can change only the source path;
+    // the span and raw kind remain useful identity components in that case.
+    var parts = newNodeKey.Split('|');
+    if (parts.Length < 4 ||
+        !int.TryParse(parts[^3], out var start) ||
+        !int.TryParse(parts[^2], out var end) ||
+        !int.TryParse(parts[^1], out var rawKind))
+    {
+      return null;
+    }
+
+    return nodes.FirstOrDefault(node =>
+      node.SpanStart == start &&
+      node.Span.End == end &&
+      node.RawKind == rawKind);
+  }
+
+  private static SyntaxNode ApplyNestedDecision(
+    SyntaxNode replacementRoot,
+    SyntaxNode target,
+    RuleDecision decision,
+    SemanticModel semanticModel)
+  {
+    if (decision.Action == DecisionActionKind.Skip)
+    {
+      return replacementRoot;
+    }
+
+    if (decision.Action == DecisionActionKind.Replace)
+    {
+      if (decision.ReplacementNode is null)
+      {
+        throw new InvalidOperationException(
+          "A composed Replace decision must carry a replacement binding.");
+      }
+
+      var replacement = CloneReplacementNode(decision.ReplacementNode)
+        .WithTriviaFrom(target);
+      return replacementRoot.ReplaceNode(target, replacement);
+    }
+
+    if (target is ExpressionSyntax targetExpression)
+    {
+      var sourceExpression = decision.OriginalNode as ExpressionSyntax ?? targetExpression;
+      var replacement = CreateReplacementExpression(sourceExpression, semanticModel)
+        .WithTriviaFrom(targetExpression);
+      return replacementRoot.ReplaceNode(targetExpression, replacement);
+    }
+
+    if (target is ElseClauseSyntax targetElseClause &&
+        targetElseClause.Parent is IfStatementSyntax parentIf)
+    {
+      return replacementRoot.ReplaceNode(parentIf, parentIf.WithElse(null));
+    }
+
+    return replacementRoot.RemoveNode(target, SyntaxRemoveOptions.KeepNoTrivia)
+      ?? throw new InvalidOperationException("A composed child deletion removed the replacement root.");
+  }
+
+  private static SyntaxNode CloneReplacementNode(SyntaxNode node)
+  {
+    return node switch
+    {
+      ExpressionSyntax expression => CloneExpression(expression),
+      StatementSyntax statement => CloneStatement(statement),
+      ElseClauseSyntax elseClause => CloneElseClause(elseClause),
+      MethodDeclarationSyntax method => CloneMethod(method),
+      IndexerDeclarationSyntax indexer => CloneIndexer(indexer),
+      DelegateDeclarationSyntax delegateDeclaration => CloneDelegate(delegateDeclaration),
+      _ => node.WithoutTrivia()
+    };
+  }
+
+  private static void ValidateExecutablePlan(SyntaxNode root, ExecutablePlan executablePlan)
+  {
+    ArgumentNullException.ThrowIfNull(root);
+    ArgumentNullException.ThrowIfNull(executablePlan);
+    if (!executablePlan.DecisionPlan.IsExecutable)
+    {
+      throw new InvalidOperationException(
+        "Only executable decision plans may cross into Rewrite.");
+    }
+
+    foreach (var decision in executablePlan.Decisions)
+    {
+      if (!IsInOriginalTree(root, decision.OriginalNode) ||
+          !IsInOriginalTree(root, decision.FinalNode))
+      {
+        throw new InvalidOperationException(
+          "Executable decision bindings must belong to the original syntax tree.");
+      }
+
+      if (decision.Action is DecisionActionKind.Delete or DecisionActionKind.Replace &&
+          (decision.Intent is null ||
+           decision.Intent.Status != EditIntentStatus.Complete ||
+           decision.Intent.Action != decision.Action ||
+           decision.Intent.EraseSet.Count == 0 ||
+           decision.Intent.ProofReferences.Count == 0))
+      {
+        throw new InvalidOperationException(
+          "Destructive executable decisions must carry a complete authorized intent.");
+      }
+    }
+  }
+
+  private static bool IsInOriginalTree(SyntaxNode root, SyntaxNode node)
+  {
+    return ReferenceEquals(root.SyntaxTree, node.SyntaxTree) &&
+      (ReferenceEquals(root, node) || node.AncestorsAndSelf().Any(candidate => ReferenceEquals(candidate, root)));
   }
 
   private static IReadOnlyList<RewritePlanEntry> BuildEffectiveRewritePlan(IReadOnlyList<RewritePlanEntry> rewritePlan)

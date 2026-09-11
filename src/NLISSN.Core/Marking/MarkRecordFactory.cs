@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Marking;
@@ -13,7 +14,11 @@ public static class MarkRecordFactory
       RuleOutputKind? outputKind = null,
       RuleSemanticTag? semanticTag = null,
       RuleEvidenceOrigin origins = RuleEvidenceOrigin.None,
-      RuleFactKind? factKind = null)
+      RuleFactKind? factKind = null,
+      FactCapability capability = FactCapability.Unknown,
+      FactCertainty certainty = FactCertainty.Available,
+      FactProvenance? provenance = null,
+      string? sourceTreeVersion = null)
     {
         return new MarkRecord(
           ruleId,
@@ -24,6 +29,10 @@ public static class MarkRecordFactory
           OutputKind: outputKind,
           SemanticTag: semanticTag,
           Origins: origins,
-          FactKind: factKind);
+          FactKind: factKind,
+          Capability: capability,
+          Certainty: certainty,
+          Provenance: provenance,
+          SourceTreeVersion: sourceTreeVersion);
     }
 }

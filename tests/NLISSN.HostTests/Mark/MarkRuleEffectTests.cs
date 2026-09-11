@@ -1,6 +1,8 @@
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis;
 using NLISSN.Application;
+using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.Target;
@@ -788,6 +790,8 @@ public sealed class MarkRuleEffectTests : IDisposable
             $"UnitTest: {nameof(AnalyzeFromArgs_LargeParenthesizedCases_ProduceSingleLogicalOrMark)}:{caseName}",
             diffText,
             StringComparison.Ordinal);
+        Assert.Equal(DecisionActionKind.Delete, result.Decisions[0].Action);
+        Assert.IsType<IfStatementSyntax>(result.Decisions[0].FinalNode);
         Assert.Null(result.Decisions[0].ReplacementNode);
     }
 

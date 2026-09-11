@@ -113,6 +113,7 @@ public static class ProposalHelpers
           .DistinctBy(mark => BuildNodeKey(mark.SyntaxNode))
           .ToList();
         var coveredSeedKeys = BuildCoveredSeedKeys(seedMarks, derivedMarks);
+        coveredSeedKeys.UnionWith(derivedMarks.Select(mark => BuildNodeKey(mark.SyntaxNode)));
         var protectedSeedKeys = propagatedMarks
           .Where(mark => mark.Payload is ExternalSummaryFlowPayload
           {
@@ -224,13 +225,140 @@ public static class ProposalHelpers
     }
 
     // 为逻辑表达式规约生成带锚点、替换片段和关系边的 Replace 决策。
-    public static DecisionUnit CreateLogicalReplaceDecision(string ruleId, BinaryExpressionSyntax anchorNode, ExpressionSyntax replacementNode)
+    public static DecisionUnit CreateLogicalReplaceDecision(
+      string ruleId,
+      LogicalExpressionReductionPayload payload,
+      ExpressionSyntax replacementNode)
     {
-        return CreateReducedReplaceDecision(
+        var anchorNode = payload.Host;
+        var anchorKey = DecisionCpgFactory.BuildNodeKey(anchorNode);
+        var consumedKeys = BuildLogicalReductionConsumedKeys(payload);
+        var proofReference = $"proof:{CoverageGoal.LogicalReduction}:{anchorKey}";
+        var footprint = DecisionFootprint.Create(
           ruleId,
           anchorNode,
-          replacementNode,
-          $"Reduced {anchorNode.Kind()} to the surviving operand.");
+          DecisionActionKind.Replace,
+          consumedKeys,
+          DecisionComposition.Composable,
+          proofKind: CoverageGoal.LogicalReduction.ToString(),
+          candidateDiscriminator: DecisionCpgFactory.BuildNodeKey(replacementNode));
+        var intent = EditIntent.Create(
+          footprint.CandidateId,
+          anchorNode,
+          DecisionActionKind.Replace,
+          consumedNodeKeys: consumedKeys,
+          writeNodeKeys: new[] { DecisionCpgFactory.BuildNodeKey(replacementNode) },
+          proofReferences: new[] { proofReference },
+          composition: DecisionComposition.Composable,
+          residualMapping: BuildLogicalResidualMapping(payload),
+          status: EditIntentStatus.Complete);
+
+        var anchorFragment = DecisionCpgFactory.CreateFragment(
+          BuildFragmentId(anchorNode),
+          anchorNode,
+          "anchor",
+          DecisionActionKind.Replace);
+        var replacementFragment = DecisionCpgFactory.CreateFragment(
+          BuildFragmentId(replacementNode),
+          replacementNode.WithoutTrivia(),
+          "replacement",
+          DecisionActionKind.Replace);
+        var unitNode = DecisionCpgFactory.CreateUnit(
+          ruleId,
+          DecisionActionKind.Replace,
+          anchorFragment,
+          reason: $"Reduced {anchorNode.Kind()} to the surviving operands.",
+          conflictKey: anchorKey,
+          mergeKey: anchorKey);
+
+        return new DecisionUnit(
+          ruleId,
+          DecisionActionKind.Replace,
+          unitNode,
+          new[] { anchorFragment, replacementFragment },
+          new[]
+          {
+            DecisionCpgFactory.CreateContainment(unitNode, anchorFragment),
+            DecisionCpgFactory.CreateContainment(unitNode, replacementFragment),
+            DecisionCpgFactory.CreateRelation(
+              NLCPGDecisionRelationKind.ReducedTo,
+              anchorFragment,
+              replacementFragment)
+          },
+          DecisionCpgFactory.CreateSyntaxBindings(
+            (anchorFragment, anchorNode),
+            (replacementFragment, replacementNode.WithoutTrivia())),
+          mergeKey: anchorKey,
+          conflictKey: anchorKey,
+          reason: $"Reduced {anchorNode.Kind()} to the surviving operands.",
+          footprint: footprint,
+          intent: intent);
+    }
+
+    private static IReadOnlyList<string> BuildLogicalReductionConsumedKeys(
+      LogicalExpressionReductionPayload payload)
+    {
+        var consumed = new HashSet<string>(StringComparer.Ordinal)
+        {
+          DecisionCpgFactory.BuildNodeKey(payload.Host)
+        };
+        foreach (var operand in payload.RemovableOperands)
+        {
+            consumed.Add(DecisionCpgFactory.BuildNodeKey(operand));
+            foreach (var descendant in operand.DescendantNodes())
+            {
+                consumed.Add(DecisionCpgFactory.BuildNodeKey(descendant));
+            }
+        }
+
+        foreach (var nestedHost in payload.Host
+          .DescendantNodes()
+          .OfType<BinaryExpressionSyntax>()
+          .Where(node =>
+            (node.IsKind(SyntaxKind.LogicalAndExpression) ||
+             node.IsKind(SyntaxKind.LogicalOrExpression)) &&
+            payload.RemovableOperands.Any(operand => node.Span.Contains(operand.Span))))
+        {
+            consumed.Add(DecisionCpgFactory.BuildNodeKey(nestedHost));
+        }
+
+        return consumed.Order(StringComparer.Ordinal).ToArray();
+    }
+
+    private static ResidualMapping BuildLogicalResidualMapping(
+      LogicalExpressionReductionPayload payload)
+    {
+        var mappings = new List<ResidualNodeMapping>();
+        foreach (var operand in payload.RemovableOperands)
+        {
+            mappings.Add(new ResidualNodeMapping(
+              DecisionCpgFactory.BuildNodeKey(operand),
+              ResidualMappingKind.Removed,
+              Reason: "Logical reduction removes the marked operand."));
+            foreach (var descendant in operand.DescendantNodes())
+            {
+                mappings.Add(new ResidualNodeMapping(
+                  DecisionCpgFactory.BuildNodeKey(descendant),
+                  ResidualMappingKind.Removed,
+                  Reason: "Logical reduction removes a descendant of the marked operand."));
+            }
+        }
+
+        foreach (var nestedHost in payload.Host
+          .DescendantNodes()
+          .OfType<BinaryExpressionSyntax>()
+          .Where(node =>
+            (node.IsKind(SyntaxKind.LogicalAndExpression) ||
+             node.IsKind(SyntaxKind.LogicalOrExpression)) &&
+            payload.RemovableOperands.Any(operand => node.Span.Contains(operand.Span))))
+        {
+            mappings.Add(new ResidualNodeMapping(
+              DecisionCpgFactory.BuildNodeKey(nestedHost),
+              ResidualMappingKind.Removed,
+              Reason: "Nested logical host is rebuilt by the parent reduction."));
+        }
+
+        return new ResidualMapping(mappings);
     }
 
     // 按 if 完成态 payload 生成对应的删除或替换决策，并返回本次消费掉的结构节点。
@@ -238,6 +366,15 @@ public static class ProposalHelpers
     {
         decision = null;
         consumedNodes = BuildIfStructureConsumedNodes(payload);
+
+        if (payload.Proof is not
+            {
+              Goal: CoverageGoal.StructureComplete,
+              Status: CoverageProofStatus.Complete
+            })
+        {
+            return false;
+        }
 
         switch (payload.Kind)
         {
@@ -257,7 +394,11 @@ public static class ProposalHelpers
                 decision = DeleteDecisionFactory.CreateDeleteDecision(
                   ruleId,
                   payload.AnchorIf,
-                  "If/else structure is fully marked; delete the whole if statement.");
+                  "If/else structure is fully marked; delete the whole if statement.",
+                  consumedNodes: BuildIfStructureConsumedNodes(payload),
+                  proof: payload.Proof,
+                  composition: DecisionComposition.OpaqueDominates,
+                  dominatesChildren: true);
                 return true;
             case IfStructureLiftKind.ReplaceOwningElseWithElseTail:
                 if (payload.ParentElseClause is null ||
@@ -295,7 +436,11 @@ public static class ProposalHelpers
                   payload.ParentElseClause,
                   "Else-if section is fully marked and has no remaining tail; remove owning else clause.",
                   payload.AnchorIf,
-                  conflictKey: DecisionCpgFactory.BuildNodeKey(payload.AnchorIf));
+                  conflictKey: DecisionCpgFactory.BuildNodeKey(payload.AnchorIf),
+                  consumedNodes: BuildIfStructureConsumedNodes(payload),
+                  proof: payload.Proof,
+                  composition: DecisionComposition.OpaqueDominates,
+                  dominatesChildren: true);
                 return true;
             default:
                 return false;
@@ -340,7 +485,7 @@ public static class ProposalHelpers
           conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
           mergeKey: DecisionCpgFactory.BuildNodeKey(anchorNode));
 
-        return new DecisionUnit(
+      return new DecisionUnit(
           ruleId,
           DecisionActionKind.Replace,
           unitNode,
@@ -359,7 +504,31 @@ public static class ProposalHelpers
             (replacementFragment, replacementNode.WithoutTrivia())),
           mergeKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
           conflictKey: DecisionCpgFactory.BuildNodeKey(anchorNode),
-          reason: reason);
+          reason: reason,
+          footprint: DecisionFootprint.Create(
+            ruleId,
+            anchorNode,
+            DecisionActionKind.Replace,
+            new[] { DecisionCpgFactory.BuildNodeKey(anchorNode) },
+            DecisionComposition.Composable,
+            proofKind: "LogicalReduction",
+            candidateDiscriminator: DecisionCpgFactory.BuildNodeKey(replacementNode)),
+          intent: EditIntent.Create(
+            DecisionFootprint.Create(
+              ruleId,
+              anchorNode,
+              DecisionActionKind.Replace,
+              new[] { DecisionCpgFactory.BuildNodeKey(anchorNode) },
+              DecisionComposition.Composable,
+              proofKind: "LogicalReduction",
+              candidateDiscriminator: DecisionCpgFactory.BuildNodeKey(replacementNode)).CandidateId,
+            anchorNode,
+            DecisionActionKind.Replace,
+            consumedNodeKeys: new[] { DecisionCpgFactory.BuildNodeKey(anchorNode) },
+            writeNodeKeys: new[] { DecisionCpgFactory.BuildNodeKey(replacementNode) },
+            proofReferences: new[] { $"proof:{CoverageGoal.LogicalReduction}:{DecisionCpgFactory.BuildNodeKey(anchorNode)}" },
+            composition: DecisionComposition.Composable,
+            status: EditIntentStatus.Complete));
     }
 
     // 用 span 与 raw kind 生成稳定节点键，供传播、提升和提案跨阶段去重。
@@ -388,22 +557,23 @@ public static class ProposalHelpers
 
     private static IReadOnlyList<SyntaxNode> BuildIfStructureConsumedNodes(IfStructureLiftPayload payload)
     {
-        var nodes = new List<SyntaxNode> { payload.AnchorIf };
-        if (payload.ParentElseClause is not null)
+        // A whole-structure delete must advertise the original region it
+        // consumes so the planner can prove dominance over nested edits.
+        var region = payload.Kind switch
         {
-            nodes.Add(payload.ParentElseClause);
-        }
+            IfStructureLiftKind.DeleteWholeIf => payload.AnchorIf.DescendantNodesAndSelf(),
+            IfStructureLiftKind.DeleteOwningElseClause when payload.ParentElseClause is not null =>
+              payload.ParentElseClause.DescendantNodesAndSelf(),
+            _ => new[] { (SyntaxNode)payload.AnchorIf }
+        };
 
-        if (payload.TailNode is not null)
-        {
-            nodes.Add(payload.TailNode);
-            if (payload.TailNode is ElseClauseSyntax elseClause)
-            {
-                nodes.Add(elseClause.Statement);
-            }
-        }
-
-        return nodes
+        return region
+          .Concat(payload.ParentElseClause is null
+            ? Array.Empty<SyntaxNode>()
+            : payload.ParentElseClause.DescendantNodesAndSelf())
+          .Concat(payload.TailNode is null
+            ? Array.Empty<SyntaxNode>()
+            : payload.TailNode.DescendantNodesAndSelf())
           .DistinctBy(BuildNodeKey)
           .ToList();
     }

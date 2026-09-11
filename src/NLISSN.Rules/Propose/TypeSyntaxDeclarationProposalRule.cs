@@ -39,7 +39,7 @@ public sealed class TypeSyntaxDeclarationProposalRule : DeclarationHostProposalR
                      propagatedMarks,
                      DeclarationHostKind.FieldDeclaration))
         {
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Declaration type references the delete-class target.",

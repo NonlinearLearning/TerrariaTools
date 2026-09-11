@@ -44,13 +44,22 @@ public sealed class LogicalExpressionProposalRule : RuleDefinitionPropose
         foreach (var payload in ProposalHelpers.EnumerateLogicalReductionLiftPayloads(
                      liftedMarks))
         {
+            if (payload.Proof is not
+                {
+                  Goal: CoverageGoal.LogicalReduction,
+                  Status: CoverageProofStatus.Complete
+                })
+            {
+                continue;
+            }
+
             var replacementNode = ProposalHelpers.BuildLogicalReplacement(
               payload);
             if (replacementNode is not null)
             {
                 yield return ProposalHelpers.CreateLogicalReplaceDecision(
                   RuleId,
-                  payload.Host,
+                  payload,
                   replacementNode);
             }
         }

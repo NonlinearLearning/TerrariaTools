@@ -43,7 +43,7 @@ public sealed class DelegateProposalRule : DeclarationHostProposalRuleBase
                 continue;
             }
 
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               delegateDeclaration,
               "Delegate return type references the delete-class target.",

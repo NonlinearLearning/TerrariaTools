@@ -43,7 +43,7 @@ public sealed class ExtensionReceiverProposalRule : DeclarationHostProposalRuleB
                 continue;
             }
 
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               method,
               "Extension method receiver type references the delete-class target.",

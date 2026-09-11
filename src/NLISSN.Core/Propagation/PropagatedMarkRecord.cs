@@ -1,4 +1,5 @@
 using NLISSN.Core.Marking;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Pipeline;
 
 namespace NLISSN.Core.Propagation;
@@ -13,8 +14,14 @@ public sealed record PropagatedMarkRecord(
     MarkRecord SourceMark,
   /// 从源种子标记传播到当前标记的层级深度。
     int Depth,
-  /// 传播阶段额外收集的非结构关系事实；结构结论和结构决策 payload 只能由 Lift 产生。
-    object? Payload = null)
+    /// 传播阶段额外收集的非结构关系事实；结构结论和结构决策 payload 只能由 Lift 产生。
+    object? Payload = null,
+    /// 传播路径的结构化来源链；旧调用点可省略，由证据适配器补齐。
+    FactProvenance? Provenance = null)
 {
   public RuleEvidenceOrigin Origins => Mark.Origins | SourceMark.Origins;
+
+  public FactCapability Capability => FactCapabilityRules.For(Mark);
+
+  public FactCertainty Certainty => Mark.Certainty;
 }

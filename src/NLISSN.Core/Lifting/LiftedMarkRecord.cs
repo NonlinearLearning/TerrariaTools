@@ -10,7 +10,12 @@ public sealed record LiftedMarkRecord(
   MarkRecord SourceMark,
   int Depth,
   StructuralKind? StructureKind = null,
-  object? Payload = null)
+  object? Payload = null,
+  FactProvenance? Provenance = null)
 {
   public RuleEvidenceOrigin Origins => Mark.Origins | SourceMark.Origins;
+
+  public FactCapability Capability => FactCapabilityRules.For(Mark);
+
+  public FactCertainty Certainty => Mark.Certainty;
 }

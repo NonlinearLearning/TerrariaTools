@@ -39,7 +39,7 @@ public sealed class InterfaceEventProposalRule : DeclarationHostProposalRuleBase
                      propagatedMarks,
                      DeclarationHostKind.InterfaceEvent))
         {
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Interface event signature references the delete-class target.",

@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NLCPG.Model;
 using NLISSN.Core.Analysis;
+using NLISSN.Core.Analysis.ExpressionPropagation;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
@@ -74,7 +75,7 @@ public sealed class RuleBindingValidator
     }
 
     if (value is PropagatedMarkRecord { Payload: not null } propagated &&
-        !IsRegisteredPropagationPayload(propagated.Payload))
+        !IsRegisteredPropagationPayload(propagated))
     {
       issues.Add(CreateIssue(
         "BIND005",
@@ -125,11 +126,24 @@ public sealed class RuleBindingValidator
     };
   }
 
-  private static bool IsRegisteredPropagationPayload(object payload)
+  private static bool IsRegisteredPropagationPayload(PropagatedMarkRecord propagated)
   {
-    return payload is MethodParameterUsagePayload or LocalFunctionParameterUsagePayload or
-      IndexerParameterUsagePayload or DelegateUsagePayload or
-      ExtensionMethodMappedCallsitePayload or DeclarationHostPayload;
+    return propagated.Payload switch
+    {
+      ExpressionTopologyPayload => propagated.Mark.FactKind is
+        RuleFactKind.TargetExpression or
+        RuleFactKind.FlowLogicalExpression or
+        RuleFactKind.FlowUnaryExpression or
+        RuleFactKind.FlowConditionalExpression,
+      ExternalSummaryFlowPayload => string.Equals(
+        propagated.Mark.SemanticTag?.Value,
+        ExternalSummaryFlowPayload.SemanticTag.Value,
+        StringComparison.Ordinal),
+      MethodParameterUsagePayload or LocalFunctionParameterUsagePayload or
+        IndexerParameterUsagePayload or DelegateUsagePayload or
+        ExtensionMethodMappedCallsitePayload or DeclarationHostPayload => true,
+      _ => false,
+    };
   }
 
   private static bool HasMatchingRelationPort(PropagatedMarkRecord propagated)

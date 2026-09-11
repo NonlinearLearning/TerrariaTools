@@ -30,13 +30,56 @@ public static class SwitchStructureLiftingHelpers
                 continue;
             }
 
+            var proof = BuildSwitchProof(switchMark.SyntaxNode, provisionalMarks);
+            if (!proof.IsComplete)
+            {
+                continue;
+            }
+
             yield return new LiftedMarkRecord(
               ruleId,
               switchMark,
               FindSourceMarkForAncestor(seedMarks, existingLiftedMarks, switchMark.SyntaxNode),
               1,
-              StructureKind: StructuralKind.Switch);
+              StructureKind: StructuralKind.Switch,
+              Payload: new SwitchStructureLiftPayload(switchMark.SyntaxNode, proof));
         }
+    }
+
+    private static CoverageProof BuildSwitchProof(
+      SyntaxNode switchNode,
+      IReadOnlyList<MarkRecord> provisionalMarks)
+    {
+        var accepted = provisionalMarks
+          .Where(mark => switchNode.Span.Contains(mark.SyntaxNode.Span))
+          .Select(mark => CoverageEvidence.FromMark(mark))
+          .Where(evidence => evidence.IsAvailable)
+          .DistinctBy(evidence => evidence.Identity.StableKey)
+          .ToArray();
+        var consumed = accepted
+          .Select(evidence => evidence.AnchorNodeKey)
+          .Append(FactIdentity.BuildNodeKey(switchNode))
+          .ToHashSet(StringComparer.Ordinal);
+        return new CoverageProof(
+          CoverageGoal.StructureComplete,
+          accepted.Length == 0 ? CoverageProofStatus.Rejected : CoverageProofStatus.Complete,
+          accepted,
+          provisionalMarks
+            .Where(mark => !switchNode.Span.Contains(mark.SyntaxNode.Span))
+            .Select(mark => CoverageEvidence.FromMark(mark))
+            .ToArray(),
+          accepted.Length == 0
+            ? new[] { CoverageRequirement.StructureEvidence, CoverageRequirement.ControlFlow }
+            : Array.Empty<CoverageRequirement>(),
+          consumed,
+          preservedObligations: new[]
+          {
+            new PreservedObligation(
+              "switch-control-flow",
+              "Preserve switch label and fall-through control-flow obligations.",
+              FactIdentity.BuildNodeKey(switchNode))
+          },
+          diagnostic: accepted.Length == 0 ? "No available evidence exists inside the switch region." : null);
     }
 
     private static IReadOnlyList<MarkRecord> BuildSwitchMarks(string ruleId, IReadOnlyList<MarkRecord> provisionalMarks, IReadOnlyList<SyntaxNode> topologyOwners)

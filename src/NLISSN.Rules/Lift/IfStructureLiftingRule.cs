@@ -19,6 +19,21 @@ public sealed class IfStructureLiftingRule : RuleDefinitionLift
         new RuleConsumedSyntax(ExpressionFlowPropagationRuleBase.AssignmentTargetNodeKinds, RuleFactKind.FlowAssignmentTarget),
         new RuleConsumedSyntax(new[] { SyntaxKind.VariableDeclarator }, RuleFactKind.FlowLocalDefinition),
         new RuleConsumedSyntax(new[] { SyntaxKind.IdentifierName }, RuleFactKind.FlowSymbolReference),
+        new RuleConsumedSyntax(new[] { SyntaxKind.LogicalAndExpression, SyntaxKind.LogicalOrExpression }, RuleFactKind.FlowLogicalExpression),
+        new RuleConsumedSyntax(new[]
+        {
+          SyntaxKind.LogicalNotExpression,
+          SyntaxKind.UnaryPlusExpression,
+          SyntaxKind.UnaryMinusExpression,
+          SyntaxKind.BitwiseNotExpression,
+          SyntaxKind.PreIncrementExpression,
+          SyntaxKind.PreDecrementExpression,
+          SyntaxKind.PostIncrementExpression,
+          SyntaxKind.PostDecrementExpression,
+          SyntaxKind.AddressOfExpression,
+          SyntaxKind.AwaitExpression,
+          SyntaxKind.SuppressNullableWarningExpression
+        }, RuleFactKind.FlowUnaryExpression),
         new RuleConsumedSyntax(LiftingCommon.AllowedLiftNodeKinds, ExpressionHostFactKind),
     });
 

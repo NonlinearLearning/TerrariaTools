@@ -38,7 +38,7 @@ public sealed class InterfacePropertyProposalRule : DeclarationHostProposalRuleB
                      propagatedMarks,
                      DeclarationHostKind.InterfaceProperty))
         {
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Interface property signature references the delete-class target.",

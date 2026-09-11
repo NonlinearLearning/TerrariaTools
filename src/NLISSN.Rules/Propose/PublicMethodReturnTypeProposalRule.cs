@@ -44,7 +44,7 @@ public sealed class PublicMethodReturnTypeProposalRule : DeclarationHostProposal
                 continue;
             }
 
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               method,
               "Non-private method return type references the delete-class target.",

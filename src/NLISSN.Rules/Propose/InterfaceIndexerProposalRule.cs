@@ -38,7 +38,7 @@ public sealed class InterfaceIndexerProposalRule : DeclarationHostProposalRuleBa
                      propagatedMarks,
                      DeclarationHostKind.InterfaceIndexer))
         {
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            yield return DeleteDecisionFactory.CreateDeclarationDeleteDecision(
               RuleId,
               payload.HostDeclaration,
               "Interface indexer signature references the delete-class target.",

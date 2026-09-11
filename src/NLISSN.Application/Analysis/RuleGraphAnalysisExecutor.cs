@@ -14,6 +14,8 @@ internal sealed record RuleGraphAnalysisResult(
   IReadOnlyList<PropagatedMarkRecord> PropagatedMarks,
   IReadOnlyList<LiftedMarkRecord> LiftedMarks,
   IReadOnlyList<RuleDecision> Decisions,
+  DecisionPlan DecisionPlan,
+  ExecutablePlan? ExecutablePlan,
   AnalysisEvidenceGraph Evidence,
   AnalysisValidationReport? ValidationReport,
   IReadOnlyList<RuleGraphNodeTelemetry> Telemetry,
@@ -79,15 +81,22 @@ internal sealed class RuleGraphAnalysisExecutor
           .SelectMany(node => node.Result.Values)
           .OfType<DecisionUnit>()
           .ToList();
-        var decisions = new RuleDecisionEngine().ResolveUnits(session, units, pipeline.Proposers);
+        var decisionPlan = new DecisionPlanner().Plan(units);
+        var plannedDecisions = new DecisionPlanner().ResolveDecisions(decisionPlan);
         var nodeStatuses = execution.Nodes.ToDictionary(node => node.NodeId, node => node.Status);
         session.Evidence.RecordNodeStatuses(nodeStatuses);
         session.Evidence.RecordEmptyOutputs(execution.Nodes);
-        var evidence = session.Evidence.Complete(decisions);
+        var evidence = session.Evidence.Complete(plannedDecisions);
+        var hasExecutablePlan = new PlanValidator().TryCreateExecutablePlan(
+          decisionPlan,
+          root,
+          out var executablePlan,
+          out var planValidation);
         var validationReport = IsValidationEnabled(session)
           ? new RuleBindingValidator()
              .Validate(session, graph, execution)
             .Combine(new DecisionBindingValidator().Validate(root, units, evidence.Decisions, evidence.Graph))
+            .Combine(planValidation)
           : null;
 
         return new RuleGraphAnalysisResult(
@@ -95,6 +104,8 @@ internal sealed class RuleGraphAnalysisExecutor
           propagatedMarks,
           liftedMarks,
           evidence.Decisions,
+          decisionPlan,
+          hasExecutablePlan ? executablePlan : null,
           evidence.Graph,
           validationReport,
           execution.Telemetry ?? Array.Empty<RuleGraphNodeTelemetry>(),
