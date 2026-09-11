@@ -40,6 +40,8 @@ internal sealed record ResolvedConfigurationArtifact(
                 configuration.Artifacts.WriteDiff,
                 configuration.Artifacts.WriteRuntimeLog,
                 configuration.Artifacts.WriteEvidence,
+                configuration.Artifacts.WritePerformanceSummary,
+                configuration.Artifacts.PerformanceMode,
                 configuration.Artifacts.RewritePlanMode,
               configuration.Artifacts.DiffView
             },
