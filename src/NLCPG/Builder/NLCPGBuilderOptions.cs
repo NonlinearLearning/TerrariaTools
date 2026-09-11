@@ -31,7 +31,10 @@ public sealed record NLCPGBuilderOptions(
   CpgPersistenceOptions? Persistence = null,
   bool UsePreallocatedNodeIds = false,
   int? OrderedResultReorderAllowance = null,
-  int MaxOrderedResultRecordCount = 250_000)
+  int MaxOrderedResultRecordCount = 250_000,
+  NLCPGPerformanceDiagnosticsMode PerformanceDiagnostics = NLCPGPerformanceDiagnosticsMode.Disabled,
+  IPartitionPerformanceEventSink? PartitionPerformanceEventSink = null,
+  string? PerformanceRunId = null)
 {
     public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
 

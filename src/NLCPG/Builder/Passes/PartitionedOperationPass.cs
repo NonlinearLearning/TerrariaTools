@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
@@ -26,7 +27,14 @@ public sealed partial class NLCPGBuilder
       int BodySpanStart,
       int BodySpanEnd,
       string? OwningMethodSymbolKey,
-      IReadOnlyList<OperationFragmentRecord> Records);
+      IReadOnlyList<OperationFragmentRecord> Records,
+      long CollectionElapsedMilliseconds = 0);
+
+    private sealed record OperationPartitionPerformanceSample(
+      OperationPartitionResult Partition,
+      int MaterializedInputCount,
+      int MaterializedOutputCount,
+      long MaterializationElapsedMilliseconds);
 
     private sealed record OperationBuildStrategy(
       NLCPGBuilderMode ExecutedMode,
@@ -41,6 +49,7 @@ public sealed partial class NLCPGBuilder
             return;
         }
 
+        var materializationSamples = new List<OperationPartitionPerformanceSample>();
         // 并行部分只读取 SemanticModel 并收集记录；节点、边和分片由按源顺序的提交回调统一物化。
         _concurrencyPool.CommitOrdered(
           operationRoots,
@@ -57,6 +66,10 @@ public sealed partial class NLCPGBuilder
               }
 
               OperationFragmentFacts? facts = null;
+              var beforeNodeCount = context.Graph.Nodes.Count;
+              var materializationStopwatch = PartitionPerformanceDiagnosticsEnabled
+                ? Stopwatch.StartNew()
+                : null;
               try
               {
                   facts = MaterializeOperationPartition(partition, context.Graph);
@@ -74,62 +87,109 @@ public sealed partial class NLCPGBuilder
                   if (streamingPublisher is not null)
                   {
                       streamingPublisher.PublishOperationFragmentAsync(context, facts, CancellationToken.None)
-                    .GetAwaiter()
-                    .GetResult();
+                      .GetAwaiter()
+                      .GetResult();
                   }
               }
               finally
               {
+                  materializationStopwatch?.Stop();
+                  if (PartitionPerformanceDiagnosticsEnabled)
+                  {
+                      materializationSamples.Add(
+                        new OperationPartitionPerformanceSample(
+                          partition,
+                          partition.Records.Count,
+                          Math.Max(0, context.Graph.Nodes.Count - beforeNodeCount),
+                          materializationStopwatch?.ElapsedMilliseconds ?? 0));
+                  }
                   facts?.Release();
               }
           },
           retainedRecordCount: partition => partition.Records.Count);
+
+        foreach (var sample in materializationSamples.OrderBy(sample => sample.Partition.Order))
+        {
+            var partition = sample.Partition;
+            var partitionId = CreatePartitionPerformanceId(
+              "operation",
+              partition.Order,
+              partition.BodySpanStart,
+              partition.BodySpanEnd);
+            RecordPartitionPerformanceEvent(
+              PartitionPerformanceStageId.OperationCollection,
+              partitionId,
+              partition.Order,
+              1,
+              partition.Records.Count,
+              partition.CollectionElapsedMilliseconds,
+              partition.CollectionElapsedMilliseconds);
+            RecordPartitionPerformanceEvent(
+              PartitionPerformanceStageId.OperationMaterialization,
+              partitionId,
+              partition.Order,
+              sample.MaterializedInputCount,
+              sample.MaterializedOutputCount,
+              sample.MaterializationElapsedMilliseconds,
+              sample.MaterializationElapsedMilliseconds);
+        }
     }
 
     private OperationPartitionResult AnalyzeOperationPartition(OperationRootPlan rootPlan, SemanticModel semanticModel)
     {
+        var collectionStopwatch = PartitionPerformanceDiagnosticsEnabled
+          ? Stopwatch.StartNew()
+          : null;
         var rootOperation = semanticModel.GetOperation(rootPlan.BodySyntax);
         var records = new List<OperationFragmentRecord>();
-        if (rootOperation is null)
-        {
-            return CreatePartitionResult(rootPlan, records);
-        }
-
-        // 用显式栈保留 Roslyn 的子节点顺序，同时避免深层操作树递归遍历造成栈溢出。
-        var pending = new Stack<(IOperation Operation, IOperation? Parent)>();
-        var childBuffer = ArrayPool<IOperation>.Shared.Rent(minimumLength: 8);
         try
         {
-            pending.Push((rootOperation, Parent: null));
-            while (pending.Count > 0)
+            if (rootOperation is not null)
             {
-                var current = pending.Pop();
-                records.Add(new OperationFragmentRecord(current.Operation, current.Parent, rootPlan.OwningMethod));
-
-                var childCount = 0;
-                foreach (var child in current.Operation.ChildOperations)
+                // 用显式栈保留 Roslyn 的子节点顺序，同时避免深层操作树递归遍历造成栈溢出。
+                var pending = new Stack<(IOperation Operation, IOperation? Parent)>();
+                var childBuffer = ArrayPool<IOperation>.Shared.Rent(minimumLength: 8);
+                try
                 {
-                    if (childCount == childBuffer.Length)
+                    pending.Push((rootOperation, Parent: null));
+                    while (pending.Count > 0)
                     {
-                        childBuffer = GrowChildBuffer(childBuffer, childCount + 1);
+                        var current = pending.Pop();
+                        records.Add(new OperationFragmentRecord(current.Operation, current.Parent, rootPlan.OwningMethod));
+
+                        var childCount = 0;
+                        foreach (var child in current.Operation.ChildOperations)
+                        {
+                            if (childCount == childBuffer.Length)
+                            {
+                                childBuffer = GrowChildBuffer(childBuffer, childCount + 1);
+                            }
+
+                            childBuffer[childCount] = child;
+                            childCount += 1;
+                        }
+
+                        for (var index = childCount - 1; index >= 0; index -= 1)
+                        {
+                            pending.Push((childBuffer[index], current.Operation));
+                        }
                     }
-
-                    childBuffer[childCount] = child;
-                    childCount += 1;
                 }
-
-                for (var index = childCount - 1; index >= 0; index -= 1)
+                finally
                 {
-                    pending.Push((childBuffer[index], current.Operation));
+                    ArrayPool<IOperation>.Shared.Return(childBuffer, clearArray: true);
                 }
             }
         }
         finally
         {
-            ArrayPool<IOperation>.Shared.Return(childBuffer, clearArray: true);
+            collectionStopwatch?.Stop();
         }
 
-        return CreatePartitionResult(rootPlan, records);
+        return CreatePartitionResult(
+          rootPlan,
+          records,
+          collectionStopwatch?.ElapsedMilliseconds ?? 0);
     }
 
     private static IOperation[] GrowChildBuffer(IOperation[] buffer, int requiredLength)
@@ -140,7 +200,10 @@ public sealed partial class NLCPGBuilder
         return expanded;
     }
 
-    private static OperationPartitionResult CreatePartitionResult(OperationRootPlan rootPlan, IReadOnlyList<OperationFragmentRecord> records)
+    private static OperationPartitionResult CreatePartitionResult(
+      OperationRootPlan rootPlan,
+      IReadOnlyList<OperationFragmentRecord> records,
+      long collectionElapsedMilliseconds)
     {
         var declarationSpan = rootPlan.BodySyntax.Parent?.Span ?? rootPlan.BodySyntax.Span;
         var owningMethodSymbolKey = rootPlan.OwningMethod is null
@@ -153,7 +216,8 @@ public sealed partial class NLCPGBuilder
           rootPlan.BodySyntax.SpanStart,
           rootPlan.BodySyntax.Span.End,
           owningMethodSymbolKey,
-          records);
+          records,
+          collectionElapsedMilliseconds);
     }
 
     private OperationFragmentFacts MaterializeOperationPartition(OperationPartitionResult partition, NLCPGGraph graph)

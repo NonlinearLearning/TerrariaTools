@@ -83,7 +83,7 @@ namespace NLCPG.Builder
 
         private void RunPartitionedSyntaxPass(
           NLCPGBuildContext context,
-          IReadOnlyCollection<SyntaxNode> partitionRoots,
+          IReadOnlyList<SyntaxNode> partitionRoots,
           IReadOnlyList<SyntaxNode[]> partitions,
           CapabilityBuildPlan buildPlan)
         {
@@ -99,23 +99,48 @@ namespace NLCPG.Builder
               metrics,
               buildPlan);
 
-            foreach (var partition in partitions)
+            for (var partitionIndex = 0; partitionIndex < partitions.Count; partitionIndex++)
             {
+                var partition = partitions[partitionIndex];
+                var beforeNodeCount = context.Graph.Nodes.Count;
+                var materializationStopwatch = PartitionPerformanceDiagnosticsEnabled
+                  ? Stopwatch.StartNew()
+                  : null;
                 // 分区内节点的语义事实已预采集，这里只做按顺序物化和 token 补全。
-                foreach (var syntax in partition)
+                try
                 {
-                    var parent = syntax.Parent is null
-                      ? context.SyntaxTreeNode
-                      : _syntaxNodes[syntax.Parent];
-                    var syntaxNode = CreateSyntaxNode(
-                      syntax,
-                      parent,
-                      context.Graph,
-                      context.SemanticModel,
-                      context.FilePath,
-                      metrics,
-                      buildPlan);
-                    EmitChildTokens(syntax, syntaxNode, context.Graph, context.FilePath, metrics, buildPlan);
+                    foreach (var syntax in partition)
+                    {
+                        var parent = syntax.Parent is null
+                          ? context.SyntaxTreeNode
+                          : _syntaxNodes[syntax.Parent];
+                        var syntaxNode = CreateSyntaxNode(
+                          syntax,
+                          parent,
+                          context.Graph,
+                          context.SemanticModel,
+                          context.FilePath,
+                          metrics,
+                          buildPlan);
+                        EmitChildTokens(syntax, syntaxNode, context.Graph, context.FilePath, metrics, buildPlan);
+                    }
+                }
+                finally
+                {
+                    materializationStopwatch?.Stop();
+                    if (PartitionPerformanceDiagnosticsEnabled)
+                    {
+                        var spanStart = partition.Length == 0 ? 0 : partition[0].SpanStart;
+                        var spanEnd = partition.Length == 0 ? 0 : partition[^1].Span.End;
+                        RecordPartitionPerformanceEvent(
+                          PartitionPerformanceStageId.SyntaxMaterialization,
+                          CreatePartitionPerformanceId("syntax", partitionIndex, spanStart, spanEnd),
+                          partitionIndex,
+                          partition.Length,
+                          Math.Max(0, context.Graph.Nodes.Count - beforeNodeCount),
+                          materializationStopwatch?.ElapsedMilliseconds ?? 0,
+                          materializationStopwatch?.ElapsedMilliseconds ?? 0);
+                    }
                 }
             }
         }
