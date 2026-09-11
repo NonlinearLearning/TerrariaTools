@@ -9,7 +9,7 @@ internal sealed class ConfigurationRunHost
   {
     var configuration = YamlConfigurationLoader.LoadFromWorkingDirectory();
     YamlConfigurationLoader.PrepareRunArtifacts(configuration);
-    var host = new CommandHost(RuleRegistry.CreateDefaultRules());
+    var host = new CommandHost();
     await host.AnalyzeAsync(configuration);
   }
 }

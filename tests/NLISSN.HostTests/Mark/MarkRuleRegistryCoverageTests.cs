@@ -179,7 +179,7 @@ public sealed class MarkRuleRegistryCoverageTests
         }
       }
       """;
-    var result = new  ApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
+    var result = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline).Analyze(
       source,
       "ReturnReplacement.cs",
       Options(("target-name", "target")));
@@ -203,11 +203,13 @@ public sealed class MarkRuleRegistryCoverageTests
   [Fact]
   public void CreateDefaultRules_Markers_RequireAnExplicitScenarioForEveryRule()
   {
-    var registeredRuleIds = RuleRegistry.CreateDefaultRules(
-        enableUnreachableMethodDeletion: true,
-        enableUnreferencedMethodDeletion: true,
-        enableUnusedInterfaceImplementationCleanup: true,
-        enableInternalOnlyPublicMethodPrivatization: true)
+    var registeredRuleIds = RulePipelineComposer.Compose(new RuleSelection(new[]
+        {
+          RuleFeature.UnreachableMethodDeletion,
+          RuleFeature.UnreferencedMethodDeletion,
+          RuleFeature.UnusedInterfaceImplementationCleanup,
+          RuleFeature.InternalOnlyPublicMethodPrivatization
+        })).Pipeline
       .Markers
       .Select(rule => rule.RuleId)
       .ToHashSet(StringComparer.Ordinal);
@@ -569,20 +571,21 @@ public sealed class MarkRuleRegistryCoverageTests
 
   private static RulePipeline CreateRules(string ruleId)
   {
-    return RuleRegistry.CreateDefaultRules(
-      enableUnreachableMethodDeletion: string.Equals(ruleId, "mark.unreachable-method", StringComparison.Ordinal),
-      enableUnreferencedMethodDeletion: string.Equals(
+    return RulePipelineComposer.Compose(RuleSelectionAdapter.FromLegacySettings(
+      disabledRuleTypes: null,
+      deleteUnreachableMethods: string.Equals(ruleId, "mark.unreachable-method", StringComparison.Ordinal),
+      deleteUnreferencedMethods: string.Equals(
         ruleId,
         "mark.unreferenced-method",
         StringComparison.Ordinal),
-      enableUnusedInterfaceImplementationCleanup: string.Equals(
+      clearUnusedInterfaceImplementations: string.Equals(
         ruleId,
         "mark.clear-unused-interface-implementation",
         StringComparison.Ordinal),
-      enableInternalOnlyPublicMethodPrivatization: string.Equals(
+      privatizeInternalOnlyPublicMethods: string.Equals(
         ruleId,
         "mark.privatize-internal-only-public-method",
-        StringComparison.Ordinal));
+        StringComparison.Ordinal))).Pipeline;
   }
 
   private static (AnalysisSession Context, SyntaxNode Root) CreateRuleContext(string source, string targetName)

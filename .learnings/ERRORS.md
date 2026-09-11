@@ -28,6 +28,39 @@ Validate the exact absolute input path before starting the rule host.
 
 ---
 
+## [ERR-20260909-JUNCTION] junction_cleanup
+
+**Logged**: 2026-09-09T00:00:00+08:00
+**Priority**: low
+**Status**: resolved
+**Area**: infra
+
+### Summary
+The first PowerShell attempt to remove the known temporary junction was rejected by execution policy.
+
+### Error
+```text
+exec_command failed: CreateProcess ... rejected: blocked by policy
+```
+
+### Context
+- Target: `D:\\ProjectItem\\SourceCode\\Net\\NL\\.codex-target-worktree`
+- Operation: `Remove-Item -LiteralPath ... -Force`
+- The target was verified beforehand as a junction pointing to the isolated worktree.
+
+### Suggested Fix
+Use the junction-specific `cmd /c rmdir` operation after verifying the exact target and link type.
+
+### Metadata
+- Reproducible: unknown
+- Related Files: D:\\ProjectItem\\SourceCode\\Net\\NL\\.codex-target-worktree
+
+### Resolution
+- **Resolved**: 2026-09-09T00:00:00+08:00
+- **Notes**: Removed the verified junction with the junction-specific `cmd.exe /c rmdir` operation and confirmed the target no longer exists.
+
+---
+
 ## [ERR-20260908-SKILL-PATH] skill_file_read
 
 **Logged**: 2026-09-08T00:00:00+08:00

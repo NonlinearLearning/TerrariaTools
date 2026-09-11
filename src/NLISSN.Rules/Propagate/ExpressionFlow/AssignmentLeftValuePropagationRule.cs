@@ -8,6 +8,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 把赋值右侧的原子命中迁移到左值，供后续符号引用和声明宿主规则继续沿“被写入的位置”扩散。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class AssignmentLeftValuePropagationRule : ExpressionFlowPropagationRuleBase
 {
     private static readonly RuleProducesContract AssignmentTargetProduces = new(new[]

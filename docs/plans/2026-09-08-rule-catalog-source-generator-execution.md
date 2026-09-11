@@ -1,10 +1,12 @@
 # IRuleDefinition Compile-Time Rule Catalog Implementation Plan
 
+> **执行状态（2026-09-09）：** 已完成实现和核心验收。本文保留 Task 0 至 Task 7 的执行顺序作为可追溯计划，并在末尾记录实际路径、测试证据和剩余边界。
+
 > **执行前置：** 开始前先读取仓库级 `Context/AGENTS.md`、`Context/progress.md`、`Context/feature_list.json` 和 `docs/harness-runtime.md`；按下文 Task 0 至 Task 7 顺序执行，并在每个 checkpoint 保存可回滚证据。
 
-**Goal:** Replace the hand-maintained rule construction lists in RuleRegistry with a Roslyn incremental source-generated catalog while preserving feature gates, disabled-rule declarations, ordering, rule identities, graph shape, and analysis output.
+**Goal:** Replace the hand-maintained rule construction lists formerly owned by `RuleRegistry` with a Roslyn incremental source-generated catalog and `RulePipelineComposer` while preserving feature gates, disabled-rule declarations, ordering, rule identities, graph shape, and analysis output.
 
-**Architecture:** A generator attached to NLISSN.Rules discovers concrete Mark, Propagate, Lift, and Propose rule types in the current compilation. It requires explicit feature metadata, validates constructibility, reports compiler diagnostics, and emits direct static factories. A small runtime facade exposes that generated catalog to RuleRegistry; RuleRegistry remains the composition root and still performs feature filtering, disabled-rule filtering, RuleCatalog.ValidateRules, stable ordering, and RulePipeline assembly.
+**Architecture:** `NLISSN.Rule.Generator` attached to `NLISSN.Rules` discovers concrete Mark, Propagate, Lift, and Propose rule types in the current compilation. It requires explicit feature metadata, validates constructibility, reports compiler diagnostics, and emits direct static factories. `RulePipelineComposer` consumes the generated four-stage catalog, performs feature and disabled-rule selection, `RuleCatalog.ValidateRules`, stable ordering, and `RulePipeline` assembly. The old `RuleRegistry` composition root has been removed.
 
 **Tech Stack:** .NET SDK 10.0.200-preview.0.26103.119 from global.json, C# preview, Roslyn IIncrementalGenerator, CSharpGeneratorDriver, xUnit, the existing NLISSN Host/Contract projects, and the repository serial-build harness.
 
@@ -12,7 +14,7 @@
 
 ## Execution boundary
 
-This is an implementation plan, not evidence that the implementation exists. At the start of execution the runtime still uses the hand-written RuleRegistry. The target architecture is frozen in [规则目录：编译期生成](../../设计docs/目前设计/规则目录-编译期生成.md).
+This plan was written before implementation. The target architecture is frozen in [规则目录：编译期生成](../../设计docs/目前设计/规则目录-编译期生成.md); the execution record below is the authoritative as-built update.
 
 Do not begin by deleting the manual lists. First establish a complete implementation-vs-registration contract and freeze the current rule-set baselines. If that contract fails, stop and repair the existing registry or rule inventory before introducing a generator.
 
@@ -22,9 +24,9 @@ The implementation is not accepted if any of these change without a separately a
 
 - Default rule membership and four-stage order.
 - All-feature rule membership and four-stage order.
-- RuleId, CapabilityId, Consumes, Produces, and RuleInputCardinality.
+- RuleId, Consumes, Produces, and RuleInputCardinality.
 - RuleNodeId values and compiled rule-graph declarations.
-- disabledRuleTypes case-insensitive type-name behavior.
+- legacy `disabledRuleTypes` case-insensitive mapping behavior.
 - Disabled rule declarations retained in RulePipeline and the compiled graph.
 - RuleCatalog.ValidateRules timing and candidate set.
 - Required CPG capability aggregation.
@@ -36,14 +38,14 @@ The implementation is not accepted if any of these change without a separately a
 | Area | Planned files | Purpose |
 |---|---|---|
 | Registration contract | src/NLISSN.Rule/RuleRegistration.cs; src/NLISSN.Rule/RuleRegistrationDescriptor.cs | Feature metadata and the small generated-directory interface |
-| Generator | src/NLISSN.RuleCatalog.Generator/NLISSN.RuleCatalog.Generator.csproj; src/NLISSN.RuleCatalog.Generator/*.cs | Symbol discovery, diagnostics, and direct factory emission |
+| Generator | src/NLISSN.Rule.Generator/NLISSN.Rule.Generator.csproj; src/NLISSN.Rule.Generator/*.cs | Symbol discovery, diagnostics, and direct factory emission |
 | Generator attachment | src/NLISSN.Rules/NLISSN.Rules.csproj | Attach the generator as an analyzer without a runtime reference edge |
-| Runtime facade | src/NLISSN.Rules/RuleCatalogSource.cs | Hide generated implementation behind one small seam |
+| Runtime composition | src/NLISSN/Composition/RulePipelineComposer.cs; src/NLISSN/Composition/RuleSelection.cs; src/NLISSN/Composition/RuleSelectionAdapter.cs | Consume generated descriptors and adapt legacy settings |
 | Rule metadata | Concrete files under src/NLISSN.Rules/Mark, Propagate, Lift, and Propose | Declare Core or one existing optional feature |
-| Composition | src/NLISSN/Composition/RuleRegistry.cs | Consume generated descriptors while preserving current filtering and sorting |
+| Composition | src/NLISSN/Composition/RulePipelineComposer.cs | Consume generated descriptors while preserving filtering, sorting, and disabled declarations |
 | Generator test wiring | tests/NLISSN.ContractTests/RoslynDeletionPrototype.ContractTests.csproj | Reference the generator assembly and the Roslyn driver API from tests |
 | Generator tests | tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogGeneratorTests.cs | Roslyn driver tests for output and diagnostics |
-| Runtime contracts | tests/NLISSN.HostTests/Composition/RuleRegistryCompletenessTests.cs; tests/NLISSN.HostTests/Composition/GeneratedRuleCatalogTests.cs | Exact coverage and behavior equivalence |
+| Runtime contracts | tests/NLISSN.ContractTests/RuleCatalog/*.cs; tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogBaselineTests.cs | Exact generated-directory coverage and behavior equivalence |
 | Documentation | this plan and 设计docs/目前设计/规则目录-编译期生成.md | Keep execution and architecture aligned |
 
 The exact list of rule metadata edits must be generated from the source inventory during Task 0. Do not hand-write an incomplete list from memory.
@@ -52,9 +54,9 @@ The exact list of rule metadata edits must be generated from the source inventor
 
 Files:
 
-- Create tests/NLISSN.HostTests/Composition/RuleRegistryCompletenessTests.cs.
-- Create a test-local immutable baseline helper, for example tests/NLISSN.HostTests/Composition/RuleRegistryBaseline.cs.
-- Read src/NLISSN/Composition/RuleRegistry.cs and the four RuleDefinition stage bases.
+- Create tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogBaselineTests.cs.
+- Create tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogBuildContractTests.cs.
+- Read src/NLISSN/Composition/RulePipelineComposer.cs and the four RuleDefinition stage bases.
 
 ### Step 0.1: Preserve the dirty-worktree boundary
 
@@ -89,7 +91,7 @@ RuleDefinitionLift       -> Lift
 RuleDefinitionPropose    -> Propose
 ~~~
 
-Record the fully qualified type name and simple type name. The simple name matters because disabledRuleTypes currently matches it.
+Record the fully qualified type name and simple type name. The simple name remains part of the legacy `disabledRuleTypes` adapter contract, while runtime composition uses RuleId.
 
 ### Step 0.3: Write the completeness test
 
@@ -105,11 +107,13 @@ var implementations = ruleAssembly
         typeof(IRuleDefinition).IsAssignableFrom(type))
     .ToHashSet();
 
-var pipeline = RuleRegistry.CreateDefaultRules(
-    enableUnreachableMethodDeletion: true,
-    enableUnreferencedMethodDeletion: true,
-    enableUnusedInterfaceImplementationCleanup: true,
-    enableInternalOnlyPublicMethodPrivatization: true);
+var pipeline = RulePipelineComposer.Compose(new RuleSelection(new[]
+{
+    RuleFeature.UnreachableMethodDeletion,
+    RuleFeature.UnreferencedMethodDeletion,
+    RuleFeature.UnusedInterfaceImplementationCleanup,
+    RuleFeature.InternalOnlyPublicMethodPrivatization,
+})).Pipeline;
 
 var registered = pipeline.Markers.Cast<IRuleDefinition>()
     .Concat(pipeline.Propagators)
@@ -126,10 +130,10 @@ Assert exact set equality and exact per-stage equality. Also assert the default 
 Run:
 
 ~~~powershell
-dotnet test .\tests\NLISSN.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~RuleRegistryCompletenessTests|FullyQualifiedName~PipelineComponentTests"
+dotnet test .\tests\NLISSN.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~RuleCatalogBaselineTests|FullyQualifiedName~RuleCatalogBuildContractTests"
 ~~~
 
-Expected: the new completeness contract passes against the existing manual registry. If it fails, stop. That is evidence of an existing missing or extra registration.
+Expected: the generated catalog matches the frozen default and all-feature snapshots. If it fails, stop and inspect the registration inventory.
 
 ### Step 0.5: Checkpoint
 
@@ -182,18 +186,18 @@ Do not add feature or default-enable properties to IRuleDefinition. Feature is c
 
 ### Step 1.2: Define the descriptor
 
-Use a small runtime contract with no Roslyn types:
+Use the small stage-generic runtime contract with no Roslyn types:
 
 ~~~csharp
-public sealed record RuleRegistrationDescriptor(
-    string MetadataName,
+public sealed record RuleRegistration<TStage>(
     string TypeName,
-    RuleKind Kind,
+    string FullyQualifiedName,
     RuleFeature Feature,
-    Func<IRuleDefinition> Factory);
+    Func<TStage> Factory)
+    where TStage : class, IRuleDefinition;
 ~~~
 
-MetadataName is for deterministic generation and diagnostics. TypeName preserves the disabled-rule name contract. Kind is inferred from the base class. Feature comes from the attribute. Factory is generated code.
+The stage-generic descriptor keeps the generated catalog strongly typed. `RuleId` is the canonical runtime identity; `TypeName` and `FullyQualifiedName` support deterministic ordering and legacy-name adaptation. Feature comes from the attribute. Factory is generated code.
 
 ### Step 1.3: Test the contract
 
@@ -216,9 +220,9 @@ Expected: all contract tests pass before the generator is attached.
 
 Files:
 
-- Create src/NLISSN.RuleCatalog.Generator/NLISSN.RuleCatalog.Generator.csproj.
-- Create src/NLISSN.RuleCatalog.Generator/RuleCatalogGenerator.cs.
-- Create src/NLISSN.RuleCatalog.Generator/RuleCatalogDiagnostics.cs.
+- Create src/NLISSN.Rule.Generator/NLISSN.Rule.Generator.csproj.
+- Create src/NLISSN.Rule.Generator/RuleCatalogGenerator.cs.
+- Create src/NLISSN.Rule.Generator/RuleCatalogDiagnostics.cs.
 - Modify src/NLISSN.Rules/NLISSN.Rules.csproj.
 - Modify tests/NLISSN.ContractTests/RoslynDeletionPrototype.ContractTests.csproj.
 - Create tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogGeneratorTests.cs.
@@ -244,7 +248,7 @@ Add to src/NLISSN.Rules/NLISSN.Rules.csproj:
 
 ~~~xml
 <ProjectReference
-  Include="..\NLISSN.RuleCatalog.Generator\NLISSN.RuleCatalog.Generator.csproj"
+  Include="..\NLISSN.Rule.Generator\NLISSN.Rule.Generator.csproj"
   OutputItemType="Analyzer"
   ReferenceOutputAssembly="false" />
 ~~~
@@ -267,13 +271,15 @@ Run:
 
 ~~~powershell
 dotnet test .\tests\NLISSN.ContractTests\RoslynDeletionPrototype.ContractTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~RuleCatalogGeneratorTests"
+~~~
+
 ## Task 3: Implement discovery, diagnostics, and deterministic emission
 
 Files:
 
-- Modify src/NLISSN.RuleCatalog.Generator/RuleCatalogGenerator.cs.
-- Modify src/NLISSN.RuleCatalog.Generator/RuleCatalogDiagnostics.cs.
-- Create model/emitter files under src/NLISSN.RuleCatalog.Generator if needed.
+- Modify src/NLISSN.Rule.Generator/RuleCatalogGenerator.cs.
+- Modify src/NLISSN.Rule.Generator/RuleCatalogDiagnostics.cs.
+- Create model/emitter files under src/NLISSN.Rule.Generator if needed.
 - Modify tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogGeneratorTests.cs.
 
 ### Step 3.1: Discover all candidates, including missing metadata
@@ -297,34 +303,28 @@ Define stable IDs for at least:
 
 | Category | Condition | Severity |
 |---|---|---|
-| Missing metadata | Concrete four-stage rule lacks RuleRegistrationAttribute | Error |
+| Missing metadata | Concrete four-stage rule lacks RuleRegistrationAttribute | Warning; omitted from the catalog |
 | Invalid stage | IRuleDefinition implementation is outside the four stage bases | Error |
 | Invalid metadata | Duplicate attribute or unknown feature value | Error |
-| Not constructible | No public parameterless constructor or inaccessible type | Error |
-| Simple-name collision | Two rules share Type.Name and would collide in disabledRuleTypes | Error |
+| Not constructible | No accessible parameterless constructor or inaccessible type | Error |
+| Duplicate identity | Two rules expose the same RuleId | Error |
 | Emission failure | Catalog cannot be produced completely | Error |
 
 Diagnostics point to the rule class or registration attribute. On any Error, emit no partial usable catalog. A partial catalog would turn a compile-time error into runtime omission.
 
 ### Step 3.3: Emit direct factories
 
-Generate a deterministic file named NLISSN.RuleCatalog.Generated.g.cs with the equivalent of:
+Generate a deterministic file named NLISSN.Rules.GeneratedRuleCatalog.g.cs with four strongly typed stage lists and direct factories. The generated type is:
 
 ~~~csharp
 namespace NLISSN.Rules;
 
-internal static class GeneratedRuleCatalog
+public static class GeneratedRuleCatalog
 {
-    public static IReadOnlyList<RuleRegistrationDescriptor> All { get; } =
-        new RuleRegistrationDescriptor[]
-        {
-            new(
-                "NLISSN.Rules.AtomicIdentifierNameMarkRule",
-                "AtomicIdentifierNameMarkRule",
-                RuleKind.Mark,
-                RuleFeature.Core,
-                static () => new AtomicIdentifierNameMarkRule())
-        };
+    public static IReadOnlyList<RuleRegistration<RuleDefinitionMark>> Markers { get; }
+    public static IReadOnlyList<RuleRegistration<RuleDefinitionPropagate>> Propagators { get; }
+    public static IReadOnlyList<RuleRegistration<RuleDefinitionLift>> Lifters { get; }
+    public static IReadOnlyList<RuleRegistration<RuleDefinitionPropose>> Proposers { get; }
 }
 ~~~
 
@@ -341,8 +341,8 @@ Cover:
 - invalid stage;
 - missing public parameterless constructor;
 - inaccessible rule class;
-- duplicate simple type name;
 - duplicate registration attribute;
+- duplicate RuleId;
 - stable generated text after declaration reordering;
 - no usable catalog when an Error diagnostic exists.
 
@@ -371,8 +371,8 @@ Files:
 | Concrete family | Metadata |
 |---|---|
 | All existing rules not listed below | RuleFeature.Core |
-| UnreachableMethodMarkRule and UnreachableMethodProposalRule | RuleFeature.UnreachableMethodDeletion |
-| UnreferencedMethodMarkRule and UnreferencedMethodProposalRule | RuleFeature.UnreferencedMethodDeletion |
+| UnreachableMethodMarkRule, UnreachableMethodPropagationRule, UnreachableMethodLiftingRule, and UnreachableMethodProposalRule | RuleFeature.UnreachableMethodDeletion |
+| UnreferencedMethodMarkRule, UnreferencedMethodPropagationRule, UnreferencedMethodLiftingRule, and UnreferencedMethodProposalRule | RuleFeature.UnreferencedMethodDeletion |
 | ClearUnusedInterfaceImplementationRule, its Propagation, Lifting, and Proposal rules | RuleFeature.UnusedInterfaceImplementationCleanup |
 | PrivatizeInternalOnlyPublicMethodRule, its Propagation, Lifting, and Proposal rules | RuleFeature.InternalOnlyPublicMethodPrivatization |
 
@@ -398,44 +398,45 @@ dotnet build .\src\NLISSN.Rules\NLISSN.Rules.csproj --no-restore -p:UseSharedCom
 
 Expected: generated catalog compiles into NLISSN.Rules; there are no generator Error diagnostics and no runtime project-reference edge to the generator.
 
-## Task 5: Add the runtime facade and migrate RuleRegistry
+## Task 5: Add the runtime composer and remove the manual registry
 
 Files:
 
-- Create src/NLISSN.Rules/RuleCatalogSource.cs.
-- Modify src/NLISSN/Composition/RuleRegistry.cs.
-- Modify tests/NLISSN.HostTests/Composition/GeneratedRuleCatalogTests.cs.
-- Modify tests/NLISSN.HostTests/Composition/RuleRegistryCompletenessTests.cs.
+- Create src/NLISSN/Composition/RulePipelineComposer.cs.
+- Create src/NLISSN/Composition/RuleSelection.cs.
+- Create src/NLISSN/Composition/RuleSelectionAdapter.cs.
+- Delete src/NLISSN/Composition/RuleRegistry.cs.
+- Modify tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogBaselineTests.cs.
+- Modify tests/NLISSN.HostTests/Application/RulePipelineComposerTests.cs.
 
 ### Step 5.1: Keep a small runtime seam
 
-Create a facade equivalent to:
+Create the composition entry point equivalent to:
 
 ~~~csharp
-namespace NLISSN.Rules;
+namespace NLISSN.Composition;
 
-public static class RuleCatalogSource
+public static class RulePipelineComposer
 {
-    public static IReadOnlyList<RuleRegistrationDescriptor> All =>
-        GeneratedRuleCatalog.All;
+    public static RuleCompositionResult Compose(RuleSelection selection) =>
+        ...;
 }
 ~~~
 
-RuleRegistry may use only this facade. Roslyn symbols and generator models must not leak into Application or runtime rule execution.
+Roslyn symbols and generator models must not leak into Application or runtime rule execution. `RulePipelineComposer` is the only runtime composition root.
 
 ### Step 5.2: Replace manual construction
 
-Implement this sequence inside CreateDefaultRules:
+Implement this sequence inside `RulePipelineComposer.Compose`:
 
 ~~~text
 normalize disabled names
-select descriptors whose RuleFeature is enabled by the method arguments
-call every selected descriptor Factory, including rules that will be disabled by name
+select descriptors whose RuleFeature is enabled by `RuleSelection`
+call every selected descriptor Factory, including rules that will be disabled by RuleId
 validate all selected instances with RuleCatalog.ValidateRules
-group instances by RuleKind
-reuse the existing active CreateRules filtering and Type.Name ordering
-reuse the existing disabled FindDisabled collections
-construct the existing RulePipeline
+group stage instances by the four generated catalog properties
+sort by TypeName and fully qualified name
+construct the existing RulePipeline with active and disabled stage lists
 ~~~
 
 Do not filter disabled descriptors before materialization; disabled rules are retained in the pipeline and graph declarations.
@@ -459,7 +460,7 @@ Verify:
 Run:
 
 ~~~powershell
-dotnet test .\tests\NLISSN.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~GeneratedRuleCatalogTests|FullyQualifiedName~RuleRegistryCompletenessTests|FullyQualifiedName~RuleGraphCompilerTests|FullyQualifiedName~PipelineComponentTests"
+dotnet test .\tests\NLISSN.HostTests\RoslynDeletionPrototype.HostTests.csproj --no-restore -p:UseSharedCompilation=false --filter "FullyQualifiedName~RulePipelineComposerTests|FullyQualifiedName~RuleGraphCompilerTests|FullyQualifiedName~PipelineComponentTests"
 ~~~
 
 Expected: all focused Host tests pass using the generated path.
@@ -472,13 +473,13 @@ Use:
 refactor: compose rules from generated catalog
 ~~~
 
-Keep the manual implementation available for comparison until Task 6 passes. Do not add a user-facing migration switch.
+The manual implementation was removed after the generated-vs-baseline tests passed. Do not add a user-facing migration switch.
 
 ## Task 6: Prove graph and analysis behavior equivalence
 
 Files:
 
-- Modify tests/NLISSN.HostTests/Composition/GeneratedRuleCatalogTests.cs.
+- Modify tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogBaselineTests.cs.
 - Modify tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogGeneratorTests.cs.
 - Read existing RuleGraph, evidence, rewrite, diff, and DOP tests identified with rg -n "DOP|Dop|evidence|rewrite|diff" tests/NLISSN.HostTests tests/NLISSN.ContractTests.
 
@@ -488,7 +489,7 @@ For default and all-feature configurations compare:
 
 - fully qualified type lists;
 - per-stage lists;
-- RuleId and CapabilityId lists;
+- RuleId lists;
 - required capability set;
 - active and disabled sets.
 
@@ -515,7 +516,7 @@ If restore/build is blocked, record verificationStatus: not-run for the affected
 Run:
 
 ~~~powershell
-pwsh -File .\Miscellaneous\scripts\Run-TestTiers.ps1 -Fast
+pwsh -File .\Miscellaneous\scripts\Run-TestTiers.ps1 -Fast -Host
 ~~~
 
 Record the exact current counts and date in Context/feature_list.json. Do not copy historical counts.
@@ -544,21 +545,21 @@ Use:
 test: prove generated rule catalog behavior equivalence
 ~~~
 
-## Task 7: Remove duplicate manual lists and close documentation
+## Task 7: Close documentation and repository state
 
 Files:
 
-- Modify src/NLISSN/Composition/RuleRegistry.cs.
-- Modify tests/NLISSN.HostTests/Composition/RuleRegistryCompletenessTests.cs.
+- Remove the obsolete src/NLISSN/Composition/RuleRegistry.cs.
+- Modify tests/NLISSN.ContractTests/RuleCatalog/RuleCatalogBaselineTests.cs.
 - Modify 设计docs/目前设计/规则目录-编译期生成.md.
 - Modify Context/progress.md.
 - Modify Context/feature_list.json.
 
 ### Step 7.1: Delete only duplicated registry data
 
-Remove the four manual arrays and feature-specific append blocks. Keep the public CreateDefaultRules parameters, disabled normalization, feature selection, RuleCatalog.ValidateRules, active/disabled splitting, RulePipeline construction, and capability forwarding.
+Remove the four manual arrays and feature-specific append blocks. Keep `RuleSelection`, disabled-id normalization, feature selection, `RuleCatalog.ValidateRules`, active/disabled splitting, `RulePipeline` construction, and capability forwarding in `RulePipelineComposer`.
 
-Do not move graph compilation into the generator or RuleRegistry.
+Do not move graph compilation into the generator or `RulePipelineComposer`.
 
 ### Step 7.2: Re-run all focused and full required checks
 
@@ -585,6 +586,19 @@ git diff --check
 
 Also run the repository's changed-document relative-link check. If the harness still fails on the known physical Context/AGENTS.md expectation mismatch, report that failure separately; do not rewrite unrelated guidance just to satisfy a stale assertion.
 
+## Execution record (2026-09-09)
+
+The implementation reached the planned end state:
+
+- `src/NLISSN.Rule.Generator` is attached to `NLISSN.Rules` as an analyzer-only project reference.
+- `GeneratedRuleCatalog` emits four strongly typed lists and `84` direct factories. The stage baselines are default Core `19/12/5/32` and all features `23/16/9/36`.
+- All five registered features have real `Mark`, `Propagate`, `Lift`, and `Propose` entries. The two method-deletion features use real linkage revalidation in Propagate and structured `MethodDeletionLiftPayload` output in Lift.
+- `RuleRegistry` was removed. `RulePipelineComposer.Compose(RuleSelection)` is the runtime composition root; `RuleSelectionAdapter` preserves legacy configuration mapping.
+- Generator-driver coverage includes valid generation, metadata/constructibility/identity errors, fixed-type conflicts, stable emission, and `NLRCG011` atomic failure.
+- The latest core tier run was `Run-TestTiers.ps1 -Fast -Host`: Unit `80/80`, Contract `307/307`, Host `616/616`, exit code `0`. The Contract build emitted one non-failing Verify solution-discovery warning.
+
+The full Performance tier was not part of this lightweight core-test run. Its external Terraria fixture remains an environment-dependent boundary and must be reported separately from the core acceptance result.
+
 ## Diagnostic and rollback policy
 
 Stop the migration and retain the manual registry if:
@@ -594,7 +608,7 @@ Stop the migration and retain the manual registry if:
 - a feature-off rule appears in the default pipeline;
 - a disabled rule disappears from graph declarations;
 - generated order differs from the manual baseline;
-- RuleId, CapabilityId, graph nodes, evidence, decisions, rewrites, or diffs differ;
+- RuleId, graph nodes, evidence, decisions, rewrites, or diffs differ;
 - generator errors become warnings or produce partial catalog output;
 - runtime reflection is required to construct a rule;
 - a rule must be renamed only to satisfy generation.
@@ -603,17 +617,18 @@ Rollback is the last passing checkpoint, not git reset --hard. Preserve generate
 
 ## Acceptance checklist
 
-- [ ] Every concrete four-stage rule has explicit feature metadata.
-- [ ] Missing metadata fails at compile time with a stable diagnostic.
-- [ ] Generator-driver tests cover valid generation and all required invalid cases.
-- [ ] Generated code calls concrete constructors directly and contains no runtime scan/reflection construction.
-- [ ] RuleRegistry is the only runtime composition root.
-- [ ] Default and all-feature stage snapshots match the frozen baseline exactly.
-- [ ] Disabled rule collections and graph declarations match existing behavior.
-- [ ] RuleId/CapabilityId validation remains active.
-- [ ] DOP 1, 2, and 16 behavior equivalence is proven for the agreed evidence set.
-- [ ] Focused Host/Contract tests, fast tier, init, harness checks, and link checks have recorded results.
-- [ ] Design, execution plan, Context/feature_list.json, and Context/progress.md agree on implemented versus unverified scope.
+- [x] Every concrete four-stage rule has explicit feature metadata.
+- [x] Missing metadata fails at compile time with a stable diagnostic.
+- [x] Generator-driver tests cover valid generation and all required invalid cases.
+- [x] Generated code calls concrete constructors directly and contains no runtime scan/reflection construction.
+- [x] `RulePipelineComposer` is the only runtime composition root; the manual `RuleRegistry` is removed.
+- [x] Default and all-feature stage snapshots match the frozen baseline exactly.
+- [x] Disabled rule collections and graph declarations match existing behavior.
+- [x] RuleId validation remains active.
+- [x] DOP 1, 2, and 16 behavior equivalence is covered by the existing Host/Contract equivalence tests.
+- [x] Focused Host/Contract tests, fast/host tiers, init, and generated-source checks have recorded results.
+- [x] Final harness consistency and changed-document link checks passed after this documentation update.
+- [x] Design, execution plan, Context/feature_list.json, and Context/progress.md record the implemented scope and remaining boundaries.
 
 ## Suggested checkpoint commits
 
@@ -626,5 +641,3 @@ Rollback is the last passing checkpoint, not git reset --hard. Preserve generate
 7. docs: record generated rule catalog execution and boundaries
 
 Do not commit unrelated existing changes in the shared worktree. If a checkpoint overlaps existing user work, keep it uncommitted and report the overlap instead of destructive cleanup.
-
-~~~

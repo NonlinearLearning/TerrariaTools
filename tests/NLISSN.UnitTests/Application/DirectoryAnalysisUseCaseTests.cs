@@ -13,7 +13,7 @@ public sealed class DirectoryAnalysisUseCaseTests
   public void Analyze_DeleteUnreferencedMethods_UsesRegisteredRulePipeline()
   {
     var useCase = new DirectoryAnalysisUseCase(
-      RuleRegistry.CreateDefaultRules(enableUnreferencedMethodDeletion: true));
+      RulePipelineComposer.Compose(new RuleSelection(new[] { RuleFeature.UnreferencedMethodDeletion })).Pipeline);
     var sources = new[]
     {
       new DirectorySourceFile(
@@ -41,7 +41,13 @@ public sealed class DirectoryAnalysisUseCaseTests
     var mark = Assert.Single(
       outcome.Result.SeedMarks,
       mark => string.Equals(mark.RuleId, "mark.unreferenced-method", StringComparison.Ordinal));
-    Assert.Equal(RuleFactKind.UnreferencedMethod, mark.FactKind);
+    Assert.Equal(RuleFactKind.UnreferencedMethodMarked, mark.FactKind);
+    Assert.Equal(
+      RuleFactKind.UnreferencedMethodPropagated,
+      Assert.Single(outcome.Result.PropagatedMarks).Mark.FactKind);
+    Assert.Equal(
+      RuleFactKind.UnreferencedMethodLifted,
+      Assert.Single(outcome.Result.LiftedMarks).Mark.FactKind);
     Assert.NotNull(mark.PrimaryGraphNode);
     var file = Assert.Single(outcome.FileResults);
     Assert.DoesNotContain("Removed", file.Result.RewrittenSource, StringComparison.Ordinal);
@@ -57,7 +63,7 @@ public sealed class DirectoryAnalysisUseCaseTests
   public void Analyze_DeleteUnreferencedMethods_WhenCompilationHasErrors_PreservesPrivateMethods()
   {
     var useCase = new DirectoryAnalysisUseCase(
-      RuleRegistry.CreateDefaultRules(enableUnreferencedMethodDeletion: true));
+      RulePipelineComposer.Compose(new RuleSelection(new[] { RuleFeature.UnreferencedMethodDeletion })).Pipeline);
     var sources = new[]
     {
       new DirectorySourceFile(
@@ -101,9 +107,11 @@ public sealed class DirectoryAnalysisUseCaseTests
   public void Analyze_MethodGlobalRules_WhenCompilationHasErrors_ProduceNoMethodMarks()
   {
     var useCase = new DirectoryAnalysisUseCase(
-      RuleRegistry.CreateDefaultRules(
-        enableUnreachableMethodDeletion: true,
-        enableUnreferencedMethodDeletion: true));
+      RulePipelineComposer.Compose(new RuleSelection(new[]
+      {
+        RuleFeature.UnreachableMethodDeletion,
+        RuleFeature.UnreferencedMethodDeletion
+      })).Pipeline);
     var sources = new[]
     {
       new DirectorySourceFile(
@@ -142,9 +150,11 @@ public sealed class DirectoryAnalysisUseCaseTests
   public void Analyze_MethodGlobalRules_PreservesEntryClosureAndMarksOnlyIsolatedPrivateCycle()
   {
     var useCase = new DirectoryAnalysisUseCase(
-      RuleRegistry.CreateDefaultRules(
-        enableUnreachableMethodDeletion: true,
-        enableUnreferencedMethodDeletion: true));
+      RulePipelineComposer.Compose(new RuleSelection(new[]
+      {
+        RuleFeature.UnreachableMethodDeletion,
+        RuleFeature.UnreferencedMethodDeletion
+      })).Pipeline);
     var sources = new[]
     {
       new DirectorySourceFile(
@@ -213,7 +223,7 @@ public sealed class DirectoryAnalysisUseCaseTests
   public void Analyze_DeleteUnreferencedMethods_NestedExecutableReference_RetainsPrivateMethods()
   {
     var useCase = new DirectoryAnalysisUseCase(
-      RuleRegistry.CreateDefaultRules(enableUnreferencedMethodDeletion: true));
+      RulePipelineComposer.Compose(new RuleSelection(new[] { RuleFeature.UnreferencedMethodDeletion })).Pipeline);
     var sources = new[]
     {
       new DirectorySourceFile(
@@ -295,9 +305,11 @@ public sealed class DirectoryAnalysisUseCaseTests
     int degreeOfParallelism)
   {
     var useCase = new DirectoryAnalysisUseCase(
-      RuleRegistry.CreateDefaultRules(
-        enableUnreachableMethodDeletion: true,
-        enableUnreferencedMethodDeletion: true));
+      RulePipelineComposer.Compose(new RuleSelection(new[]
+      {
+        RuleFeature.UnreachableMethodDeletion,
+        RuleFeature.UnreferencedMethodDeletion
+      })).Pipeline);
     var runtime = AnalysisRuntimeFactory.Create(
       new RoslynPrototypeExecutionOptions(
         degreeOfParallelism,

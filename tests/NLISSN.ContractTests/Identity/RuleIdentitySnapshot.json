@@ -558,5 +558,33 @@
     "sourceCapability": "propose.unreferenced-method",
     "observedRuleId": "DEL-UNREF-METHOD-PROP-001",
     "targetRuleId": "propose.unreferenced-method"
+  },
+  {
+    "stage": "Propagate",
+    "type": "NLISSN.Rules.UnreachableMethodPropagationRule",
+    "sourceCapability": "propagate.unreachable-method",
+    "observedRuleId": "propagate.unreachable-method",
+    "targetRuleId": "propagate.unreachable-method"
+  },
+  {
+    "stage": "Propagate",
+    "type": "NLISSN.Rules.UnreferencedMethodPropagationRule",
+    "sourceCapability": "propagate.unreferenced-method",
+    "observedRuleId": "propagate.unreferenced-method",
+    "targetRuleId": "propagate.unreferenced-method"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.UnreachableMethodLiftingRule",
+    "sourceCapability": "lift.unreachable-method",
+    "observedRuleId": "lift.unreachable-method",
+    "targetRuleId": "lift.unreachable-method"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.UnreferencedMethodLiftingRule",
+    "sourceCapability": "lift.unreferenced-method",
+    "observedRuleId": "lift.unreferenced-method",
+    "targetRuleId": "lift.unreferenced-method"
   }
 ]

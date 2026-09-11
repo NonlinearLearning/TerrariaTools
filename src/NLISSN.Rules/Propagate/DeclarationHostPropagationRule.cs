@@ -9,6 +9,7 @@ namespace NLISSN.Rules;
 
 /// 把 delete-class 的 TypeSyntax 命中收束到稳定声明宿主，
 /// 让后续提案直接对字段、属性、方法、接口成员等可改写边界做决策。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class DeclarationHostPropagationRule : RuleDefinitionPropagate
 {
     private static readonly RuleConsumesContract TypeSyntaxFactsConsumes = new(new[]

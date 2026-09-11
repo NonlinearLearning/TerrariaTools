@@ -55,6 +55,7 @@ public sealed class RuleStructureContractTests
     Assert.Equal(
       new[]
       {
+        StructuralKind.MethodDeletion,
         StructuralKind.Assignment,
         StructuralKind.LocalDefinition,
         StructuralKind.If,
@@ -388,7 +389,7 @@ public sealed class RuleStructureContractTests
   [Fact]
   public void DefaultPipeline_UsesOnlySyntaxTagDependencies()
   {
-    var pipeline = RuleRegistry.CreateDefaultRules();
+    var pipeline = RulePipelineComposer.Compose(new RuleSelection()).Pipeline;
     var graph = pipeline.CompileRuleGraph();
 
     Assert.DoesNotContain(

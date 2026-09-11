@@ -91,7 +91,7 @@ public sealed class BindingValidatorTests
 
   private static ApplicationService CreateApplication()
   {
-    return new ApplicationService(RuleRegistry.CreateDefaultRules());
+    return new ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
   }
 
   private static NLISSN.Core.Rewrite.PrototypeAnalysisResult AnalyzeWithValidation(

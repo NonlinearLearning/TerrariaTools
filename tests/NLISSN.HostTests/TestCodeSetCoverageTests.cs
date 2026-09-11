@@ -33,8 +33,12 @@ public sealed class TestCodeSetCoverageTests
   {
     var graph = new NLCPGBuilder().BuildFromSource(testCase.Source, testCase.FilePath);
     var application = new ApplicationService(
-      RuleRegistry.CreateDefaultRules(
-        enableUnreachableMethodDeletion: ShouldEnableUnreachableMethodDeletion(testCase.CaseName)));
+      RulePipelineComposer.Compose(RuleSelectionAdapter.FromLegacySettings(
+        disabledRuleTypes: null,
+        deleteUnreachableMethods: ShouldEnableUnreachableMethodDeletion(testCase.CaseName),
+        deleteUnreferencedMethods: false,
+        clearUnusedInterfaceImplementations: false,
+        privatizeInternalOnlyPublicMethods: false)).Pipeline);
 
     var result = application.Analyze(testCase.Source, testCase.FilePath, testCase.Options);
 

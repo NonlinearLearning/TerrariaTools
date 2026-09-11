@@ -14,6 +14,11 @@ public sealed class  CommandHost
 {
     private readonly  RulePipeline _pipeline;
     // 持有一条默认规则管道，供单文件和目录入口按同一规则集运行。
+    public  CommandHost()
+      : this(RulePipelineComposer.Compose(new RuleSelection()).Pipeline)
+    {
+    }
+
     public  CommandHost( RulePipeline pipeline)
     {
         _pipeline = pipeline;
@@ -47,17 +52,8 @@ public sealed class  CommandHost
           inputPath,
           runtime);
         var policy = configuration.RulePolicy;
-        var rules = policy.DisabledRuleTypes.Count > 0 ||
-          policy.DeleteUnreachableMethods ||
-          policy.DeleteUnreferencedMethods ||
-          policy.ClearUnusedInterfaceImplementations ||
-          policy.PrivatizeInternalOnlyPublicMethods
-          ? RuleRegistry.CreateDefaultRules(
-            policy.DisabledRuleTypes.ToArray(),
-            policy.DeleteUnreachableMethods,
-            policy.DeleteUnreferencedMethods,
-            policy.ClearUnusedInterfaceImplementations,
-            policy.PrivatizeInternalOnlyPublicMethods)
+        var rules = HasRuleSelection(policy)
+          ? RulePipelineComposer.Compose(CreateRuleSelection(policy)).Pipeline
           : _pipeline;
 
         try
@@ -166,6 +162,25 @@ public sealed class  CommandHost
 
             throw;
         }
+    }
+
+    private static bool HasRuleSelection(RulePolicySettings policy)
+    {
+        return policy.DisabledRuleTypes.Count > 0 ||
+          policy.DeleteUnreachableMethods ||
+          policy.DeleteUnreferencedMethods ||
+          policy.ClearUnusedInterfaceImplementations ||
+          policy.PrivatizeInternalOnlyPublicMethods;
+    }
+
+    private static RuleSelection CreateRuleSelection(RulePolicySettings policy)
+    {
+        return RuleSelectionAdapter.FromLegacySettings(
+          policy.DisabledRuleTypes,
+          policy.DeleteUnreachableMethods,
+          policy.DeleteUnreferencedMethods,
+          policy.ClearUnusedInterfaceImplementations,
+          policy.PrivatizeInternalOnlyPublicMethods);
     }
 
     private static async Task CompleteRuntimeLogAsync(

@@ -8,6 +8,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 将 Lift 阶段确认完整的 if / else if / else 结构规约为单个改写决策。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class IfStructureProposalRule : RuleDefinitionPropose
 {
     private static readonly RuleFactKind IfStructureFactKind = RuleFactKind.LiftIfStructure;

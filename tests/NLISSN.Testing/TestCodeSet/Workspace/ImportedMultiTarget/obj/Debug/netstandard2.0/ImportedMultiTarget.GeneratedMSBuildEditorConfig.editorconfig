@@ -1,6 +1,6 @@
 is_global = true
 build_property.RootNamespace = ImportedMultiTarget
-build_property.ProjectDir = D:\ProjectItem\SourceCode\Net\NL\tests\NLISSN.Testing\TestCodeSet\Workspace\ImportedMultiTarget\
+build_property.ProjectDir = C:\Users\shan\.config\superpowers\worktrees\NL\codex-rule-catalog\tests\NLISSN.Testing\TestCodeSet\Workspace\ImportedMultiTarget\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
 build_property.CsWinRTUseWindowsUIXamlProjections = false

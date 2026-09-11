@@ -56,7 +56,7 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
 
         var configuration = YamlConfigurationLoader.Load(configurationPath);
         YamlConfigurationLoader.PrepareRunArtifacts(configuration);
-        var result = new CommandHost(RuleRegistry.CreateDefaultRules()).Analyze(configuration);
+        var result = new CommandHost(RulePipelineComposer.Compose(new RuleSelection()).Pipeline).Analyze(configuration);
 
         Assert.Contains(result.Edits, edit => edit.FilePath.EndsWith("Generated.g.cs", StringComparison.OrdinalIgnoreCase));
         Assert.DoesNotContain(
@@ -103,7 +103,7 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
 
         var configuration = YamlConfigurationLoader.Load(configurationPath);
         YamlConfigurationLoader.PrepareRunArtifacts(configuration);
-        var result = new CommandHost(RuleRegistry.CreateDefaultRules()).Analyze(configuration);
+        var result = new CommandHost(RulePipelineComposer.Compose(new RuleSelection()).Pipeline).Analyze(configuration);
 
         var generatedEdit = Assert.Single(result.Edits, edit =>
           edit.FilePath.EndsWith("GeneratedByDriver.g.cs", StringComparison.OrdinalIgnoreCase));
@@ -152,7 +152,7 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
 
         var configuration = YamlConfigurationLoader.Load(configurationPath);
         YamlConfigurationLoader.PrepareRunArtifacts(configuration);
-        var result = new CommandHost(RuleRegistry.CreateDefaultRules()).Analyze(configuration);
+        var result = new CommandHost(RulePipelineComposer.Compose(new RuleSelection()).Pipeline).Analyze(configuration);
 
         Assert.NotEmpty(result.SeedMarks);
         Assert.Contains(
@@ -198,7 +198,7 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
         YamlConfigurationLoader.PrepareRunArtifacts(configuration);
 
         var exception = Assert.Throws<InvalidOperationException>(
-          () => new CommandHost(RuleRegistry.CreateDefaultRules()).Analyze(configuration));
+          () => new CommandHost(RulePipelineComposer.Compose(new RuleSelection()).Pipeline).Analyze(configuration));
 
         Assert.Contains("NLISSNWS025", exception.Message, StringComparison.Ordinal);
         Assert.Contains(Path.GetFullPath(sourcePath), exception.Message, StringComparison.Ordinal);

@@ -78,8 +78,12 @@ public sealed class  ApplicationServiceFlowTests
     private static ApplicationService CreateApplication(bool enableUnreachableMethodDeletion = false)
     {
         return new ApplicationService(
-          RuleRegistry.CreateDefaultRules(
-            enableUnreachableMethodDeletion: enableUnreachableMethodDeletion));
+          RulePipelineComposer.Compose(RuleSelectionAdapter.FromLegacySettings(
+            disabledRuleTypes: null,
+            deleteUnreachableMethods: enableUnreachableMethodDeletion,
+            deleteUnreferencedMethods: false,
+            clearUnusedInterfaceImplementations: false,
+            privatizeInternalOnlyPublicMethods: false)).Pipeline);
     }
 
     private static Dictionary<string, string> CreateOptions(string? targetName = null, string? unreachableMethods = null)

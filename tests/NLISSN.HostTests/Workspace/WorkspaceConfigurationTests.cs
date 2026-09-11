@@ -93,7 +93,8 @@ public sealed class WorkspaceConfigurationTests : IDisposable
           "analysis: {}\n" +
           "execution:\n" +
           "  maxDegreeOfParallelism: 1\n" +
-          "artifacts: {}\n");
+          "artifacts:\n" +
+          "  root: artifacts\n");
 
         var configuration = YamlConfigurationLoader.Load(configurationPath);
 

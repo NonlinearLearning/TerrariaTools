@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ImportedMultiTarget")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+42038b6d3de166bdcaa09f018e352517fc83a830")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fda1da4410717e5aa4eb04b96cfc0ec29363bfb5")]
 [assembly: System.Reflection.AssemblyProductAttribute("ImportedMultiTarget")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ImportedMultiTarget")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

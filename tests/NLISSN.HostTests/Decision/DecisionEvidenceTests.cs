@@ -19,7 +19,7 @@ public sealed class DecisionEvidenceTests
   public void Analyze_WhenDecisionIsProduced_ConnectsDecisionRootToSeedMark()
   {
     var application = new ApplicationService(
-      RuleRegistry.CreateDefaultRules(enableUnreachableMethodDeletion: true));
+      RulePipelineComposer.Compose(new RuleSelection(new[] { RuleFeature.UnreachableMethodDeletion })).Pipeline);
 
     var result = application.Analyze(
       ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource,
@@ -39,7 +39,7 @@ public sealed class DecisionEvidenceTests
   public void Analyze_WhenDopChanges_ProducesIdenticalEvidenceJson()
   {
     var application = new ApplicationService(
-      RuleRegistry.CreateDefaultRules(enableUnreachableMethodDeletion: true));
+      RulePipelineComposer.Compose(new RuleSelection(new[] { RuleFeature.UnreachableMethodDeletion })).Pipeline);
 
     var sequential = application.Analyze(
       ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource,
@@ -126,7 +126,7 @@ public sealed class DecisionEvidenceTests
     File.WriteAllText(sourcePath, ReachabilitySources.ReachabilityIgnoresConfiguredMethodNamesSource);
     try
     {
-      var host = new CommandHost(RuleRegistry.CreateDefaultRules());
+      var host = new CommandHost(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
       var result = host.AnalyzeFromArgs(new[]
       {

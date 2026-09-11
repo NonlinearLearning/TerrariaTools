@@ -7,6 +7,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 把已传播的原子命中提升到可单独改写的表达式宿主，避免 Proposal 重复向上遍历语法树。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class ExpressionHostLiftingRule : RuleDefinitionLift
 {
     private static readonly RuleFactKind ExpressionHostFactKind = RuleFactKind.LiftExpressionHost;

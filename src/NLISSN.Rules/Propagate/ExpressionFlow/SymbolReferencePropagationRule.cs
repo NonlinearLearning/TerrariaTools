@@ -8,6 +8,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 仅从已收束到局部定义点的标记继续传播到同一可执行作用域内的引用。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class SymbolReferencePropagationRule : ExpressionFlowPropagationRuleBase
 {
     private static readonly RuleProducesContract SymbolReferenceProduces = new(new[]

@@ -8,6 +8,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// <summary>Builds structural control conclusions only after their required expressions are covered.</summary>
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class ControlStructureLiftingRule : RuleDefinitionLift
 {
   private static readonly RuleFactKind ControlStructureFactKind = RuleFactKind.LiftControlStructure;

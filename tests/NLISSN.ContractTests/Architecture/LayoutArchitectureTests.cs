@@ -63,7 +63,8 @@ public sealed class  LayoutArchitectureTests
       {
         "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
-        "..\\NLCPG\\NLCPG.csproj"
+        "..\\NLCPG\\NLCPG.csproj",
+        "..\\NLISSN.Rule.Generator\\NLISSN.Rule.Generator.csproj"
       },
       "src", "NLISSN.Rules", "NLISSN.Rules.csproj");
     AssertProjectReferences(
@@ -126,7 +127,7 @@ public sealed class  LayoutArchitectureTests
       (new[] { "src", "NLISSN", "Artifacts", "DiffPathResolver.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanArtifactService.cs" }, "NLISSN.Artifacts"),
       (new[] { "src", "NLISSN", "Artifacts", "RewritePlanReplayService.cs" }, "NLISSN.Artifacts"),
-      (new[] { "src", "NLISSN", "Composition", "RuleRegistry.cs" }, "NLISSN.Composition"),
+      (new[] { "src", "NLISSN", "Composition", "RulePipelineComposer.cs" }, "NLISSN.Composition"),
       (new[] { "src", "NLISSN", "Telemetry", "RuntimeMeasurementLog.cs" }, "NLISSN.Telemetry")
     };
 

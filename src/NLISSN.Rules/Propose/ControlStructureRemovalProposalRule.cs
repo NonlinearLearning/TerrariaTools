@@ -7,6 +7,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 将传播后的完整控制结构标记转换为删除决策；只接收声明的冲突节点种类。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class ControlStructureRemovalProposalRule : RuleDefinitionPropose
 {
     private static readonly RuleConsumesContract StructuralFactsConsumes =

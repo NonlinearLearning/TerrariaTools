@@ -280,7 +280,8 @@ public sealed class GraphAnalyzerTests
         var result = application.Analyze(source, "unreachable-method-sample.cs", CreateOptions(unreachableMethods: "DeadA,DeadB"));
 
         Assert.Equal(2, result.SeedMarks.Count);
-        Assert.Empty(result.PropagatedMarks);
+        Assert.Equal(2, result.PropagatedMarks.Count);
+        Assert.Equal(2, result.LiftedMarks.Count);
         Assert.All(result.SeedMarks, mark => Assert.Equal("Method", mark.PrimaryGraphNode!.DisplayKind));
 
         Assert.Equal(2, result.Decisions.Count);
@@ -708,13 +709,17 @@ public sealed class GraphAnalyzerTests
     private static ApplicationService CreateApplication(bool enableUnreachableMethodDeletion = false)
     {
         return new ApplicationService(
-          RuleRegistry.CreateDefaultRules(
-            enableUnreachableMethodDeletion: enableUnreachableMethodDeletion));
+          RulePipelineComposer.Compose(RuleSelectionAdapter.FromLegacySettings(
+            disabledRuleTypes: null,
+            deleteUnreachableMethods: enableUnreachableMethodDeletion,
+            deleteUnreferencedMethods: false,
+            clearUnusedInterfaceImplementations: false,
+            privatizeInternalOnlyPublicMethods: false)).Pipeline);
     }
 
     private static  CommandHost CreateCommandHost()
     {
-        return new  CommandHost(RuleRegistry.CreateDefaultRules());
+        return new  CommandHost(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
     }
 
     private static Dictionary<string, string> CreateOptions(string? targetName = null, string? unreachableMethods = null)

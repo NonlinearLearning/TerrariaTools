@@ -64,7 +64,7 @@ public sealed class DecisionComplexTests
 
     private static  ApplicationService CreateApplication()
     {
-        return new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        return new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
     }
 
     private static Dictionary<string, string> CreateOptions(string targetName)

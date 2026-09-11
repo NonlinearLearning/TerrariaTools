@@ -71,7 +71,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_WithSkipRewrite_DoesNotRetainRewrittenSource()
     {
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1559,7 +1559,7 @@ public sealed class PipelineComponentTests : IDisposable
             "Cli");
         BuildDiffArtifactWriter.InitializeDiffFile(aggregateDiffPath);
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1582,7 +1582,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "delete-s-object-readable.cs");
         var rawDiffPath = Path.Combine(_tempDirectory, "delete-s-object-readable.diff");
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1603,7 +1603,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_UsesDefaultSourceWhenInputPathIsMissing()
     {
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[] { "--target-name", "s" });
 
@@ -1620,7 +1620,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "no-edits-sample.cs");
         File.WriteAllText(filePath, MinimalSources.EmptyMainSource);
         var explicitDiffPath = Path.Combine(_tempDirectory, "no-edits.diff");
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1644,7 +1644,7 @@ public sealed class PipelineComponentTests : IDisposable
         var filePath = Path.Combine(_tempDirectory, "single-file-no-diff.cs");
         var expectedDiffPath = Path.Combine(_tempDirectory, "single-file-no-diff.rewrite.diff");
         File.WriteAllText(filePath, CliInputSources.DiffWriteSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1704,7 +1704,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1788,7 +1788,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var serialResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1869,7 +1869,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void AnalyzeFromArgs_WithInvalidCpgDopOverride_ThrowsArgumentException()
     {
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var exception = Assert.Throws<ArgumentException>(() => CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1912,7 +1912,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var defaultResult = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -1982,7 +1982,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2035,7 +2035,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2081,7 +2081,7 @@ public sealed class PipelineComponentTests : IDisposable
         File.WriteAllText(
           Path.Combine(systemsDirectory, "Renderer.cs"),
           DirectorySources.RendererWithBlockBodyUsingPlayerInputSource);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
         var diffRootPath = Path.Combine(_tempDirectory, "concurrent-diff-output");
         var resultsByDegree = new Dictionary<int, PrototypeAnalysisResult>();
         var diffBytesByDegree = new Dictionary<int, IReadOnlyDictionary<string, byte[]>>();
@@ -2129,7 +2129,7 @@ public sealed class PipelineComponentTests : IDisposable
     {
         var projectDirectory = Path.Combine(_tempDirectory, "delete-class-large-asset-project");
         LargeSources.WriteLargeProject(projectDirectory);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2191,7 +2191,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2245,7 +2245,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2293,7 +2293,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2340,7 +2340,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2388,7 +2388,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2444,7 +2444,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2506,7 +2506,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2573,7 +2573,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2634,7 +2634,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2689,7 +2689,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2753,7 +2753,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2814,7 +2814,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2880,7 +2880,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -2940,7 +2940,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3003,7 +3003,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3067,7 +3067,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3126,7 +3126,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3189,7 +3189,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3244,7 +3244,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3297,7 +3297,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3350,7 +3350,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3391,7 +3391,7 @@ public sealed class PipelineComponentTests : IDisposable
 
           public delegate int Keep(int frame);
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3444,7 +3444,7 @@ public sealed class PipelineComponentTests : IDisposable
             int Keep();
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3504,7 +3504,7 @@ public sealed class PipelineComponentTests : IDisposable
             int Keep { get; }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3557,7 +3557,7 @@ public sealed class PipelineComponentTests : IDisposable
             event System.Action KeepAlive;
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3613,7 +3613,7 @@ public sealed class PipelineComponentTests : IDisposable
             int this[string key] { get; }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3658,7 +3658,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3716,7 +3716,7 @@ public sealed class PipelineComponentTests : IDisposable
           {
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3776,7 +3776,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3824,7 +3824,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3865,7 +3865,7 @@ public sealed class PipelineComponentTests : IDisposable
 
           public delegate void Keep(int frame);
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -3930,7 +3930,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4011,7 +4011,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4057,7 +4057,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4095,7 +4095,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4153,7 +4153,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4212,7 +4212,7 @@ public sealed class PipelineComponentTests : IDisposable
             public int Count() => 42;
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4265,7 +4265,7 @@ public sealed class PipelineComponentTests : IDisposable
             public int Count() => 42;
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4354,7 +4354,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4415,7 +4415,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4472,7 +4472,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4551,7 +4551,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4615,7 +4615,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4684,7 +4684,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4721,7 +4721,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4792,7 +4792,7 @@ public sealed class PipelineComponentTests : IDisposable
             }
           }
           """);
-        var application = new  ApplicationService(RuleRegistry.CreateDefaultRules());
+        var application = new  ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
 
         var result = CreateCommandHost().AnalyzeFromArgs(new[]
         {
@@ -4876,9 +4876,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_ReturnsStableRuleSet()
+    public void RulePipelineComposer_Compose_ReturnsStableRuleSet()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineComposer.Compose(new RuleSelection()).Pipeline;
         var contractAssembly = typeof(RuleDefinitionMark).Assembly;
         var implementationAssembly = typeof(AtomicIdentifierNameMarkRule).Assembly;
         var markRuleType = contractAssembly.GetType("NLISSN.Core.Marking.RuleDefinitionMark");
@@ -4897,7 +4897,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.True(propagateRuleType!.IsClass);
         Assert.True(liftRuleType!.IsClass);
         Assert.True(proposeRuleType!.IsClass);
-        Assert.NotSame(typeof(RuleRegistry).Assembly, implementationAssembly);
+        Assert.NotSame(typeof(RulePipelineComposer).Assembly, implementationAssembly);
         Assert.NotSame(contractAssembly, implementationAssembly);
 
         Assert.True(rules.Markers.Count >= 10);
@@ -4967,12 +4967,12 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_UsesFlatStageRegistrationWithoutRuleFamilyTypes()
+    public void RulePipelineComposer_Compose_UsesFlatStageRegistrationWithoutRuleFamilyTypes()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineComposer.Compose(new RuleSelection()).Pipeline;
 
         Assert.DoesNotContain(
-          typeof(RuleRegistry).Assembly.GetTypes(),
+          typeof(RulePipelineComposer).Assembly.GetTypes(),
           type => type.Name.EndsWith("RuleSet", StringComparison.Ordinal) &&
             (type.Name.StartsWith("Type", StringComparison.Ordinal) ||
              type.Name.StartsWith("Target", StringComparison.Ordinal)));
@@ -4988,9 +4988,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_ExcludesUnreachableMethodRules()
+    public void RulePipelineComposer_Compose_ExcludesUnreachableMethodRules()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineComposer.Compose(new RuleSelection()).Pipeline;
 
         Assert.DoesNotContain(rules.Markers, rule => rule is UnreachableMethodMarkRule);
         Assert.DoesNotContain(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
@@ -4998,7 +4998,7 @@ public sealed class PipelineComponentTests : IDisposable
         Assert.DoesNotContain(rules.Markers, rule => rule is ClearUnusedInterfaceImplementationRule);
         Assert.DoesNotContain(rules.Markers, rule => rule is PrivatizeInternalOnlyPublicMethodRule);
         Assert.DoesNotContain(
-          typeof(RuleRegistry).Assembly.GetTypes(),
+          typeof(RulePipelineComposer).Assembly.GetTypes(),
           type => type.Name.Contains("RuleSet", StringComparison.Ordinal));
     }
 
@@ -5038,13 +5038,15 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_WhenOptionalGlobalRulesEnabled_RegistersRulePairs()
+    public void RulePipelineComposer_Compose_WhenOptionalGlobalRulesEnabled_RegistersRulePairs()
     {
-        var rules = RuleRegistry.CreateDefaultRules(
-          enableUnreachableMethodDeletion: true,
-          enableUnreferencedMethodDeletion: true,
-          enableUnusedInterfaceImplementationCleanup: true,
-          enableInternalOnlyPublicMethodPrivatization: true);
+        var rules = RulePipelineComposer.Compose(new RuleSelection(new[]
+        {
+          RuleFeature.UnreachableMethodDeletion,
+          RuleFeature.UnreferencedMethodDeletion,
+          RuleFeature.UnusedInterfaceImplementationCleanup,
+          RuleFeature.InternalOnlyPublicMethodPrivatization
+        })).Pipeline;
 
         Assert.Contains(rules.Markers, rule => rule is UnreachableMethodMarkRule);
         Assert.Contains(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
@@ -5058,9 +5060,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_ExcludesOptionalGlobalRulesUntilEnabled()
+    public void RulePipelineComposer_Compose_ExcludesOptionalGlobalRulesUntilEnabled()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineComposer.Compose(new RuleSelection()).Pipeline;
 
         Assert.DoesNotContain(rules.Markers, rule => rule is UnreachableMethodMarkRule);
         Assert.DoesNotContain(rules.Proposers, rule => rule is UnreachableMethodProposalRule);
@@ -5225,7 +5227,7 @@ public sealed class PipelineComponentTests : IDisposable
     [Fact]
     public void DefaultRulePipeline_ExposesUniqueRuleIds()
     {
-        var pipeline = RuleRegistry.CreateDefaultRules();
+        var pipeline = RulePipelineComposer.Compose(new RuleSelection()).Pipeline;
         var ruleIds = pipeline.Markers.Cast<IRuleDefinition>()
           .Concat(pipeline.Propagators)
           .Concat(pipeline.Lifters)
@@ -5244,9 +5246,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_Assembly_DoesNotExposeLegacyAtomicPropagationHelpers()
+    public void RulePipelineComposer_Assembly_DoesNotExposeLegacyAtomicPropagationHelpers()
     {
-        var assembly = typeof(RuleRegistry).Assembly;
+        var assembly = typeof(RulePipelineComposer).Assembly;
 
         Assert.Null(assembly.GetType("NLISSN.Rules.PropagationState"));
         Assert.Null(assembly.GetType("NLISSN.Rules.LogicalConditionPropagationStep"));
@@ -5254,9 +5256,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_WhenDisabledRuleTypeProvided_FiltersMatchingTypeOnly()
+    public void RulePipelineComposer_Compose_WhenDisabledRuleTypeProvided_FiltersMatchingTypeOnly()
     {
-        var rules = RuleRegistry.CreateDefaultRules(new[] { "AtomicMemberAccessMarkRule" });
+        var rules = RulePipelineComposer.Compose(RuleSelectionAdapter.FromLegacySettings(new[] { "AtomicMemberAccessMarkRule" }, false, false, false, false)).Pipeline;
 
         Assert.DoesNotContain(
           rules.Markers,
@@ -5272,7 +5274,7 @@ public sealed class PipelineComponentTests : IDisposable
     public void AnalyzeFromArgs_WhenDisabledRuleTypeProvided_DisablesOnlyMatchingType()
     {
         var host = new  CommandHost(
-          RuleRegistry.CreateDefaultRules(new[] { "AtomicMemberAccessMarkRule" }));
+          RulePipelineComposer.Compose(RuleSelectionAdapter.FromLegacySettings(new[] { "AtomicMemberAccessMarkRule" }, false, false, false, false)).Pipeline);
 
         var result = host.AnalyzeFromArgs(new[]
         {
@@ -5288,9 +5290,9 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void RuleRegistry_CreateDefaultRules_AtomicMarkRulesHaveUniqueRuleIds()
+    public void RulePipelineComposer_Compose_AtomicMarkRulesHaveUniqueRuleIds()
     {
-        var rules = RuleRegistry.CreateDefaultRules();
+        var rules = RulePipelineComposer.Compose(new RuleSelection()).Pipeline;
         var deleteTargetMarkRules = GetAtomicMarkRules(rules);
 
         Assert.True(deleteTargetMarkRules.Count >= 10);
@@ -5377,7 +5379,7 @@ public sealed class PipelineComponentTests : IDisposable
 
     private static  CommandHost CreateCommandHost()
     {
-        return new  CommandHost(RuleRegistry.CreateDefaultRules());
+        return new  CommandHost(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
     }
 
     [Fact]
@@ -5511,7 +5513,7 @@ public sealed class PipelineComponentTests : IDisposable
 
     private static IReadOnlyList<RuleDefinitionMark> GetAtomicMarkRules( RulePipeline? rules = null)
     {
-        var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
+        var markerRules = rules?.Markers ?? RulePipelineComposer.Compose(new RuleSelection()).Pipeline.Markers;
         return markerRules
           .Where(rule => rule.RuleId.StartsWith("mark.target.", StringComparison.Ordinal))
           .ToList();
@@ -5519,7 +5521,7 @@ public sealed class PipelineComponentTests : IDisposable
 
     private static IReadOnlyList<RuleDefinitionMark> GetDeclarationMarkRules( RulePipeline? rules = null)
     {
-        var markerRules = rules?.Markers ?? RuleRegistry.CreateDefaultRules().Markers;
+        var markerRules = rules?.Markers ?? RulePipelineComposer.Compose(new RuleSelection()).Pipeline.Markers;
         return markerRules
           .Where(rule => rule.RuleId.StartsWith("mark.type.", StringComparison.Ordinal))
           .ToList();

@@ -9,6 +9,7 @@ namespace NLISSN.Rules;
 /// <summary>
 /// Promotes a visibility handoff into the fact consumed by the replacement rule.
 /// </summary>
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.InternalOnlyPublicMethodPrivatization)]
 public sealed class PrivatizeInternalOnlyPublicMethodLiftingRule : RuleDefinitionLift
 {
 

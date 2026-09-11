@@ -85,7 +85,7 @@ public sealed class CpgExecutionMatrixTests
 
   private static  ApplicationService CreateApplication()
   {
-    return new ApplicationService(RuleRegistry.CreateDefaultRules());
+    return new ApplicationService(RulePipelineComposer.Compose(new RuleSelection()).Pipeline);
   }
 
   private static CpgExecutionSnapshot CreateSnapshot(NLCPGGraph graph, PrototypeAnalysisResult analysis)

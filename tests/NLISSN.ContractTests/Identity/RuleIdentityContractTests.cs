@@ -37,11 +37,7 @@ public sealed class RuleIdentityContractTests
     public void DefaultRuleCatalog_MatchesRuleIdentitySnapshot()
     {
         var snapshot = JsonSerializer.Deserialize<RuleIdentityBaseline[]>(
-          File.ReadAllText(RepositoryPath(
-            "tests",
-            "NLISSN.ContractTests",
-            "Identity",
-            "RuleIdentitySnapshot.json")),
+          RoslynPrototype.ContractTests.RuleCatalog.RuleIdentitySnapshotResource.Read(),
           new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
         Assert.NotNull(snapshot);
@@ -72,11 +68,13 @@ public sealed class RuleIdentityContractTests
 
     private static IReadOnlyList<(RuleKind Stage, IRuleDefinition Rule)> GetAllRules()
     {
-        var pipeline = RuleRegistry.CreateDefaultRules(
-          enableUnreachableMethodDeletion: true,
-          enableUnreferencedMethodDeletion: true,
-          enableUnusedInterfaceImplementationCleanup: true,
-          enableInternalOnlyPublicMethodPrivatization: true);
+        var pipeline = RulePipelineComposer.Compose(new RuleSelection(new[]
+        {
+          RuleFeature.UnreachableMethodDeletion,
+          RuleFeature.UnreferencedMethodDeletion,
+          RuleFeature.UnusedInterfaceImplementationCleanup,
+          RuleFeature.InternalOnlyPublicMethodPrivatization
+        })).Pipeline;
 
         return pipeline.Markers
           .Cast<IRuleDefinition>()
@@ -85,18 +83,6 @@ public sealed class RuleIdentityContractTests
           .Concat(pipeline.Lifters.Select(rule => (RuleKind.Lift, (IRuleDefinition)rule)))
           .Concat(pipeline.Proposers.Select(rule => (RuleKind.Propose, (IRuleDefinition)rule)))
           .ToArray();
-    }
-
-    private static string RepositoryPath(params string[] parts)
-    {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null && !File.Exists(Path.Combine(current.FullName, "global.json")))
-        {
-            current = current.Parent;
-        }
-
-        Assert.NotNull(current);
-        return Path.Combine(new[] { current!.FullName }.Concat(parts).ToArray());
     }
 
     private sealed record RuleIdentityBaseline(

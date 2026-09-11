@@ -236,6 +236,7 @@ public sealed class MarkLiftingEngine
         var kind = (SyntaxKind)syntaxNode.RawKind;
         return structureKind switch
         {
+            StructuralKind.MethodDeletion => kind == SyntaxKind.MethodDeclaration,
             StructuralKind.Assignment => kind is SyntaxKind.SimpleAssignmentExpression or SyntaxKind.AddAssignmentExpression or
               SyntaxKind.SubtractAssignmentExpression or SyntaxKind.MultiplyAssignmentExpression or SyntaxKind.DivideAssignmentExpression,
             StructuralKind.LocalDefinition => kind is SyntaxKind.VariableDeclarator or SyntaxKind.LocalDeclarationStatement,

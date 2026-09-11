@@ -7,6 +7,7 @@ using NLISSN.Core.Marking;
 namespace NLISSN.Rules;
 
 /// 命中未被调用的接口成员对应的源码实现方法。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.UnusedInterfaceImplementationCleanup)]
 public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
 {
   private static readonly RuleProducesContract UnusedInterfaceImplementationProduces =

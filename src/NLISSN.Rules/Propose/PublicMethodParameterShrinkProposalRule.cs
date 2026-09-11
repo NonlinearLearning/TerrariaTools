@@ -9,6 +9,7 @@ using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class PublicMethodParameterShrinkProposalRule : ParameterUsageProposalRuleBase
 {
 

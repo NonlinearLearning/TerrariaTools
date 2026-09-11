@@ -9,6 +9,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 把初始化表达式上的命中收束到变量声明点，避免后续规则直接依赖易碎的子表达式位置。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class DefinitionInitializerPropagationRule : ExpressionFlowPropagationRuleBase
 {
     private static readonly RuleFactKind LocalDefinitionFactKind = RuleFactKind.FlowLocalDefinition;

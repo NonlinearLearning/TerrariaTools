@@ -8,6 +8,7 @@ namespace NLISSN.Rules;
 
 /// 为扩展方法的非接收者参数收集声明与映射调用点，
 /// 保持 receiver 绑定不变，只把可安全收缩的槽位继续传给提案阶段。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
 public sealed class ExtensionMethodMappedCallsitePropagationRule : RuleDefinitionPropagate
 {
     private static readonly RuleConsumesContract TypeSyntaxFactsConsumes = new(new[]

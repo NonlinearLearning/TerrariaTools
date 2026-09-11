@@ -9,6 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="FsCheck.Xunit" Version="3.3.2" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
@@ -21,6 +24,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Identity\RuleIdentitySnapshot.json">
+      <LogicalName>NLISSN.ContractTests.RuleIdentitySnapshot.json</LogicalName>
+    </EmbeddedResource>
     <Using Include="RoslynPrototype.Tests" />
     <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Workspace\NLISSN.Workspace.csproj" />
@@ -29,6 +35,7 @@
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Core\NLISSN.Core.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Rules\NLISSN.Rules.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Rule.Generator\NLISSN.Rule.Generator.csproj" />
     <ProjectReference Include="..\NLISSN.Testing\RoslynDeletionPrototype.Testing.csproj" />
   </ItemGroup>
 </Project>

@@ -11,6 +11,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// 仅在所有调用点都位于当前程序集内部时，将公开方法的可见性改为 private。
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.InternalOnlyPublicMethodPrivatization)]
 public sealed class PrivatizeInternalOnlyPublicMethodProposalRule : RuleDefinitionPropose
 {
     private static readonly RuleConsumesContract InternalOnlyPublicMethodConsumes =
