@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using NLISSN.Core.Performance;
 
@@ -19,6 +18,15 @@ public sealed class PerformanceSummaryWriter : IPerformanceSummaryWriter
     var fullPath = Path.GetFullPath(path);
     var parentDirectory = Path.GetDirectoryName(fullPath)
       ?? throw new ArgumentException("Performance summary path must have a parent directory.", nameof(path));
+    var runArtifactRoot = PerformanceDiagnosticAttachment.ResolveRunArtifactRoot(fullPath);
+    foreach (var attachment in report.Attachments)
+    {
+      PerformanceDiagnosticAttachment.ValidateForSummary(
+        attachment,
+        report.RunId,
+        runArtifactRoot);
+    }
+
     Directory.CreateDirectory(parentDirectory);
     var temporaryPath = fullPath + ".tmp";
     try

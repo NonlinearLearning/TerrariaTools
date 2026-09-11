@@ -124,6 +124,9 @@ public sealed record PerformanceSummaryDocument
         report.TerminalSummary.ErrorKind)
       ,Attachments = report.Attachments
         .OrderBy(attachment => attachment.Kind, StringComparer.Ordinal)
+        .ThenBy(attachment => attachment.RunId, StringComparer.Ordinal)
+        .ThenBy(attachment => attachment.StageId, StringComparer.Ordinal)
+        .ThenBy(attachment => attachment.Mode)
         .ThenBy(attachment => attachment.RelativePath, StringComparer.Ordinal)
         .Select(attachment => new PerformanceAttachmentDocument(
           attachment.Kind,
