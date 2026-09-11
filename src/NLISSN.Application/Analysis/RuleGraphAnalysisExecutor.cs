@@ -55,28 +55,27 @@ internal sealed class RuleGraphAnalysisExecutor
           .Where(node => node.NodeId.Kind == RuleKind.Mark)
           .SelectMany(node => node.Result.Values)
           .OfType<MarkRecord>()
-          .DistinctBy(mark => new
-          {
-              mark.RuleId,
-              Identity = FactIdentity.Create(
-                mark.SyntaxNode,
-                mark.SourceTreeVersion,
-                mark.FactKind,
-                payload: null,
-                mark.Provenance ?? FactProvenance.ForMark(mark.RuleId)).StableKey
-          })
+          .DistinctBy(mark => (mark.RuleId, mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length))
           .ToList();
         var propagatedMarks = execution.Nodes
           .Where(node => node.NodeId.Kind == RuleKind.Propagate)
           .SelectMany(node => node.Result.Values)
           .OfType<PropagatedMarkRecord>()
-          .DistinctBy(mark => PropagationFactKey.Create(mark))
+          .DistinctBy(mark => (
+            mark.RuleId,
+            mark.Mark.SyntaxNode.SpanStart,
+            mark.Mark.SyntaxNode.Span.Length,
+            mark.Mark.SyntaxNode.RawKind))
           .ToList();
         var liftedMarks = execution.Nodes
           .Where(node => node.NodeId.Kind == RuleKind.Lift)
           .SelectMany(node => node.Result.Values)
           .OfType<LiftedMarkRecord>()
-          .DistinctBy(mark => CoverageEvidence.FromLifted(mark).Identity)
+          .DistinctBy(mark => (
+            mark.RuleId,
+            mark.Mark.SyntaxNode.SpanStart,
+            mark.Mark.SyntaxNode.Span.Length,
+            mark.Mark.SyntaxNode.RawKind))
           .ToList();
         var units = execution.Nodes
           .Where(node => node.NodeId.Kind == RuleKind.Propose)

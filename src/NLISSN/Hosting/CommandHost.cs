@@ -6,6 +6,8 @@ using NLISSN.Core.Pipeline;
 using NLISSN.Telemetry;
 using System.Text;
 using NLISSN.Core.Rewrite;
+using NLISSN.Core.Performance;
+using NLISSN.Performance;
 
 namespace NLISSN.Hosting;
 
@@ -75,12 +77,13 @@ public sealed class  CommandHost
                       runtime,
                       configuration.Execution,
                       configuration.Artifacts);
-                    await CompleteRuntimeLogAsync(configuration, runtimeLog, replayResult, runtime);
-                    return AnalysisRunOutcome.FromItem(
+                    var replayOutcome = AnalysisRunOutcome.FromItem(
                       ResolveRunId(configuration.Artifacts.RunId),
                       "replay",
                       replayResult,
                       inputIdentity: inputPath);
+                    await CompleteRuntimeLogAsync(configuration, runtimeLog, replayOutcome, runtime);
+                    return replayOutcome;
                 }
 
                 var directoryOutcome = await new  DirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
@@ -89,12 +92,13 @@ public sealed class  CommandHost
                   runtime,
                   configuration.Execution,
                   configuration.Artifacts);
+                directoryOutcome = directoryOutcome.WithMode(ParsePerformanceMode(configuration.Artifacts.PerformanceMode));
                 if (configuration.Artifacts.RewritePlanMode == RewritePlanMode.Capture)
                 {
                     CaptureRewritePlan(inputPath, configuration.Artifacts.RewritePlanRoot, directoryOutcome.Result);
                 }
 
-                await CompleteRuntimeLogAsync(configuration, runtimeLog, directoryOutcome.Result, runtime);
+                await CompleteRuntimeLogAsync(configuration, runtimeLog, directoryOutcome, runtime);
                 return directoryOutcome;
             }
 
@@ -106,6 +110,7 @@ public sealed class  CommandHost
                   runtime,
                   configuration.Execution,
                   configuration.Artifacts);
+                workspaceOutcome = workspaceOutcome.WithMode(ParsePerformanceMode(configuration.Artifacts.PerformanceMode));
                 if (configuration.Artifacts.RewritePlanMode == RewritePlanMode.Capture)
                 {
                     CaptureRewritePlan(
@@ -115,7 +120,7 @@ public sealed class  CommandHost
                       configuration.Workspace.TargetDocumentPath is null ? null : 1);
                 }
 
-                await CompleteRuntimeLogAsync(configuration, runtimeLog, workspaceOutcome.Result, runtime);
+                await CompleteRuntimeLogAsync(configuration, runtimeLog, workspaceOutcome, runtime);
                 return workspaceOutcome;
             }
 
@@ -132,12 +137,14 @@ public sealed class  CommandHost
 
             if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
             {
-                await CompleteRuntimeLogAsync(configuration, runtimeLog, result, runtime);
-                return AnalysisRunOutcome.FromItem(
+                var outcome = AnalysisRunOutcome.FromItem(
                   ResolveRunId(configuration.Artifacts.RunId),
                   "file",
                   result,
+                  mode: ParsePerformanceMode(configuration.Artifacts.PerformanceMode),
                   inputIdentity: filePath);
+                await CompleteRuntimeLogAsync(configuration, runtimeLog, outcome, runtime);
+                return outcome;
             }
 
             if (configuration.Execution.WriteBack)
@@ -147,12 +154,14 @@ public sealed class  CommandHost
 
             if (!configuration.Artifacts.WriteDiff)
             {
-                await CompleteRuntimeLogAsync(configuration, runtimeLog, result, runtime);
-                return AnalysisRunOutcome.FromItem(
+                var outcome = AnalysisRunOutcome.FromItem(
                   ResolveRunId(configuration.Artifacts.RunId),
                   "file",
                   result,
+                  mode: ParsePerformanceMode(configuration.Artifacts.PerformanceMode),
                   inputIdentity: filePath);
+                await CompleteRuntimeLogAsync(configuration, runtimeLog, outcome, runtime);
+                return outcome;
             }
 
             var inputRoot = Path.GetDirectoryName(Path.GetFullPath(inputPath))
@@ -168,12 +177,14 @@ public sealed class  CommandHost
             {
                 DiffFilePath = writtenDiffCount > 0 ? configuration.Artifacts.DiffRoot : null,
             };
-            await CompleteRuntimeLogAsync(configuration, runtimeLog, result, runtime);
-                return AnalysisRunOutcome.FromItem(
-                  ResolveRunId(configuration.Artifacts.RunId),
-                  "file",
-                  result,
-                  inputIdentity: filePath);
+            var finalOutcome = AnalysisRunOutcome.FromItem(
+              ResolveRunId(configuration.Artifacts.RunId),
+              "file",
+              result,
+              mode: ParsePerformanceMode(configuration.Artifacts.PerformanceMode),
+              inputIdentity: filePath);
+            await CompleteRuntimeLogAsync(configuration, runtimeLog, finalOutcome, runtime);
+            return finalOutcome;
         }
         catch (Exception exception)
         {
@@ -201,12 +212,26 @@ public sealed class  CommandHost
         return RuleSelectionAdapter.FromLegacySettings(
           policy.DisabledRuleTypes);
     }
+
+    private static PerformanceMode ParsePerformanceMode(string mode)
+    {
+        return mode.ToLowerInvariant() switch
+        {
+            "normal" => PerformanceMode.Normal,
+            "diagnostic" => PerformanceMode.Diagnostic,
+            "profile" => PerformanceMode.Profile,
+            "benchmark" => PerformanceMode.Benchmark,
+            _ => PerformanceMode.Normal
+        };
+    }
+
     private static async Task CompleteRuntimeLogAsync(
         AnalysisConfiguration configuration,
         RuntimeMeasurementLog? runtimeLog,
-        PrototypeAnalysisResult result,
+        AnalysisRunOutcome outcome,
         AnalysisRuntime runtime)
     {
+        var result = outcome.Result;
         if (configuration.Artifacts.WriteEvidence && result.Evidence is not null)
         {
             AnalysisEvidenceArtifactService.Write(configuration.Artifacts.EvidencePath, result.Evidence, configuration);
@@ -219,6 +244,13 @@ public sealed class  CommandHost
         if (runtimeLog is not null)
         {
             await runtimeLog.CompleteAsync(result, runtime);
+        }
+
+        if (configuration.Artifacts.WritePerformanceSummary)
+        {
+            _ = new PerformanceSummaryPublisher().Publish(
+              configuration.Artifacts.PerformanceSummaryPath,
+              outcome.Performance);
         }
     }
 

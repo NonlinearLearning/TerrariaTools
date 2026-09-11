@@ -9,6 +9,33 @@ public sealed record AnalysisRunOutcome(
   PrototypeAnalysisResult Result,
   RunPerformanceReport Performance)
 {
+  public AnalysisRunOutcome WithMode(PerformanceMode mode)
+  {
+    if (Performance.Mode == mode)
+    {
+      return this;
+    }
+
+    return this with
+    {
+      Performance = new RunPerformanceReport(
+        Performance.RunId,
+        Performance.InputKind,
+        Performance.InputIdentity,
+        Performance.Items,
+        Performance.RootStage,
+        Performance.TerminalSummary,
+        Performance.TerminalStatus,
+        mode,
+        Performance.SampleNumber,
+        Performance.IsWarmup,
+        Performance.ComparisonEligible,
+        Performance.ComparisonReasons,
+        Performance.Directory,
+        Performance.Stages)
+    };
+  }
+
   public static AnalysisRunOutcome FromItem(
     string runId,
     string inputKind,

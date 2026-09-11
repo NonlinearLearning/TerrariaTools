@@ -30,6 +30,8 @@ public sealed record PerformanceSummaryDocument
 
   public PerformanceSummaryStageDocument? RootStage { get; init; }
 
+  public PerformanceSummaryDirectoryDocument? Directory { get; init; }
+
   public IReadOnlyList<PerformanceSummaryStageDocument> Stages { get; init; } =
     Array.Empty<PerformanceSummaryStageDocument>();
 
@@ -68,6 +70,7 @@ public sealed record PerformanceSummaryDocument
       ComparisonEligible = report.ComparisonEligible,
       ComparisonReasons = report.ComparisonReasons.ToArray(),
       RootStage = report.RootStage is null ? null : ToDocument(report.RootStage),
+      Directory = report.Directory is null ? null : ToDocument(report.Directory),
       Stages = report.Stages
         .OrderBy(stage => stage.StageId, StringComparer.Ordinal)
         .ThenBy(stage => stage.ItemId, StringComparer.Ordinal)
@@ -234,6 +237,27 @@ public sealed record PerformanceSummaryDocument
       sample.ArtifactBytes,
       sample.Attribution.ToString().ToLowerInvariant());
   }
+
+  private static PerformanceSummaryDirectoryDocument ToDocument(DirectoryPerformanceFacts facts)
+  {
+    return new PerformanceSummaryDirectoryDocument(
+      facts.ItemId,
+      facts.StageSummary is null ? null : new PerformanceSummaryAggregateDocument(
+        facts.StageSummary.Count,
+        facts.StageSummary.CompletedCount,
+        facts.StageSummary.SumWallElapsedMs,
+        facts.StageSummary.MaxWallElapsedMs,
+        facts.StageSummary.SumAccumulatedElapsedMs,
+        facts.StageSummary.MaxAccumulatedElapsedMs,
+        facts.StageSummary.TopItemId,
+        facts.StageSummary.TopItemWallElapsedMs),
+      facts.Stage is null ? null : ToDocument(facts.Stage),
+      facts.Status.ToString().ToLowerInvariant(),
+      facts.GraphSnapshot,
+      facts.RuleSnapshot,
+      facts.ArtifactSnapshot,
+      facts.ErrorKind);
+  }
 }
 
 public sealed record PerformanceSummaryItemDocument(
@@ -356,6 +380,26 @@ public sealed record PerformanceSummaryTerminalDocument(
   long? AccumulatedElapsedMs,
   string Status,
   bool IsComplete,
+  string? ErrorKind);
+
+public sealed record PerformanceSummaryAggregateDocument(
+  int Count,
+  int CompletedCount,
+  long? SumWallElapsedMs,
+  long? MaxWallElapsedMs,
+  long? SumAccumulatedElapsedMs,
+  long? MaxAccumulatedElapsedMs,
+  string? TopItemId,
+  long? TopItemWallElapsedMs);
+
+public sealed record PerformanceSummaryDirectoryDocument(
+  string ItemId,
+  PerformanceSummaryAggregateDocument? StageSummary,
+  PerformanceSummaryStageDocument? Stage,
+  string Status,
+  string? GraphSnapshot,
+  string? RuleSnapshot,
+  string? ArtifactSnapshot,
   string? ErrorKind);
 
 public sealed record PerformanceAttachmentDocument(
