@@ -24,6 +24,8 @@ public static class PerformanceComparisonReasonCode
   public const string RuleSnapshotMismatch = "rule-snapshot-mismatch";
   public const string ArtifactSnapshotMismatch = "artifact-snapshot-mismatch";
   public const string IdentityFieldMissing = "identity-field-missing";
+  public const string ComparisonIneligible = "comparison-ineligible";
+  public const string WallElapsedMissing = "wall-elapsed-missing";
   public const string TerminalIncomplete = "terminal-incomplete";
   public const string TerminalStatusNotCompleted = "terminal-status-not-completed";
 
@@ -48,6 +50,8 @@ public static class PerformanceComparisonReasonCode
     RuleSnapshotMismatch,
     ArtifactSnapshotMismatch,
     IdentityFieldMissing,
+    ComparisonIneligible,
+    WallElapsedMissing,
     TerminalIncomplete,
     TerminalStatusNotCompleted
   ];

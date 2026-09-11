@@ -28,6 +28,8 @@ public sealed record PerformanceSummaryDocument
 
   public IReadOnlyList<string> ComparisonReasons { get; init; } = Array.Empty<string>();
 
+  public PerformanceSummarySampleAggregateDocument? SampleAggregate { get; init; }
+
   public PerformanceSummaryStageDocument? RootStage { get; init; }
 
   public PerformanceSummaryDirectoryDocument? Directory { get; init; }
@@ -57,7 +59,9 @@ public sealed record PerformanceSummaryDocument
     WriteIndented = true
   };
 
-  public static PerformanceSummaryDocument FromReport(RunPerformanceReport report)
+  public static PerformanceSummaryDocument FromReport(
+    RunPerformanceReport report,
+    PerformanceSampleAggregateResult? sampleAggregate = null)
   {
     ArgumentNullException.ThrowIfNull(report);
     return new PerformanceSummaryDocument
@@ -73,6 +77,7 @@ public sealed record PerformanceSummaryDocument
       IsComplete = report.IsComplete,
       ComparisonEligible = report.ComparisonEligible,
       ComparisonReasons = report.ComparisonReasons.ToArray(),
+      SampleAggregate = sampleAggregate is null ? null : ToDocument(sampleAggregate),
       RootStage = report.RootStage is null ? null : ToDocument(report.RootStage),
       Directory = report.Directory is null ? null : ToDocument(report.Directory),
       Stages = report.Stages
@@ -310,6 +315,49 @@ public sealed record PerformanceSummaryDocument
       facts.ArtifactSnapshot,
       facts.ErrorKind);
   }
+
+  private static PerformanceSummarySampleAggregateDocument ToDocument(
+    PerformanceSampleAggregateResult aggregate)
+  {
+    return new PerformanceSummarySampleAggregateDocument(
+      aggregate.Mode.ToString().ToLowerInvariant(),
+      aggregate.MeasurementCount,
+      aggregate.IsLowConfidence,
+      aggregate.IsFormalStatisticsEligible,
+      aggregate.WarmupRunIds,
+      aggregate.RejectedRunIds,
+      aggregate.RejectionReasons
+        .OrderBy(entry => entry.Key, StringComparer.Ordinal)
+        .ToDictionary(
+          entry => entry.Key,
+          entry => entry.Value,
+          StringComparer.Ordinal),
+      aggregate.RawMeasurements.Select(measurement => new PerformanceSummaryRawMeasurementDocument(
+        measurement.RunId,
+        measurement.SampleNumber,
+        measurement.WallElapsedMs,
+        measurement.AccumulatedElapsedMs)).ToArray(),
+      aggregate.Wall is null ? null : ToDocument(aggregate.Wall),
+      aggregate.Accumulated is null ? null : ToDocument(aggregate.Accumulated),
+      aggregate.TopItem is null
+        ? null
+        : new PerformanceSummaryTopItemDocument(
+          aggregate.TopItem.ItemId,
+          aggregate.TopItem.RunId,
+          aggregate.TopItem.MaxWallElapsedMs));
+  }
+
+  private static PerformanceSummaryMetricAggregateDocument ToDocument(
+    PerformanceMetricAggregate aggregate)
+  {
+    return new PerformanceSummaryMetricAggregateDocument(
+      aggregate.Count,
+      aggregate.Sum,
+      aggregate.Max,
+      aggregate.Median,
+      aggregate.P95,
+      aggregate.RawValues);
+  }
 }
 
 public sealed record PerformanceSummaryItemDocument(
@@ -497,3 +545,35 @@ public sealed record PerformanceAttachmentDocument(
   string Status,
   bool IsComplete,
   string? ErrorKind);
+
+public sealed record PerformanceSummarySampleAggregateDocument(
+  string Mode,
+  int MeasurementCount,
+  bool IsLowConfidence,
+  bool IsFormalStatisticsEligible,
+  IReadOnlyList<string> WarmupRunIds,
+  IReadOnlyList<string> RejectedRunIds,
+  IReadOnlyDictionary<string, IReadOnlyList<string>> RejectionReasons,
+  IReadOnlyList<PerformanceSummaryRawMeasurementDocument> RawMeasurements,
+  PerformanceSummaryMetricAggregateDocument? Wall,
+  PerformanceSummaryMetricAggregateDocument? Accumulated,
+  PerformanceSummaryTopItemDocument? TopItem);
+
+public sealed record PerformanceSummaryRawMeasurementDocument(
+  string RunId,
+  int SampleNumber,
+  long? WallElapsedMs,
+  long? AccumulatedElapsedMs);
+
+public sealed record PerformanceSummaryMetricAggregateDocument(
+  int Count,
+  long Sum,
+  long Max,
+  long Median,
+  long P95,
+  IReadOnlyList<long> RawValues);
+
+public sealed record PerformanceSummaryTopItemDocument(
+  string ItemId,
+  string RunId,
+  long MaxWallElapsedMs);
