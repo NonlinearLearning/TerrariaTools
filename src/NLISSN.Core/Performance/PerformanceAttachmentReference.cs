@@ -8,4 +8,11 @@ public sealed record PerformanceAttachmentReference(
   string? RelativePath,
   bool IsAvailable,
   bool IsComplete,
-  string? ErrorKind = null);
+  string? ErrorKind = null,
+  PerformanceStatus Status = PerformanceStatus.Unknown,
+  string? Tool = null,
+  string? Command = null,
+  string? Version = null,
+  DateTimeOffset? StartedAtUtc = null,
+  DateTimeOffset? CompletedAtUtc = null,
+  int? ExitCode = null);

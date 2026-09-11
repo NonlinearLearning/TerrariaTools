@@ -139,9 +139,17 @@ public sealed record PerformanceSummaryDocument
           attachment.RunId,
           attachment.StageId,
           attachment.Mode.ToString().ToLowerInvariant(),
-          attachment.IsAvailable ? "available" : "unavailable",
+          attachment.Status == PerformanceStatus.Unknown
+            ? attachment.IsAvailable ? "available" : "unavailable"
+            : attachment.Status.ToString().ToLowerInvariant(),
           attachment.IsComplete,
-          attachment.ErrorKind))
+          attachment.ErrorKind,
+          attachment.Tool,
+          attachment.Command,
+          attachment.Version,
+          attachment.StartedAtUtc,
+          attachment.CompletedAtUtc,
+          attachment.ExitCode))
         .ToArray()
     };
   }
@@ -544,7 +552,13 @@ public sealed record PerformanceAttachmentDocument(
   string Mode,
   string Status,
   bool IsComplete,
-  string? ErrorKind);
+  string? ErrorKind,
+  string? Tool = null,
+  string? Command = null,
+  string? Version = null,
+  DateTimeOffset? StartedAtUtc = null,
+  DateTimeOffset? CompletedAtUtc = null,
+  int? ExitCode = null);
 
 public sealed record PerformanceSummarySampleAggregateDocument(
   string Mode,

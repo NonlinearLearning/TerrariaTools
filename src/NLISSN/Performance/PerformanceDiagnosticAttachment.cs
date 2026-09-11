@@ -24,15 +24,23 @@ public static class PerformanceDiagnosticAttachment
 
     var relativePath = NormalizeRelativePath(Path.GetRelativePath(fullRoot, fullArtifactPath));
     var isAvailable = File.Exists(fullArtifactPath);
-    return new PerformanceAttachmentReference(
+    return CreateManifest(
       kind,
+      tool: null,
       runId,
       stageId,
       mode,
-      relativePath,
+      runArtifactRoot,
+      artifactPath,
+      isAvailable ? PerformanceStatus.Completed : PerformanceStatus.Unavailable,
       isAvailable,
       isAvailable,
-      isAvailable ? null : "attachment-missing");
+      isAvailable ? null : "attachment-missing",
+      command: null,
+      version: null,
+      startedAtUtc: null,
+      completedAtUtc: null,
+      exitCode: null);
   }
 
   public static PerformanceAttachmentReference CreateUnavailable(
@@ -46,15 +54,114 @@ public static class PerformanceDiagnosticAttachment
     ValidateIdentity(kind, runId, stageId);
     ArgumentException.ThrowIfNullOrWhiteSpace(errorKind);
 
+    return CreateManifest(
+      kind,
+      tool: null,
+      runId,
+      stageId,
+      mode,
+      runArtifactRoot: null,
+      artifactPath: relativePath,
+      status: PerformanceStatus.Unavailable,
+      isAvailable: false,
+      isComplete: false,
+      errorKind,
+      command: null,
+      version: null,
+      startedAtUtc: null,
+      completedAtUtc: null,
+      exitCode: null);
+  }
+
+  public static PerformanceAttachmentReference CreateManifest(
+    string kind,
+    ExternalDiagnosticTool? tool,
+    string runId,
+    string? stageId,
+    PerformanceMode mode,
+    string? runArtifactRoot,
+    string? artifactPath,
+    PerformanceStatus status,
+    bool isAvailable,
+    bool isComplete,
+    string? errorKind,
+    string? command,
+    string? version,
+    DateTimeOffset? startedAtUtc,
+    DateTimeOffset? completedAtUtc,
+    int? exitCode)
+  {
+    ValidateIdentity(kind, runId, stageId);
+    if (runArtifactRoot is null && artifactPath is not null && Path.IsPathRooted(artifactPath))
+    {
+      throw new ArgumentException(
+        "An absolute attachment path requires a run artifact root.",
+        nameof(runArtifactRoot));
+    }
+
+    string? relativePath = null;
+    if (artifactPath is not null)
+    {
+      ArgumentException.ThrowIfNullOrWhiteSpace(artifactPath);
+      if (runArtifactRoot is not null)
+      {
+        var fullRoot = NormalizeRoot(runArtifactRoot);
+        var fullArtifactPath = Path.GetFullPath(artifactPath);
+        EnsureWithinRoot(fullRoot, fullArtifactPath);
+        relativePath = NormalizeRelativePath(Path.GetRelativePath(fullRoot, fullArtifactPath));
+      }
+      else
+      {
+        relativePath = NormalizeRelativePath(artifactPath);
+      }
+    }
+
+    if ((isAvailable || isComplete) && relativePath is null)
+    {
+      throw new InvalidDataException(
+        "An available or complete attachment must have a relative path.");
+    }
+
+    if (isComplete && !isAvailable)
+    {
+      throw new InvalidDataException(
+        "An attachment cannot be complete when it is unavailable.");
+    }
+
+    if (isAvailable && status is not PerformanceStatus.Completed)
+    {
+      throw new InvalidDataException(
+        "An available attachment must have completed status.");
+    }
+
+    if (isComplete && status != PerformanceStatus.Completed)
+    {
+      throw new InvalidDataException(
+        "A complete attachment must have completed status.");
+    }
+
+    if (completedAtUtc.HasValue && startedAtUtc.HasValue && completedAtUtc < startedAtUtc)
+    {
+      throw new InvalidDataException(
+        "An attachment cannot complete before it starts.");
+    }
+
     return new PerformanceAttachmentReference(
       kind,
       runId,
       stageId,
       mode,
-      relativePath is null ? null : NormalizeRelativePath(relativePath),
-      IsAvailable: false,
-      IsComplete: false,
-      ErrorKind: errorKind);
+      relativePath,
+      isAvailable,
+      isComplete,
+      errorKind,
+      status,
+      tool.HasValue ? ExternalDiagnosticToolNames.ToManifestName(tool.Value) : null,
+      command,
+      version,
+      startedAtUtc,
+      completedAtUtc,
+      exitCode);
   }
 
   public static void ValidateForSummary(
@@ -92,6 +199,26 @@ public static class PerformanceDiagnosticAttachment
     {
       throw new InvalidDataException(
         "An attachment cannot be complete when it is unavailable.");
+    }
+
+    if (attachment.IsAvailable && attachment.Status is not PerformanceStatus.Unknown and not PerformanceStatus.Completed)
+    {
+      throw new InvalidDataException(
+        "An available attachment must have completed or legacy unknown status.");
+    }
+
+    if (attachment.IsComplete && attachment.Status is not PerformanceStatus.Unknown and not PerformanceStatus.Completed)
+    {
+      throw new InvalidDataException(
+        "A complete attachment must have completed or legacy unknown status.");
+    }
+
+    if (attachment.CompletedAtUtc.HasValue &&
+      attachment.StartedAtUtc.HasValue &&
+      attachment.CompletedAtUtc < attachment.StartedAtUtc)
+    {
+      throw new InvalidDataException(
+        "An attachment cannot complete before it starts.");
     }
 
     if (attachment.IsAvailable && !File.Exists(fullArtifactPath))
