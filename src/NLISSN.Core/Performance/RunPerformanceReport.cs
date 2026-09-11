@@ -106,6 +106,30 @@ public sealed record RunPerformanceReport
   public bool IsComplete => TerminalSummary.IsComplete &&
     TerminalStatus == PerformanceStatus.Completed;
 
+  public RunPerformanceReport WithComparison(
+    bool comparisonEligible,
+    IReadOnlyList<string>? comparisonReasons = null)
+  {
+    return new RunPerformanceReport(
+      RunId,
+      InputKind,
+      InputIdentity,
+      Items,
+      RootStage,
+      TerminalSummary,
+      TerminalStatus,
+      Mode,
+      SampleNumber,
+      IsWarmup,
+      comparisonEligible,
+      comparisonReasons,
+      Directory,
+      Stages,
+      Resources,
+      Attachments,
+      Identity);
+  }
+
   public static RunPerformanceReport Create(
     string runId,
     string inputKind,
