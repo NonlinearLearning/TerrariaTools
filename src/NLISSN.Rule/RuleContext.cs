@@ -43,6 +43,10 @@ public sealed class RuleContext :
 
     public  AnalysisRuntime Runtime => _runtime;
 
+    public SymbolUsageProfile SymbolUsageProfile => _runtime.GetOrCreateEpochCompilationCache(
+      _analysisContext.SemanticModel.Compilation,
+      static compilation => new SymbolUsageProfile(compilation));
+
     // 解析并返回标准化后的目标名列表，供规则按同一名称集合匹配。
     public IReadOnlyList<string> GetNormalizedTargetNames()
     {

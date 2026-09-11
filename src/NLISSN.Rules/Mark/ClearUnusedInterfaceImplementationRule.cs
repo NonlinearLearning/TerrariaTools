@@ -35,14 +35,7 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
       yield break;
     }
 
-    var compilation = context.SemanticModel.Compilation;
-    var implementations = BuildInterfaceImplementations(compilation);
-    if (implementations.Count == 0)
-    {
-      yield break;
-    }
-
-    var referencedMethods = FindReferencedMethods(compilation);
+    var profile = context.SymbolUsageProfile;
     foreach (var method in context.EnumerateMethodDeclarations(root))
     {
       if (context.SemanticModel.GetDeclaredSymbol(method, CancellationToken.None)
@@ -51,14 +44,20 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
         continue;
       }
 
-      var canonicalMethod = Canonicalize(methodSymbol);
-      if (!implementations.TryGetValue(canonicalMethod, out var implementedInterfaceMembers))
+      if (!TryGetImplementedInterfaceMethods(profile, methodSymbol, out var implementedInterfaceMembers))
       {
         continue;
       }
 
-      if (referencedMethods.Contains(canonicalMethod) ||
-          implementedInterfaceMembers.Any(referencedMethods.Contains))
+      var implementationReferences = profile.GetReferences(Canonicalize(methodSymbol));
+      if (implementationReferences.Status != UsageProfileStatus.Complete)
+      {
+        continue;
+      }
+
+      if (implementationReferences.Facts.Count > 0 ||
+          implementedInterfaceMembers.Any(interfaceMethod =>
+            profile.GetReferences(interfaceMethod).Facts.Count > 0))
       {
         continue;
       }
@@ -77,85 +76,42 @@ public sealed class ClearUnusedInterfaceImplementationRule : RuleDefinitionMark
       !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
   }
 
-  private static Dictionary<IMethodSymbol, IReadOnlyList<IMethodSymbol>> BuildInterfaceImplementations(Compilation compilation)
+  private static bool TryGetImplementedInterfaceMethods(
+    SymbolUsageProfile profile,
+    IMethodSymbol method,
+    out IReadOnlyList<IMethodSymbol> implementedInterfaceMethods)
   {
-    var implementations = new Dictionary<IMethodSymbol, List<IMethodSymbol>>(
-      SymbolEqualityComparer.Default);
-
-    foreach (var tree in compilation.SyntaxTrees)
+    implementedInterfaceMethods = Array.Empty<IMethodSymbol>();
+    if (method.ContainingType is null || method.MethodKind != MethodKind.Ordinary)
     {
-      var model = compilation.GetSemanticModel(tree);
-      foreach (var method in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>())
-      {
-        if (model.GetDeclaredSymbol(method, CancellationToken.None) is not IMethodSymbol methodSymbol ||
-            methodSymbol.ContainingType is null ||
-            methodSymbol.MethodKind != MethodKind.Ordinary)
-        {
-          continue;
-        }
-
-        var canonicalMethod = Canonicalize(methodSymbol);
-        foreach (var interfaceMethod in EnumerateInterfaceMethods(methodSymbol.ContainingType))
-        {
-          var implementation = methodSymbol.ContainingType.FindImplementationForInterfaceMember(interfaceMethod);
-          if (implementation is not IMethodSymbol implementationMethod ||
-              !SymbolEqualityComparer.Default.Equals(canonicalMethod, Canonicalize(implementationMethod)))
-          {
-            continue;
-          }
-
-          if (!implementations.TryGetValue(canonicalMethod, out var interfaceMembers))
-          {
-            interfaceMembers = new List<IMethodSymbol>();
-            implementations[canonicalMethod] = interfaceMembers;
-          }
-
-          interfaceMembers.Add(Canonicalize(interfaceMethod));
-        }
-      }
+      return false;
     }
 
-    var result = new Dictionary<IMethodSymbol, IReadOnlyList<IMethodSymbol>>(
-      SymbolEqualityComparer.Default);
-    foreach (var (method, interfaceMembers) in implementations)
+    var relations = profile.GetTypeRelations(method.ContainingType);
+    if (relations.Status != UsageProfileStatus.Complete)
     {
-      result[method] = interfaceMembers;
+      return false;
     }
 
-    return result;
-  }
-
-  private static IEnumerable<IMethodSymbol> EnumerateInterfaceMethods(INamedTypeSymbol type)
-  {
-    foreach (var interfaceType in type.AllInterfaces)
+    var candidates = new List<IMethodSymbol>();
+    foreach (var interfaceType in relations.Facts
+      .Where(fact => fact.Kind == TypeRelationKind.Interface)
+      .Select(fact => fact.RelatedSymbol)
+      .OfType<INamedTypeSymbol>())
     {
       foreach (var member in interfaceType.GetMembers().OfType<IMethodSymbol>())
       {
-        if (member.MethodKind == MethodKind.Ordinary)
+        if (member.MethodKind == MethodKind.Ordinary &&
+            method.ContainingType.FindImplementationForInterfaceMember(member) is IMethodSymbol implementation &&
+            SymbolEqualityComparer.Default.Equals(Canonicalize(method), Canonicalize(implementation)))
         {
-          yield return member;
-        }
-      }
-    }
-  }
-
-  private static HashSet<IMethodSymbol> FindReferencedMethods(Compilation compilation)
-  {
-    var referencedMethods = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
-
-    foreach (var tree in compilation.SyntaxTrees)
-    {
-      var model = compilation.GetSemanticModel(tree);
-      foreach (var node in tree.GetRoot().DescendantNodes())
-      {
-        if (model.GetSymbolInfo(node, CancellationToken.None).Symbol is IMethodSymbol methodSymbol)
-        {
-          referencedMethods.Add(Canonicalize(methodSymbol));
+          candidates.Add(Canonicalize(member));
         }
       }
     }
 
-    return referencedMethods;
+    implementedInterfaceMethods = candidates;
+    return candidates.Count > 0;
   }
 
   private static IMethodSymbol Canonicalize(IMethodSymbol method)

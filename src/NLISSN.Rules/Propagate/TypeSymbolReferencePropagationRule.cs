@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 
@@ -44,27 +45,34 @@ public sealed class ClassSymbolReferencePropagationRule : ClassPropagationRuleBa
         var knownKeys = seedMarks
           .Select(mark => BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
-        foreach (var reference in context.Root.DescendantNodes().OfType<IdentifierNameSyntax>())
+        foreach (var markedSymbol in markedSymbols)
         {
-            var referencedSymbol = ResolveReferencedSymbol(context, reference);
-            if (referencedSymbol is null ||
-                !markedSymbols.TryGetValue(referencedSymbol, out var markedDefinition) ||
+            var references = context.SymbolUsageProfile.GetReferences(markedSymbol.Key);
+            if (references.Status != UsageProfileStatus.Complete)
+            {
+                continue;
+            }
+            var markedDefinition = markedSymbol.Value;
+            foreach (var fact in references.Facts)
+            {
+                if (fact.Syntax is not IdentifierNameSyntax reference ||
                 markedDefinition.ExecutableScope is null ||
                 !ReferenceEquals(markedDefinition.ExecutableScope, FindContainingExecutableScope(reference)) ||
                 reference.SpanStart <= markedDefinition.SourceMark.SyntaxNode.SpanStart ||
                 !knownKeys.Add(BuildNodeKey(reference)))
-            {
-                continue;
-            }
+                {
+                    continue;
+                }
 
-            yield return new PropagatedMarkRecord(
-              RuleId,
-              MarkRecordFactory.Create(
-                RuleId,
-                reference,
-                $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked delete-class local definition."),
-              markedDefinition.SourceMark,
-              1);
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  MarkRecordFactory.Create(
+                    RuleId,
+                    reference,
+                    $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked delete-class local definition."),
+                  markedDefinition.SourceMark,
+                  1);
+            }
         }
     }
 
