@@ -2,6 +2,7 @@ using System.Text;
 using MinimalRoslynCpg.Builder;
 using RoslynPrototype.Application.Logging;
 using RoslynPrototype.Analysis;
+using RoslynPrototype.Propagation;
 using RoslynPrototype.Rewrite;
 using Rules;
 
@@ -113,6 +114,7 @@ public sealed class DeletionCommandHost
             runtimeWriter?.WriteDiagnostics(result.Diagnostics ?? Array.Empty<AnalysisDiagnostic>());
             runtimeWriter?.WriteCpgSummary(result.CpgBuildTelemetry ?? RoslynCpgBuildTelemetry.CreateDefault());
             runtimeWriter?.WriteMarkSummary(result.MarkAnalysisTelemetry ?? CreateEmptyMarkTelemetry());
+            runtimeWriter?.WritePropagationSummary(result.PropagationTelemetry ?? PropagationTelemetry.Empty);
             if (runtimeSink is not null)
             {
                 runtimeWriter?.WriteIoSummary(runtimeSink);

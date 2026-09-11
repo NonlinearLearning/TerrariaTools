@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using MinimalRoslynCpg.Builder;
 using RoslynPrototype.Analysis;
+using RoslynPrototype.Propagation;
 using RoslynPrototype.Rewrite;
 
 namespace RoslynPrototype.Application.Logging;
@@ -170,6 +171,63 @@ internal sealed class RunTextLogWriter
             new TextLogField("cacheHits", telemetry.OperationLookupCacheHitCount + telemetry.GraphBindingIndexHitCount),
             new TextLogField("cacheMisses", telemetry.OperationLookupCacheMissCount + telemetry.GraphBindingIndexMissCount)
           });
+    }
+
+    public void WritePropagationSummary(PropagationTelemetry telemetry)
+    {
+        var slowestRule = telemetry.RuleTelemetry
+          .OrderByDescending(item => item.ElapsedMilliseconds)
+          .FirstOrDefault();
+        Emit(
+          TextLogLevel.Debug,
+          TextLogCategory.Propagation,
+          TextLogEventType.Summary,
+          "propagation summary",
+          fields: new[]
+          {
+            new TextLogField("groups", telemetry.GroupTelemetry.Count),
+            new TextLogField("rules", telemetry.RuleTelemetry.Count),
+            new TextLogField("inputs", telemetry.RuleTelemetry.Sum(item => item.InputMarkCount)),
+            new TextLogField("produced", telemetry.RuleTelemetry.Sum(item => item.ProducedMarkCount)),
+            new TextLogField("membershipLookups", telemetry.RuleTelemetry.Sum(item => item.GroupMembershipLookupCount)),
+            new TextLogField("membershipDuplicates", telemetry.RuleTelemetry.Sum(item => item.GroupMembershipDuplicateCount)),
+            new TextLogField("viewRequests", telemetry.RuleTelemetry.Sum(item => item.StructureViewRequestCount)),
+            new TextLogField("viewCacheHits", telemetry.RuleTelemetry.Sum(item => item.StructureViewCacheHitCount)),
+            new TextLogField("viewCacheMisses", telemetry.RuleTelemetry.Sum(item => item.StructureViewCacheMissCount)),
+            new TextLogField("viewNodes", telemetry.RuleTelemetry.Sum(item => item.StructureViewNodeCount)),
+            new TextLogField("viewEdges", telemetry.RuleTelemetry.Sum(item => item.StructureViewEdgeCount)),
+            new TextLogField("slowestRule", slowestRule?.RuleId),
+            new TextLogField("slowestMs", slowestRule?.ElapsedMilliseconds ?? 0)
+          });
+
+        if (!_filter.Allows(
+              TextLogLevel.Debug,
+              TextLogCategory.Propagation,
+              TextLogEventType.Snapshot))
+        {
+            return;
+        }
+
+        foreach (var rule in telemetry.RuleTelemetry)
+        {
+            Emit(
+              TextLogLevel.Debug,
+              TextLogCategory.Propagation,
+              TextLogEventType.Snapshot,
+              "propagation rule",
+              fields: new[]
+              {
+                new TextLogField("group", rule.GroupKey),
+                new TextLogField("rule", rule.RuleId),
+                new TextLogField("inputs", rule.InputMarkCount),
+                new TextLogField("produced", rule.ProducedMarkCount),
+                new TextLogField("membershipDuplicates", rule.GroupMembershipDuplicateCount),
+                new TextLogField("viewRequests", rule.StructureViewRequestCount),
+                new TextLogField("viewCacheHits", rule.StructureViewCacheHitCount),
+                new TextLogField("viewCacheMisses", rule.StructureViewCacheMissCount),
+                new TextLogField("elapsedMs", rule.ElapsedMilliseconds)
+              });
+        }
     }
 
     public void WriteIoSummary(TextLogFileSink sink)

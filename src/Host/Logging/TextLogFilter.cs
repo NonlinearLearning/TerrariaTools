@@ -25,9 +25,17 @@ internal sealed class TextLogFilter
 
     public bool Allows(TextLogEvent textLogEvent)
     {
-        return textLogEvent.Level <= MinimumLevel &&
-          _categories.Contains(textLogEvent.Category) &&
-          _eventTypes.Contains(textLogEvent.EventType);
+        return Allows(textLogEvent.Level, textLogEvent.Category, textLogEvent.EventType);
+    }
+
+    public bool Allows(
+      TextLogLevel level,
+      TextLogCategory category,
+      TextLogEventType eventType)
+    {
+        return level <= MinimumLevel &&
+          _categories.Contains(category) &&
+          _eventTypes.Contains(eventType);
     }
 
     public static TextLogFilter CreateRuntimeFilter(
@@ -37,7 +45,7 @@ internal sealed class TextLogFilter
           options,
           defaultLevel: TextLogLevel.Info,
           defaultView: TextLogView.Normal,
-          defaultCategories: new[] { TextLogCategory.Run, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Diag });
+          defaultCategories: new[] { TextLogCategory.Run, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Propagation, TextLogCategory.Diag });
     }
 
     public static TextLogFilter CreateAnalysisFilter(
@@ -102,7 +110,7 @@ internal sealed class TextLogFilter
             "normal" => new TextLogProfileSettings(
                 TextLogLevel.Info,
                 TextLogView.Normal,
-                new[] { TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag, TextLogCategory.Cpg, TextLogCategory.Mark },
+                new[] { TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Propagation },
                 new[]
                 {
                     TextLogEventType.Started,
@@ -120,7 +128,7 @@ internal sealed class TextLogFilter
             "benchmark" => new TextLogProfileSettings(
                 TextLogLevel.Debug,
                 TextLogView.Benchmark,
-                new[] { TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag, TextLogCategory.Phase, TextLogCategory.Memory, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Io, TextLogCategory.Diff },
+                new[] { TextLogCategory.Run, TextLogCategory.File, TextLogCategory.Diag, TextLogCategory.Phase, TextLogCategory.Memory, TextLogCategory.Cpg, TextLogCategory.Mark, TextLogCategory.Propagation, TextLogCategory.Io, TextLogCategory.Diff },
                 new[]
                 {
                     TextLogEventType.Started,

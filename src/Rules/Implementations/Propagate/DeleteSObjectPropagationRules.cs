@@ -261,14 +261,14 @@ public sealed class DeleteSObjectSymbolReferencePropagationRule : DeleteSObjectP
         var knownKeys = seedMarks
           .Select(mark => BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
-        var root = context.Root;
-        foreach (var reference in root.DescendantNodes().OfType<IdentifierNameSyntax>())
+        var references = markedSymbols
+          .SelectMany(pair => context.LocalSymbolReferences
+            .GetReferences(pair.Value.SyntaxNode, pair.Key)
+            .Select(reference => (Reference: reference, SourceMark: pair.Value)))
+          .OrderBy(item => item.Reference.SpanStart);
+        foreach (var (reference, sourceMark) in references)
         {
-            var referencedSymbol = ResolveReferencedSymbol(context, reference);
-            if (referencedSymbol is null ||
-                !markedSymbols.TryGetValue(referencedSymbol, out var sourceMark) ||
-                !IsSameScope(sourceMark.SyntaxNode, reference) ||
-                !knownKeys.Add(BuildNodeKey(reference)))
+            if (!knownKeys.Add(BuildNodeKey(reference)))
             {
                 continue;
             }
@@ -328,31 +328,4 @@ public sealed class DeleteSObjectSymbolReferencePropagationRule : DeleteSObjectP
         return null;
     }
 
-    private static ISymbol? ResolveReferencedSymbol(RuleContext context, IdentifierNameSyntax identifierName)
-    {
-        var symbol = context.SemanticModel.GetSymbolInfo(identifierName).Symbol;
-        return symbol is ILocalSymbol or IParameterSymbol ? symbol : null;
-    }
-
-    private static bool IsSameScope(SyntaxNode sourceNode, SyntaxNode referenceNode)
-    {
-        var sourceScope = FindContainingExecutableScope(sourceNode);
-        var referenceScope = FindContainingExecutableScope(referenceNode);
-        return sourceScope is not null &&
-          referenceScope is not null &&
-          ReferenceEquals(sourceScope, referenceScope);
-    }
-
-    private static SyntaxNode? FindContainingExecutableScope(SyntaxNode node)
-    {
-        return node.AncestorsAndSelf().FirstOrDefault(ancestor =>
-          ancestor is MethodDeclarationSyntax or
-            ConstructorDeclarationSyntax or
-            DestructorDeclarationSyntax or
-            OperatorDeclarationSyntax or
-            ConversionOperatorDeclarationSyntax or
-            AccessorDeclarationSyntax or
-            AnonymousFunctionExpressionSyntax or
-            LocalFunctionStatementSyntax);
-    }
 }

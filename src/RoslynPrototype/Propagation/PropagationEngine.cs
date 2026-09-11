@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using RoslynPrototype.Analysis;
 using RoslynPrototype.Marking;
 using Rules;
@@ -6,6 +7,8 @@ namespace RoslynPrototype.Propagation;
 
 public sealed class PropagationEngine
 {
+    public PropagationTelemetry LastTelemetry { get; private set; } = PropagationTelemetry.Empty;
+
     /// <summary>
     /// 按规则分别执行传播，只允许规则扩展自己产出的种子标记。
     /// </summary>
@@ -25,9 +28,13 @@ public sealed class PropagationEngine
             seedMarksByGroupKey.TryGetValue(group.GroupKey, out var groupSeedMarks) &&
             groupSeedMarks.Count > 0)
           .ToList();
-        var propagatedMarks = ShouldRunGroupsInParallel(context, groupedRules.Count)
+        var groupResults = ShouldRunGroupsInParallel(context, groupedRules.Count)
           ? RunGroupsInParallel(context, groupedRules, seedMarksByGroupKey)
           : RunGroupsSerial(context, groupedRules, seedMarksByGroupKey);
+        LastTelemetry = new PropagationTelemetry(
+          groupResults.Select(result => result.Telemetry).ToList(),
+          groupResults.SelectMany(result => result.RuleTelemetry).ToList());
+        var propagatedMarks = groupResults.SelectMany(result => result.Marks).ToList();
 
         // 不同传播路径可能命中同一个语法节点，这里按规则和语法位置收口去重。
         return propagatedMarks
@@ -40,21 +47,21 @@ public sealed class PropagationEngine
         .ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunGroupsSerial(
+    private static List<PropagationGroupResult> RunGroupsSerial(
       RuleContext context,
       IReadOnlyList<PropagationRuleGroup> groupedRules,
       IReadOnlyDictionary<string, List<MarkRecord>> seedMarksByGroupKey)
     {
-        var propagatedMarks = new List<PropagatedMarkRecord>();
+        var groupResults = new List<PropagationGroupResult>();
         foreach (var ruleGroup in groupedRules)
         {
-            propagatedMarks.AddRange(RunGroup(context, ruleGroup, seedMarksByGroupKey[ruleGroup.GroupKey]));
+            groupResults.Add(RunGroup(context, ruleGroup, seedMarksByGroupKey[ruleGroup.GroupKey]));
         }
 
-        return propagatedMarks;
+        return groupResults;
     }
 
-    private static List<PropagatedMarkRecord> RunGroupsInParallel(
+    private static List<PropagationGroupResult> RunGroupsInParallel(
       RuleContext context,
       IReadOnlyList<PropagationRuleGroup> groupedRules,
       IReadOnlyDictionary<string, List<MarkRecord>> seedMarksByGroupKey)
@@ -67,7 +74,7 @@ public sealed class PropagationEngine
                 cancellationToken.ThrowIfCancellationRequested();
                 var ruleGroup = groupedRules[index];
                 return Task.Run(
-                  () => (IReadOnlyList<PropagatedMarkRecord>)RunGroup(
+                  () => RunGroup(
                     context,
                     ruleGroup,
                     seedMarksByGroupKey[ruleGroup.GroupKey]),
@@ -77,43 +84,70 @@ public sealed class PropagationEngine
           .GetAwaiter()
           .GetResult();
 
-        return orderedGroupMarks.SelectMany(marks => marks).ToList();
+        return orderedGroupMarks.ToList();
     }
 
-    private static List<PropagatedMarkRecord> RunGroup(
+    private static PropagationGroupResult RunGroup(
       RuleContext context,
       PropagationRuleGroup ruleGroup,
       IReadOnlyList<MarkRecord> groupSeedMarks)
     {
         var propagatedMarks = new List<PropagatedMarkRecord>();
+        var ruleTelemetry = new List<PropagationRuleTelemetry>();
         var groupMarks = new List<MarkRecord>(groupSeedMarks);
+        var groupMarkSyntaxKeys = groupMarks
+          .Select(CreateSyntaxKey)
+          .ToHashSet();
         foreach (var rule in ruleGroup.Rules)
         {
-            var ruleContext = BuildRuleContext(context, groupMarks);
+            var inputMarkCount = groupMarks.Count;
+            var ruleStopwatch = Stopwatch.StartNew();
+            var ruleExecution = BuildRuleExecutionContext(context, groupMarks, rule.RequiresStructureView);
             var producedMarks = new List<PropagatedMarkRecord>();
-            foreach (var propagatedMark in rule.Propagate(ruleContext, groupMarks))
+            foreach (var propagatedMark in rule.Propagate(ruleExecution.Context, groupMarks))
             {
                 MarkingEngine.ValidatePropagateNode(rule, propagatedMark.Mark.SyntaxNode);
-                var boundMark = BindPropagatedMarkRecord(ruleContext, propagatedMark, rule.GroupKey);
+                var boundMark = BindPropagatedMarkRecord(ruleExecution.Context, propagatedMark, rule.GroupKey);
                 producedMarks.Add(boundMark);
                 propagatedMarks.Add(boundMark);
             }
 
+            var groupMembershipDuplicateCount = 0;
             foreach (var producedMark in producedMarks)
             {
-                if (groupMarks.Any(existing =>
-                      existing.SyntaxNode.SpanStart == producedMark.Mark.SyntaxNode.SpanStart &&
-                      existing.SyntaxNode.Span.Length == producedMark.Mark.SyntaxNode.Span.Length &&
-                      existing.SyntaxNode.RawKind == producedMark.Mark.SyntaxNode.RawKind))
+                if (!groupMarkSyntaxKeys.Add(CreateSyntaxKey(producedMark.Mark)))
                 {
+                    groupMembershipDuplicateCount++;
                     continue;
                 }
 
                 groupMarks.Add(producedMark.Mark);
             }
+
+            ruleStopwatch.Stop();
+            ruleTelemetry.Add(new PropagationRuleTelemetry(
+              ruleGroup.GroupKey,
+              rule.RuleId,
+              InputMarkCount: inputMarkCount,
+              ProducedMarkCount: producedMarks.Count,
+              GroupMembershipLookupCount: producedMarks.Count,
+              GroupMembershipDuplicateCount: groupMembershipDuplicateCount,
+              StructureViewRequestCount: ruleExecution.StructureViewRequestCount,
+              StructureViewCacheHitCount: ruleExecution.StructureViewCacheHitCount,
+              StructureViewCacheMissCount: ruleExecution.StructureViewCacheMissCount,
+              StructureViewNodeCount: ruleExecution.StructureViewNodeCount,
+              StructureViewEdgeCount: ruleExecution.StructureViewEdgeCount,
+              ElapsedMilliseconds: ruleStopwatch.ElapsedMilliseconds));
         }
 
-        return propagatedMarks;
+        return new PropagationGroupResult(
+          propagatedMarks,
+          new PropagationGroupTelemetry(
+            ruleGroup.GroupKey,
+            groupSeedMarks.Count,
+            propagatedMarks.Count,
+            ruleGroup.Rules.Count),
+          ruleTelemetry);
     }
 
     private static bool ShouldRunGroupsInParallel(RuleContext context, int groupCount)
@@ -135,22 +169,87 @@ public sealed class PropagationEngine
             GroupKey = candidate.GroupKey ?? groupKey
         };
     }
-    private static RuleContext BuildRuleContext(RuleContext context, IReadOnlyList<MarkRecord> marks)
+
+    private static (int SpanStart, int SpanLength, int RawKind) CreateSyntaxKey(MarkRecord mark)
     {
+        var syntaxNode = mark.SyntaxNode;
+        return (syntaxNode.SpanStart, syntaxNode.Span.Length, syntaxNode.RawKind);
+    }
+
+    private static RuleExecutionContext BuildRuleExecutionContext(
+      RuleContext context,
+      IReadOnlyList<MarkRecord> marks,
+      bool requiresStructureView)
+    {
+        if (!requiresStructureView)
+        {
+            return new RuleExecutionContext(context, 0, 0, 0, 0, 0);
+        }
+
         var fragments = marks
           .Select(mark => mark.SyntaxNode)
           .Distinct()
           .ToList();
         if (fragments.Count == 0)
         {
-            return context;
+            return new RuleExecutionContext(context, 0, 0, 0, 0, 0);
         }
 
+        var cacheTelemetryBefore = context.StructureViewCacheTelemetry;
         var structureView = context.StructureViews.BuildStructureView(fragments);
-        return context.StructureViews.WithStructureView(structureView);
+        var cacheTelemetryAfter = context.StructureViewCacheTelemetry;
+        return new RuleExecutionContext(
+          context.StructureViews.WithStructureView(structureView),
+          1,
+          (int)(cacheTelemetryAfter.CacheHitCount - cacheTelemetryBefore.CacheHitCount),
+          (int)(cacheTelemetryAfter.CacheMissCount - cacheTelemetryBefore.CacheMissCount),
+          structureView.Nodes.Count,
+          structureView.Edges.Count);
     }
 
     private sealed record PropagationRuleGroup(
       string GroupKey,
       IReadOnlyList<RuleDefinitionPropagate> Rules);
+
+    private sealed record RuleExecutionContext(
+      RuleContext Context,
+      int StructureViewRequestCount,
+      int StructureViewCacheHitCount,
+      int StructureViewCacheMissCount,
+      int StructureViewNodeCount,
+      int StructureViewEdgeCount);
+
+    private sealed record PropagationGroupResult(
+      IReadOnlyList<PropagatedMarkRecord> Marks,
+      PropagationGroupTelemetry Telemetry,
+      IReadOnlyList<PropagationRuleTelemetry> RuleTelemetry);
 }
+
+public sealed record PropagationTelemetry(
+  IReadOnlyList<PropagationGroupTelemetry> GroupTelemetry,
+  IReadOnlyList<PropagationRuleTelemetry> RuleTelemetry)
+{
+    public static PropagationTelemetry Empty { get; } = new(
+      Array.Empty<PropagationGroupTelemetry>(),
+      Array.Empty<PropagationRuleTelemetry>());
+}
+
+public sealed record PropagationGroupTelemetry(
+  string GroupKey,
+  int InputMarkCount,
+  int PropagatedMarkCount,
+  int RuleCount);
+
+public sealed record PropagationRuleTelemetry(
+  string GroupKey,
+  string RuleId,
+  int InputMarkCount,
+  int ProducedMarkCount,
+  int GroupMembershipLookupCount,
+  int GroupMembershipDuplicateCount,
+  int StructureViewRequestCount,
+  int StructureViewCacheHitCount,
+  int StructureViewCacheMissCount,
+  int StructureViewNodeCount,
+  int StructureViewEdgeCount,
+  long ElapsedMilliseconds);

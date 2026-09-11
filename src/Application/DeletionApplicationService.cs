@@ -167,6 +167,7 @@ public sealed class DeletionApplicationService
         totalStopwatch.ElapsedMilliseconds),
       CpgBuildTelemetry: analysisContext.CpgBuildTelemetry,
       MarkAnalysisTelemetry: analysisContext.RuleContext.MarkAnalysisTelemetry,
+      PropagationTelemetry: _propagationEngine.LastTelemetry,
       StructureViewCacheTelemetry: analysisContext.RuleContext.StructureViewCacheTelemetry,
       RewritePlans: rewriteResult.Operations is { Count: > 0 }
         ? new[] { new PrototypeFileRewritePlan(analysisContext.Root.SyntaxTree.FilePath, rewriteResult.Operations) }

@@ -29,6 +29,8 @@ public abstract class RuleDefinitionPropagate
     public virtual IReadOnlyCollection<RoslynCpgCapability> RequiredCapabilities =>
         new[] { RoslynCpgCapability.Default };
 
+    public virtual bool RequiresStructureView => false;
+
     public abstract string RuleId { get; }
 
     public virtual string GroupKey => RuleId;

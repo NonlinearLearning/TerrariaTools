@@ -65,6 +65,10 @@ public sealed record PrototypeAnalysisResult(
   /// </summary>
   MarkAnalysisTelemetry? MarkAnalysisTelemetry = null,
   /// <summary>
+  /// 可选的 Propagation 阶段遥测，用于定位规则、成员检查和结构视图开销。
+  /// </summary>
+  PropagationTelemetry? PropagationTelemetry = null,
+  /// <summary>
   /// 可选的 Structure View 结果缓存遥测，用于评估缓存命中率和保留规模。
   /// </summary>
   RoslynCpgStructureViewCacheTelemetry? StructureViewCacheTelemetry = null,

@@ -31,13 +31,14 @@ public sealed class DeleteClassSymbolReferencePropagationRule : RuleDefinitionPr
         var knownKeys = seedMarks
           .Select(mark => BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
-        foreach (var reference in context.Root.DescendantNodes().OfType<IdentifierNameSyntax>())
+        var references = markedSymbols
+          .SelectMany(pair => context.LocalSymbolReferences
+            .GetReferences(pair.Value.SyntaxNode, pair.Key)
+            .Select(reference => (Reference: reference, SourceMark: pair.Value)))
+          .OrderBy(item => item.Reference.SpanStart);
+        foreach (var (reference, sourceMark) in references)
         {
-            var referencedSymbol = ResolveReferencedSymbol(context, reference);
-            if (referencedSymbol is null ||
-                !markedSymbols.TryGetValue(referencedSymbol, out var sourceMark) ||
-                !IsSameScope(sourceMark.SyntaxNode, reference) ||
-                reference.SpanStart <= sourceMark.SyntaxNode.SpanStart ||
+            if (reference.SpanStart <= sourceMark.SyntaxNode.SpanStart ||
                 !knownKeys.Add(BuildNodeKey(reference)))
             {
                 continue;
@@ -91,34 +92,6 @@ public sealed class DeleteClassSymbolReferencePropagationRule : RuleDefinitionPr
           : null;
 
         return symbol is ILocalSymbol ? symbol : null;
-    }
-
-    private static ISymbol? ResolveReferencedSymbol(RuleContext context, IdentifierNameSyntax identifierName)
-    {
-        var symbol = context.SemanticModel.GetSymbolInfo(identifierName).Symbol;
-        return symbol is ILocalSymbol ? symbol : null;
-    }
-
-    private static bool IsSameScope(SyntaxNode sourceNode, SyntaxNode referenceNode)
-    {
-        var sourceScope = FindContainingExecutableScope(sourceNode);
-        var referenceScope = FindContainingExecutableScope(referenceNode);
-        return sourceScope is not null &&
-          referenceScope is not null &&
-          ReferenceEquals(sourceScope, referenceScope);
-    }
-
-    private static SyntaxNode? FindContainingExecutableScope(SyntaxNode node)
-    {
-        return node.AncestorsAndSelf().FirstOrDefault(ancestor =>
-          ancestor is MethodDeclarationSyntax or
-            ConstructorDeclarationSyntax or
-            DestructorDeclarationSyntax or
-            OperatorDeclarationSyntax or
-            ConversionOperatorDeclarationSyntax or
-            AccessorDeclarationSyntax or
-            AnonymousFunctionExpressionSyntax or
-            LocalFunctionStatementSyntax);
     }
 
     private static (int Start, int Length, int RawKind) BuildNodeKey(SyntaxNode syntaxNode)

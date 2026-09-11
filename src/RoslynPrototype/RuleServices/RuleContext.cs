@@ -21,18 +21,22 @@ public sealed class RuleContext :
     private readonly IReadOnlyDictionary<string, string> _options;
     private readonly DeletionAnalysisRuntime _runtime;
     private readonly MarkAnalysisSnapshot _markAnalysisSnapshot;
+    private readonly Lazy<LocalSymbolReferenceIndex> _localSymbolReferenceIndex;
 
     public RuleContext(
       CpgAnalysisContext analysisContext,
       IReadOnlyDictionary<string, string> options,
       RoslynCpgStructureView? structureView = null,
       DeletionAnalysisRuntime? runtime = null,
-      MarkAnalysisSnapshot? markAnalysisSnapshot = null)
+      MarkAnalysisSnapshot? markAnalysisSnapshot = null,
+      Lazy<LocalSymbolReferenceIndex>? localSymbolReferenceIndex = null)
     {
         _analysisContext = analysisContext;
         _options = options;
         _runtime = runtime ?? DeletionAnalysisRuntime.CreateDefault();
         _markAnalysisSnapshot = markAnalysisSnapshot ?? new MarkAnalysisSnapshot(analysisContext);
+        _localSymbolReferenceIndex = localSymbolReferenceIndex ?? new Lazy<LocalSymbolReferenceIndex>(
+          () => new LocalSymbolReferenceIndex(_analysisContext.SemanticModel, _analysisContext.CompilationRoot));
         StructureView = structureView;
     }
 
@@ -52,6 +56,8 @@ public sealed class RuleContext :
 
     public RoslynCpgStructureViewCacheTelemetry StructureViewCacheTelemetry =>
       RoslynCpgStructureViewBuilder.GetCacheTelemetry(_analysisContext);
+
+    public LocalSymbolReferenceIndex LocalSymbolReferences => _localSymbolReferenceIndex.Value;
 
     public MarkAnalysisSnapshot.MarkRuleTelemetryScope BeginMarkRuleTelemetry(
       int ruleOrder,
@@ -93,7 +99,13 @@ public sealed class RuleContext :
 
     public RuleContext WithStructureView(RoslynCpgStructureView structureView)
     {
-        return new RuleContext(_analysisContext, _options, structureView, _runtime, _markAnalysisSnapshot);
+        return new RuleContext(
+          _analysisContext,
+          _options,
+          structureView,
+          _runtime,
+          _markAnalysisSnapshot,
+          _localSymbolReferenceIndex);
     }
 
     public RoslynCpgStructureView BuildStructureView(IReadOnlyCollection<SyntaxNode> fragments)

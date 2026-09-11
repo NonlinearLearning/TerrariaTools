@@ -34,6 +34,67 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     }
 
     [Fact]
+    public void PropagationPerformanceFixture_KeepsRuleOutputsEquivalentAcrossDop()
+    {
+        const string source = """
+          namespace Demo;
+
+          public sealed class PlayerInput
+          {
+          }
+
+          public sealed class Consumer
+          {
+              public int Run()
+              {
+                  var first = new PlayerInput();
+                  var second = new PlayerInput();
+                  if (first is not null && second is not null)
+                  {
+                      return Use(first) + Use(second);
+                  }
+
+                  return 0;
+              }
+
+              private static int Use(PlayerInput input) => input.GetHashCode();
+          }
+          """;
+        var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["delete-class"] = "PlayerInput",
+            ["skip-rewrite"] = "true"
+        };
+        var serial = new DeletionApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
+          source,
+          "PropagationPerformanceFixture.cs",
+          options,
+          new DeletionAnalysisRuntime(
+            new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 1),
+            new DeletionAnalysisEpoch(0, 0, 0)));
+        var parallel = new DeletionApplicationService(RuleRegistry.CreateDefaultRules()).Analyze(
+          source,
+          "PropagationPerformanceFixture.cs",
+          options,
+          new DeletionAnalysisRuntime(
+            new RoslynPrototypeExecutionOptions(
+              MaxDegreeOfParallelism: 8,
+              EnableGroupParallelism: true),
+            new DeletionAnalysisEpoch(0, 0, 0)));
+
+        Assert.Equal(CreatePropagationSnapshot(serial), CreatePropagationSnapshot(parallel));
+        Assert.Equal(CreateResultSnapshot(serial), CreateResultSnapshot(parallel));
+        Assert.NotNull(serial.PropagationTelemetry);
+        Assert.NotEmpty(serial.PropagationTelemetry!.RuleTelemetry);
+        Assert.All(
+          serial.PropagationTelemetry.RuleTelemetry,
+          telemetry => Assert.Equal(0, telemetry.StructureViewRequestCount));
+        Assert.All(
+          serial.PropagationTelemetry.RuleTelemetry,
+          telemetry => Assert.Equal(telemetry.ProducedMarkCount, telemetry.GroupMembershipLookupCount));
+    }
+
+    [Fact]
     public void NamedArgumentMethodPlan_RewritesNamedCallsitesAcrossMultipleSyntaxTrees()
     {
         var context = CreateDeleteClassContext(
@@ -707,6 +768,21 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
             edit.ReplacementText))
           .OrderBy(value => value, StringComparer.Ordinal);
         return string.Join("\n", decisions.Concat(edits));
+    }
+
+    private static string CreatePropagationSnapshot(PrototypeAnalysisResult result)
+    {
+        return string.Join(
+          "\n",
+          result.PropagatedMarks.Select(mark => string.Join(
+            "|",
+            mark.RuleId,
+            mark.Mark.SyntaxNode.SpanStart,
+            mark.Mark.SyntaxNode.Span.Length,
+            mark.Mark.SyntaxNode.RawKind,
+            mark.Mark.Reason,
+            mark.Payload?.GetType().FullName ?? string.Empty,
+            mark.Payload?.ToString() ?? string.Empty)));
     }
 
     private string WriteDiffPerformanceSources()

@@ -675,6 +675,7 @@ internal sealed class DeletionDirectoryAnalysisService
         private readonly Stopwatch _diffStopwatch = new();
         private RoslynCpgBuildTelemetry? _cpgBuildTelemetry;
         private MarkAnalysisTelemetry? _markAnalysisTelemetry;
+        private PropagationTelemetry? _propagationTelemetry;
         private long _preparationMilliseconds;
         private long _cpgBuildMilliseconds;
         private long _markMilliseconds;
@@ -813,6 +814,7 @@ internal sealed class DeletionDirectoryAnalysisService
             AddTimings(result.Timings);
             AddCpgBuildTelemetry(result.CpgBuildTelemetry);
             AddMarkAnalysisTelemetry(result.MarkAnalysisTelemetry);
+            AddPropagationTelemetry(result.PropagationTelemetry);
             _analysisWriter?.WriteResult(filePath, result);
 
             if (result.Edits.Count == 0)
@@ -893,6 +895,7 @@ internal sealed class DeletionDirectoryAnalysisService
               Timings: BuildTimings(),
               CpgBuildTelemetry: BuildCpgBuildTelemetry(),
               MarkAnalysisTelemetry: BuildMarkAnalysisTelemetry(),
+              PropagationTelemetry: BuildPropagationTelemetry(),
               RewritePlans: _rewritePlans
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
                 .Select(pair => new PrototypeFileRewritePlan(pair.Key, pair.Value))
@@ -1023,6 +1026,72 @@ internal sealed class DeletionDirectoryAnalysisService
         private MarkAnalysisTelemetry? BuildMarkAnalysisTelemetry()
         {
             return _markAnalysisTelemetry;
+        }
+
+        private void AddPropagationTelemetry(PropagationTelemetry? telemetry)
+        {
+            if (telemetry is null)
+            {
+                return;
+            }
+
+            if (_propagationTelemetry is null)
+            {
+                _propagationTelemetry = telemetry;
+                return;
+            }
+
+            _propagationTelemetry = new PropagationTelemetry(
+              MergePropagationGroupTelemetry(
+                _propagationTelemetry.GroupTelemetry,
+                telemetry.GroupTelemetry),
+              MergePropagationRuleTelemetry(
+                _propagationTelemetry.RuleTelemetry,
+                telemetry.RuleTelemetry));
+        }
+
+        private PropagationTelemetry? BuildPropagationTelemetry()
+        {
+            return _propagationTelemetry;
+        }
+
+        private static IReadOnlyList<PropagationGroupTelemetry> MergePropagationGroupTelemetry(
+          IReadOnlyList<PropagationGroupTelemetry> left,
+          IReadOnlyList<PropagationGroupTelemetry> right)
+        {
+            return left.Concat(right)
+              .GroupBy(item => item.GroupKey, StringComparer.Ordinal)
+              .Select(group => new PropagationGroupTelemetry(
+                group.Key,
+                group.Sum(item => item.InputMarkCount),
+                group.Sum(item => item.PropagatedMarkCount),
+                group.Sum(item => item.RuleCount)))
+              .OrderBy(item => item.GroupKey, StringComparer.Ordinal)
+              .ToList();
+        }
+
+        private static IReadOnlyList<PropagationRuleTelemetry> MergePropagationRuleTelemetry(
+          IReadOnlyList<PropagationRuleTelemetry> left,
+          IReadOnlyList<PropagationRuleTelemetry> right)
+        {
+            return left.Concat(right)
+              .GroupBy(item => (item.GroupKey, item.RuleId))
+              .Select(group => new PropagationRuleTelemetry(
+                group.Key.GroupKey,
+                group.Key.RuleId,
+                group.Sum(item => item.InputMarkCount),
+                group.Sum(item => item.ProducedMarkCount),
+                group.Sum(item => item.GroupMembershipLookupCount),
+                group.Sum(item => item.GroupMembershipDuplicateCount),
+                group.Sum(item => item.StructureViewRequestCount),
+                group.Sum(item => item.StructureViewCacheHitCount),
+                group.Sum(item => item.StructureViewCacheMissCount),
+                group.Sum(item => item.StructureViewNodeCount),
+                group.Sum(item => item.StructureViewEdgeCount),
+                group.Sum(item => item.ElapsedMilliseconds)))
+              .OrderBy(item => item.GroupKey, StringComparer.Ordinal)
+              .ThenBy(item => item.RuleId, StringComparer.Ordinal)
+              .ToList();
         }
 
         private static IReadOnlyList<MarkRuleTelemetry> MergeRuleTelemetry(

@@ -48,6 +48,17 @@ public sealed class TextLogSystemTests : IDisposable
         Assert.Contains(runtimeLines, line => line.Contains("cat=run evt=completed", StringComparison.Ordinal));
         Assert.Contains(runtimeLines, line => line.Contains("cat=cpg evt=summary", StringComparison.Ordinal));
         Assert.Contains(runtimeLines, line => line.Contains("cat=mark evt=summary", StringComparison.Ordinal));
+        Assert.Contains(runtimeLines, line =>
+          line.Contains("cat=propagation evt=summary", StringComparison.Ordinal) &&
+          line.Contains("rules=", StringComparison.Ordinal) &&
+          line.Contains("produced=", StringComparison.Ordinal) &&
+          line.Contains("viewRequests=", StringComparison.Ordinal) &&
+          line.Contains("viewCacheHits=", StringComparison.Ordinal) &&
+          line.Contains("viewCacheMisses=", StringComparison.Ordinal) &&
+          line.Contains("slowestRule=", StringComparison.Ordinal));
+        Assert.Contains(
+          runtimeLines,
+          line => line.Contains("cat=propagation evt=snapshot msg=\"propagation rule\"", StringComparison.Ordinal));
         Assert.Contains(runtimeLines, line => line.Contains("cat=diag evt=summary", StringComparison.Ordinal));
         Assert.Contains(runtimeLines, line => line.Contains("cat=io evt=summary", StringComparison.Ordinal));
         Assert.Contains(analysisLines, line => line.Contains("cat=file evt=completed", StringComparison.Ordinal));

@@ -252,6 +252,43 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void PropagationEngine_Run_RecordsRuleTelemetryBeforeFinalDeduplication()
+    {
+        var source = SObjectControlFlowSources.PropagationDedupSource;
+        var (context, root) = CreateContext(source, "s");
+        var seedMarks = new MarkingEngine().Run(context, root, GetDeleteSObjectMarkRules());
+        var engine = new PropagationEngine();
+
+        _ = engine.Run(context, seedMarks, new RuleDefinitionPropagate[] { new DuplicatePropagationRule() });
+
+        var ruleTelemetry = Assert.Single(engine.LastTelemetry.RuleTelemetry);
+        Assert.Equal("DEL-SOBJ-TEST-PROP-001", ruleTelemetry.RuleId);
+        Assert.Equal(DeleteSObjectGroupKey, ruleTelemetry.GroupKey);
+        Assert.Equal(seedMarks.Count, ruleTelemetry.InputMarkCount);
+        Assert.Equal(2, ruleTelemetry.ProducedMarkCount);
+        Assert.Equal(2, ruleTelemetry.GroupMembershipLookupCount);
+        Assert.Equal(1, ruleTelemetry.GroupMembershipDuplicateCount);
+        Assert.Equal(0, ruleTelemetry.StructureViewRequestCount);
+        Assert.Equal(0, ruleTelemetry.StructureViewCacheHitCount);
+        Assert.Equal(0, ruleTelemetry.StructureViewCacheMissCount);
+        Assert.Equal(0, ruleTelemetry.StructureViewNodeCount);
+    }
+
+    [Fact]
+    public void RuleContext_LocalSymbolReferences_MaterializesOncePerAnalysisContext()
+    {
+        var (context, root) = CreateContext(PipelineSources.ChainedPropagationSource, "s");
+
+        var first = context.LocalSymbolReferences;
+        var identifierCount = root.DescendantNodes().OfType<IdentifierNameSyntax>().Count();
+        var second = context.LocalSymbolReferences;
+
+        Assert.Equal(identifierCount, first.IdentifierTraversalCount);
+        Assert.Same(first, second);
+        Assert.Equal(identifierCount, second.IdentifierTraversalCount);
+    }
+
+    [Fact]
     public void PropagationEngine_Run_ChainsIndependentRulesWithinSameGroupKey()
     {
         var source = PipelineSources.ChainedPropagationSource;
@@ -295,6 +332,8 @@ public sealed class PipelineComponentTests : IDisposable
 
         var propagatedMark = Assert.Single(propagatedMarks);
         Assert.Equal(SyntaxKind.IfStatement, (SyntaxKind)propagatedMark.Mark.SyntaxNode.RawKind);
+        Assert.Equal(1, Assert.Single(engine.LastTelemetry.RuleTelemetry).StructureViewRequestCount);
+        Assert.Equal(1, Assert.Single(engine.LastTelemetry.RuleTelemetry).StructureViewCacheMissCount);
     }
 
     [Fact]
@@ -4863,6 +4902,8 @@ public sealed class PipelineComponentTests : IDisposable
 
     private sealed class ViewAwarePropagationRule : RuleDefinitionPropagate
     {
+        public override bool RequiresStructureView => true;
+
         public override string RuleId { get; } = "TEST-VIEW-PROP-001";
 
         public override string GroupKey { get; } = DeleteSObjectGroupKey;
