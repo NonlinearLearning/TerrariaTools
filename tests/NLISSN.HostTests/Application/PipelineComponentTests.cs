@@ -505,8 +505,86 @@ public sealed class PipelineComponentTests : IDisposable
 
         Assert.Contains(
           propagatedMarks,
-          mark => mark.RuleId == "TEST-PROP-VISIBILITY-001" &&
-            mark.Mark.SyntaxNode is ReturnStatementSyntax);
+            mark => mark.RuleId == "TEST-PROP-VISIBILITY-001" &&
+              mark.Mark.SyntaxNode is ReturnStatementSyntax);
+    }
+
+    [Fact]
+    public void PropagationEngine_Run_SelfConsumingRule_ReachesFixedPoint()
+    {
+        const string source = "class C { object M(State state) { return state.Root.Next.Next; } } class State { public State Root => this; public State Next => this; }";
+        var (context, root) = CreateContext(source, "state");
+        var seed = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+          .Single(candidate => string.Equals(candidate.ToString(), "state.Root", StringComparison.Ordinal));
+        var seedMarks = new[]
+        {
+            new MarkRecord(
+              "TEST-FIXED-POINT-SEED-001",
+              seed,
+              null,
+              null,
+              "Seed the first member access.",
+              SemanticTag: RuleFactPorts.TargetExpression)
+        };
+
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[] { new RepeatedMemberAccessPropagationRule() });
+
+        Assert.Collection(
+          propagatedMarks.OrderBy(mark => mark.Depth),
+          first =>
+          {
+              Assert.Equal(1, first.Depth);
+              Assert.Equal("state.Root.Next", first.Mark.SyntaxNode.ToString());
+          },
+          second =>
+          {
+              Assert.Equal(2, second.Depth);
+              Assert.Equal("state.Root.Next.Next", second.Mark.SyntaxNode.ToString());
+          });
+    }
+
+    [Fact]
+    public void PropagationEngine_Run_TwoRuleFeedback_AdmitsEachAnchorOnce()
+    {
+        const string source = "class C { object M(State state) { return state.Root.Next.Next; } } class State { public State Root => this; public State Next => this; }";
+        var (context, root) = CreateContext(source, "state");
+        var seed = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>()
+          .Single(candidate => string.Equals(candidate.ToString(), "state.Root", StringComparison.Ordinal));
+        var seedMarks = new[]
+        {
+            new MarkRecord(
+              "TEST-FIXED-POINT-SEED-002",
+              seed,
+              null,
+              null,
+              "Seed the first member access.",
+              SemanticTag: RuleFactPorts.TargetExpression)
+        };
+
+        var propagatedMarks = new PropagationEngine().Run(
+          context,
+          seedMarks,
+          new RuleDefinitionPropagate[]
+          {
+              new FirstFeedbackMemberAccessPropagationRule(),
+              new SecondFeedbackMemberAccessPropagationRule()
+          });
+
+        Assert.Equal(2, propagatedMarks.Count);
+        Assert.Equal(
+          2,
+          propagatedMarks.Select(mark => (
+              mark.RuleId,
+              mark.Mark.SyntaxNode.SpanStart,
+              mark.Mark.SyntaxNode.Span.Length,
+              mark.Mark.SyntaxNode.RawKind,
+              mark.Mark.SemanticTag))
+            .Distinct()
+            .Count());
+        Assert.Equal(new[] { 1, 2 }, propagatedMarks.Select(mark => mark.Depth).OrderBy(depth => depth));
     }
 
     [Fact]
@@ -5370,6 +5448,144 @@ public sealed class PipelineComponentTests : IDisposable
             yield return propagatedMark;
         }
 
+    }
+
+    private sealed class RepeatedMemberAccessPropagationRule : RuleDefinitionPropagate
+    {
+        public override string RuleId { get; } = "TEST-FIXED-POINT-SELF-001";
+
+        public override string Name { get; } = "Propagate each member access to its direct member-access parent.";
+
+        public override RuleConsumesContract Consumes => CreateTargetAtomicConsumes();
+
+        public override RuleProducesContract Produces =>
+          CreateSyntaxProduces(
+            new[] { SyntaxKind.SimpleMemberAccessExpression },
+            RuleFactPorts.TargetExpression);
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(
+          IPropagationRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks)
+        {
+            foreach (var sourceMark in seedMarks)
+            {
+                var next = context.Root.DescendantNodes()
+                  .OfType<MemberAccessExpressionSyntax>()
+                  .SingleOrDefault(candidate => candidate.Expression.Span == sourceMark.SyntaxNode.Span);
+                if (next is null)
+                {
+                    continue;
+                }
+
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  new MarkRecord(
+                    RuleId,
+                    next,
+                    null,
+                    null,
+                    "Propagate to the direct member-access parent.",
+                    SemanticTag: RuleFactPorts.TargetExpression),
+                  sourceMark,
+                  0);
+            }
+        }
+    }
+
+    private sealed class FirstFeedbackMemberAccessPropagationRule : RuleDefinitionPropagate
+    {
+        private static readonly RuleSemanticTag FeedbackTag = new("Test.FixedPoint.Feedback");
+
+        public override string RuleId { get; } = "TEST-FIXED-POINT-FIRST-001";
+
+        public override string Name { get; } = "Move a target member access into the feedback channel.";
+
+        public override RuleConsumesContract Consumes => CreateTargetAtomicConsumes();
+
+        public override RuleProducesContract Produces =>
+          CreateSyntaxProduces(new[] { SyntaxKind.SimpleMemberAccessExpression }, FeedbackTag);
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(
+          IPropagationRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks)
+        {
+            foreach (var sourceMark in seedMarks)
+            {
+                var next = context.Root.DescendantNodes()
+                  .OfType<MemberAccessExpressionSyntax>()
+                  .SingleOrDefault(candidate => candidate.Expression.Span == sourceMark.SyntaxNode.Span);
+                if (next is null)
+                {
+                    continue;
+                }
+
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  new MarkRecord(
+                    RuleId,
+                    next,
+                    null,
+                    null,
+                    "Emit the feedback fact.",
+                    SemanticTag: FeedbackTag),
+                  sourceMark,
+                  0);
+            }
+        }
+    }
+
+    private sealed class SecondFeedbackMemberAccessPropagationRule : RuleDefinitionPropagate
+    {
+        private static readonly RuleSemanticTag FeedbackTag = new("Test.FixedPoint.Feedback");
+
+        public override string RuleId { get; } = "TEST-FIXED-POINT-SECOND-001";
+
+        public override string Name { get; } = "Return a feedback member access to the target channel.";
+
+        public override RuleConsumesContract Consumes =>
+          CreateSyntaxConsumes(new[] { SyntaxKind.SimpleMemberAccessExpression }, FeedbackTag);
+
+        public override RuleProducesContract Produces =>
+          CreateSyntaxProduces(
+            new[] { SyntaxKind.SimpleMemberAccessExpression },
+            RuleFactPorts.TargetExpression);
+
+        public override IReadOnlyList<SyntaxKind> AllowedPropagateNodeKinds { get; } =
+          new[] { SyntaxKind.SimpleMemberAccessExpression };
+
+        public override IEnumerable<PropagatedMarkRecord> Propagate(
+          IPropagationRuleContext context,
+          IReadOnlyList<MarkRecord> seedMarks)
+        {
+            foreach (var sourceMark in seedMarks)
+            {
+                var next = context.Root.DescendantNodes()
+                  .OfType<MemberAccessExpressionSyntax>()
+                  .SingleOrDefault(candidate => candidate.Expression.Span == sourceMark.SyntaxNode.Span);
+                if (next is null)
+                {
+                    continue;
+                }
+
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  new MarkRecord(
+                    RuleId,
+                    next,
+                    null,
+                    null,
+                    "Return the fact to the target channel.",
+                    SemanticTag: RuleFactPorts.TargetExpression),
+                  sourceMark,
+                  0);
+            }
+        }
     }
 
     private sealed class DefinitionLeftValuePropagationRule : RuleDefinitionPropagate
