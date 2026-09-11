@@ -124,27 +124,32 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
     var disabledPath = Path.Combine(_tempDirectory, "disabled.yml");
     var enabledPath = Path.Combine(_tempDirectory, "enabled.yml");
     File.WriteAllText(sourcePath, "public sealed class Input { }");
-    File.WriteAllText(disabledPath, $"""
-      schemaVersion: 2
-      runId: performance-disabled
-      input: {{ path: {Path.GetFileName(sourcePath)} }}
-      analysis: {{}}
-      execution: {{ maxDegreeOfParallelism: 1 }}
-      artifacts:
-        runtimeLog:
-          enabled: true
-      """);
-    File.WriteAllText(enabledPath, $"""
-      schemaVersion: 2
-      runId: performance-enabled
-      input: {{ path: {Path.GetFileName(sourcePath)} }}
-      analysis: {{}}
-      execution: {{ maxDegreeOfParallelism: 1 }}
-      artifacts:
-        performance:
-          enabled: true
-          mode: benchmark
-      """);
+    var sourceFileName = Path.GetFileName(sourcePath);
+    File.WriteAllText(disabledPath, string.Join(Environment.NewLine, new[]
+    {
+      "schemaVersion: 2",
+      "runId: performance-disabled",
+      $"input: {{ path: {sourceFileName} }}",
+      "analysis: {}",
+      "execution: { maxDegreeOfParallelism: 1 }",
+      "artifacts:",
+      "  runtimeLog:",
+      "    enabled: true",
+      string.Empty
+    }));
+    File.WriteAllText(enabledPath, string.Join(Environment.NewLine, new[]
+    {
+      "schemaVersion: 2",
+      "runId: performance-enabled",
+      $"input: {{ path: {sourceFileName} }}",
+      "analysis: {}",
+      "execution: { maxDegreeOfParallelism: 1 }",
+      "artifacts:",
+      "  performance:",
+      "    enabled: true",
+      "    mode: benchmark",
+      string.Empty
+    }));
 
     var disabled = YamlConfigurationLoader.Load(disabledPath);
     var enabled = YamlConfigurationLoader.Load(enabledPath);
