@@ -3,6 +3,7 @@ namespace NLISSN.Core.Performance;
 /// Stable protocol names for report stages. These names are part of the report contract.
 public static class PerformanceStageId
 {
+  public const string Run = "Run";
   public const string WorkspaceLoad = "Workspace.Load";
   public const string DirectoryRead = "Directory.Read";
   public const string CpgBuild = "CPG.Build";

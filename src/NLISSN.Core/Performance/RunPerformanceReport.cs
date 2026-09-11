@@ -25,7 +25,10 @@ public sealed record RunPerformanceReport
     bool comparisonEligible = false,
     IReadOnlyList<string>? comparisonReasons = null,
     DirectoryPerformanceFacts? Directory = null,
-    IReadOnlyList<PerformanceStageSample>? stages = null)
+    IReadOnlyList<PerformanceStageSample>? stages = null,
+    PerformanceResourceFacts? resources = null,
+    IReadOnlyList<PerformanceAttachmentReference>? attachments = null,
+    PerformanceRunIdentity? identity = null)
   {
     if (string.IsNullOrWhiteSpace(runId))
     {
@@ -60,6 +63,10 @@ public sealed record RunPerformanceReport
     this.Directory = Directory;
     Stages = new ReadOnlyCollection<PerformanceStageSample>(
       (stages ?? Array.Empty<PerformanceStageSample>()).ToArray());
+    Resources = resources;
+    Attachments = new ReadOnlyCollection<PerformanceAttachmentReference>(
+      (attachments ?? Array.Empty<PerformanceAttachmentReference>()).ToArray());
+    Identity = identity;
   }
 
   public string RunId { get; }
@@ -89,6 +96,12 @@ public sealed record RunPerformanceReport
   public DirectoryPerformanceFacts? Directory { get; }
 
   public IReadOnlyList<PerformanceStageSample> Stages { get; }
+
+  public PerformanceResourceFacts? Resources { get; }
+
+  public IReadOnlyList<PerformanceAttachmentReference> Attachments { get; }
+
+  public PerformanceRunIdentity? Identity { get; }
 
   public bool IsComplete => TerminalSummary.IsComplete &&
     TerminalStatus == PerformanceStatus.Completed;

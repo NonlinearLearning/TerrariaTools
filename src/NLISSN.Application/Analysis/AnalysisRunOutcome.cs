@@ -32,7 +32,44 @@ public sealed record AnalysisRunOutcome(
         Performance.ComparisonEligible,
         Performance.ComparisonReasons,
         Performance.Directory,
-        Performance.Stages)
+        Performance.Stages,
+        Performance.Resources,
+        Performance.Attachments,
+        Performance.Identity)
+    };
+  }
+
+  public AnalysisRunOutcome WithRuntimeFacts(
+    PerformanceStageSample rootStage,
+    IReadOnlyList<PerformanceStageSample> stages,
+    PerformanceResourceFacts? resources)
+  {
+    ArgumentNullException.ThrowIfNull(rootStage);
+    ArgumentNullException.ThrowIfNull(stages);
+    return this with
+    {
+      Performance = new RunPerformanceReport(
+        Performance.RunId,
+        Performance.InputKind,
+        Performance.InputIdentity,
+        Performance.Items,
+        rootStage,
+        Performance.TerminalSummary with
+        {
+          WallElapsedMs = rootStage.WallElapsedMs,
+          AccumulatedElapsedMs = rootStage.AccumulatedElapsedMs
+        },
+        Performance.TerminalStatus,
+        Performance.Mode,
+        Performance.SampleNumber,
+        Performance.IsWarmup,
+        Performance.ComparisonEligible,
+        Performance.ComparisonReasons,
+        Performance.Directory,
+        stages,
+        resources,
+        Performance.Attachments,
+        Performance.Identity)
     };
   }
 

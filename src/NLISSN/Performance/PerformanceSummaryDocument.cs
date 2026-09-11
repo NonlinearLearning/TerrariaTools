@@ -35,6 +35,10 @@ public sealed record PerformanceSummaryDocument
   public IReadOnlyList<PerformanceSummaryStageDocument> Stages { get; init; } =
     Array.Empty<PerformanceSummaryStageDocument>();
 
+  public PerformanceSummaryResourceDocument? Resources { get; init; }
+
+  public PerformanceSummaryIdentityDocument? Identity { get; init; }
+
   public IReadOnlyList<PerformanceSummaryItemDocument> Items { get; init; } =
     Array.Empty<PerformanceSummaryItemDocument>();
 
@@ -76,6 +80,38 @@ public sealed record PerformanceSummaryDocument
         .ThenBy(stage => stage.ItemId, StringComparer.Ordinal)
         .Select(ToDocument)
         .ToArray(),
+      Resources = report.Resources is null ? null : new PerformanceSummaryResourceDocument(
+        report.Resources.AllocatedBytes,
+        report.Resources.HeapBytes,
+        report.Resources.WorkingSetBytes,
+        report.Resources.Gen0Collections,
+        report.Resources.Gen1Collections,
+        report.Resources.Gen2Collections,
+        report.Resources.PoolOperationCount,
+        report.Resources.PoolQueueWaitMs,
+        report.Resources.PoolQueueWaitMaxMs,
+        report.Resources.PoolPeakActive,
+        report.Resources.PoolPeakBuffer,
+        report.Resources.Attribution.ToString().ToLowerInvariant(),
+        report.Resources.ErrorKind),
+      Identity = report.Identity is null ? null : new PerformanceSummaryIdentityDocument(
+        report.Identity.InputIdentity,
+        report.Identity.RuleProfileHash,
+        report.Identity.CapabilityFingerprint,
+        report.Identity.CacheMode,
+        report.Identity.Sdk,
+        report.Identity.Runtime,
+        report.Identity.OperatingSystem,
+        report.Identity.Cpu,
+        report.Identity.EnvironmentFingerprint,
+        report.Identity.DirectoryDop,
+        report.Identity.CpgDop,
+        report.Identity.RuleDop,
+        report.Identity.Mode.ToString().ToLowerInvariant(),
+        report.Identity.DiagnosticsEnabled,
+        report.Identity.GraphSnapshot,
+        report.Identity.RuleSnapshot,
+        report.Identity.ArtifactSnapshot),
       Items = report.Items
         .OrderBy(item => item.ItemId, StringComparer.Ordinal)
         .Select(ToDocument)
@@ -86,6 +122,19 @@ public sealed record PerformanceSummaryDocument
         report.TerminalSummary.Status.ToString().ToLowerInvariant(),
         report.TerminalSummary.IsComplete,
         report.TerminalSummary.ErrorKind)
+      ,Attachments = report.Attachments
+        .OrderBy(attachment => attachment.Kind, StringComparer.Ordinal)
+        .ThenBy(attachment => attachment.RelativePath, StringComparer.Ordinal)
+        .Select(attachment => new PerformanceAttachmentDocument(
+          attachment.Kind,
+          attachment.RelativePath,
+          attachment.RunId,
+          attachment.StageId,
+          attachment.Mode.ToString().ToLowerInvariant(),
+          attachment.IsAvailable ? "available" : "unavailable",
+          attachment.IsComplete,
+          attachment.ErrorKind))
+        .ToArray()
     };
   }
 
@@ -381,6 +430,40 @@ public sealed record PerformanceSummaryTerminalDocument(
   string Status,
   bool IsComplete,
   string? ErrorKind);
+
+public sealed record PerformanceSummaryResourceDocument(
+  long? AllocatedBytes,
+  long? HeapBytes,
+  long? WorkingSetBytes,
+  int? Gen0Collections,
+  int? Gen1Collections,
+  int? Gen2Collections,
+  int? PoolOperationCount,
+  double? PoolQueueWaitMs,
+  double? PoolQueueWaitMaxMs,
+  int? PoolPeakActive,
+  int? PoolPeakBuffer,
+  string Attribution,
+  string? ErrorKind);
+
+public sealed record PerformanceSummaryIdentityDocument(
+  string? InputIdentity,
+  string? RuleProfileHash,
+  string? CapabilityFingerprint,
+  string? CacheMode,
+  string? Sdk,
+  string? Runtime,
+  string? OperatingSystem,
+  string? Cpu,
+  string? EnvironmentFingerprint,
+  int? DirectoryDop,
+  int? CpgDop,
+  int? RuleDop,
+  string Mode,
+  bool DiagnosticsEnabled,
+  string? GraphSnapshot,
+  string? RuleSnapshot,
+  string? ArtifactSnapshot);
 
 public sealed record PerformanceSummaryAggregateDocument(
   int Count,
