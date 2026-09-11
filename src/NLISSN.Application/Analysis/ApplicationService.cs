@@ -24,16 +24,21 @@ public sealed class ApplicationService
     private readonly CompiledRuleGraph _compiledRuleGraph;
     private readonly PrototypeRewriter _rewriter;
     private readonly ICallFlowResolver? _callFlowResolver;
+    private readonly IPerformanceEventSink? _performanceEventSink;
     private readonly ConcurrentDictionary<Compilation, ICallFlowResolver> _defaultCallFlowResolvers =
         new(ReferenceEqualityComparer.Instance);
 
     // 用完整规则管道初始化单文件分析服务，并准备四个阶段的执行器和改写器。
-    public ApplicationService(RulePipeline pipeline, ICallFlowResolver? callFlowResolver = null)
+    public ApplicationService(
+      RulePipeline pipeline,
+      ICallFlowResolver? callFlowResolver = null,
+      IPerformanceEventSink? performanceEventSink = null)
     {
         _pipeline = pipeline;
         _compiledRuleGraph = pipeline.CompileRuleGraph();
         _rewriter = new PrototypeRewriter();
         _callFlowResolver = callFlowResolver;
+        _performanceEventSink = performanceEventSink;
     }
 
     // 允许调用方直接注入四个阶段的规则列表，内部仍组装成统一规则管道。
@@ -108,7 +113,10 @@ public sealed class ApplicationService
           analysisContext.Session,
           analysisContext.Root,
           _pipeline,
-          _compiledRuleGraph);
+          _compiledRuleGraph,
+          _performanceEventSink ?? analysisContext.Session.Runtime.PerformanceEventSink,
+          analysisContext.Session.Runtime.PerformanceRunId,
+          analysisContext.CpgPerformance.ItemId);
         seedMarks = graphResult.SeedMarks;
         propagatedMarks = graphResult.PropagatedMarks;
         liftedMarks = graphResult.LiftedMarks;

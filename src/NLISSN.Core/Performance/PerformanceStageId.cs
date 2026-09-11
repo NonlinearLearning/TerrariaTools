@@ -1,3 +1,5 @@
+using NLISSN.Core.Pipeline;
+
 namespace NLISSN.Core.Performance;
 
 /// Stable protocol names for report stages. These names are part of the report contract.
@@ -18,6 +20,18 @@ public static class PerformanceStageId
   public const string ArtifactDiff = "Artifact.Diff";
   public const string ArtifactEvidence = "Artifact.Evidence";
   public const string ArtifactWriteBack = "Artifact.WriteBack";
+
+  public static string ForRule(RuleKind kind)
+  {
+    return kind switch
+    {
+      RuleKind.Mark => RuleMark,
+      RuleKind.Propagate => RulePropagate,
+      RuleKind.Lift => RuleLift,
+      RuleKind.Propose => RulePropose,
+      _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+    };
+  }
 
   public static IReadOnlyList<string> Required { get; } =
   [

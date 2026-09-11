@@ -29,7 +29,10 @@ internal sealed class RuleGraphAnalysisExecutor
       AnalysisSession session,
       SyntaxNode root,
       RulePipeline pipeline,
-      CompiledRuleGraph graph)
+      CompiledRuleGraph graph,
+      IPerformanceEventSink? performanceEventSink = null,
+      string? runId = null,
+      string? itemId = null)
     {
         var propagationRegion = new PropagationRegion(session, pipeline.Propagators);
         var executionNodes = pipeline.Markers
@@ -47,7 +50,10 @@ internal sealed class RuleGraphAnalysisExecutor
             graph,
             executionNodes,
             graphDegree,
-            session.Runtime.ExecutionOptions.CancellationToken)
+            session.Runtime.ExecutionOptions.CancellationToken,
+            performanceEventSink,
+            runId,
+            itemId)
           .GetAwaiter()
           .GetResult();
 

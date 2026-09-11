@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using NL.Caching;
 using NL.Concurrency;
 using NLCPG.Builder;
+using NLISSN.Core.Performance;
 
 namespace NLISSN.Core.Pipeline;
 
@@ -75,6 +76,10 @@ public sealed class AnalysisRuntime
 
     public CpgBuildAdmissionBudget.CpgBuildAdmissionLease? CurrentCpgBuildAdmissionLease =>
       _currentCpgBuildAdmissionLease.Value;
+
+    public IPerformanceEventSink? PerformanceEventSink { get; set; }
+
+    public string? PerformanceRunId { get; set; }
 
     public string CacheScopeKey => $"epoch:{Epoch.EpochId}|cache:{Epoch.CacheVersion}";
 
