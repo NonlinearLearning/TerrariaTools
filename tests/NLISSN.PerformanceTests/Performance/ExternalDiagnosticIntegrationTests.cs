@@ -1,227 +1,225 @@
 using System.Diagnostics;
+using NLISSN.Core.Performance;
 using NLISSN.Performance;
-using Microsoft.CodeAnalysis.CSharp;
 using Xunit;
+using Xunit.Sdk;
 
-namespace RoslynPrototype.Tests;
+namespace RoslynPrototype.Tests.Performance;
 
 public sealed class ExternalDiagnosticIntegrationTests : IDisposable
 {
-    private readonly string _artifactRoot = Path.Combine(
-      Path.GetTempPath(),
-      $"nlissn-external-diagnostic-tests-{Guid.NewGuid():N}");
+  private readonly string _runRoot = Path.Combine(
+    Path.GetTempPath(),
+    $"nlissn-external-diagnostic-integration-{Guid.NewGuid():N}");
 
-    public ExternalDiagnosticIntegrationTests()
+  public ExternalDiagnosticIntegrationTests()
+  {
+    Directory.CreateDirectory(_runRoot);
+  }
+
+  public static IEnumerable<object[]> SupportedTools()
+  {
+    return Enum.GetValues<ExternalDiagnosticTool>()
+      .Select(tool => new object[] { tool });
+  }
+
+  [Theory]
+  [MemberData(nameof(SupportedTools))]
+  public async Task InstalledToolProducesManifestWithSharedRunAndStage(
+    ExternalDiagnosticTool tool)
+  {
+    var executable = GetToolExecutable(tool);
+    if (!TryLocate(executable, out var executablePath))
     {
-        Directory.CreateDirectory(_artifactRoot);
+      throw SkipException.ForSkip($"{executable} is not installed or is not on PATH.");
     }
 
-    [Fact]
-    public void AttachmentManifest_RoundTripsRunAndStageAssociation()
+    var policy = new ExternalDiagnosticToolPolicy(
+      enabled: true,
+      duration: TimeSpan.FromMilliseconds(200),
+      timeout: TimeSpan.FromSeconds(20),
+      toolLocator: new FixedToolLocator(new ExternalDiagnosticToolInfo(
+        tool,
+        executablePath,
+        ReadVersion(executablePath))));
+
+    var attachment = await policy.CaptureAsync(
+      tool,
+      Environment.ProcessId,
+      runId: "integration-run",
+      stageId: "Run",
+      mode: PerformanceMode.Profile,
+      runArtifactRoot: _runRoot);
+
+    Assert.Equal(tool, attachment.Tool);
+    Assert.Equal("integration-run", attachment.RunId);
+    Assert.Equal("Run", attachment.StageId);
+    Assert.Equal(PerformanceMode.Profile, attachment.Mode);
+    Assert.NotNull(attachment.Command);
+    Assert.NotNull(attachment.StartedAtUtc);
+    Assert.NotNull(attachment.CompletedAtUtc);
+    Assert.True(attachment.CompletedAtUtc >= attachment.StartedAtUtc);
+
+    if (attachment.Status == PerformanceStatus.Completed)
     {
-        var runId = "run-representative-001";
-        var stageId = "CPG.Syntax";
-        var manifest = new PerformanceDiagnosticAttachment(
-          runId,
-          stageId,
-          "profile",
-          new[]
+      Assert.True(attachment.IsAvailable);
+      Assert.True(attachment.IsComplete);
+      Assert.Equal(0, attachment.ExitCode);
+      Assert.NotNull(attachment.RelativePath);
+      Assert.True(File.Exists(ResolveAttachmentPath(attachment.RelativePath!)));
+    }
+    else
+    {
+      Assert.Equal(PerformanceStatus.Failed, attachment.Status);
+      Assert.False(attachment.IsAvailable);
+      Assert.False(attachment.IsComplete);
+      Assert.NotNull(attachment.ErrorKind);
+    }
+  }
+
+  [Fact]
+  public async Task MissingToolIsUnavailableAndDoesNotClaimAProfileArtifact()
+  {
+    var policy = new ExternalDiagnosticToolPolicy(
+      enabled: true,
+      toolLocator: new FixedToolLocator(null));
+
+    var attachment = await policy.CaptureAsync(
+      ExternalDiagnosticTool.DotnetTrace,
+      Environment.ProcessId,
+      runId: "missing-tool-run",
+      stageId: "Run",
+      mode: PerformanceMode.Profile,
+      runArtifactRoot: _runRoot);
+
+    Assert.Equal(PerformanceStatus.Unavailable, attachment.Status);
+    Assert.False(attachment.IsAvailable);
+    Assert.False(attachment.IsComplete);
+    Assert.Equal("external-tool-unavailable", attachment.ErrorKind);
+    Assert.Null(attachment.Command);
+    Assert.Null(attachment.StartedAtUtc);
+    Assert.Null(attachment.CompletedAtUtc);
+  }
+
+  [Fact]
+  public async Task NormalModeDoesNotDependOnInstalledProfileTools()
+  {
+    var policy = new ExternalDiagnosticToolPolicy(
+      enabled: true,
+      toolLocator: new ThrowingLocator());
+
+    var attachment = await policy.CaptureAsync(
+      ExternalDiagnosticTool.DotnetGcdump,
+      Environment.ProcessId,
+      runId: "normal-run",
+      stageId: "Run",
+      mode: PerformanceMode.Normal,
+      runArtifactRoot: _runRoot);
+
+    Assert.Equal(PerformanceStatus.Skipped, attachment.Status);
+    Assert.Equal("external-tool-mode-disabled", attachment.ErrorKind);
+  }
+
+  public void Dispose()
+  {
+    if (Directory.Exists(_runRoot))
+    {
+      Directory.Delete(_runRoot, recursive: true);
+    }
+  }
+
+  private string ResolveAttachmentPath(string relativePath)
+  {
+    return Path.Combine(_runRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));
+  }
+
+  private static string GetToolExecutable(ExternalDiagnosticTool tool)
+  {
+    return tool switch
+    {
+      ExternalDiagnosticTool.DotnetTrace => "dotnet-trace",
+      ExternalDiagnosticTool.DotnetCounters => "dotnet-counters",
+      ExternalDiagnosticTool.DotnetGcdump => "dotnet-gcdump",
+      _ => throw new ArgumentOutOfRangeException(nameof(tool))
+    };
+  }
+
+  private static bool TryLocate(string executable, out string path)
+  {
+    var pathValue = Environment.GetEnvironmentVariable("PATH");
+    if (!string.IsNullOrWhiteSpace(pathValue))
+    {
+      var names = OperatingSystem.IsWindows()
+        ? new[] { executable, executable + ".exe", executable + ".cmd" }
+        : new[] { executable };
+      foreach (var directory in pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+      {
+        foreach (var name in names)
+        {
+          var candidate = Path.Combine(directory, name);
+          if (File.Exists(candidate))
           {
-              new ExternalDiagnosticAttachment(
-                "dotnet-trace",
-                "dotnet-trace 10.0.0",
-                "dotnet-trace collect --process-id 42",
-                DateTimeOffset.Parse("2026-09-11T01:02:03Z"),
-                DateTimeOffset.Parse("2026-09-11T01:02:04Z"),
-                0,
-                "attachments/trace.nettrace",
-                ExternalDiagnosticAttachmentState.Available),
-              new ExternalDiagnosticAttachment(
-                "dotnet-counters",
-                "dotnet-counters 10.0.0",
-                "dotnet-counters collect --process-id 42",
-                DateTimeOffset.Parse("2026-09-11T01:02:03Z"),
-                DateTimeOffset.Parse("2026-09-11T01:02:04Z"),
-                0,
-                "attachments/counters.csv",
-                ExternalDiagnosticAttachmentState.Available),
-              new ExternalDiagnosticAttachment(
-                "dotnet-gcdump",
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                ExternalDiagnosticAttachmentState.Unavailable)
-          });
-        var manifestPath = Path.Combine(_artifactRoot, "attachments.json");
-
-        PerformanceDiagnosticAttachment.Write(manifestPath, manifest);
-
-        var loaded = PerformanceDiagnosticAttachment.Read(manifestPath);
-
-        Assert.Equal(runId, loaded.RunId);
-        Assert.Equal(stageId, loaded.StageId);
-        Assert.Equal("profile", loaded.Mode);
-        Assert.Equal(
-          new[] { "dotnet-counters", "dotnet-gcdump", "dotnet-trace" },
-          loaded.Attachments.Select(attachment => attachment.Tool).ToArray());
-        Assert.All(loaded.Attachments, attachment =>
-        {
-            Assert.Equal(runId, loaded.RunId);
-            Assert.Equal(stageId, loaded.StageId);
-            Assert.True(attachment.RelativeArtifactPath is null ||
-              !Path.IsPathRooted(attachment.RelativeArtifactPath));
-        });
-    }
-
-    [ExternalDiagnosticFact]
-    public void RepresentativeProfileTools_WriteAssociationsForOneFixture()
-    {
-        var runId = $"run-{Guid.NewGuid():N}";
-        var stageId = "Rule.Propagate";
-        var outputDirectory = Path.Combine(_artifactRoot, "attachments");
-        Directory.CreateDirectory(outputDirectory);
-        var processId = Environment.ProcessId;
-        var policies = ExternalDiagnosticToolPolicy.CreateDefaultProfilePolicies(
-          processId,
-          outputDirectory);
-        var attachments = new List<ExternalDiagnosticAttachment>();
-
-        foreach (var policy in policies)
-        {
-            var workload = Task.Run(RunRepresentativeFixture);
-            try
-            {
-                attachments.Add(RunTool(policy));
-            }
-            finally
-            {
-                workload.GetAwaiter().GetResult();
-            }
-        }
-
-        var manifest = new PerformanceDiagnosticAttachment(
-          runId,
-          stageId,
-          "profile",
-          attachments);
-        var manifestPath = Path.Combine(_artifactRoot, "profile-manifest.json");
-        PerformanceDiagnosticAttachment.Write(manifestPath, manifest);
-
-        var loaded = PerformanceDiagnosticAttachment.Read(manifestPath);
-
-        Assert.Equal(runId, loaded.RunId);
-        Assert.Equal(stageId, loaded.StageId);
-        Assert.All(loaded.Attachments, attachment =>
-        {
-            Assert.Equal(ExternalDiagnosticAttachmentState.Available, attachment.State);
-            Assert.False(string.IsNullOrWhiteSpace(attachment.Version));
-            Assert.NotNull(attachment.RelativeArtifactPath);
-            Assert.False(Path.IsPathRooted(attachment.RelativeArtifactPath));
-            Assert.True(File.Exists(Path.Combine(_artifactRoot, attachment.RelativeArtifactPath)));
-        });
-    }
-
-    public void Dispose()
-    {
-        if (Directory.Exists(_artifactRoot))
-        {
-            Directory.Delete(_artifactRoot, recursive: true);
-        }
-    }
-
-    private static ExternalDiagnosticAttachment RunTool(
-      ExternalDiagnosticToolPolicy policy)
-    {
-        var startedAt = DateTimeOffset.UtcNow;
-        var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = policy.Executable,
-            Arguments = policy.Arguments,
-            WorkingDirectory = policy.OutputDirectory,
-            UseShellExecute = false,
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            CreateNoWindow = true
-        }) ?? throw new InvalidOperationException($"Could not start {policy.Tool}.");
-        using (process)
-        {
-            if (!process.WaitForExit((int)policy.Timeout.TotalMilliseconds))
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch (InvalidOperationException)
-                {
-                }
-
-                throw new TimeoutException($"{policy.Tool} exceeded {policy.Timeout}.");
-            }
-
-            var stderr = process.StandardError.ReadToEnd();
-            _ = process.StandardOutput.ReadToEnd();
-            Assert.True(process.ExitCode == 0, $"{policy.Tool} failed: {stderr}");
-        }
-
-        return new ExternalDiagnosticAttachment(
-          policy.Tool,
-          policy.Version,
-          policy.DisplayCommand,
-          startedAt,
-          DateTimeOffset.UtcNow,
-          0,
-          Path.GetRelativePath(policy.ArtifactRoot, policy.ArtifactPath),
-          ExternalDiagnosticAttachmentState.Available);
-    }
-
-    private static void RunRepresentativeFixture()
-    {
-        const string source = """
-          public sealed class ProfileFixture
-          {
-              public int Compute(int input)
-              {
-                  var value = input * 17;
-                  return value > 100 ? value - 3 : value + 3;
-              }
+            path = candidate;
+            return true;
           }
-          """;
-        var tree = CSharpSyntaxTree.ParseText(source, path: "ProfileFixture.cs");
-        var checksum = 0;
-        var deadline = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 3;
-        while (Stopwatch.GetTimestamp() < deadline)
-        {
-            checksum = unchecked(checksum + tree.GetRoot().DescendantNodes().Count());
-            _ = new byte[1024];
         }
-
-        GC.KeepAlive(checksum);
+      }
     }
-}
 
-[AttributeUsage(AttributeTargets.Method)]
-internal sealed class ExternalDiagnosticFactAttribute : FactAttribute
-{
-    public ExternalDiagnosticFactAttribute()
+    path = string.Empty;
+    return false;
+  }
+
+  private static string? ReadVersion(string executablePath)
+  {
+    try
     {
-        if (!string.Equals(
-              Environment.GetEnvironmentVariable("NLISSN_RUN_EXTERNAL_DIAGNOSTIC_TESTS"),
-              "1",
-              StringComparison.OrdinalIgnoreCase))
-        {
-            Skip = "Requires NLISSN_RUN_EXTERNAL_DIAGNOSTIC_TESTS=1.";
-            return;
-        }
+      using var process = Process.Start(new ProcessStartInfo
+      {
+        FileName = executablePath,
+        ArgumentList = { "--version" },
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        CreateNoWindow = true
+      });
+      if (process is null)
+      {
+        return null;
+      }
 
-        var missingTools = ExternalDiagnosticToolPolicy.RequiredTools
-          .Where(tool => !ExternalDiagnosticToolPolicy.IsAvailable(tool))
-          .ToArray();
-        if (missingTools.Length > 0)
-        {
-            Skip = $"Required external diagnostic tools are unavailable: {string.Join(", ", missingTools)}.";
-        }
+      process.WaitForExit(5000);
+      var output = process.StandardOutput.ReadToEnd().Trim();
+      return string.IsNullOrWhiteSpace(output) ? null : output;
     }
+    catch (Exception)
+    {
+      return null;
+    }
+  }
+
+  private sealed class FixedToolLocator : IExternalDiagnosticToolLocator
+  {
+    private readonly ExternalDiagnosticToolInfo? _tool;
+
+    public FixedToolLocator(ExternalDiagnosticToolInfo? tool)
+    {
+      _tool = tool;
+    }
+
+    public ExternalDiagnosticToolInfo? Locate(ExternalDiagnosticTool tool)
+    {
+      return _tool is null
+        ? null
+        : new ExternalDiagnosticToolInfo(tool, _tool.ExecutablePath, _tool.Version);
+    }
+  }
+
+  private sealed class ThrowingLocator : IExternalDiagnosticToolLocator
+  {
+    public ExternalDiagnosticToolInfo? Locate(ExternalDiagnosticTool tool)
+    {
+      throw new InvalidOperationException("normal mode must not locate tools");
+    }
+  }
 }

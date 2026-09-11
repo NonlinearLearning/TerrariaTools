@@ -26,6 +26,10 @@ public sealed class NlissnSchemaContractTests
       Assert.False(definitions.GetProperty(name).GetProperty("additionalProperties").GetBoolean());
     }
 
+    var performance = definitions.GetProperty("performance").GetProperty("properties");
+    Assert.False(performance.GetProperty("enabled").GetProperty("default").GetBoolean());
+    Assert.Equal("normal", performance.GetProperty("mode").GetProperty("default").GetString());
+
     var analysis = definitions.GetProperty("analysis").GetProperty("properties");
     foreach (var name in new[]
     {

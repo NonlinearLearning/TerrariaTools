@@ -12,6 +12,8 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Rewrite;
 using NLISSN.Core.Pipeline;
+using NLISSN.Core.Performance;
+using NLISSN.Application.Performance;
 
 namespace NLISSN.Application;
 
@@ -22,16 +24,21 @@ public sealed class ApplicationService
     private readonly CompiledRuleGraph _compiledRuleGraph;
     private readonly PrototypeRewriter _rewriter;
     private readonly ICallFlowResolver? _callFlowResolver;
+    private readonly IPerformanceEventSink? _performanceEventSink;
     private readonly ConcurrentDictionary<Compilation, ICallFlowResolver> _defaultCallFlowResolvers =
         new(ReferenceEqualityComparer.Instance);
 
     // 用完整规则管道初始化单文件分析服务，并准备四个阶段的执行器和改写器。
-    public ApplicationService(RulePipeline pipeline, ICallFlowResolver? callFlowResolver = null)
+    public ApplicationService(
+      RulePipeline pipeline,
+      ICallFlowResolver? callFlowResolver = null,
+      IPerformanceEventSink? performanceEventSink = null)
     {
         _pipeline = pipeline;
         _compiledRuleGraph = pipeline.CompileRuleGraph();
         _rewriter = new PrototypeRewriter();
         _callFlowResolver = callFlowResolver;
+        _performanceEventSink = performanceEventSink;
     }
 
     // 允许调用方直接注入四个阶段的规则列表，内部仍组装成统一规则管道。
@@ -106,7 +113,10 @@ public sealed class ApplicationService
           analysisContext.Session,
           analysisContext.Root,
           _pipeline,
-          _compiledRuleGraph);
+          _compiledRuleGraph,
+          _performanceEventSink ?? analysisContext.Session.Runtime.PerformanceEventSink,
+          analysisContext.Session.Runtime.PerformanceRunId,
+          analysisContext.CpgPerformance.ItemId);
         seedMarks = graphResult.SeedMarks;
         propagatedMarks = graphResult.PropagatedMarks;
         liftedMarks = graphResult.LiftedMarks;
@@ -115,6 +125,7 @@ public sealed class ApplicationService
         ruleGraphNodeStatuses = graphResult.NodeStatuses;
         ruleGraphMetrics = graphResult.Metrics;
         var validationReport = graphResult.ValidationReport;
+        var ruleGraphPerformance = graphResult.Performance;
 
         var filteredDecisions = FilterUnsafeLocalDeclarationDeletes(
           decisions,
@@ -156,7 +167,16 @@ public sealed class ApplicationService
             analysisContext.CpgAnalysisContext.Graph.Nodes.Count,
             analysisContext.CpgAnalysisContext.Graph.Edges.Count),
           Evidence: graphResult.Evidence,
-          ValidationReport: validationReport);
+          ValidationReport: validationReport,
+          Performance: new ApplicationPerformanceFacts(
+            analysisContext.CpgPerformance.ItemId,
+            analysisContext.CpgPerformance,
+            ruleGraphPerformance,
+            new RewritePerformanceFacts(
+              null,
+              rewriteResult.Edits.Count,
+              rewriteResult.Diff.Files.Count),
+            PerformanceStatus.Completed));
     }
 
     private AnalysisContext BuildAnalysisContext(
@@ -238,6 +258,10 @@ public sealed class ApplicationService
           root,
           source,
           filePath);
+        var cpgPerformance = CpgPerformanceFactMapper.Map(
+          filePath,
+          CpgPerformanceFactMapper.ComputeSourceIdentity(source),
+          builder.LastBuildMetrics);
         var requestedCapabilities = builderOptions.RequestedCapabilities ?? new[] { NLCPGCapability.Default };
         var availableCapabilities = requestedCapabilities.Aggregate(
           NLCPGCapability.None,
@@ -254,7 +278,8 @@ public sealed class ApplicationService
           root,
           semanticModel,
           session,
-          cpgAnalysisContext);
+          cpgAnalysisContext,
+          cpgPerformance);
     }
 
     private static bool ShouldSkipRewrite(AnalysisSession session)
@@ -312,5 +337,6 @@ public sealed class ApplicationService
       SyntaxNode Root,
       SemanticModel SemanticModel,
       AnalysisSession Session,
-      CpgAnalysisContext CpgAnalysisContext);
+      CpgAnalysisContext CpgAnalysisContext,
+      CpgPerformanceFacts CpgPerformance);
 }

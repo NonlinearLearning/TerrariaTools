@@ -526,7 +526,7 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
         }
     }
 
-    private static string CreateResultSnapshot(PrototypeAnalysisResult result)
+    internal static string CreateResultSnapshot(PrototypeAnalysisResult result)
     {
         var decisions = result.Decisions
           .Select(decision => string.Join(
@@ -546,7 +546,84 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
             edit.OriginalText,
             edit.ReplacementText))
           .OrderBy(value => value, StringComparer.Ordinal);
-        return string.Join("\n", decisions.Concat(edits));
+        var ruleNodes = (result.RuleGraphTelemetry ?? Array.Empty<RuleGraphNodeTelemetry>())
+          .Select(node => string.Join(
+            "|",
+            "rule-node",
+            node.NodeId.Value,
+            node.InputCount,
+            node.OutputCount,
+            node.Status))
+          .OrderBy(value => value, StringComparer.Ordinal);
+        var ruleStatuses = (result.RuleGraphNodeStatuses ?? new Dictionary<RuleNodeId, RuleGraphNodeStatus>())
+          .Select(entry => string.Join("|", "rule-status", entry.Key.Value, entry.Value))
+          .OrderBy(value => value, StringComparer.Ordinal);
+        var diffSections = result.Diff.Files
+          .OrderBy(file => file.FilePath, StringComparer.Ordinal)
+          .SelectMany(file => file.Sections
+            .OrderBy(section => section.Span.Start)
+            .ThenBy(section => section.Span.Length)
+            .Select(section => string.Join(
+              "|",
+              "diff-section",
+              file.FilePath,
+              section.Span.Start,
+              section.Span.Length,
+              section.EditIndex,
+              section.EditKind,
+              section.OriginalText,
+              section.ReplacementText,
+              string.Join(
+                ";",
+                section.Blocks.Select(block => string.Join(
+                  ",",
+                  block.Lines.Select(line => $"{line.Kind}:{line.Text}")))))))
+          .OrderBy(value => value, StringComparer.Ordinal);
+        var evidenceNodes = (result.Evidence?.Nodes ?? Array.Empty<AnalysisEvidenceNode>())
+          .Select(node => string.Join(
+            "|",
+            "evidence-node",
+            node.Id,
+            node.Kind,
+            node.RuleId,
+            node.Anchor?.FilePath,
+            node.Anchor?.Start,
+            node.Anchor?.Length,
+            node.Anchor?.SyntaxKind,
+            node.Anchor?.GraphNodeId,
+            node.SummaryKey,
+            node.State,
+            node.Description))
+          .OrderBy(value => value, StringComparer.Ordinal);
+        var evidenceEdges = (result.Evidence?.Edges ?? Array.Empty<AnalysisEvidenceEdge>())
+          .Select(edge => string.Join("|", "evidence-edge", edge.SourceId, edge.TargetId, edge.Kind))
+          .OrderBy(value => value, StringComparer.Ordinal);
+        var graph = result.GraphMetrics is null
+          ? "graph:null"
+          : $"graph:{result.GraphMetrics.NodeCount}:{result.GraphMetrics.EdgeCount}";
+        var rewritten = $"rewritten:{result.RewrittenSource ?? string.Empty}";
+        var diffSummary = string.Join(
+          "|",
+          "diff-summary",
+          result.Diff.Summary.FileCount,
+          result.Diff.Summary.EditCount,
+          result.Diff.Summary.SectionCount,
+          result.Diff.Summary.BlockCount,
+          result.Diff.Summary.InsertLineCount,
+          result.Diff.Summary.DeleteLineCount,
+          result.Diff.Summary.ReplaceBlockCount);
+        return string.Join(
+          "\n",
+          decisions
+            .Concat(edits)
+            .Concat(ruleNodes)
+            .Concat(ruleStatuses)
+            .Concat(diffSections)
+            .Concat(evidenceNodes)
+            .Concat(evidenceEdges)
+            .Append(graph)
+            .Append(diffSummary)
+            .Append(rewritten));
     }
 
     private static AnalyzerTestContext CreateDeclarationContext(string declarationFilePath, params (string FilePath, string Source)[] files)

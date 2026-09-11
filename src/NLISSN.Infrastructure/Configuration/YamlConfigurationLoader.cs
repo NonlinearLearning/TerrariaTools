@@ -147,6 +147,7 @@ internal static class YamlConfigurationLoader
         {
             AddRequiredDiagnostic(diagnostics, document.Artifacts.Diff, "artifacts.diff");
             AddRequiredDiagnostic(diagnostics, document.Artifacts.RuntimeLog, "artifacts.runtimeLog");
+            AddRequiredDiagnostic(diagnostics, document.Artifacts.Performance, "artifacts.performance");
             AddRequiredDiagnostic(diagnostics, document.Artifacts.Evidence, "artifacts.evidence");
             AddRequiredDiagnostic(diagnostics, document.Artifacts.RewritePlan, "artifacts.rewritePlan");
             AddRequiredDiagnostic(diagnostics, document.Artifacts.AnalysisLog, "artifacts.analysisLog");
@@ -230,6 +231,7 @@ internal static class YamlConfigurationLoader
     {
         var diff = artifacts.Diff!;
         var runtimeLog = artifacts.RuntimeLog!;
+        var performance = artifacts.Performance!;
         var evidence = artifacts.Evidence!;
         var rewritePlan = artifacts.RewritePlan!;
         var analysisLog = artifacts.AnalysisLog!;
@@ -259,7 +261,10 @@ internal static class YamlConfigurationLoader
           evidence.Enabled,
           rewritePlanMode,
           diff.View,
-          runId);
+          runId,
+          performance.Enabled,
+          ParsePerformanceMode(performance.Mode),
+          Path.Combine(runRoot, "Performance", "summary.json"));
     }
 
     private static List<ConfigurationDiagnostic> ValidateValues(YamlDocument document)
@@ -272,6 +277,7 @@ internal static class YamlConfigurationLoader
             document.Analysis.DisabledRuleTypes is null ||
             document.Artifacts.Diff is null ||
             document.Artifacts.RuntimeLog is null ||
+            document.Artifacts.Performance is null ||
             document.Artifacts.Evidence is null ||
             document.Artifacts.RewritePlan is null ||
             document.Artifacts.AnalysisLog is null)
@@ -321,6 +327,7 @@ internal static class YamlConfigurationLoader
 
         AddEnumDiagnostic(diagnostics, document.Artifacts.Diff.View, "artifacts.diff.view", "legacy", "readable");
         AddEnumDiagnostic(diagnostics, document.Artifacts.RewritePlan.Mode, "artifacts.rewritePlan.mode", "none", "capture", "replay");
+        AddEnumDiagnostic(diagnostics, document.Artifacts.Performance.Mode, "artifacts.performance.mode", "normal", "diagnostic", "profile", "benchmark");
         AddEnumDiagnostic(diagnostics, document.Logging?.View ?? "normal", "logging.view", "compact", "normal", "diagnostic", "benchmark");
         AddEnumDiagnostic(diagnostics, document.Logging?.Level ?? "debug", "logging.level", "error", "warn", "info", "debug", "trace");
         AddEnumDiagnostic(diagnostics, document.Logging?.Profile ?? "normal", "logging.profile", "minimal", "normal", "diagnostic", "benchmark");
@@ -604,6 +611,15 @@ internal static class YamlConfigurationLoader
         };
     }
 
+    private static string ParsePerformanceMode(string mode)
+    {
+        return mode.ToLowerInvariant() switch
+        {
+            "normal" or "diagnostic" or "profile" or "benchmark" => mode.ToLowerInvariant(),
+            _ => throw new ArgumentException("artifacts.performance.mode must be normal, diagnostic, profile, or benchmark.")
+        };
+    }
+
     private static string FindRepositoryRoot(string startDirectory)
     {
         var directory = new DirectoryInfo(startDirectory);
@@ -855,11 +871,18 @@ internal sealed class YamlArtifacts
 
     public YamlToggle? RuntimeLog { get; set; } = new();
 
+    public YamlPerformance? Performance { get; set; } = new();
+
     public YamlToggle? Evidence { get; set; } = new();
 
     public YamlRewritePlan? RewritePlan { get; set; } = new();
 
     public YamlToggle? AnalysisLog { get; set; } = new();
+}
+
+internal sealed class YamlPerformance : YamlToggle
+{
+    public string Mode { get; set; } = "normal";
 }
 
 internal sealed class YamlDiff : YamlToggle

@@ -82,6 +82,15 @@ public sealed partial class NLCPGBuilder
     private readonly NLCPGBuilderOptions _options;
     private readonly IConcurrencyPool _concurrencyPool;
 
+    internal bool PartitionPerformanceDiagnosticsEnabled =>
+      _options.PerformanceDiagnostics == NLCPGPerformanceDiagnosticsMode.Diagnostic &&
+      _options.PartitionPerformanceEventSink is not null;
+
+    internal int PartitionPerformanceMaxDegreeOfParallelism =>
+      _options.EffectiveMaxDegreeOfParallelism;
+
+    internal string? PartitionPerformanceRunId => _options.PerformanceRunId;
+
     public NLCPGFlowSummaryMetrics LastFlowSummaryMetrics { get; private set; } = NLCPGFlowSummaryMetrics.Empty;
 
     public NLCPGBuildMetrics LastBuildMetrics { get; private set; } = NLCPGBuildMetrics.Empty;
@@ -538,6 +547,46 @@ public sealed partial class NLCPGBuilder
             stopwatch.Stop();
             _passElapsedMilliseconds[stageName] = stopwatch.ElapsedMilliseconds;
         }
+    }
+
+    internal void RecordPartitionPerformanceEvent(
+      string stageId,
+      string partitionId,
+      int partitionIndex,
+      int inputCount,
+      int outputCount,
+      long wallElapsedMs,
+      long accumulatedElapsedMs)
+    {
+        if (!PartitionPerformanceDiagnosticsEnabled)
+        {
+            return;
+        }
+
+        _options.PartitionPerformanceEventSink.TryRecord(
+          new PartitionPerformanceEvent(
+            stageId,
+            partitionId,
+            partitionIndex,
+            inputCount,
+            outputCount,
+            Math.Max(0, wallElapsedMs),
+            Math.Max(0, accumulatedElapsedMs),
+            QueueWaitMs: null,
+            RequestedMaxDegreeOfParallelism: PartitionPerformanceMaxDegreeOfParallelism,
+            PeakActiveWorkItemCount: null,
+            PeakBufferCount: null,
+            AdmissionReason: null,
+            RunId: PartitionPerformanceRunId));
+    }
+
+    internal static string CreatePartitionPerformanceId(
+      string stage,
+      int partitionIndex,
+      int spanStart,
+      int spanEnd)
+    {
+        return $"{stage}:{partitionIndex}:{spanStart}-{spanEnd}";
     }
 
     private static NLCPGPersistenceMetrics MergePersistenceMetrics(

@@ -13,4 +13,7 @@ internal sealed record ArtifactSettings(
     bool WriteEvidence,
     RewritePlanMode RewritePlanMode,
     string DiffView,
-    string RunId = "");
+    string RunId = "",
+    bool WritePerformanceSummary = false,
+    string PerformanceMode = "normal",
+    string PerformanceSummaryPath = "");

@@ -5,6 +5,7 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Validation;
+using NLISSN.Core.Performance;
 
 namespace NLISSN.Core.Rewrite;
 
@@ -43,7 +44,9 @@ public sealed record PrototypeAnalysisResult(
   /// 当前 analysis epoch 的不可变决策证据图；未走规则图的兼容路径为空。
   AnalysisEvidenceGraph? Evidence = null,
   /// 显式启用绑定校验时产生的稳定诊断；默认路径为空。
-  AnalysisValidationReport? ValidationReport = null)
+  AnalysisValidationReport? ValidationReport = null,
+  /// 当前单个 analysis item 的性能事实；不包含目录或 Run children。
+  ApplicationPerformanceFacts? Performance = null)
 {
   public DiffSummary DiffSummary => Diff.Summary;
 }

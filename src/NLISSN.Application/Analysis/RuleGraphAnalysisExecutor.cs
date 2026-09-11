@@ -6,6 +6,8 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Validation;
+using NLISSN.Application.Performance;
+using NLISSN.Core.Performance;
 
 namespace NLISSN.Application;
 
@@ -20,7 +22,8 @@ internal sealed record RuleGraphAnalysisResult(
   AnalysisValidationReport? ValidationReport,
   IReadOnlyList<RuleGraphNodeTelemetry> Telemetry,
   IReadOnlyDictionary<RuleNodeId, RuleGraphNodeStatus> NodeStatuses,
-  RuleGraphExecutionMetrics? Metrics);
+  RuleGraphExecutionMetrics? Metrics,
+  RuleGraphPerformanceFacts? Performance);
 
 internal sealed class RuleGraphAnalysisExecutor
 {
@@ -28,7 +31,10 @@ internal sealed class RuleGraphAnalysisExecutor
       AnalysisSession session,
       SyntaxNode root,
       RulePipeline pipeline,
-      CompiledRuleGraph graph)
+      CompiledRuleGraph graph,
+      IPerformanceEventSink? performanceEventSink = null,
+      string? runId = null,
+      string? itemId = null)
     {
         var propagationRegion = new PropagationRegion(session, pipeline.Propagators);
         var executionNodes = pipeline.Markers
@@ -46,7 +52,10 @@ internal sealed class RuleGraphAnalysisExecutor
             graph,
             executionNodes,
             graphDegree,
-            session.Runtime.ExecutionOptions.CancellationToken)
+            session.Runtime.ExecutionOptions.CancellationToken,
+            performanceEventSink,
+            runId,
+            itemId)
           .GetAwaiter()
           .GetResult();
 
@@ -110,7 +119,8 @@ internal sealed class RuleGraphAnalysisExecutor
           validationReport,
           execution.Telemetry ?? Array.Empty<RuleGraphNodeTelemetry>(),
           nodeStatuses,
-          execution.Metrics);
+          execution.Metrics,
+          RuleGraphPerformanceFactMapper.Map(execution.Telemetry, execution.Metrics));
     }
 
     private static bool IsValidationEnabled(AnalysisSession session)

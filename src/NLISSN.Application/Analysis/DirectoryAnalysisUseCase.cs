@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Core.Analysis;
@@ -8,6 +9,7 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Rewrite;
 using NLISSN.Core.Pipeline;
+using NLISSN.Core.Performance;
 
 namespace NLISSN.Application;
 
@@ -39,7 +41,8 @@ public sealed record DirectoryFileAnalysisResult(
 /// 聚合目录级结果和逐文件结果。
 public sealed record DirectoryAnalysisOutcome(
   PrototypeAnalysisResult Result,
-  IReadOnlyList<DirectoryFileAnalysisResult> FileResults);
+  IReadOnlyList<DirectoryFileAnalysisResult> FileResults,
+  DirectoryPerformanceFacts? Performance = null);
 
 /// 编排目录级删除分析，并在并行计算时维持与输入一致的确定性结果顺序。
 public sealed class DirectoryAnalysisUseCase
@@ -68,7 +71,11 @@ public sealed class DirectoryAnalysisUseCase
         {
             return new DirectoryAnalysisOutcome(
               CreateEmptyResult(),
-              Array.Empty<DirectoryFileAnalysisResult>());
+              Array.Empty<DirectoryFileAnalysisResult>(),
+              DirectoryPerformanceFactAggregator.Aggregate(
+                "empty-directory",
+                Array.Empty<DirectoryFileAnalysisResult>(),
+                wallElapsedMs: 0));
         }
 
         var trees = orderedSources.ToDictionary(
@@ -104,7 +111,11 @@ public sealed class DirectoryAnalysisUseCase
         {
             return new DirectoryAnalysisOutcome(
               CreateEmptyResult(),
-              Array.Empty<DirectoryFileAnalysisResult>());
+              Array.Empty<DirectoryFileAnalysisResult>(),
+              DirectoryPerformanceFactAggregator.Aggregate(
+                "empty-directory",
+                Array.Empty<DirectoryFileAnalysisResult>(),
+                wallElapsedMs: 0));
         }
 
         var trees = sourceFiles.ToDictionary(
@@ -121,6 +132,7 @@ public sealed class DirectoryAnalysisUseCase
       AnalysisRequestSettings settings,
       AnalysisRuntime runtime)
     {
+        var stopwatch = Stopwatch.StartNew();
         var sourcesByPath = orderedSources.ToDictionary(
           source => source.FilePath,
           source => source.Source,
@@ -154,10 +166,16 @@ public sealed class DirectoryAnalysisUseCase
         var diagnostics = PostRewriteDiagnostics.ShouldSkipDeclarationDiagnostics(settings)
           ? Array.Empty<AnalysisDiagnostic>()
           : PostRewriteDiagnostics.GetRewriteDiagnostics(sourcesByPath, rewrittenSources);
+        stopwatch.Stop();
+        var performance = DirectoryPerformanceFactAggregator.Aggregate(
+          "directory",
+          fileResults,
+          stopwatch.ElapsedMilliseconds);
 
         return new DirectoryAnalysisOutcome(
           result with { Diagnostics = diagnostics },
-          fileResults);
+          fileResults,
+          performance);
     }
 
     public static PrototypeAnalysisResult CombineResults(

@@ -18,7 +18,7 @@ internal sealed class DirectoryAnalysisService
         _pipeline = pipeline;
     }
 
-    internal async Task<PrototypeAnalysisResult> AnalyzeDirectoryAsync(
+    internal async Task<AnalysisRunOutcome> AnalyzeDirectoryAsync(
       string directoryPath,
       AnalysisRequestSettings settings,
       AnalysisRuntime runtime,
@@ -31,10 +31,16 @@ internal sealed class DirectoryAnalysisService
           filePaths.Select((filePath, index) => new DirectorySourceFile(index, filePath, sourcesByPath[filePath])).ToArray(),
           settings,
           runtime);
-        return MaterializeOutcome(directoryPath, sourcesByPath, outcome, execution, artifacts);
+        var materialized = MaterializeOutcome(directoryPath, sourcesByPath, outcome, execution, artifacts);
+        return AnalysisRunOutcome.FromDirectory(
+          ResolveRunId(artifacts.RunId),
+          "directory",
+          materialized.Result,
+          materialized.Performance,
+          inputIdentity: directoryPath);
     }
 
-    internal static PrototypeAnalysisResult MaterializeOutcome(
+    internal static DirectoryAnalysisOutcome MaterializeOutcome(
       string directoryPath,
       IReadOnlyDictionary<string, string> sourcesByPath,
       DirectoryAnalysisOutcome outcome,
@@ -77,10 +83,18 @@ internal sealed class DirectoryAnalysisService
             }
         }
 
-        return outcome.Result with
+        return outcome with
         {
-            DiffFilePath = writtenDiffCount > 0 ? diffRootPath : null,
+            Result = outcome.Result with
+            {
+                DiffFilePath = writtenDiffCount > 0 ? diffRootPath : null,
+            }
         };
+    }
+
+    private static string ResolveRunId(string runId)
+    {
+        return string.IsNullOrWhiteSpace(runId) ? "unassigned" : runId;
     }
 
     private static async Task<Dictionary<string, string>> ReadSourcesAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken)

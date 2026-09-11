@@ -110,6 +110,59 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       Path.Combine(_tempDirectory, "artifacts", "fixture-1", "Evidence", "evidence.json"),
       configuration.Artifacts.EvidencePath);
     Assert.Equal(RewritePlanMode.Capture, configuration.Artifacts.RewritePlanMode);
+    Assert.False(configuration.Artifacts.WritePerformanceSummary);
+    Assert.Equal("normal", configuration.Artifacts.PerformanceMode);
+    Assert.Equal(
+      Path.Combine(_tempDirectory, "artifacts", "fixture-1", "Performance", "summary.json"),
+      configuration.Artifacts.PerformanceSummaryPath);
+  }
+
+  [Fact]
+  public void Load_PerformanceArtifact_IsIndependentAndChangesResolvedFingerprint()
+  {
+    var sourcePath = Path.Combine(_tempDirectory, "Input-performance.cs");
+    var disabledPath = Path.Combine(_tempDirectory, "disabled.yml");
+    var enabledPath = Path.Combine(_tempDirectory, "enabled.yml");
+    File.WriteAllText(sourcePath, "public sealed class Input { }");
+    var sourceFileName = Path.GetFileName(sourcePath);
+    File.WriteAllText(disabledPath, string.Join(Environment.NewLine, new[]
+    {
+      "schemaVersion: 2",
+      "runId: performance-disabled",
+      $"input: {{ path: {sourceFileName} }}",
+      "analysis: {}",
+      "execution: { maxDegreeOfParallelism: 1 }",
+      "artifacts:",
+      "  root: artifacts",
+      "  runtimeLog:",
+      "    enabled: true",
+      string.Empty
+    }));
+    File.WriteAllText(enabledPath, string.Join(Environment.NewLine, new[]
+    {
+      "schemaVersion: 2",
+      "runId: performance-enabled",
+      $"input: {{ path: {sourceFileName} }}",
+      "analysis: {}",
+      "execution: { maxDegreeOfParallelism: 1 }",
+      "artifacts:",
+      "  root: artifacts",
+      "  performance:",
+      "    enabled: true",
+      "    mode: benchmark",
+      string.Empty
+    }));
+
+    var disabled = YamlConfigurationLoader.Load(disabledPath);
+    var enabled = YamlConfigurationLoader.Load(enabledPath);
+
+    Assert.False(disabled.Artifacts.WritePerformanceSummary);
+    Assert.True(disabled.Artifacts.WriteRuntimeLog);
+    Assert.True(enabled.Artifacts.WritePerformanceSummary);
+    Assert.Equal("benchmark", enabled.Artifacts.PerformanceMode);
+    Assert.NotEqual(
+      ResolvedConfigurationArtifact.Create(disabled).Fingerprint,
+      ResolvedConfigurationArtifact.Create(enabled).Fingerprint);
   }
 
   [Fact]

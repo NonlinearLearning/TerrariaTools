@@ -2,6 +2,7 @@ using NL.Concurrency;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
+using NLISSN.Core.Performance;
 
 namespace NLISSN.Core.Pipeline;
 
@@ -200,7 +201,10 @@ public sealed class RuleGraphExecutor
       CompiledRuleGraph graph,
       IReadOnlyList<RuleGraphExecutionNode> executionNodes,
       int maxDegreeOfParallelism,
-      CancellationToken cancellationToken = default)
+      CancellationToken cancellationToken = default,
+      IPerformanceEventSink? performanceEventSink = null,
+      string? runId = null,
+      string? itemId = null)
     {
         ArgumentNullException.ThrowIfNull(graph);
         ArgumentNullException.ThrowIfNull(executionNodes);
@@ -243,6 +247,20 @@ public sealed class RuleGraphExecutor
           graph.Nodes.Select(node =>
           {
               var completion = execution.Results[node.NodeId];
+              performanceEventSink.TryRecord(new PerformanceEvent(
+                runId ?? "unassigned",
+                PerformanceStageId.ForRule(node.NodeId.Kind),
+                itemId,
+                completion.ElapsedMilliseconds,
+                null,
+                completion.Status == RuleGraphNodeStatus.Disabled
+                  ? PerformanceStatus.Skipped
+                  : PerformanceStatus.Completed,
+                new Dictionary<string, long>
+                {
+                  ["inputCount"] = completion.InputCount,
+                  ["outputCount"] = completion.Result.Values.Count
+                }));
               return new RuleGraphNodeTelemetry(
                 node.NodeId,
                 completion.InputCount,
