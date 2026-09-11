@@ -133,6 +133,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       "analysis: {}",
       "execution: { maxDegreeOfParallelism: 1 }",
       "artifacts:",
+      "  root: artifacts",
       "  runtimeLog:",
       "    enabled: true",
       string.Empty
@@ -145,6 +146,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       "analysis: {}",
       "execution: { maxDegreeOfParallelism: 1 }",
       "artifacts:",
+      "  root: artifacts",
       "  performance:",
       "    enabled: true",
       "    mode: benchmark",
