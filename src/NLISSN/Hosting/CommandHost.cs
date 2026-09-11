@@ -32,10 +32,16 @@ public sealed class  CommandHost
     internal async Task<PrototypeAnalysisResult> AnalyzeAsync(AnalysisConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        return (await AnalyzeCoreAsync(configuration)).Result;
+    }
+
+    internal async Task<AnalysisRunOutcome> AnalyzeOutcomeAsync(AnalysisConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
         return await AnalyzeCoreAsync(configuration);
     }
 
-    private async Task<PrototypeAnalysisResult> AnalyzeCoreAsync(AnalysisConfiguration configuration)
+    private async Task<AnalysisRunOutcome> AnalyzeCoreAsync(AnalysisConfiguration configuration)
     {
         var inputPath = configuration.InputPath;
         var settings = configuration.CreateAnalysisRequestSettings();
@@ -70,10 +76,14 @@ public sealed class  CommandHost
                       configuration.Execution,
                       configuration.Artifacts);
                     await CompleteRuntimeLogAsync(configuration, runtimeLog, replayResult, runtime);
-                    return replayResult;
+                    return AnalysisRunOutcome.FromItem(
+                      ResolveRunId(configuration.Artifacts.RunId),
+                      "replay",
+                      replayResult,
+                      inputIdentity: inputPath);
                 }
 
-                var directoryResult = await new  DirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
+                var directoryOutcome = await new  DirectoryAnalysisService(rules).AnalyzeDirectoryAsync(
                   inputPath,
                   settings,
                   runtime,
@@ -81,16 +91,16 @@ public sealed class  CommandHost
                   configuration.Artifacts);
                 if (configuration.Artifacts.RewritePlanMode == RewritePlanMode.Capture)
                 {
-                    CaptureRewritePlan(inputPath, configuration.Artifacts.RewritePlanRoot, directoryResult);
+                    CaptureRewritePlan(inputPath, configuration.Artifacts.RewritePlanRoot, directoryOutcome.Result);
                 }
 
-                await CompleteRuntimeLogAsync(configuration, runtimeLog, directoryResult, runtime);
-                return directoryResult;
+                await CompleteRuntimeLogAsync(configuration, runtimeLog, directoryOutcome.Result, runtime);
+                return directoryOutcome;
             }
 
             if (configuration.Workspace is not null)
             {
-                var workspaceResult = await new WorkspaceAnalysisService(rules).AnalyzeAsync(
+                var workspaceOutcome = await new WorkspaceAnalysisService(rules).AnalyzeAsync(
                   configuration.Workspace,
                   settings,
                   runtime,
@@ -101,12 +111,12 @@ public sealed class  CommandHost
                     CaptureRewritePlan(
                       configuration.Workspace.SolutionRoot,
                       configuration.Artifacts.RewritePlanRoot,
-                      workspaceResult,
+                      workspaceOutcome.Result,
                       configuration.Workspace.TargetDocumentPath is null ? null : 1);
                 }
 
-                await CompleteRuntimeLogAsync(configuration, runtimeLog, workspaceResult, runtime);
-                return workspaceResult;
+                await CompleteRuntimeLogAsync(configuration, runtimeLog, workspaceOutcome.Result, runtime);
+                return workspaceOutcome;
             }
 
             var source = inputPath is not null && File.Exists(inputPath)
@@ -123,7 +133,11 @@ public sealed class  CommandHost
             if (inputPath is null || !File.Exists(inputPath) || result.Edits.Count == 0)
             {
                 await CompleteRuntimeLogAsync(configuration, runtimeLog, result, runtime);
-                return result;
+                return AnalysisRunOutcome.FromItem(
+                  ResolveRunId(configuration.Artifacts.RunId),
+                  "file",
+                  result,
+                  inputIdentity: filePath);
             }
 
             if (configuration.Execution.WriteBack)
@@ -134,7 +148,11 @@ public sealed class  CommandHost
             if (!configuration.Artifacts.WriteDiff)
             {
                 await CompleteRuntimeLogAsync(configuration, runtimeLog, result, runtime);
-                return result;
+                return AnalysisRunOutcome.FromItem(
+                  ResolveRunId(configuration.Artifacts.RunId),
+                  "file",
+                  result,
+                  inputIdentity: filePath);
             }
 
             var inputRoot = Path.GetDirectoryName(Path.GetFullPath(inputPath))
@@ -151,7 +169,11 @@ public sealed class  CommandHost
                 DiffFilePath = writtenDiffCount > 0 ? configuration.Artifacts.DiffRoot : null,
             };
             await CompleteRuntimeLogAsync(configuration, runtimeLog, result, runtime);
-            return result;
+                return AnalysisRunOutcome.FromItem(
+                  ResolveRunId(configuration.Artifacts.RunId),
+                  "file",
+                  result,
+                  inputIdentity: filePath);
         }
         catch (Exception exception)
         {
@@ -167,6 +189,11 @@ public sealed class  CommandHost
     private static bool HasRuleSelection(RulePolicySettings policy)
     {
         return policy.DisabledRuleTypes.Count > 0;
+    }
+
+    private static string ResolveRunId(string runId)
+    {
+        return string.IsNullOrWhiteSpace(runId) ? "unassigned" : runId;
     }
 
     private static RuleSelection CreateRuleSelection(RulePolicySettings policy)

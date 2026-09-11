@@ -23,7 +23,9 @@ public sealed record RunPerformanceReport
     int sampleNumber = 1,
     bool isWarmup = false,
     bool comparisonEligible = false,
-    IReadOnlyList<string>? comparisonReasons = null)
+    IReadOnlyList<string>? comparisonReasons = null,
+    DirectoryPerformanceFacts? Directory = null,
+    IReadOnlyList<PerformanceStageSample>? stages = null)
   {
     if (string.IsNullOrWhiteSpace(runId))
     {
@@ -55,6 +57,9 @@ public sealed record RunPerformanceReport
     ComparisonEligible = comparisonEligible;
     ComparisonReasons = new ReadOnlyCollection<string>(
       (comparisonReasons ?? Array.Empty<string>()).ToArray());
+    this.Directory = Directory;
+    Stages = new ReadOnlyCollection<PerformanceStageSample>(
+      (stages ?? Array.Empty<PerformanceStageSample>()).ToArray());
   }
 
   public string RunId { get; }
@@ -80,6 +85,10 @@ public sealed record RunPerformanceReport
   public bool ComparisonEligible { get; }
 
   public IReadOnlyList<string> ComparisonReasons { get; }
+
+  public DirectoryPerformanceFacts? Directory { get; }
+
+  public IReadOnlyList<PerformanceStageSample> Stages { get; }
 
   public bool IsComplete => TerminalSummary.IsComplete &&
     TerminalStatus == PerformanceStatus.Completed;

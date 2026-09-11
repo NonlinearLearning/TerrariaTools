@@ -4,6 +4,7 @@ using NLISSN.Core.Pipeline;
 using NLISSN.Core.Rewrite;
 using NLISSN.Infrastructure.Configuration;
 using NLISSN.Infrastructure.Workspace;
+using System.Diagnostics;
 
 namespace NLISSN.Hosting;
 
@@ -18,7 +19,7 @@ internal sealed class WorkspaceAnalysisService
         _pipeline = pipeline;
     }
 
-    internal async Task<PrototypeAnalysisResult> AnalyzeAsync(
+    internal async Task<AnalysisRunOutcome> AnalyzeAsync(
       WorkspaceInputOptions options,
       AnalysisRequestSettings settings,
       AnalysisRuntime runtime,
@@ -33,7 +34,8 @@ internal sealed class WorkspaceAnalysisService
             throw new InvalidOperationException(FormatDiagnostics(loadResult.Diagnostics));
         }
 
-        var projectResults = new List<PrototypeAnalysisResult>(loadResult.Snapshot!.Projects.Count);
+        var stopwatch = Stopwatch.StartNew();
+        var projectOutcomes = new List<DirectoryAnalysisOutcome>(loadResult.Snapshot!.Projects.Count);
         var useCase = new DirectoryAnalysisUseCase(_pipeline);
         foreach (var project in loadResult.Snapshot.Projects)
         {
@@ -63,7 +65,7 @@ internal sealed class WorkspaceAnalysisService
               StringComparer.Ordinal);
             var projectDirectory = Path.GetDirectoryName(project.ProjectPath)
               ?? loadResult.Snapshot.SolutionDirectory;
-            projectResults.Add(DirectoryAnalysisService.MaterializeOutcome(
+            projectOutcomes.Add(DirectoryAnalysisService.MaterializeOutcome(
               projectDirectory,
               sourcesByPath,
               outcome,
@@ -71,11 +73,24 @@ internal sealed class WorkspaceAnalysisService
               artifacts));
         }
 
-        return DirectoryAnalysisUseCase.CombineResults(
-          projectResults,
+        stopwatch.Stop();
+        var combinedResult = DirectoryAnalysisUseCase.CombineResults(
+          projectOutcomes.Select(outcome => outcome.Result).ToArray(),
           options.TargetDocumentPath is null
             ? loadResult.Snapshot.IsSolution ? "workspace" : "project"
             : "document");
+        var performance = DirectoryPerformanceFactAggregator.Aggregate(
+          "workspace",
+          projectOutcomes.SelectMany(outcome => outcome.FileResults).ToArray(),
+          stopwatch.ElapsedMilliseconds);
+        return AnalysisRunOutcome.FromDirectory(
+          string.IsNullOrWhiteSpace(artifacts.RunId) ? "unassigned" : artifacts.RunId,
+          options.TargetDocumentPath is null
+            ? loadResult.Snapshot.IsSolution ? "workspace" : "project"
+            : "document",
+          combinedResult,
+          performance,
+          inputIdentity: options.Path);
     }
 
     private static bool PathsEqual(string left, string right)
