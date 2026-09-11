@@ -12,6 +12,8 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Rewrite;
 using NLISSN.Core.Pipeline;
+using NLISSN.Core.Performance;
+using NLISSN.Application.Performance;
 
 namespace NLISSN.Application;
 
@@ -115,6 +117,7 @@ public sealed class ApplicationService
         ruleGraphNodeStatuses = graphResult.NodeStatuses;
         ruleGraphMetrics = graphResult.Metrics;
         var validationReport = graphResult.ValidationReport;
+        var ruleGraphPerformance = graphResult.Performance;
 
         var filteredDecisions = FilterUnsafeLocalDeclarationDeletes(
           FilterNestedDeleteDecisions(decisions),
@@ -148,7 +151,16 @@ public sealed class ApplicationService
             analysisContext.CpgAnalysisContext.Graph.Nodes.Count,
             analysisContext.CpgAnalysisContext.Graph.Edges.Count),
           Evidence: graphResult.Evidence,
-          ValidationReport: validationReport);
+          ValidationReport: validationReport,
+          Performance: new ApplicationPerformanceFacts(
+            analysisContext.CpgPerformance.ItemId,
+            analysisContext.CpgPerformance,
+            ruleGraphPerformance,
+            new RewritePerformanceFacts(
+              null,
+              rewriteResult.Edits.Count,
+              rewriteResult.Diff.Files.Count),
+            PerformanceStatus.Completed));
     }
 
     private AnalysisContext BuildAnalysisContext(
@@ -230,6 +242,10 @@ public sealed class ApplicationService
           root,
           source,
           filePath);
+        var cpgPerformance = CpgPerformanceFactMapper.Map(
+          filePath,
+          CpgPerformanceFactMapper.ComputeSourceIdentity(source),
+          builder.LastBuildMetrics);
         var requestedCapabilities = builderOptions.RequestedCapabilities ?? new[] { NLCPGCapability.Default };
         var availableCapabilities = requestedCapabilities.Aggregate(
           NLCPGCapability.None,
@@ -246,7 +262,8 @@ public sealed class ApplicationService
           root,
           semanticModel,
           session,
-          cpgAnalysisContext);
+          cpgAnalysisContext,
+          cpgPerformance);
     }
 
     private static IReadOnlyList<RuleDecision> FilterNestedDeleteDecisions(IReadOnlyList<RuleDecision> decisions)
@@ -345,5 +362,6 @@ public sealed class ApplicationService
       SyntaxNode Root,
       SemanticModel SemanticModel,
       AnalysisSession Session,
-      CpgAnalysisContext CpgAnalysisContext);
+      CpgAnalysisContext CpgAnalysisContext,
+      CpgPerformanceFacts CpgPerformance);
 }

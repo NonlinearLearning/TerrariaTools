@@ -6,6 +6,8 @@ using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Validation;
+using NLISSN.Application.Performance;
+using NLISSN.Core.Performance;
 
 namespace NLISSN.Application;
 
@@ -18,7 +20,8 @@ internal sealed record RuleGraphAnalysisResult(
   AnalysisValidationReport? ValidationReport,
   IReadOnlyList<RuleGraphNodeTelemetry> Telemetry,
   IReadOnlyDictionary<RuleNodeId, RuleGraphNodeStatus> NodeStatuses,
-  RuleGraphExecutionMetrics? Metrics);
+  RuleGraphExecutionMetrics? Metrics,
+  RuleGraphPerformanceFacts? Performance);
 
 internal sealed class RuleGraphAnalysisExecutor
 {
@@ -52,27 +55,28 @@ internal sealed class RuleGraphAnalysisExecutor
           .Where(node => node.NodeId.Kind == RuleKind.Mark)
           .SelectMany(node => node.Result.Values)
           .OfType<MarkRecord>()
-          .DistinctBy(mark => (mark.RuleId, mark.SyntaxNode.SpanStart, mark.SyntaxNode.Span.Length))
+          .DistinctBy(mark => new
+          {
+              mark.RuleId,
+              Identity = FactIdentity.Create(
+                mark.SyntaxNode,
+                mark.SourceTreeVersion,
+                mark.FactKind,
+                payload: null,
+                mark.Provenance ?? FactProvenance.ForMark(mark.RuleId)).StableKey
+          })
           .ToList();
         var propagatedMarks = execution.Nodes
           .Where(node => node.NodeId.Kind == RuleKind.Propagate)
           .SelectMany(node => node.Result.Values)
           .OfType<PropagatedMarkRecord>()
-          .DistinctBy(mark => (
-            mark.RuleId,
-            mark.Mark.SyntaxNode.SpanStart,
-            mark.Mark.SyntaxNode.Span.Length,
-            mark.Mark.SyntaxNode.RawKind))
+          .DistinctBy(mark => PropagationFactKey.Create(mark))
           .ToList();
         var liftedMarks = execution.Nodes
           .Where(node => node.NodeId.Kind == RuleKind.Lift)
           .SelectMany(node => node.Result.Values)
           .OfType<LiftedMarkRecord>()
-          .DistinctBy(mark => (
-            mark.RuleId,
-            mark.Mark.SyntaxNode.SpanStart,
-            mark.Mark.SyntaxNode.Span.Length,
-            mark.Mark.SyntaxNode.RawKind))
+          .DistinctBy(mark => CoverageEvidence.FromLifted(mark).Identity)
           .ToList();
         var units = execution.Nodes
           .Where(node => node.NodeId.Kind == RuleKind.Propose)
@@ -99,7 +103,8 @@ internal sealed class RuleGraphAnalysisExecutor
           validationReport,
           execution.Telemetry ?? Array.Empty<RuleGraphNodeTelemetry>(),
           nodeStatuses,
-          execution.Metrics);
+          execution.Metrics,
+          RuleGraphPerformanceFactMapper.Map(execution.Telemetry, execution.Metrics));
     }
 
     private static bool IsValidationEnabled(AnalysisSession session)
