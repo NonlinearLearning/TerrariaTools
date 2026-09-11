@@ -6,6 +6,7 @@ using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
 
 namespace NLISSN.Rules;
 
@@ -99,6 +100,17 @@ public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPro
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    public override RuleTransformationContract TransformationContract { get; } = new(
+      "rewrite.class-control-structure",
+      new HashSet<DecisionActionKind> { DecisionActionKind.Delete },
+      new HashSet<RewriteControlFlowEffect>
+      {
+          RewriteControlFlowEffect.RemoveLoop,
+          RewriteControlFlowEffect.RemoveSwitchSection
+      },
+      true,
+      false);
+
     // 把删除类链路中已提升到控制结构宿主的 mark 转成直接删除决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
@@ -115,12 +127,30 @@ public sealed class ClassControlStructureRemovalProposalRule : RuleDefinitionPro
                 continue;
             }
 
-            yield return DeleteDecisionFactory.CreateDeleteDecision(
+            var decision = DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
               mark.SyntaxNode,
               mark.Reason,
               sourceMark.SyntaxNode);
+            var effect = GetControlEffect(kind);
+            yield return effect is null
+              ? decision
+              : decision with
+              {
+                  TransformationContract = TransformationContract,
+                  ControlFlowEffects = new[] { effect.Value }
+              };
         }
+    }
+
+    private static RewriteControlFlowEffect? GetControlEffect(SyntaxKind kind)
+    {
+        return kind switch
+        {
+            SyntaxKind.ForStatement or SyntaxKind.WhileStatement or SyntaxKind.DoStatement => RewriteControlFlowEffect.RemoveLoop,
+            SyntaxKind.SwitchStatement => RewriteControlFlowEffect.RemoveSwitchSection,
+            _ => null
+        };
     }
 }
 
@@ -1624,6 +1654,17 @@ public sealed class ClassIfStructureProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds =>
       DeleteSObjectProposalHelpers.MergeableNodeKinds;
 
+    public override RuleTransformationContract TransformationContract { get; } = new(
+      "rewrite.class-if-structure",
+      new HashSet<DecisionActionKind> { DecisionActionKind.Delete, DecisionActionKind.Replace },
+      new HashSet<RewriteControlFlowEffect>
+      {
+          RewriteControlFlowEffect.RemoveThenBranch,
+          RewriteControlFlowEffect.PromoteElseBranch
+      },
+      true,
+      true);
+
     // 把删除类链路的 if 完成态 payload 规约成唯一结构改写决策。
     public override IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
@@ -1654,8 +1695,21 @@ public sealed class ClassIfStructureProposalRule : RuleDefinitionPropose
                     consumedKeys.Add(DeleteSObjectProposalHelpers.BuildNodeKey(node));
                 }
 
-                yield return decision;
+                yield return decision with
+                {
+                    TransformationContract = TransformationContract,
+                    ControlFlowEffects = new[] { GetIfEffect(payload.Kind) }
+                };
             }
         }
+    }
+
+    private static RewriteControlFlowEffect GetIfEffect(IfStructureCompletionKind kind)
+    {
+        return kind is IfStructureCompletionKind.ReplaceIfWithElseIfTail or
+            IfStructureCompletionKind.ReplaceOwningElseWithElseTail or
+            IfStructureCompletionKind.ReplaceIfWithElseTail
+          ? RewriteControlFlowEffect.PromoteElseBranch
+          : RewriteControlFlowEffect.RemoveThenBranch;
     }
 }

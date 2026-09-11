@@ -1,10 +1,12 @@
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Rewrite;
+using NLISSN.Application;
 using Xunit;
 
 namespace RoslynPrototype.Tests;
@@ -28,6 +30,8 @@ public sealed class RewritePerformanceRegressionTests
         Assert.Equal(OperationShapeCount, baseline.OperationShapeCount);
         Assert.Equal(OperationsPerShape, baseline.MinimumOperationsPerShape);
         AssertEquivalentPaths(baseline);
+        Assert.Equal(0, baseline.VerificationFailureCount);
+        Assert.True(baseline.VerificationElapsed >= TimeSpan.Zero);
         AssertCompilable(baseline.DirectRewrittenSource);
         AssertCompilable(baseline.PlanRewrittenSource);
         AssertCompilable(baseline.PersistedPlanRewrittenSource);
@@ -38,6 +42,7 @@ public sealed class RewritePerformanceRegressionTests
             Assert.Equal(baseline.Edits, sample.Edits);
             Assert.Equal(baseline.Diff, sample.Diff);
             Assert.Equal(ExpectedOperationCount, sample.OperationCount);
+            Assert.Equal(0, sample.VerificationFailureCount);
             AssertCompilable(sample.DirectRewrittenSource);
             AssertCompilable(sample.PlanRewrittenSource);
             AssertCompilable(sample.PersistedPlanRewrittenSource);
@@ -73,6 +78,19 @@ public sealed class RewritePerformanceRegressionTests
         var persistedPlan = JsonSerializer.Deserialize<RewritePlanFile>(
             JsonSerializer.Serialize(new RewritePlanFile("RewritePerformance.cs", "unused", plan.Operations)))!;
         var persisted = rewriter.ExecutePlan(source, "RewritePerformance.cs", persistedPlan);
+        var stopwatch = Stopwatch.StartNew();
+        var verification = new RewriteVerifier().Verify(
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["RewritePerformance.cs"] = source },
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["RewritePerformance.cs"] = Assert.IsType<string>(direct.RewrittenSource)
+            },
+            decisions,
+            new Dictionary<string, IReadOnlyList<RewritePlanEdit>>(StringComparer.Ordinal)
+            {
+                ["RewritePerformance.cs"] = plan.Operations
+            });
+        stopwatch.Stop();
 
         return new RewriteMeasurement(
             Assert.IsType<string>(direct.RewrittenSource),
@@ -82,7 +100,9 @@ public sealed class RewritePerformanceRegressionTests
             replayed.Diff.ToString(),
             Assert.IsAssignableFrom<IReadOnlyList<RewritePlanEdit>>(replayed.Operations).Count,
             operationShapes.Length,
-            operationShapes.Min(group => group.Count()));
+            operationShapes.Min(group => group.Count()),
+            verification.Failures.Count,
+            stopwatch.Elapsed);
     }
 
     private static void AssertCompilable(string source)
@@ -163,5 +183,7 @@ public sealed class RewritePerformanceRegressionTests
         string Diff,
         int OperationCount,
         int OperationShapeCount,
-        int MinimumOperationsPerShape);
+        int MinimumOperationsPerShape,
+        int VerificationFailureCount,
+        TimeSpan VerificationElapsed);
 }

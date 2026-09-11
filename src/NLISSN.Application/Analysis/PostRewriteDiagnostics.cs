@@ -8,7 +8,11 @@ namespace NLISSN.Application;
 public static class  PostRewriteDiagnostics
 {
     // 为单文件分析结果补充改写后诊断，必要时可按选项跳过这一步。
-    public static PrototypeAnalysisResult AddSingleFileDiagnostics(PrototypeAnalysisResult result, string filePath, bool skipDiagnostics)
+    public static PrototypeAnalysisResult AddSingleFileDiagnostics(
+      PrototypeAnalysisResult result,
+      string originalSource,
+      string filePath,
+      bool skipDiagnostics)
   {
         if (skipDiagnostics)
         {
@@ -20,20 +24,29 @@ public static class  PostRewriteDiagnostics
             return result with { Diagnostics = Array.Empty<AnalysisDiagnostic>() };
         }
 
-        var sourcesByPath = new Dictionary<string, string>(StringComparer.Ordinal)
+        var originalSourcesByPath = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [filePath] = originalSource
+        };
+        var rewrittenSourcesByPath = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [filePath] = result.RewrittenSource
         };
         return result with
         {
-            Diagnostics = GetRewriteDiagnostics(sourcesByPath, sourcesByPath)
+            Diagnostics = GetRewriteDiagnostics(originalSourcesByPath, rewrittenSourcesByPath)
         };
     }
 
     // 比较原始文件集与改写结果，返回新增 Roslyn 错误诊断的稳定快照。
     public static IReadOnlyList<AnalysisDiagnostic> GetRewriteDiagnostics(IReadOnlyDictionary<string, string> originalSourcesByPath, IReadOnlyDictionary<string, string> rewrittenSourcesByPath)
     {
+        var baselineDiagnosticKeys = GetErrorDiagnostics(BuildTrees(originalSourcesByPath, originalSourcesByPath))
+          .Select(BuildStableDiagnosticKey)
+          .ToHashSet(StringComparer.Ordinal);
+
         return GetErrorDiagnostics(BuildTrees(originalSourcesByPath, rewrittenSourcesByPath))
+          .Where(diagnostic => !baselineDiagnosticKeys.Contains(BuildStableDiagnosticKey(diagnostic)))
           .Select(CreateAnalysisDiagnostic)
           .ToList();
     }

@@ -36,7 +36,9 @@ public sealed record PrototypeAnalysisResult(
   /// 规则图的 ready queue 与并发节点峰值；非图执行路径为空。
   RuleGraphExecutionMetrics? RuleGraphMetrics = null,
   /// 本次单文件分析构建的完整 CPG 规模；目录聚合结果为空。
-  CpgGraphMetrics? GraphMetrics = null)
+  CpgGraphMetrics? GraphMetrics = null,
+  /// 改写授权、编译诊断和后续控制流验证的报告模式结果。
+  RewriteVerificationResult? Verification = null)
 {
   public DiffSummary DiffSummary => Diff.Summary;
 }

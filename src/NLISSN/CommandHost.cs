@@ -76,6 +76,7 @@ public sealed class  CommandHost
             var result = application.Analyze(source, filePath, options, runtime);
             result =  PostRewriteDiagnostics.AddSingleFileDiagnostics(
               result,
+              source,
               filePath,
                ApplicationOptions.ShouldSkipDeleteClassDirectoryPostRewriteDiagnostics(options));
 

@@ -10,6 +10,7 @@ using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
 using RoslynPrototype.Tests.TestCodeSet.Common;
 using RoslynPrototype.Tests.TestCodeSet.SObject;
 using Xunit;
@@ -63,6 +64,9 @@ public sealed class DecisionStructureValidationTests
         Assert.Single(engineDecisions);
         Assert.Equal(DecisionActionKind.Delete, engineDecisions[0].Action);
         Assert.Equal(SyntaxKind.IfStatement, (SyntaxKind)engineDecisions[0].FinalNode.RawKind);
+        var witness = Assert.IsType<RewriteDecisionWitness>(engineDecisions[0].VerificationWitness);
+        Assert.Contains(RewriteControlFlowEffect.RemoveThenBranch, witness.Effects);
+        Assert.Single(witness.PreservationFrame);
     }
 
     [Fact]
@@ -81,6 +85,8 @@ public sealed class DecisionStructureValidationTests
         Assert.Single(engineDecisions);
         Assert.Equal(DecisionActionKind.Replace, engineDecisions[0].Action);
         Assert.Equal(SyntaxKind.LogicalAndExpression, (SyntaxKind)engineDecisions[0].FinalNode.RawKind);
+        var witness = Assert.IsType<RewriteDecisionWitness>(engineDecisions[0].VerificationWitness);
+        Assert.Contains(RewriteControlFlowEffect.SimplifyLogicalCondition, witness.Effects);
     }
 
     [Fact]
@@ -104,6 +110,10 @@ public sealed class DecisionStructureValidationTests
 
         Assert.Equal(DecisionActionKind.Replace, resolved.Action);
         Assert.Equal(SyntaxKind.LogicalAndExpression, (SyntaxKind)resolved.FinalNode.RawKind);
+        Assert.Equal("rewrite.logical-condition", resolved.ContractId);
+        Assert.Contains(
+          RewriteControlFlowEffect.SimplifyLogicalCondition,
+          Assert.IsType<RewriteDecisionWitness>(resolved.VerificationWitness).Effects);
 
         var logicalProposal = proposals.Single(unit =>
             unit.SyntaxBindings.TryGetValue(unit.Fragments[0].NodeId!.Value, out var node) &&

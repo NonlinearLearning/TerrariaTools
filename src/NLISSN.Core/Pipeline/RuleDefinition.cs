@@ -5,6 +5,7 @@ using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
+using NLISSN.Core.Rewrite;
 
 namespace NLISSN.Rules;
 
@@ -96,6 +97,11 @@ public abstract class RuleDefinitionPropose : IRuleDefinition
     public abstract IReadOnlyList<SyntaxKind> DecisionConflictNodeKinds { get; }
 
     public abstract IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; }
+
+    /// <summary>
+    /// Declares the verifier contract for structural transformations produced by this rule.
+    /// </summary>
+    public virtual RuleTransformationContract? TransformationContract => null;
 
     // 消费种子、传播和提升结果，提出供决策引擎收口的候选决策单元。
     public abstract IEnumerable<DecisionUnit> Propose(RuleContext context, IReadOnlyList<MarkRecord> seedMarks, IReadOnlyList<PropagatedMarkRecord> propagatedMarks, IReadOnlyList<LiftedMarkRecord> liftedMarks);

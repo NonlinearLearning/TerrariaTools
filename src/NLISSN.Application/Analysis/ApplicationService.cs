@@ -143,6 +143,23 @@ public sealed class ApplicationService
             analysisContext.Root,
             analysisContext.SemanticModel,
             filteredDecisions);
+        var originalSources = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [analysisContext.Root.SyntaxTree.FilePath] = analysisContext.Root.ToFullString()
+        };
+        var rewrittenSources = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [analysisContext.Root.SyntaxTree.FilePath] = rewriteResult.RewrittenSource ?? analysisContext.Root.ToFullString()
+        };
+        var operationsByFile = new Dictionary<string, IReadOnlyList<RewritePlanEdit>>(StringComparer.Ordinal)
+        {
+            [analysisContext.Root.SyntaxTree.FilePath] = rewriteResult.Operations ?? Array.Empty<RewritePlanEdit>()
+        };
+        var verification = new RewriteVerifier().Verify(
+            originalSources,
+            rewrittenSources,
+            filteredDecisions,
+            operationsByFile);
 
         return new PrototypeAnalysisResult(
           seedMarks,
@@ -160,7 +177,8 @@ public sealed class ApplicationService
           RuleGraphMetrics: ruleGraphMetrics,
           GraphMetrics: new CpgGraphMetrics(
             analysisContext.CpgAnalysisContext.Graph.Nodes.Count,
-            analysisContext.CpgAnalysisContext.Graph.Edges.Count));
+            analysisContext.CpgAnalysisContext.Graph.Edges.Count),
+          Verification: verification);
     }
 
     private AnalysisContext BuildAnalysisContext(string source, string filePath, IReadOnlyDictionary<string, string> options, AnalysisRuntime runtime)
