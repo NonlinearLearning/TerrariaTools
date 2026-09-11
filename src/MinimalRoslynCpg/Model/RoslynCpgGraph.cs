@@ -42,17 +42,17 @@ public sealed class RoslynCpgGraph
 
     public IReadOnlyCollection<RoslynCpgEdge> Edges => _edges;
 
-    internal int CurrentEdgeCount => _queryIndex is null ? _pendingEdges.Count : _edges.Count;
+    public int CurrentEdgeCount => _queryIndex is null ? _pendingEdges.Count : _edges.Count;
 
-    internal IReadOnlyCollection<PendingEdge> PendingEdges => _pendingEdges;
+    public IReadOnlyCollection<PendingEdge> PendingEdges => _pendingEdges;
 
-    internal DeterministicNodeIdTable RequirePreallocatedNodeIds()
+    public DeterministicNodeIdTable RequirePreallocatedNodeIds()
     {
         return _preallocatedNodeIds ?? throw new InvalidOperationException(
           "Streaming shard publication requires preallocated NodeIds.");
     }
 
-    internal MutableGraphFacts SnapshotMutableFacts()
+    public MutableGraphFacts SnapshotMutableFacts()
     {
         EnsureMutable();
         return new MutableGraphFacts(
@@ -739,7 +739,7 @@ public sealed class RoslynCpgGraph
         }
     }
 
-    internal sealed record PendingEdge(
+    public sealed record PendingEdge(
       RoslynCpgNode SourceNode,
       RoslynCpgNode TargetNode,
       RoslynCpgEdgeKind Kind,
@@ -747,7 +747,7 @@ public sealed class RoslynCpgGraph
       RoslynCpgContextId? ContextId,
       RoslynCpgCallSiteContext? CallSiteContext);
 
-    internal sealed record MutableGraphFacts(
+    public sealed record MutableGraphFacts(
       IReadOnlyList<RoslynCpgNode> Nodes,
       IReadOnlyList<PendingEdge> PendingEdges);
 }

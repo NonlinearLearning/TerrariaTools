@@ -4,16 +4,16 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/src/'))">
-    <BaseOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\src\</BaseOutputPath>
-    <BaseIntermediateOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\src\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)Build\src\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Build\src\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
   </PropertyGroup>
 
   <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/tests/'))">
-    <BaseOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\test\</BaseOutputPath>
-    <BaseIntermediateOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\test\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)Build\test\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Build\test\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
   </PropertyGroup>
   <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/tools/'))">
-    <BaseOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\tools\</BaseOutputPath>
-    <BaseIntermediateOutputPath>D:\ProjectItem\SourceCode\Net\NL\Build\tools\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)Build\tools\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Build\tools\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
   </PropertyGroup>
 </Project>
