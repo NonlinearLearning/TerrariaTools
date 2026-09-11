@@ -25,6 +25,7 @@ internal sealed class AnalysisSession
     private readonly CpgAnalysisContext _analysisContext;
     private readonly AnalysisRequestSettings _settings;
     private readonly MarkAnalysisSnapshot _markAnalysisSnapshot;
+    private readonly Lazy<LocalSymbolReferenceIndex> _localSymbolReferenceIndex;
     private readonly ConcurrentDictionary<ExpressionSyntax, Lazy<ExpressionTopologyPath>> _expressionTopologies = new();
     private long _expressionTopologyAnalyzeCount;
     private int _structureViewQueryCount;
@@ -41,6 +42,10 @@ internal sealed class AnalysisSession
         Runtime = runtime ?? AnalysisRuntime.CreateDefault();
         Evidence = evidence ?? new AnalysisEvidenceCollector();
         _markAnalysisSnapshot = markAnalysisSnapshot ?? new MarkAnalysisSnapshot(analysisContext, Evidence);
+        _localSymbolReferenceIndex = new Lazy<LocalSymbolReferenceIndex>(
+          () => new LocalSymbolReferenceIndex(
+            _analysisContext.SemanticModel,
+            _analysisContext.CompilationRoot));
     }
 
     internal AnalysisRuntime Runtime { get; }
@@ -78,6 +83,8 @@ internal sealed class AnalysisSession
       _markAnalysisSnapshot.GetTargetMatch(syntaxNode, targetNames, evaluate);
 
     internal SemanticModel SemanticModel => _analysisContext.SemanticModel;
+
+    internal LocalSymbolReferenceIndex LocalSymbolReferences => _localSymbolReferenceIndex.Value;
 
     internal SyntaxNode Root => _analysisContext.CompilationRoot;
 

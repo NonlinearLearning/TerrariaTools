@@ -46,6 +46,7 @@ public interface ISemanticRuleContext
 public interface IPropagationRuleContext : ISemanticRuleContext
 {
   SyntaxNode Root { get; }
+  LocalSymbolReferenceIndex LocalSymbolReferences { get; }
   CpgStructureViewQueryResult StructureViewQuery { get; }
   ResolvedCallFlow ResolveCallFlow(
     IInvocationOperation invocation,

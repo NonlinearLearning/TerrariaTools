@@ -35,14 +35,14 @@ public override string RuleId { get; } = "propagate.target.symbol-reference";
         }
 
         var knownKeys = seedMarks.Select(mark => BuildNodeKey(mark.SyntaxNode)).ToHashSet();
-        foreach (var reference in context.Root.DescendantNodes().OfType<IdentifierNameSyntax>())
+        var references = markedSymbols
+          .SelectMany(pair => context.LocalSymbolReferences
+            .GetReferences(pair.Value.SourceMark.SyntaxNode, pair.Key)
+            .Select(reference => (Reference: reference, SourceMark: pair.Value.SourceMark)))
+          .OrderBy(item => item.Reference.SpanStart);
+        foreach (var (reference, sourceMark) in references)
         {
-            var referencedSymbol = ResolveReferencedSymbol(context, reference);
-            if (referencedSymbol is null ||
-                !markedSymbols.TryGetValue(referencedSymbol, out var markedDefinition) ||
-                markedDefinition.ExecutableScope is null ||
-                !ReferenceEquals(markedDefinition.ExecutableScope, FindContainingExecutableScope(reference)) ||
-                !knownKeys.Add(BuildNodeKey(reference)))
+            if (!knownKeys.Add(BuildNodeKey(reference)))
             {
                 continue;
             }
@@ -54,7 +54,7 @@ public override string RuleId { get; } = "propagate.target.symbol-reference";
                 reference,
                 $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked definition.",
                 factKind: RuleFactKind.FlowSymbolReference),
-              markedDefinition.SourceMark,
+              sourceMark,
               1);
         }
     }
@@ -73,23 +73,12 @@ public override string RuleId { get; } = "propagate.target.symbol-reference";
             var symbol = context.SemanticModel.GetDeclaredSymbol(variableDeclarator);
             if (symbol is ILocalSymbol && !symbols.ContainsKey(symbol))
             {
-                symbols.Add(symbol, new MarkedLocalDefinition(mark, FindContainingExecutableScope(variableDeclarator)));
+                symbols.Add(symbol, new MarkedLocalDefinition(mark));
             }
         }
 
         return symbols;
     }
 
-    private static ISymbol? ResolveReferencedSymbol(IPropagationRuleContext context, IdentifierNameSyntax identifierName)
-    {
-        var symbol = context.SemanticModel.GetSymbolInfo(identifierName).Symbol;
-        return symbol is ILocalSymbol or IParameterSymbol ? symbol : null;
-    }
-
-    private static SyntaxNode? FindContainingExecutableScope(SyntaxNode node) => node.AncestorsAndSelf().FirstOrDefault(ancestor =>
-      ancestor is MethodDeclarationSyntax or ConstructorDeclarationSyntax or DestructorDeclarationSyntax or
-      OperatorDeclarationSyntax or ConversionOperatorDeclarationSyntax or AccessorDeclarationSyntax or
-      AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax);
-
-    private sealed record MarkedLocalDefinition(MarkRecord SourceMark, SyntaxNode? ExecutableScope);
+    private sealed record MarkedLocalDefinition(MarkRecord SourceMark);
 }

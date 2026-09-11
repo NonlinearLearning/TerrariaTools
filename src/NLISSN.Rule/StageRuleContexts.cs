@@ -68,6 +68,7 @@ internal sealed class PropagationRuleContext : IPropagationRuleContext
     public SemanticModel SemanticModel => _session.SemanticModel;
     public AnalysisRuntime Runtime => _session.Runtime;
     public SyntaxNode Root => _session.Root;
+    public LocalSymbolReferenceIndex LocalSymbolReferences => _session.LocalSymbolReferences;
     public CpgStructureViewQueryResult StructureViewQuery => _structureViewQuery.Value;
     public ResolvedCallFlow ResolveCallFlow(
       IInvocationOperation invocation,

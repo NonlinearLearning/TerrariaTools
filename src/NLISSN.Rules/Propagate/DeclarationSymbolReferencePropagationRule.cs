@@ -58,14 +58,14 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
         var knownKeys = seedMarks
           .Select(mark => BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
-        foreach (var reference in context.Root.DescendantNodes().OfType<IdentifierNameSyntax>())
+        var references = markedSymbols
+          .SelectMany(pair => context.LocalSymbolReferences
+            .GetReferences(pair.Value.SourceMark.SyntaxNode, pair.Key)
+            .Select(reference => (Reference: reference, SourceMark: pair.Value.SourceMark)))
+          .OrderBy(item => item.Reference.SpanStart);
+        foreach (var (reference, sourceMark) in references)
         {
-            var referencedSymbol = ResolveReferencedSymbol(context, reference);
-            if (referencedSymbol is null ||
-                !markedSymbols.TryGetValue(referencedSymbol, out var markedDefinition) ||
-                markedDefinition.ExecutableScope is null ||
-                !ReferenceEquals(markedDefinition.ExecutableScope, FindContainingExecutableScope(reference)) ||
-                reference.SpanStart <= markedDefinition.SourceMark.SyntaxNode.SpanStart ||
+            if (reference.SpanStart <= sourceMark.SyntaxNode.SpanStart ||
                 !knownKeys.Add(BuildNodeKey(reference)))
             {
                 continue;
@@ -78,7 +78,7 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
                 reference,
                 $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked delete-class local definition.",
                 factKind: RuleFactKind.FlowSymbolReference),
-              markedDefinition.SourceMark,
+              sourceMark,
               1);
         }
     }
@@ -101,7 +101,7 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
                 continue;
             }
 
-            symbols.Add(symbol, new MarkedLocalDefinition(mark, FindContainingExecutableScope(mark.SyntaxNode)));
+            symbols.Add(symbol, new MarkedLocalDefinition(mark));
         }
 
         return symbols;
@@ -122,26 +122,7 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
         return symbol is ILocalSymbol ? symbol : null;
     }
 
-    private static ISymbol? ResolveReferencedSymbol(IPropagationRuleContext context, IdentifierNameSyntax identifierName)
-    {
-        var symbol = context.SemanticModel.GetSymbolInfo(identifierName).Symbol;
-        return symbol is ILocalSymbol ? symbol : null;
-    }
-
-    private static SyntaxNode? FindContainingExecutableScope(SyntaxNode node)
-    {
-        return node.AncestorsAndSelf().FirstOrDefault(ancestor =>
-          ancestor is MethodDeclarationSyntax or
-            ConstructorDeclarationSyntax or
-            DestructorDeclarationSyntax or
-            OperatorDeclarationSyntax or
-            ConversionOperatorDeclarationSyntax or
-            AccessorDeclarationSyntax or
-            AnonymousFunctionExpressionSyntax or
-            LocalFunctionStatementSyntax);
-    }
-
-    private sealed record MarkedLocalDefinition(MarkRecord SourceMark, SyntaxNode? ExecutableScope);
+    private sealed record MarkedLocalDefinition(MarkRecord SourceMark);
 
     private static (int Start, int Length, int RawKind) BuildNodeKey(SyntaxNode syntaxNode)
     {

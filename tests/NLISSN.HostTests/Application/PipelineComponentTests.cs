@@ -727,6 +727,28 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
+    public void AnalysisSession_LocalSymbolReferences_MaterializesOncePerSession()
+    {
+        var (session, root) = CreateContext("""
+          public sealed class Sample
+          {
+            public int Run(int value)
+            {
+              return value + 1;
+            }
+          }
+          """);
+
+        var first = session.LocalSymbolReferences;
+        var identifierCount = root.DescendantNodes().OfType<IdentifierNameSyntax>().Count();
+        var second = session.LocalSymbolReferences;
+
+        Assert.Equal(identifierCount, first.IdentifierTraversalCount);
+        Assert.Same(first, second);
+        Assert.Equal(identifierCount, second.IdentifierTraversalCount);
+    }
+
+    [Fact]
     public void PropagationEngine_Run_BuildsRuleScopedStructureViewForEachRule()
     {
         var source = AtomicControlFlowSources.PropagationDedupSource;
