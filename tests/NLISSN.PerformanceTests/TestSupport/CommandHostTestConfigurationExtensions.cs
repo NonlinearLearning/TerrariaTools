@@ -11,6 +11,28 @@ internal static class CommandHostTestConfigurationExtensions
     ArgumentNullException.ThrowIfNull(host);
     ArgumentNullException.ThrowIfNull(arguments);
 
+    var parsed = ParseArguments(arguments);
+    var result = host.Analyze(CreateConfiguration(parsed.InputPath, parsed.Options));
+    return MaterializeLegacyDiffFile(
+      result,
+      parsed.InputPath,
+      parsed.HasExplicitInputPath,
+      parsed.Options);
+  }
+
+  internal static Task<AnalysisRunOutcome> AnalyzeOutcomeFromArgsAsync(
+    this CommandHost host,
+    string[] arguments)
+  {
+    ArgumentNullException.ThrowIfNull(host);
+    ArgumentNullException.ThrowIfNull(arguments);
+
+    var parsed = ParseArguments(arguments);
+    return host.AnalyzeOutcomeAsync(CreateConfiguration(parsed.InputPath, parsed.Options));
+  }
+
+  private static ParsedArguments ParseArguments(string[] arguments)
+  {
     string? inputPath = null;
     var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     for (var index = 0; index < arguments.Length; index++)
@@ -30,7 +52,7 @@ internal static class CommandHostTestConfigurationExtensions
       options[key] = value;
     }
 
-    return host.Analyze(CreateConfiguration(inputPath ?? "demo.cs", options));
+    return new ParsedArguments(inputPath ?? "demo.cs", inputPath is not null, options);
   }
 
   private static AnalysisConfiguration CreateConfiguration(
@@ -71,7 +93,11 @@ internal static class CommandHostTestConfigurationExtensions
         options.ContainsKey("evidence-json"),
         options.ContainsKey("rewrite-plan-in") ? RewritePlanMode.Replay :
           options.ContainsKey("rewrite-plan-out") ? RewritePlanMode.Capture : RewritePlanMode.None,
-        GetValue(options, "diff-view") ?? "legacy"),
+        GetValue(options, "diff-view") ?? "legacy",
+        GetValue(options, "run-id") ?? "",
+        false,
+        GetValue(options, "performance-mode") ?? "normal",
+        GetValue(options, "performance-summary") ?? ""),
       new LoggingSettings(
         GetValue(options, "log-profile") ?? "normal",
         GetValue(options, "log-level") ?? "debug",
@@ -107,4 +133,53 @@ internal static class CommandHostTestConfigurationExtensions
   {
     return int.TryParse(GetValue(options, key), out var value) ? value : null;
   }
+
+  private static PrototypeAnalysisResult MaterializeLegacyDiffFile(
+    PrototypeAnalysisResult result,
+    string inputPath,
+    bool hasExplicitInputPath,
+    IReadOnlyDictionary<string, string> options)
+  {
+    if (!hasExplicitInputPath ||
+        Directory.Exists(inputPath) ||
+        result.Diff.Summary.EditCount == 0 ||
+        IsTrue(options, "no-diff") ||
+        IsTrue(options, "skip-diff"))
+    {
+      return result;
+    }
+
+    var diffPath = GetValue(options, "diff-out") ?? GetDefaultDiffPath(inputPath);
+    var fullDiffPath = Path.GetFullPath(diffPath);
+    if (Directory.Exists(fullDiffPath))
+    {
+      Directory.Delete(fullDiffPath, recursive: true);
+    }
+
+    var parentDirectory = Path.GetDirectoryName(fullDiffPath);
+    if (!string.IsNullOrWhiteSpace(parentDirectory))
+    {
+      Directory.CreateDirectory(parentDirectory);
+    }
+
+    var view = GetValue(options, "diff-view") ?? "legacy";
+    File.WriteAllText(fullDiffPath, new TextDiffRenderer().Render(result.Diff, view));
+    return result with { DiffFilePath = fullDiffPath };
+  }
+
+  private static string GetDefaultDiffPath(string inputPath)
+  {
+    var fileName = Path.GetFileNameWithoutExtension(inputPath);
+    return Path.Combine(
+      Directory.GetCurrentDirectory(),
+      "Build",
+      "Result",
+      "Diff",
+      $"{fileName}.rewrite.diff");
+  }
+
+  private sealed record ParsedArguments(
+    string InputPath,
+    bool HasExplicitInputPath,
+    IReadOnlyDictionary<string, string> Options);
 }

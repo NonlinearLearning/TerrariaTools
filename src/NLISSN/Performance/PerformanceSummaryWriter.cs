@@ -12,6 +12,14 @@ public sealed class PerformanceSummaryWriter : IPerformanceSummaryWriter
 {
   public void WriteAtomic(string path, RunPerformanceReport report)
   {
+    WriteAtomic(path, report, sampleAggregate: null);
+  }
+
+  public void WriteAtomic(
+    string path,
+    RunPerformanceReport report,
+    PerformanceSampleAggregateResult? sampleAggregate)
+  {
     ArgumentException.ThrowIfNullOrWhiteSpace(path);
     ArgumentNullException.ThrowIfNull(report);
 
@@ -31,7 +39,7 @@ public sealed class PerformanceSummaryWriter : IPerformanceSummaryWriter
     var temporaryPath = fullPath + ".tmp";
     try
     {
-      var document = PerformanceSummaryDocument.FromReport(report);
+      var document = PerformanceSummaryDocument.FromReport(report, sampleAggregate);
       using (var stream = new FileStream(
         temporaryPath,
         FileMode.Create,
