@@ -84,6 +84,10 @@ internal sealed class AnalysisSession
 
     internal SemanticModel SemanticModel => _analysisContext.SemanticModel;
 
+    internal SymbolUsageProfile SymbolUsageProfile => Runtime.GetOrCreateEpochCompilationCache(
+      _analysisContext.SemanticModel.Compilation,
+      static compilation => new SymbolUsageProfile(compilation));
+
     internal LocalSymbolReferenceIndex LocalSymbolReferences => _localSymbolReferenceIndex.Value;
 
     internal SyntaxNode Root => _analysisContext.CompilationRoot;

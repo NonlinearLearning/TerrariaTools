@@ -15,6 +15,7 @@ public interface IMarkRuleContext
 {
   SemanticModel SemanticModel { get; }
   AnalysisRuntime Runtime { get; }
+  SymbolUsageProfile SymbolUsageProfile { get; }
   IReadOnlyList<string> GetNormalizedTargetNames();
   NameDescriptor GetTargetNameDescriptor();
   bool GetCachedTargetMatch(SyntaxNode syntaxNode, NameDescriptor targetNames, Func<bool> evaluate);
@@ -41,6 +42,7 @@ public interface ISemanticRuleContext
 {
   SemanticModel SemanticModel { get; }
   AnalysisRuntime Runtime { get; }
+  SymbolUsageProfile SymbolUsageProfile { get; }
 }
 
 public interface IPropagationRuleContext : ISemanticRuleContext

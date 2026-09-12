@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using NLISSN.Core.Analysis;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Propagation;
@@ -58,28 +59,35 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
         var knownKeys = seedMarks
           .Select(mark => BuildNodeKey(mark.SyntaxNode))
           .ToHashSet();
-        var references = markedSymbols
-          .SelectMany(pair => context.LocalSymbolReferences
-            .GetReferences(pair.Value.SourceMark.SyntaxNode, pair.Key)
-            .Select(reference => (Reference: reference, SourceMark: pair.Value.SourceMark)))
-          .OrderBy(item => item.Reference.SpanStart);
-        foreach (var (reference, sourceMark) in references)
+        foreach (var markedSymbol in markedSymbols)
         {
-            if (reference.SpanStart <= sourceMark.SyntaxNode.SpanStart ||
-                !knownKeys.Add(BuildNodeKey(reference)))
+            var references = context.SymbolUsageProfile.GetReferences(markedSymbol.Key);
+            if (references.Status != UsageProfileStatus.Complete)
             {
                 continue;
             }
+            var markedDefinition = markedSymbol.Value;
+            foreach (var fact in references.Facts)
+            {
+                if (fact.Syntax is not IdentifierNameSyntax reference ||
+                    markedDefinition.ExecutableScope is null ||
+                    !ReferenceEquals(markedDefinition.ExecutableScope, FindContainingExecutableScope(reference)) ||
+                    reference.SpanStart <= markedDefinition.SourceMark.SyntaxNode.SpanStart ||
+                    !knownKeys.Add(BuildNodeKey(reference)))
+                {
+                    continue;
+                }
 
-            yield return new PropagatedMarkRecord(
-              RuleId,
-              MarkRecordFactory.Create(
-                RuleId,
-                reference,
-                $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked delete-class local definition.",
-                factKind: RuleFactKind.FlowSymbolReference),
-              sourceMark,
-              1);
+                yield return new PropagatedMarkRecord(
+                  RuleId,
+                  MarkRecordFactory.Create(
+                    RuleId,
+                    reference,
+                    $"Symbol reference '{reference.Identifier.ValueText}' resolves to a marked delete-class local definition.",
+                    factKind: RuleFactKind.FlowSymbolReference),
+                  markedDefinition.SourceMark,
+                  1);
+            }
         }
     }
 
@@ -101,7 +109,7 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
                 continue;
             }
 
-            symbols.Add(symbol, new MarkedLocalDefinition(mark));
+            symbols.Add(symbol, new MarkedLocalDefinition(mark, FindContainingExecutableScope(mark.SyntaxNode)));
         }
 
         return symbols;
@@ -122,7 +130,20 @@ public sealed class DeclarationSymbolReferencePropagationRule : RuleDefinitionPr
         return symbol is ILocalSymbol ? symbol : null;
     }
 
-    private sealed record MarkedLocalDefinition(MarkRecord SourceMark);
+    private static SyntaxNode? FindContainingExecutableScope(SyntaxNode node)
+    {
+        return node.AncestorsAndSelf().FirstOrDefault(ancestor =>
+          ancestor is MethodDeclarationSyntax or
+            ConstructorDeclarationSyntax or
+            DestructorDeclarationSyntax or
+            OperatorDeclarationSyntax or
+            ConversionOperatorDeclarationSyntax or
+            AccessorDeclarationSyntax or
+            AnonymousFunctionExpressionSyntax or
+            LocalFunctionStatementSyntax);
+    }
+
+    private sealed record MarkedLocalDefinition(MarkRecord SourceMark, SyntaxNode? ExecutableScope);
 
     private static (int Start, int Length, int RawKind) BuildNodeKey(SyntaxNode syntaxNode)
     {

@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
+using NLISSN.Core.Analysis;
 using NLISSN.Rules;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -562,111 +563,103 @@ public sealed class ParameterShrinkAnalyzer
     // 汇总委托参数删除需要同步改写的方法组、局部函数、lambda 与直接调用链事实。
     public static bool TryCollectDelegateUsageSummary(ISemanticRuleContext context, INamedTypeSymbol delegateSymbol, IParameterSymbol parameterSymbol, int parameterIndex, out DelegateUsageSummary usageSummary)
     {
-        var methodRewrites = new ConcurrentBag<MethodRewrite>();
-        var localFunctionRewrites = new ConcurrentBag<LocalFunctionRewrite>();
-        var lambdaRewrites = new ConcurrentBag<ExpressionRewrite>();
-        var invocationRewrites = new ConcurrentBag<InvocationRewrite>();
-        var methodGroupTargets = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
-        var handledInvocations = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
-        var handledLambdaSpans = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
-        var handledMethodRewrites = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
-        var handledLocalFunctionRewrites = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
-        var failed = 0;
-
-        ForEachScan(
-          GetTreeScans(context.SemanticModel.Compilation, context.Runtime),
-          context.Runtime,
-          (scan, stop) =>
-          {
-              foreach (var invocation in scan.GetInvocationBindings(delegateSymbol.DelegateInvokeMethod!))
-              {
-                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
-                      targetMethod.MethodKind != MethodKind.DelegateInvoke ||
-                      !SymbolEqualityComparer.Default.Equals(targetMethod.ContainingType, delegateSymbol))
-                  {
-                      continue;
-                  }
-
-                  if (!handledInvocations.TryAdd(BuildSyntaxKey(invocation.Invocation), 0) ||
-                      !TryBuildMappedInvocationReplacement(
-                        invocation.Invocation,
-                        invocation.Operation,
-                        parameterSymbol,
-                        out var replacementInvocation))
-                  {
-                      Interlocked.Exchange(ref failed, 1);
-                      stop();
-                      return;
-                  }
-
-                  invocationRewrites.Add(
-                    new InvocationRewrite(invocation.Invocation, replacementInvocation));
-              }
-
-              foreach (var expression in scan.GetExpressionBindings(delegateSymbol))
-              {
-                  if (!SymbolEqualityComparer.Default.Equals(expression.ConvertedType, delegateSymbol))
-                  {
-                      continue;
-                  }
-
-                  switch (expression.Operation)
-                  {
-                      case IMethodReferenceOperation methodReference:
-                          if (!TryBuildMethodGroupTargetRewrite(
-                                context,
-                                methodReference.Method,
-                                parameterIndex,
-                                out var methodRewrite,
-                                out var localFunctionRewrite))
-                          {
-                              Interlocked.Exchange(ref failed, 1);
-                              stop();
-                              return;
-                          }
-
-                          methodGroupTargets.TryAdd(methodReference.Method.ToDisplayString(), 0);
-                          if (methodRewrite is not null &&
-                              handledMethodRewrites.TryAdd(BuildSyntaxKey(methodRewrite.Method), 0))
-                          {
-                              methodRewrites.Add(methodRewrite);
-                          }
-
-                          if (localFunctionRewrite is not null &&
-                              handledLocalFunctionRewrites.TryAdd(
-                                BuildSyntaxKey(localFunctionRewrite.LocalFunction),
-                                0))
-                          {
-                              localFunctionRewrites.Add(localFunctionRewrite);
-                          }
-                          break;
-
-                      case IAnonymousFunctionOperation anonymousFunction:
-                          var key = $"{scan.SyntaxTree.FilePath}:{expression.Expression.SpanStart}:{expression.Expression.Span.Length}";
-                          if (!handledLambdaSpans.TryAdd(key, 0) ||
-                              !TryBuildLambdaRewrite(
-                                context,
-                                scan.SemanticModel,
-                                expression.Expression,
-                                anonymousFunction,
-                                parameterIndex,
-                                out var lambdaRewrite))
-                          {
-                              Interlocked.Exchange(ref failed, 1);
-                              stop();
-                              return;
-                          }
-
-                          lambdaRewrites.Add(lambdaRewrite);
-                          break;
-                  }
-              }
-          });
-
-        if (Volatile.Read(ref failed) != 0)
+        var profile = context.SymbolUsageProfile;
+        var callsites = profile.GetMethodCallsites(delegateSymbol.DelegateInvokeMethod!);
+        var bindings = profile.GetDelegateBindings(delegateSymbol);
+        if (callsites.Status != UsageProfileStatus.Complete ||
+            bindings.Status != UsageProfileStatus.Complete)
         {
             usageSummary = null!;
             return false;
+        }
+
+        var methodRewrites = new List<MethodRewrite>();
+        var localFunctionRewrites = new List<LocalFunctionRewrite>();
+        var lambdaRewrites = new List<ExpressionRewrite>();
+        var invocationRewrites = new List<InvocationRewrite>();
+        var methodGroupTargets = new HashSet<string>(StringComparer.Ordinal);
+        var handledInvocations = new HashSet<string>(StringComparer.Ordinal);
+        var handledLambdaSpans = new HashSet<string>(StringComparer.Ordinal);
+        var handledMethodRewrites = new HashSet<string>(StringComparer.Ordinal);
+        var handledLocalFunctionRewrites = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var callsite in callsites.Facts)
+        {
+            if (!handledInvocations.Add(BuildSyntaxKey(callsite.Invocation)) ||
+                !TryBuildMappedInvocationReplacement(
+                  callsite.Invocation,
+                  callsite.Operation,
+                  parameterSymbol,
+                  out var replacementInvocation))
+            {
+                usageSummary = null!;
+                return false;
+            }
+
+            invocationRewrites.Add(new InvocationRewrite(callsite.Invocation, replacementInvocation));
+        }
+
+        foreach (var binding in bindings.Facts)
+        {
+            if (binding.Kind == DelegateBindingKind.PassThrough)
+            {
+                continue;
+            }
+
+            if (binding.Kind == DelegateBindingKind.MethodGroup &&
+                binding.Target is IMethodSymbol targetMethod)
+            {
+                if (!TryBuildMethodGroupTargetRewrite(
+                      context,
+                      targetMethod,
+                      parameterIndex,
+                      out var methodRewrite,
+                      out var localFunctionRewrite))
+                {
+                    usageSummary = null!;
+                    return false;
+                }
+
+                methodGroupTargets.Add(targetMethod.ToDisplayString());
+                if (methodRewrite is not null &&
+                    handledMethodRewrites.Add(BuildSyntaxKey(methodRewrite.Method)))
+                {
+                    methodRewrites.Add(methodRewrite);
+                }
+
+                if (localFunctionRewrite is not null &&
+                    handledLocalFunctionRewrites.Add(BuildSyntaxKey(localFunctionRewrite.LocalFunction)))
+                {
+                    localFunctionRewrites.Add(localFunctionRewrite);
+                }
+
+                continue;
+            }
+
+            if (binding.Kind != DelegateBindingKind.Lambda ||
+                binding.Binding is not ExpressionSyntax expression)
+            {
+                usageSummary = null!;
+                return false;
+            }
+
+            var key = BuildSyntaxKey(expression);
+            var semanticModel = context.SemanticModel.Compilation.GetSemanticModel(expression.SyntaxTree);
+            if (!handledLambdaSpans.Add(key) ||
+                semanticModel.GetOperation(expression) is not IAnonymousFunctionOperation anonymousFunction ||
+                !TryBuildLambdaRewrite(
+                  context,
+                  semanticModel,
+                  expression,
+                  anonymousFunction,
+                  parameterIndex,
+                  out var lambdaRewrite))
+            {
+                usageSummary = null!;
+                return false;
+            }
+
+            lambdaRewrites.Add(lambdaRewrite);
         }
 
         usageSummary = new DelegateUsageSummary(
@@ -674,7 +667,7 @@ public sealed class ParameterShrinkAnalyzer
           localFunctionRewrites.OrderBy(static item => BuildSyntaxKey(item.LocalFunction), StringComparer.Ordinal).ToList(),
           lambdaRewrites.OrderBy(static item => BuildSyntaxKey(item.Expression), StringComparer.Ordinal).ToList(),
           invocationRewrites.OrderBy(static item => BuildSyntaxKey(item.Invocation), StringComparer.Ordinal).ToList(),
-          methodGroupTargets.Keys.ToHashSet(StringComparer.Ordinal));
+          methodGroupTargets);
         return true;
     }
 
@@ -740,174 +733,73 @@ public sealed class ParameterShrinkAnalyzer
 
     private static bool TryCollectInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
-        var rewrites = new ConcurrentBag<InvocationRewrite>();
-        var matchedCallsites = 0;
-        var failed = 0;
+        invocationRewrites = new List<InvocationRewrite>();
+        if (parameterIndex >= methodSymbol.Parameters.Length ||
+            !TryGetProfileCallsites(runtime, compilation, methodSymbol.Parameters[parameterIndex], out var callsites))
+        {
+            return false;
+        }
 
-        ForEachScan(
-          GetTreeScans(compilation, runtime),
-          runtime,
-          (scan, stop) =>
-          {
-              foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
-              {
-                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
-                      !SymbolEqualityComparer.Default.Equals(methodSymbol, targetMethod))
-                  {
-                      continue;
-                  }
-
-                  Interlocked.Increment(ref matchedCallsites);
-                  if (!TryBuildReplacementInvocation(
-                        invocation.Invocation,
-                        parameterIndex,
-                        expectedParameterCount,
-                        out var replacementInvocation))
-                  {
-                      Interlocked.Exchange(ref failed, 1);
-                      stop();
-                      return;
-                  }
-
-                  rewrites.Add(
-                    new InvocationRewrite(invocation.Invocation, replacementInvocation));
-              }
-          });
-
-        invocationRewrites = Volatile.Read(ref failed) != 0
-          ? new List<InvocationRewrite>()
-          : rewrites.OrderBy(static item => BuildSyntaxKey(item.Invocation), StringComparer.Ordinal).ToList();
-        return Volatile.Read(ref failed) == 0 &&
-          (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
+        foreach (var callsite in callsites)
+        {
+            if (!TryBuildReplacementInvocation(callsite.Invocation, parameterIndex, expectedParameterCount, out var replacement))
+            {
+                invocationRewrites.Clear();
+                return false;
+            }
+            invocationRewrites.Add(new InvocationRewrite(callsite.Invocation, replacement));
+        }
+        return !requireCallsites || callsites.Count > 0;
     }
 
     private static bool TryCollectNamedArgumentInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, out List<InvocationRewrite> invocationRewrites)
     {
-        var rewrites = new ConcurrentBag<InvocationRewrite>();
-        var matchedCallsites = 0;
-        var failed = 0;
-
-        ForEachScan(
-          GetTreeScans(compilation, runtime),
-          runtime,
-          (scan, stop) =>
-          {
-              foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
-              {
-                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
-                      !SymbolEqualityComparer.Default.Equals(methodSymbol, targetMethod) ||
-                      invocation.Operation is not IInvocationOperation invocationOperation)
-                  {
-                      continue;
-                  }
-
-                  Interlocked.Increment(ref matchedCallsites);
-                  if (!TryBuildNamedArgumentReplacementInvocation(
-                        invocation.Invocation,
-                        invocationOperation,
-                        parameterSymbol,
-                        out var replacementInvocation))
-                  {
-                      Interlocked.Exchange(ref failed, 1);
-                      stop();
-                      return;
-                  }
-
-                  rewrites.Add(
-                    new InvocationRewrite(invocation.Invocation, replacementInvocation));
-              }
-          });
-
-        invocationRewrites = Volatile.Read(ref failed) != 0
-          ? new List<InvocationRewrite>()
-          : rewrites.OrderBy(static item => BuildSyntaxKey(item.Invocation), StringComparer.Ordinal).ToList();
-        return Volatile.Read(ref failed) == 0 &&
-          Volatile.Read(ref matchedCallsites) > 0;
+        invocationRewrites = new List<InvocationRewrite>();
+        if (!TryGetProfileCallsites(runtime, compilation, parameterSymbol, out var callsites) || callsites.Count == 0)
+        {
+            return false;
+        }
+        foreach (var callsite in callsites)
+        {
+            if (!TryBuildNamedArgumentReplacementInvocation(callsite.Invocation, callsite.Operation, parameterSymbol, out var replacement))
+            {
+                invocationRewrites.Clear();
+                return false;
+            }
+            invocationRewrites.Add(new InvocationRewrite(callsite.Invocation, replacement));
+        }
+        return true;
     }
 
     private static bool TryCollectOptionalInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
-        var matchedCallsites = 0;
-        var rewrites = new ConcurrentBag<InvocationRewrite>();
-        var failed = 0;
-
-        ForEachScan(
-          GetTreeScans(compilation, runtime),
-          runtime,
-          (scan, stop) =>
-          {
-              foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
-              {
-                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
-                      !SymbolEqualityComparer.Default.Equals(methodSymbol, targetMethod) ||
-                      invocation.Operation is not IInvocationOperation invocationOperation)
-                  {
-                      continue;
-                  }
-
-                  Interlocked.Increment(ref matchedCallsites);
-                  if (!TryBuildOptionalReplacementInvocation(
-                        invocation.Invocation,
-                        invocationOperation,
-                        parameterSymbol,
-                        out var replacementInvocation,
-                        out var changed))
-                  {
-                      Interlocked.Exchange(ref failed, 1);
-                      stop();
-                      return;
-                  }
-
-                  if (changed)
-                  {
-                      rewrites.Add(
-                        new InvocationRewrite(invocation.Invocation, replacementInvocation));
-                  }
-              }
-          });
-
-        invocationRewrites = Volatile.Read(ref failed) != 0
-          ? new List<InvocationRewrite>()
-          : rewrites.OrderBy(static item => BuildSyntaxKey(item.Invocation), StringComparer.Ordinal).ToList();
-        return Volatile.Read(ref failed) == 0 &&
-          (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
+        invocationRewrites = new List<InvocationRewrite>();
+        if (!TryGetProfileCallsites(runtime, compilation, parameterSymbol, out var callsites))
+        {
+            return false;
+        }
+        foreach (var callsite in callsites)
+        {
+            if (!TryBuildOptionalReplacementInvocation(callsite.Invocation, callsite.Operation, parameterSymbol, out var replacement, out var changed))
+            {
+                invocationRewrites.Clear();
+                return false;
+            }
+            if (changed) invocationRewrites.Add(new InvocationRewrite(callsite.Invocation, replacement));
+        }
+        return !requireCallsites || callsites.Count > 0;
     }
 
     private static bool TryCollectParamsInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
         invocationRewrites = new List<InvocationRewrite>();
-        var matchedCallsites = 0;
-        var failed = 0;
-
-        ForEachScan(
-          GetTreeScans(compilation, runtime),
-          runtime,
-          (scan, stop) =>
-          {
-              foreach (var invocation in scan.GetInvocationBindings(methodSymbol))
-              {
-                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
-                      !SymbolEqualityComparer.Default.Equals(methodSymbol, targetMethod) ||
-                      invocation.Operation is not IInvocationOperation invocationOperation)
-                  {
-                      continue;
-                  }
-
-                  Interlocked.Increment(ref matchedCallsites);
-                  var paramsArguments = invocationOperation.Arguments
-                    .Where(argument => SymbolEqualityComparer.Default.Equals(argument.Parameter, parameterSymbol))
-                    .ToList();
-                  if (paramsArguments.Any(argument => !argument.IsImplicit))
-                  {
-                      Interlocked.Exchange(ref failed, 1);
-                      stop();
-                      return;
-                  }
-              }
-          });
-
-        return Volatile.Read(ref failed) == 0 &&
-          (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
+        if (!TryGetProfileCallsites(runtime, compilation, parameterSymbol, out var callsites)) return false;
+        foreach (var callsite in callsites)
+        {
+            if (callsite.Operation.Arguments.Any(argument =>
+                  SymbolEqualityComparer.Default.Equals(argument.Parameter, parameterSymbol) && !argument.IsImplicit)) return false;
+        }
+        return !requireCallsites || callsites.Count > 0;
     }
 
     private static bool TryCollectElementAccessRewrites( AnalysisRuntime runtime, Compilation compilation, IPropertySymbol indexerSymbol, int parameterIndex, int expectedParameterCount, bool requireCallsites, out List<ElementAccessRewrite> accessRewrites)
@@ -999,45 +891,25 @@ public sealed class ParameterShrinkAnalyzer
 
     private static bool TryCollectMappedInvocationRewrites( AnalysisRuntime runtime, Compilation compilation, IMethodSymbol methodSymbol, IParameterSymbol parameterSymbol, bool requireCallsites, out List<InvocationRewrite> invocationRewrites)
     {
-        var rewrites = new ConcurrentBag<InvocationRewrite>();
-        var matchedCallsites = 0;
-        var failed = 0;
-
-        ForEachScan(
-          GetTreeScans(compilation, runtime),
-          runtime,
-          (scan, stop) =>
-          {
-              foreach (var invocation in scan.GetMappedInvocationBindings(methodSymbol))
-              {
-                  if (invocation.MethodSymbol is not IMethodSymbol targetMethod ||
-                      !MethodMatchesInvocationTarget(methodSymbol, targetMethod))
-                  {
-                      continue;
-                  }
-
-                  Interlocked.Increment(ref matchedCallsites);
-                  if (!TryBuildMappedInvocationReplacement(
-                        invocation.Invocation,
-                        invocation.Operation,
-                        parameterSymbol,
-                        out var replacementInvocation))
-                  {
-                      Interlocked.Exchange(ref failed, 1);
-                      stop();
-                      return;
-                  }
-
-                  rewrites.Add(
-                    new InvocationRewrite(invocation.Invocation, replacementInvocation));
-              }
-          });
-
-        invocationRewrites = Volatile.Read(ref failed) != 0
-          ? new List<InvocationRewrite>()
-          : rewrites.OrderBy(static item => BuildSyntaxKey(item.Invocation), StringComparer.Ordinal).ToList();
-        return Volatile.Read(ref failed) == 0 &&
-          (!requireCallsites || Volatile.Read(ref matchedCallsites) > 0);
+        invocationRewrites = new List<InvocationRewrite>();
+        var profile = runtime.GetOrCreateEpochCompilationCache(
+          compilation,
+          static currentCompilation => new SymbolUsageProfile(currentCompilation));
+        var result = profile.GetMethodCallsites(methodSymbol);
+        if (result.Status != UsageProfileStatus.Complete)
+        {
+            return false;
+        }
+        foreach (var callsite in result.Facts)
+        {
+            if (!TryBuildMappedInvocationReplacement(callsite.Invocation, callsite.Operation, parameterSymbol, out var replacement))
+            {
+                invocationRewrites.Clear();
+                return false;
+            }
+            invocationRewrites.Add(new InvocationRewrite(callsite.Invocation, replacement));
+        }
+        return !requireCallsites || result.Facts.Count > 0;
     }
 
     private static bool TryResolveMethodSymbol(SemanticModel semanticModel, InvocationExpressionSyntax invocation, out IMethodSymbol methodSymbol)
@@ -1418,6 +1290,20 @@ public sealed class ParameterShrinkAnalyzer
         }
 
         return false;
+    }
+
+    private static bool TryGetProfileCallsites(
+      AnalysisRuntime runtime,
+      Compilation compilation,
+      IParameterSymbol parameterSymbol,
+      out IReadOnlyList<InvocationUsageFact> callsites)
+    {
+        var profile = runtime.GetOrCreateEpochCompilationCache(
+          compilation,
+          static currentCompilation => new SymbolUsageProfile(currentCompilation));
+        var result = profile.GetParameterCallsites(parameterSymbol);
+        callsites = result.Facts;
+        return result.Status == UsageProfileStatus.Complete;
     }
 
     private static IReadOnlyList<TreeScan> GetTreeScans(Compilation compilation,  AnalysisRuntime runtime)

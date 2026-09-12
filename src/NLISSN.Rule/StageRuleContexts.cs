@@ -22,6 +22,7 @@ internal sealed class MarkRuleContext : IMarkRuleContext
 
     public SemanticModel SemanticModel => _session.SemanticModel;
     public AnalysisRuntime Runtime => _session.Runtime;
+    public SymbolUsageProfile SymbolUsageProfile => _session.SymbolUsageProfile;
     public IReadOnlyList<string> GetNormalizedTargetNames() => _session.GetNormalizedTargetNames();
     public NameDescriptor GetTargetNameDescriptor() => _session.GetTargetNameDescriptor();
     public bool GetCachedTargetMatch(SyntaxNode syntaxNode, NameDescriptor targetNames, Func<bool> evaluate) =>
@@ -67,6 +68,7 @@ internal sealed class PropagationRuleContext : IPropagationRuleContext
 
     public SemanticModel SemanticModel => _session.SemanticModel;
     public AnalysisRuntime Runtime => _session.Runtime;
+    public SymbolUsageProfile SymbolUsageProfile => _session.SymbolUsageProfile;
     public SyntaxNode Root => _session.Root;
     public LocalSymbolReferenceIndex LocalSymbolReferences => _session.LocalSymbolReferences;
     public CpgStructureViewQueryResult StructureViewQuery => _structureViewQuery.Value;
@@ -139,6 +141,7 @@ internal sealed class ProposeRuleContext : IProposeRuleContext
 
     public SemanticModel SemanticModel => _session.SemanticModel;
     public AnalysisRuntime Runtime => _session.Runtime;
+    public SymbolUsageProfile SymbolUsageProfile => _session.SymbolUsageProfile;
     public ExpressionTopologyPath ResolveExpressionTopology(ExpressionSyntax expression) =>
       _session.ResolveExpressionTopology(expression);
 }

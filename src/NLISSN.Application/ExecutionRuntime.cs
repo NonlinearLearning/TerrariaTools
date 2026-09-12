@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using System.Collections.Concurrent;
 using NL.Caching;
 using NL.Concurrency;
 using NLCPG.Builder;
@@ -136,6 +137,30 @@ public sealed class AnalysisRuntime
       where TCache : class
     {
         return _cacheRegistry.GetOrCreate(compilation, factory);
+    }
+
+    public TCache GetOrCreateEpochCompilationCache<TCache>(Compilation compilation, Func<Compilation, TCache> factory)
+      where TCache : class
+    {
+        var cache = _cacheRegistry.GetOrCreate(
+          compilation,
+          static _ => new EpochCompilationCache<TCache>());
+        return cache.GetOrCreate(CacheScopeKey, compilation, factory);
+    }
+
+    private sealed class EpochCompilationCache<TCache>
+      where TCache : class
+    {
+        private readonly ConcurrentDictionary<string, Lazy<TCache>> _values = new(StringComparer.Ordinal);
+
+        public TCache GetOrCreate(string scopeKey, Compilation compilation, Func<Compilation, TCache> factory)
+        {
+            return _values.GetOrAdd(
+              scopeKey,
+              _ => new Lazy<TCache>(
+                () => factory(compilation),
+                LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+        }
     }
 
     private sealed class CpgBuildAdmissionLeaseScope : IDisposable
