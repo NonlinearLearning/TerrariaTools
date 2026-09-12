@@ -1,16 +1,36 @@
 namespace NLISSN.Core.Pipeline;
 
 /// <summary>
-/// Marks a concrete stage rule for inclusion in the compile-time generated catalog.
+/// Selects the optional rule family that owns a stage rule.
 /// </summary>
+public enum RuleFeature
+{
+    Core = 0,
+    UnreachableMethodDeletion = 1,
+    UnreferencedMethodDeletion = 2,
+    UnusedInterfaceImplementationCleanup = 3,
+    InternalOnlyPublicMethodPrivatization = 4,
+}
+
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
 public sealed class RuleRegistrationAttribute : Attribute
 {
+    /// <summary>
+    /// Registers a core rule for compatibility with the original marker syntax.
+    /// </summary>
+    public RuleRegistrationAttribute()
+      : this(RuleFeature.Core)
+    {
+    }
+
+    public RuleRegistrationAttribute(RuleFeature feature)
+    {
+        Feature = feature;
+    }
+
+    public RuleFeature Feature { get; }
 }
 
-/// <summary>
-/// Explicitly excludes an intentional concrete rule from the generated catalog.
-/// </summary>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
 public sealed class RuleCatalogIgnoreAttribute : Attribute
 {

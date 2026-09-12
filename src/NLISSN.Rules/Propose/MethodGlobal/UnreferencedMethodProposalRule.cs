@@ -1,20 +1,22 @@
 using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Core.Decision;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
 /// 仅为已证明无引用的方法生成声明删除决策。
-[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
+[global::NLISSN.Core.Pipeline.RuleRegistration(
+    global::NLISSN.Core.Pipeline.RuleFeature.UnreferencedMethodDeletion)]
 public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleFactKind UnreferencedMethodFactKind = RuleFactKind.UnreferencedMethod;
-
     private static readonly RuleConsumesContract UnreferencedMethodConsumes =
       new(new[]
       {
-      new RuleConsumedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnreferencedMethodFactKind)
+      new RuleConsumedSyntax(
+        new[] { SyntaxKind.MethodDeclaration },
+        UnreferencedMethodFacts.Lifted)
       });
 
 
@@ -31,7 +33,7 @@ public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
       Array.Empty<SyntaxKind>();
 
-    // 为标记阶段已经证明无剩余引用的私有方法声明直接生成删除决策。
+    // 为提升阶段已经证明无剩余引用的私有方法声明生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(
       IProposeRuleContext context,
       IReadOnlyList<MarkRecord> seedMarks,
@@ -39,15 +41,25 @@ public sealed class UnreferencedMethodProposalRule : RuleDefinitionPropose
       IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
+        _ = seedMarks;
         _ = propagatedMarks;
-        _ = liftedMarks;
 
-        foreach (var seedMark in seedMarks)
+        foreach (var liftedMark in liftedMarks)
         {
+            if (liftedMark.Mark.FactKind != UnreferencedMethodFacts.Lifted ||
+                liftedMark.Payload is not MethodDeletionLiftPayload
+                {
+                    Kind: MethodDeletionKind.Unreferenced,
+                    OriginalReason: var reason
+                })
+            {
+                continue;
+            }
+
             yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
-              seedMark.SyntaxNode,
-              seedMark.Reason);
+              liftedMark.Mark.SyntaxNode,
+              reason);
         }
     }
 }

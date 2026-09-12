@@ -6,7 +6,7 @@ using NLISSN.Core.Propagation;
 namespace NLISSN.Rules;
 
 /// Carries an unused interface implementation into the visibility cleanup handoff.
-[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
+[NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.UnusedInterfaceImplementationCleanup)]
 public sealed class ClearUnusedInterfaceImplementationPropagationRule : RuleDefinitionPropagate
 {
 public override string RuleId { get; } = "propagate.clear-unused-interface-implementation";

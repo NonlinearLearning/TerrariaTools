@@ -7,6 +7,18 @@ public interface ILiftPayload
 {
 }
 
+public enum MethodDeletionKind
+{
+  Unreachable,
+  Unreferenced
+}
+
+/// <summary>Proof that a method declaration crossed the deletion lift boundary.</summary>
+public sealed record MethodDeletionLiftPayload(
+  MethodDeletionKind Kind,
+  string MethodName,
+  string OriginalReason) : ILiftPayload;
+
 /// <summary>Payload for a non-structural logical expression reduction produced by Lift.</summary>
 public sealed record LogicalExpressionReductionPayload(
   BinaryExpressionSyntax Host,

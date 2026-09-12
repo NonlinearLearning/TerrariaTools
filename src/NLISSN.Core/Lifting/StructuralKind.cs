@@ -5,6 +5,7 @@ namespace NLISSN.Core.Lifting;
 /// </summary>
 public enum StructuralKind
 {
+  MethodDeletion,
   Assignment,
   LocalDefinition,
   If,

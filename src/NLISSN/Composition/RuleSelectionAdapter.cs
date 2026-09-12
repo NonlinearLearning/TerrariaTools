@@ -1,20 +1,54 @@
+using NLISSN.Core.Pipeline;
 using NLISSN.Rules;
 
 namespace NLISSN.Composition;
 
-/// <summary>
-/// Translates the legacy configuration shape into the RuleSelection contract.
-/// </summary>
 public static class RuleSelectionAdapter
 {
     public static RuleSelection FromLegacySettings(
       IEnumerable<string>? disabledRuleTypes)
     {
+        return FromLegacySettings(
+          disabledRuleTypes,
+          deleteUnreachableMethods: false,
+          deleteUnreferencedMethods: false,
+          clearUnusedInterfaceImplementations: false,
+          privatizeInternalOnlyPublicMethods: false);
+    }
+
+    public static RuleSelection FromLegacySettings(
+      IEnumerable<string>? disabledRuleTypes,
+      bool deleteUnreachableMethods,
+      bool deleteUnreferencedMethods,
+      bool clearUnusedInterfaceImplementations,
+      bool privatizeInternalOnlyPublicMethods)
+    {
+        var requestedFeatures = new List<RuleFeature>();
+        if (deleteUnreachableMethods)
+        {
+            requestedFeatures.Add(RuleFeature.UnreachableMethodDeletion);
+        }
+
+        if (deleteUnreferencedMethods)
+        {
+            requestedFeatures.Add(RuleFeature.UnreferencedMethodDeletion);
+        }
+
+        if (clearUnusedInterfaceImplementations)
+        {
+            requestedFeatures.Add(RuleFeature.UnusedInterfaceImplementationCleanup);
+        }
+
+        if (privatizeInternalOnlyPublicMethods)
+        {
+            requestedFeatures.Add(RuleFeature.InternalOnlyPublicMethodPrivatization);
+        }
+
         var disabledRuleIds = (disabledRuleTypes ?? Array.Empty<string>())
           .Where(value => !string.IsNullOrWhiteSpace(value))
           .SelectMany(ResolveLegacyRuleName)
           .ToArray();
-        return new RuleSelection(disabledRuleIds);
+        return new RuleSelection(requestedFeatures, disabledRuleIds);
     }
 
     private static IEnumerable<string> ResolveLegacyRuleName(string value)
@@ -31,27 +65,27 @@ public static class RuleSelectionAdapter
         return matches.Length == 0 ? new[] { value } : matches;
     }
 
-    private static IEnumerable<RuleCatalogDescriptor> GetAllDescriptors()
+    private static IEnumerable<RuleCatalogEntry> GetAllDescriptors()
     {
-        return GeneratedRuleCatalog.Markers.Select(descriptor => new RuleCatalogDescriptor(
+        return GeneratedRuleCatalog.Markers.Select(descriptor => new RuleCatalogEntry(
             descriptor.RuleId,
             descriptor.TypeName,
             descriptor.FullyQualifiedName))
-          .Concat(GeneratedRuleCatalog.Propagators.Select(descriptor => new RuleCatalogDescriptor(
+          .Concat(GeneratedRuleCatalog.Propagators.Select(descriptor => new RuleCatalogEntry(
             descriptor.RuleId,
             descriptor.TypeName,
             descriptor.FullyQualifiedName)))
-          .Concat(GeneratedRuleCatalog.Lifters.Select(descriptor => new RuleCatalogDescriptor(
+          .Concat(GeneratedRuleCatalog.Lifters.Select(descriptor => new RuleCatalogEntry(
             descriptor.RuleId,
             descriptor.TypeName,
             descriptor.FullyQualifiedName)))
-          .Concat(GeneratedRuleCatalog.Proposers.Select(descriptor => new RuleCatalogDescriptor(
+          .Concat(GeneratedRuleCatalog.Proposers.Select(descriptor => new RuleCatalogEntry(
             descriptor.RuleId,
             descriptor.TypeName,
             descriptor.FullyQualifiedName)));
     }
 
-    private sealed record RuleCatalogDescriptor(
+    private sealed record RuleCatalogEntry(
       string RuleId,
       string TypeName,
       string FullyQualifiedName);

@@ -58,6 +58,14 @@ public enum RuleFactKind : ushort
     UnusedInterfaceImplementationPropagated,
     UnusedInterfaceImplementationLifted,
 
+    UnreachableMethodMarked,
+    UnreachableMethodPropagated,
+    UnreachableMethodLifted,
+
+    UnreferencedMethodMarked,
+    UnreferencedMethodPropagated,
+    UnreferencedMethodLifted,
+
     // Retained for compatibility with serialized legacy fact tags.
     UnreachableMethod,
     UnreferencedMethod
@@ -102,6 +110,9 @@ public static class RuleFactKindDescriptor
               RuleFactKind.UnusedInterfaceImplementationMarked or
               RuleFactKind.UnusedInterfaceImplementationPropagated or
               RuleFactKind.UnusedInterfaceImplementationLifted or
+              RuleFactKind.UnreachableMethodMarked or RuleFactKind.UnreachableMethodPropagated or
+              RuleFactKind.UnreachableMethodLifted or RuleFactKind.UnreferencedMethodMarked or
+              RuleFactKind.UnreferencedMethodPropagated or RuleFactKind.UnreferencedMethodLifted or
               RuleFactKind.UnreachableMethod or RuleFactKind.UnreferencedMethod =>
               RuleFactDomain.Global,
             _ => throw new ArgumentOutOfRangeException(nameof(factKind), factKind, "Unknown rule fact kind."),
@@ -136,6 +147,12 @@ public static class RuleFactKindDescriptor
             RuleFactKind.UnusedInterfaceImplementationMarked => "UnusedInterfaceImplementation.Marked",
             RuleFactKind.UnusedInterfaceImplementationPropagated => "UnusedInterfaceImplementation.Propagated",
             RuleFactKind.UnusedInterfaceImplementationLifted => "UnusedInterfaceImplementation.Lifted",
+            RuleFactKind.UnreachableMethodMarked => "UnreachableMethod.Marked",
+            RuleFactKind.UnreachableMethodPropagated => "UnreachableMethod.Propagated",
+            RuleFactKind.UnreachableMethodLifted => "UnreachableMethod.Lifted",
+            RuleFactKind.UnreferencedMethodMarked => "UnreferencedMethod.Marked",
+            RuleFactKind.UnreferencedMethodPropagated => "UnreferencedMethod.Propagated",
+            RuleFactKind.UnreferencedMethodLifted => "UnreferencedMethod.Lifted",
             RuleFactKind.UnreachableMethod => "UnreachableMethod",
             RuleFactKind.UnreferencedMethod => "UnreferencedMethod",
             _ => throw new ArgumentOutOfRangeException(nameof(factKind), factKind, "Unknown rule fact kind."),
@@ -176,6 +193,12 @@ public static class RuleFactKindDescriptor
             "UnusedInterfaceImplementation.Marked" => RuleFactKind.UnusedInterfaceImplementationMarked,
             "UnusedInterfaceImplementation.Propagated" => RuleFactKind.UnusedInterfaceImplementationPropagated,
             "UnusedInterfaceImplementation.Lifted" => RuleFactKind.UnusedInterfaceImplementationLifted,
+            "UnreachableMethod.Marked" => RuleFactKind.UnreachableMethodMarked,
+            "UnreachableMethod.Propagated" => RuleFactKind.UnreachableMethodPropagated,
+            "UnreachableMethod.Lifted" => RuleFactKind.UnreachableMethodLifted,
+            "UnreferencedMethod.Marked" => RuleFactKind.UnreferencedMethodMarked,
+            "UnreferencedMethod.Propagated" => RuleFactKind.UnreferencedMethodPropagated,
+            "UnreferencedMethod.Lifted" => RuleFactKind.UnreferencedMethodLifted,
             "UnreachableMethod" => RuleFactKind.UnreachableMethod,
             "UnreferencedMethod" => RuleFactKind.UnreferencedMethod,
             _ => RuleFactKind.Unknown,

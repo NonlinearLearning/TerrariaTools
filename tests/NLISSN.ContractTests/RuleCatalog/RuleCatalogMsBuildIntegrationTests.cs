@@ -12,15 +12,15 @@ public sealed class RuleCatalogMsBuildIntegrationTests
     {
         var descriptors = GetAllDescriptors().ToArray();
 
-        Assert.Equal(69, descriptors.Length);
+        Assert.Equal(85, descriptors.Length);
     }
 
     [Fact]
-    public void RealBuildCatalog_ContainsSixtyEightFactories()
+    public void RealBuildCatalog_ContainsAllFactories()
     {
         var descriptors = GetAllDescriptors().ToArray();
 
-        Assert.Equal(69, descriptors.Length);
+        Assert.Equal(85, descriptors.Length);
         Assert.Equal(
           descriptors.Length,
           descriptors.Select(descriptor => descriptor.RuleId)
@@ -70,18 +70,22 @@ public sealed class RuleCatalogMsBuildIntegrationTests
         return GeneratedRuleCatalog.Markers.Select(descriptor => new Descriptor(
             descriptor.RuleId,
             descriptor.TypeName,
+            descriptor.Feature,
             descriptor.Factory))
           .Concat(GeneratedRuleCatalog.Propagators.Select(descriptor => new Descriptor(
             descriptor.RuleId,
             descriptor.TypeName,
+            descriptor.Feature,
             descriptor.Factory)))
           .Concat(GeneratedRuleCatalog.Lifters.Select(descriptor => new Descriptor(
             descriptor.RuleId,
             descriptor.TypeName,
+            descriptor.Feature,
             descriptor.Factory)))
           .Concat(GeneratedRuleCatalog.Proposers.Select(descriptor => new Descriptor(
             descriptor.RuleId,
             descriptor.TypeName,
+            descriptor.Feature,
             descriptor.Factory)));
     }
 
@@ -100,5 +104,6 @@ public sealed class RuleCatalogMsBuildIntegrationTests
     private sealed record Descriptor(
       string RuleId,
       string TypeName,
+      RuleFeature Feature,
       Func<IRuleDefinition> Create);
 }

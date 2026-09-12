@@ -1,40 +1,5 @@
 [
   {
-    "stage": "Lift",
-    "type": "NLISSN.Rules.ControlStructureLiftingRule",
-    "sourceCapability": "lift.target.control-structure",
-    "observedRuleId": "DEL-SOBJ-LIFT-CONTROL-001",
-    "targetRuleId": "lift.target.control-structure"
-  },
-  {
-    "stage": "Lift",
-    "type": "NLISSN.Rules.ExpressionHostLiftingRule",
-    "sourceCapability": "lift.target.expression-host",
-    "observedRuleId": "DEL-SOBJ-LIFT-HOST-001",
-    "targetRuleId": "lift.target.expression-host"
-  },
-  {
-    "stage": "Lift",
-    "type": "NLISSN.Rules.IfStructureLiftingRule",
-    "sourceCapability": "lift.target.if-structure",
-    "observedRuleId": "DEL-SOBJ-LIFT-IF-001",
-    "targetRuleId": "lift.target.if-structure"
-  },
-  {
-    "stage": "Lift",
-    "type": "NLISSN.Rules.LogicalExpressionLiftingRule",
-    "sourceCapability": "lift.atomic.logical-expression",
-    "observedRuleId": "DEL-SOBJ-LIFT-LOGIC-001",
-    "targetRuleId": "lift.atomic.logical-expression"
-  },
-  {
-    "stage": "Lift",
-    "type": "NLISSN.Rules.SwitchStructureLiftingRule",
-    "sourceCapability": "lift.target.switch-structure",
-    "observedRuleId": "DEL-SOBJ-LIFT-SWITCH-001",
-    "targetRuleId": "lift.target.switch-structure"
-  },
-  {
     "stage": "Mark",
     "type": "NLISSN.Rules.AtomicBaseExpressionMarkRule",
     "sourceCapability": "mark.target.base-expression",
@@ -148,10 +113,24 @@
   },
   {
     "stage": "Mark",
+    "type": "NLISSN.Rules.ClearUnusedInterfaceImplementationRule",
+    "sourceCapability": "mark.clear-unused-interface-implementation",
+    "observedRuleId": "CLR-UNUSED-IFACE-IMPL-MARK-001",
+    "targetRuleId": "mark.clear-unused-interface-implementation"
+  },
+  {
+    "stage": "Mark",
     "type": "NLISSN.Rules.DeclarationMarkRule",
     "sourceCapability": "mark.type.declaration",
     "observedRuleId": "DEL-CLASS-MARK-DECL-001",
     "targetRuleId": "mark.type.declaration"
+  },
+  {
+    "stage": "Mark",
+    "type": "NLISSN.Rules.PrivatizeInternalOnlyPublicMethodRule",
+    "sourceCapability": "mark.privatize-internal-only-public-method",
+    "observedRuleId": "mark.privatize-internal-only-public-method",
+    "targetRuleId": "mark.privatize-internal-only-public-method"
   },
   {
     "stage": "Mark",
@@ -168,11 +147,32 @@
     "targetRuleId": "mark.type.type-syntax"
   },
   {
+    "stage": "Mark",
+    "type": "NLISSN.Rules.UnreachableMethodMarkRule",
+    "sourceCapability": "mark.unreachable-method",
+    "observedRuleId": "DEL-DEAD-001",
+    "targetRuleId": "mark.unreachable-method"
+  },
+  {
+    "stage": "Mark",
+    "type": "NLISSN.Rules.UnreferencedMethodMarkRule",
+    "sourceCapability": "mark.unreferenced-method",
+    "observedRuleId": "DEL-UNREF-METHOD-MARK-001",
+    "targetRuleId": "mark.unreferenced-method"
+  },
+  {
     "stage": "Propagate",
     "type": "NLISSN.Rules.AssignmentLeftValuePropagationRule",
     "sourceCapability": "propagate.target.assignment-left-value",
     "observedRuleId": "DEL-SOBJ-PROP-ASSIGN-LHS-001",
     "targetRuleId": "propagate.target.assignment-left-value"
+  },
+  {
+    "stage": "Propagate",
+    "type": "NLISSN.Rules.ClearUnusedInterfaceImplementationPropagationRule",
+    "sourceCapability": "propagate.clear-unused-interface-implementation",
+    "observedRuleId": "CLR-UNUSED-IFACE-IMPL-PROPAGATE-001",
+    "targetRuleId": "propagate.clear-unused-interface-implementation"
   },
   {
     "stage": "Propagate",
@@ -253,10 +253,94 @@
   },
   {
     "stage": "Propagate",
+    "type": "NLISSN.Rules.PrivatizeInternalOnlyPublicMethodPropagationRule",
+    "sourceCapability": "propagate.privatize-internal-only-public-method",
+    "observedRuleId": "PRIV-INTERNAL-PUBLIC-PROPAGATE-001",
+    "targetRuleId": "propagate.privatize-internal-only-public-method"
+  },
+  {
+    "stage": "Propagate",
     "type": "NLISSN.Rules.SymbolReferencePropagationRule",
     "sourceCapability": "propagate.target.symbol-reference",
     "observedRuleId": "DEL-SOBJ-PROP-SYMBOL-001",
     "targetRuleId": "propagate.target.symbol-reference"
+  },
+  {
+    "stage": "Propagate",
+    "type": "NLISSN.Rules.UnreachableMethodPropagationRule",
+    "sourceCapability": "propagate.unreachable-method",
+    "observedRuleId": "propagate.unreachable-method",
+    "targetRuleId": "propagate.unreachable-method"
+  },
+  {
+    "stage": "Propagate",
+    "type": "NLISSN.Rules.UnreferencedMethodPropagationRule",
+    "sourceCapability": "propagate.unreferenced-method",
+    "observedRuleId": "propagate.unreferenced-method",
+    "targetRuleId": "propagate.unreferenced-method"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.ClearUnusedInterfaceImplementationLiftingRule",
+    "sourceCapability": "lift.clear-unused-interface-implementation",
+    "observedRuleId": "CLR-UNUSED-IFACE-IMPL-LIFT-001",
+    "targetRuleId": "lift.clear-unused-interface-implementation"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.ControlStructureLiftingRule",
+    "sourceCapability": "lift.target.control-structure",
+    "observedRuleId": "DEL-SOBJ-LIFT-CONTROL-001",
+    "targetRuleId": "lift.target.control-structure"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.ExpressionHostLiftingRule",
+    "sourceCapability": "lift.target.expression-host",
+    "observedRuleId": "DEL-SOBJ-LIFT-HOST-001",
+    "targetRuleId": "lift.target.expression-host"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.IfStructureLiftingRule",
+    "sourceCapability": "lift.target.if-structure",
+    "observedRuleId": "DEL-SOBJ-LIFT-IF-001",
+    "targetRuleId": "lift.target.if-structure"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.LogicalExpressionLiftingRule",
+    "sourceCapability": "lift.atomic.logical-expression",
+    "observedRuleId": "DEL-SOBJ-LIFT-LOGIC-001",
+    "targetRuleId": "lift.atomic.logical-expression"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.PrivatizeInternalOnlyPublicMethodLiftingRule",
+    "sourceCapability": "lift.privatize-internal-only-public-method",
+    "observedRuleId": "PRIV-INTERNAL-PUBLIC-LIFT-001",
+    "targetRuleId": "lift.privatize-internal-only-public-method"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.SwitchStructureLiftingRule",
+    "sourceCapability": "lift.target.switch-structure",
+    "observedRuleId": "DEL-SOBJ-LIFT-SWITCH-001",
+    "targetRuleId": "lift.target.switch-structure"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.UnreachableMethodLiftingRule",
+    "sourceCapability": "lift.unreachable-method",
+    "observedRuleId": "lift.unreachable-method",
+    "targetRuleId": "lift.unreachable-method"
+  },
+  {
+    "stage": "Lift",
+    "type": "NLISSN.Rules.UnreferencedMethodLiftingRule",
+    "sourceCapability": "lift.unreferenced-method",
+    "observedRuleId": "lift.unreferenced-method",
+    "targetRuleId": "lift.unreferenced-method"
   },
   {
     "stage": "Propose",
@@ -264,6 +348,13 @@
     "sourceCapability": "propose.type.base-type",
     "observedRuleId": "DEL-CLASS-PROP-BASE-001",
     "targetRuleId": "propose.type.base-type"
+  },
+  {
+    "stage": "Propose",
+    "type": "NLISSN.Rules.ClearUnusedInterfaceImplementationProposalRule",
+    "sourceCapability": "propose.clear-unused-interface-implementation",
+    "observedRuleId": "CLR-UNUSED-IFACE-IMPL-PROP-001",
+    "targetRuleId": "propose.clear-unused-interface-implementation"
   },
   {
     "stage": "Propose",
@@ -456,6 +547,13 @@
   },
   {
     "stage": "Propose",
+    "type": "NLISSN.Rules.PrivatizeInternalOnlyPublicMethodProposalRule",
+    "sourceCapability": "propose.privatize-internal-only-public-method",
+    "observedRuleId": "PRIV-INTERNAL-PUBLIC-PROP-001",
+    "targetRuleId": "propose.privatize-internal-only-public-method"
+  },
+  {
+    "stage": "Propose",
     "type": "NLISSN.Rules.PublicMethodParameterShrinkProposalRule",
     "sourceCapability": "propose.type.public-method-parameter-shrink",
     "observedRuleId": "DEL-CLASS-PROP-PUBLIC-PARAM-SHRINK-001",
@@ -481,5 +579,19 @@
     "sourceCapability": "propose.type.type-syntax-declaration",
     "observedRuleId": "DEL-CLASS-PROP-TYPE-DECL-001",
     "targetRuleId": "propose.type.type-syntax-declaration"
+  },
+  {
+    "stage": "Propose",
+    "type": "NLISSN.Rules.UnreachableMethodProposalRule",
+    "sourceCapability": "propose.unreachable-method",
+    "observedRuleId": "DEL-DEAD-001",
+    "targetRuleId": "propose.unreachable-method"
+  },
+  {
+    "stage": "Propose",
+    "type": "NLISSN.Rules.UnreferencedMethodProposalRule",
+    "sourceCapability": "propose.unreferenced-method",
+    "observedRuleId": "DEL-UNREF-METHOD-PROP-001",
+    "targetRuleId": "propose.unreferenced-method"
   }
 ]

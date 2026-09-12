@@ -202,7 +202,11 @@ public sealed class  CommandHost
 
     private static bool HasRuleSelection(RulePolicySettings policy)
     {
-        return policy.DisabledRuleTypes.Count > 0;
+        return policy.DisabledRuleTypes.Count > 0 ||
+          policy.DeleteUnreachableMethods ||
+          policy.DeleteUnreferencedMethods ||
+          policy.ClearUnusedInterfaceImplementations ||
+          policy.PrivatizeInternalOnlyPublicMethods;
     }
 
     private static string ResolveRunId(string runId)
@@ -213,7 +217,11 @@ public sealed class  CommandHost
     private static RuleSelection CreateRuleSelection(RulePolicySettings policy)
     {
         return RuleSelectionAdapter.FromLegacySettings(
-          policy.DisabledRuleTypes);
+          policy.DisabledRuleTypes,
+          policy.DeleteUnreachableMethods,
+          policy.DeleteUnreferencedMethods,
+          policy.ClearUnusedInterfaceImplementations,
+          policy.PrivatizeInternalOnlyPublicMethods);
     }
 
     private static PerformanceMode ParsePerformanceMode(string mode)

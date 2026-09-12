@@ -28,6 +28,14 @@ internal static class RuleCatalogDiagnostics
       DiagnosticSeverity.Warning,
       isEnabledByDefault: true);
 
+    public static readonly DiagnosticDescriptor InvalidFeature = new(
+      "NLRCG004",
+      "Rule feature metadata is invalid",
+      "Rule type '{0}' has an invalid RuleFeature value",
+      "RuleCatalog",
+      DiagnosticSeverity.Error,
+      isEnabledByDefault: true);
+
     public static readonly DiagnosticDescriptor InvalidRuleId = new(
       "NLRCG005",
       "RuleId is not a compile-time string",
@@ -76,10 +84,10 @@ internal static class RuleCatalogDiagnostics
       DiagnosticSeverity.Error,
       isEnabledByDefault: true);
 
-    public static readonly DiagnosticDescriptor IncompleteCatalog = new(
+    public static readonly DiagnosticDescriptor FeatureMissingStage = new(
       "NLRCG011",
-      "Rule catalog is incomplete",
-      "The generated rule catalog must register at least one concrete rule in every stage (Mark, Propagate, Lift, Propose); registered stages: {0}",
+      "Rule feature is missing a stage",
+      "Registered rule feature '{0}' is missing required stage '{1}'",
       "RuleCatalog",
       DiagnosticSeverity.Error,
       isEnabledByDefault: true);

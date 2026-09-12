@@ -12,25 +12,25 @@ public sealed class RuleCatalogGeneratorTests
         var run = Run("""
             namespace Demo;
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class AlphaMark : NLISSN.Core.Marking.RuleDefinitionMark
             {
                 public override string RuleId { get; } = "mark.alpha";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class BetaPropagate : NLISSN.Core.Propagation.RuleDefinitionPropagate
             {
                 public override string RuleId { get; } = "propagate.beta";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class GammaLift : NLISSN.Core.Lifting.RuleDefinitionLift
             {
                 public override string RuleId { get; } = "lift.gamma";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class DeltaPropose : NLISSN.Core.Decision.RuleDefinitionPropose
             {
                 public override string RuleId { get; } = "propose.delta";
@@ -49,8 +49,6 @@ public sealed class RuleCatalogGeneratorTests
         Assert.Contains("static () => new global::Demo.BetaPropagate()", catalog, StringComparison.Ordinal);
         Assert.Contains("static () => new global::Demo.GammaLift()", catalog, StringComparison.Ordinal);
         Assert.Contains("static () => new global::Demo.DeltaPropose()", catalog, StringComparison.Ordinal);
-        Assert.DoesNotContain("RuleFeature", catalog, StringComparison.Ordinal);
-        Assert.DoesNotContain(".Feature", catalog, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -64,25 +62,25 @@ public sealed class RuleCatalogGeneratorTests
                 public override string RuleId { get; } = "mark.unregistered";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class RegisteredMark : NLISSN.Core.Marking.RuleDefinitionMark
             {
                 public override string RuleId { get; } = "mark.registered";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class RegisteredPropagate : NLISSN.Core.Propagation.RuleDefinitionPropagate
             {
                 public override string RuleId { get; } = "propagate.registered";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class RegisteredLift : NLISSN.Core.Lifting.RuleDefinitionLift
             {
                 public override string RuleId { get; } = "lift.registered";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class RegisteredPropose : NLISSN.Core.Decision.RuleDefinitionPropose
             {
                 public override string RuleId { get; } = "propose.registered";
@@ -96,6 +94,25 @@ public sealed class RuleCatalogGeneratorTests
         var catalog = AssertGeneratedCatalog(run);
         Assert.Contains("RegisteredMark", catalog, StringComparison.Ordinal);
         Assert.DoesNotContain("UnregisteredMark", catalog, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void FeatureMissingAStage_ReportsNLRCG011AndDoesNotGeneratePartialCatalog()
+    {
+        var run = Run("""
+            namespace Demo;
+
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
+            public sealed class OnlyMark : NLISSN.Core.Marking.RuleDefinitionMark
+            {
+                public override string RuleId { get; } = "mark.only";
+            }
+            """);
+
+        Assert.Contains(run.Diagnostics, diagnostic =>
+          diagnostic.Id == "NLRCG011" &&
+          diagnostic.GetMessage().Contains("Propagate", StringComparison.Ordinal));
+        AssertNoGeneratedCatalog(run);
     }
 
     [Fact]
@@ -123,7 +140,7 @@ public sealed class RuleCatalogGeneratorTests
         var run = Run("""
             namespace Demo;
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class InvalidStage : NLISSN.Core.Pipeline.IRuleDefinition
             {
                 public string RuleId => "invalid.stage";
@@ -135,19 +152,19 @@ public sealed class RuleCatalogGeneratorTests
     }
 
     [Fact]
-    public void IncompleteCatalog_ReportsErrorAndDoesNotGeneratePartialCatalog()
+    public void InvalidFeature_ReportsErrorAndDoesNotGeneratePartialCatalog()
     {
         var run = Run("""
             namespace Demo;
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
-            public sealed class IncompleteMark : NLISSN.Core.Marking.RuleDefinitionMark
+            [NLISSN.Core.Pipeline.RuleRegistration((NLISSN.Core.Pipeline.RuleFeature)999)]
+            public sealed class InvalidFeature : NLISSN.Core.Marking.RuleDefinitionMark
             {
-                public override string RuleId { get; } = "mark.incomplete";
+                public override string RuleId { get; } = "mark.invalid-feature";
             }
             """);
 
-        Assert.Contains(run.Diagnostics, diagnostic => diagnostic.Id == "NLRCG011");
+        Assert.Contains(run.Diagnostics, diagnostic => diagnostic.Id == "NLRCG004");
         AssertNoGeneratedCatalog(run);
     }
 
@@ -157,13 +174,13 @@ public sealed class RuleCatalogGeneratorTests
         var run = Run("""
             namespace Demo;
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public abstract class AbstractMark : NLISSN.Core.Marking.RuleDefinitionMark
             {
                 public override string RuleId { get; } = "mark.abstract";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class GenericMark<T> : NLISSN.Core.Marking.RuleDefinitionMark
             {
                 public override string RuleId { get; } = "mark.generic";
@@ -180,7 +197,7 @@ public sealed class RuleCatalogGeneratorTests
         var run = Run("""
             namespace Demo;
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class NoDefaultConstructorMark : NLISSN.Core.Marking.RuleDefinitionMark
             {
                 private NoDefaultConstructorMark(string value) { }
@@ -198,13 +215,13 @@ public sealed class RuleCatalogGeneratorTests
         var run = Run("""
             namespace Demo;
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class FirstMark : NLISSN.Core.Marking.RuleDefinitionMark
             {
                 public override string RuleId { get; } = "mark.duplicate";
             }
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class SecondMark : NLISSN.Core.Marking.RuleDefinitionMark
             {
                 public override string RuleId { get; } = "mark.duplicate";
@@ -226,7 +243,7 @@ public sealed class RuleCatalogGeneratorTests
 
             namespace Demo
             {
-                [NLISSN.Core.Pipeline.RuleRegistration]
+                [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
                 public sealed class ValidMark : NLISSN.Core.Marking.RuleDefinitionMark
                 {
                     public override string RuleId { get; } = "mark.valid";
@@ -244,7 +261,7 @@ public sealed class RuleCatalogGeneratorTests
         var run = Run("""
             namespace Demo;
 
-            [NLISSN.Core.Pipeline.RuleRegistration]
+            [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
             public sealed class DynamicIdMark : NLISSN.Core.Marking.RuleDefinitionMark
             {
                 private static string CreateId() => "mark.dynamic";
@@ -262,7 +279,7 @@ public sealed class RuleCatalogGeneratorTests
         const string source = """
             namespace Zed
             {
-                [NLISSN.Core.Pipeline.RuleRegistration]
+                [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
                 public sealed class DuplicateName : NLISSN.Core.Marking.RuleDefinitionMark
                 {
                     public override string RuleId { get; } = "mark.zed";
@@ -271,31 +288,28 @@ public sealed class RuleCatalogGeneratorTests
 
             namespace Alpha
             {
-                [NLISSN.Core.Pipeline.RuleRegistration]
+                [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
                 public sealed class DuplicateName : NLISSN.Core.Marking.RuleDefinitionMark
                 {
                     public override string RuleId { get; } = "mark.alpha";
                 }
-            }
 
-            namespace Support
-            {
-                [NLISSN.Core.Pipeline.RuleRegistration]
-                public sealed class OrderPropagate : NLISSN.Core.Propagation.RuleDefinitionPropagate
+                [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
+                public sealed class AlphaPropagate : NLISSN.Core.Propagation.RuleDefinitionPropagate
                 {
-                    public override string RuleId { get; } = "propagate.order";
+                    public override string RuleId { get; } = "propagate.alpha";
                 }
 
-                [NLISSN.Core.Pipeline.RuleRegistration]
-                public sealed class OrderLift : NLISSN.Core.Lifting.RuleDefinitionLift
+                [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
+                public sealed class AlphaLift : NLISSN.Core.Lifting.RuleDefinitionLift
                 {
-                    public override string RuleId { get; } = "lift.order";
+                    public override string RuleId { get; } = "lift.alpha";
                 }
 
-                [NLISSN.Core.Pipeline.RuleRegistration]
-                public sealed class OrderPropose : NLISSN.Core.Decision.RuleDefinitionPropose
+                [NLISSN.Core.Pipeline.RuleRegistration(NLISSN.Core.Pipeline.RuleFeature.Core)]
+                public sealed class AlphaPropose : NLISSN.Core.Decision.RuleDefinitionPropose
                 {
-                    public override string RuleId { get; } = "propose.order";
+                    public override string RuleId { get; } = "propose.alpha";
                 }
             }
             """;
@@ -373,7 +387,8 @@ public sealed class RuleCatalogGeneratorTests
     private static readonly IReadOnlyList<MetadataReference> TrustedPlatformReferences =
         ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") ?? string.Empty)
           .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-        .Where(path => !Path.GetFileNameWithoutExtension(path).StartsWith("NL", StringComparison.Ordinal))
+        .Where(path =>
+          !Path.GetFileNameWithoutExtension(path).StartsWith("NLISSN", StringComparison.OrdinalIgnoreCase))
         .Select(path => MetadataReference.CreateFromFile(path))
         .ToArray();
 
@@ -388,8 +403,21 @@ public sealed class RuleCatalogGeneratorTests
                 string RuleId { get; }
             }
 
+            public enum RuleFeature
+            {
+                Core,
+                UnreachableMethodDeletion,
+                UnreferencedMethodDeletion,
+                UnusedInterfaceImplementationCleanup,
+                InternalOnlyPublicMethodPrivatization,
+            }
+
             [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
-            public sealed class RuleRegistrationAttribute : Attribute { }
+            public sealed class RuleRegistrationAttribute : Attribute
+            {
+                public RuleRegistrationAttribute(RuleFeature feature) { Feature = feature; }
+                public RuleFeature Feature { get; }
+            }
 
             [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
             public sealed class RuleCatalogIgnoreAttribute : Attribute { }
@@ -401,6 +429,7 @@ public sealed class RuleCatalogGeneratorTests
                     string ruleId,
                     string typeName,
                     string fullyQualifiedName,
+                    RuleFeature feature,
                     Func<TStage> factory) { }
             }
         }

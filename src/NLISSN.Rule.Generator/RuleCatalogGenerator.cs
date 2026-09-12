@@ -16,7 +16,11 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
     private const string ProposeMetadataName = "NLISSN.Core.Decision.RuleDefinitionPropose";
     private const string RegistrationMetadataName = "NLISSN.Core.Pipeline.RuleRegistrationAttribute";
     private const string IgnoreMetadataName = "NLISSN.Core.Pipeline.RuleCatalogIgnoreAttribute";
+    private const string FeatureMetadataName = "NLISSN.Core.Pipeline.RuleFeature";
     private const string GeneratedCatalogMetadataName = "NLISSN.Rules.GeneratedRuleCatalog";
+
+    private static readonly ImmutableHashSet<int> KnownFeatures =
+      ImmutableHashSet.Create(0, 1, 2, 3, 4);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -129,6 +133,16 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
                 continue;
             }
 
+            if (!TryGetFeature(registrationAttributes[0], contracts.Feature is not null, out var feature))
+            {
+                context.ReportDiagnostic(Diagnostic.Create(
+                  RuleCatalogDiagnostics.InvalidFeature,
+                  GetLocation(type),
+                  GetQualifiedName(type)));
+                hasError = true;
+                continue;
+            }
+
             if (!TryGetRuleId(compilation, type, out var ruleId))
             {
                 context.ReportDiagnostic(Diagnostic.Create(
@@ -152,7 +166,8 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
             entries.Add(new RuleEntry(
               type,
               stage.Value,
-              ruleId));
+              ruleId,
+              feature));
         }
 
         foreach (var duplicate in entries
@@ -170,20 +185,32 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
             hasError = true;
         }
 
-        if (!hasError && entries.Count > 0)
+        if (contracts.Feature is not null)
         {
-            var stages = entries
-              .Select(entry => entry.Stage)
-              .Distinct()
-              .OrderBy(stage => stage)
-              .ToArray();
-            if (stages.Length != 4)
+            foreach (var featureEntries in entries
+              .GroupBy(entry => entry.Feature)
+              .OrderBy(group => group.Key))
             {
-                context.ReportDiagnostic(Diagnostic.Create(
-                  RuleCatalogDiagnostics.IncompleteCatalog,
-                  Location.None,
-                  string.Join(", ", stages.Select(stage => stage.ToString()))));
-                hasError = true;
+                foreach (var stage in new[]
+                {
+                    StageKind.Mark,
+                    StageKind.Propagate,
+                    StageKind.Lift,
+                    StageKind.Propose
+                })
+                {
+                    if (featureEntries.Any(entry => entry.Stage == stage))
+                    {
+                        continue;
+                    }
+
+                    context.ReportDiagnostic(Diagnostic.Create(
+                      RuleCatalogDiagnostics.FeatureMissingStage,
+                      GetLocation(featureEntries.First().Type),
+                      GetFeatureName(featureEntries.Key),
+                      stage));
+                    hasError = true;
+                }
             }
         }
 
@@ -194,7 +221,7 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
 
         context.AddSource(
           "NLISSN.Rules.GeneratedRuleCatalog.g.cs",
-          EmitCatalog(entries));
+          EmitCatalog(entries, contracts.Feature is not null));
     }
 
     private static ContractSymbols? ResolveContracts(
@@ -208,6 +235,7 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
         var propose = compilation.GetTypeByMetadataName(ProposeMetadataName);
         var registration = compilation.GetTypeByMetadataName(RegistrationMetadataName);
         var ignore = compilation.GetTypeByMetadataName(IgnoreMetadataName);
+        var feature = compilation.GetTypeByMetadataName(FeatureMetadataName);
 
         var resolved = new[]
         {
@@ -240,7 +268,8 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
           lift!,
           propose!,
           registration!,
-          ignore!);
+          ignore!,
+          feature);
     }
 
     private static ImmutableArray<AttributeData> GetAttributes(
@@ -304,6 +333,40 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
     private static bool IsConcrete(INamedTypeSymbol type)
     {
         return !type.IsAbstract && type.TypeParameters.Length == 0;
+    }
+
+    private static bool TryGetFeature(
+      AttributeData attribute,
+      bool featureContractAvailable,
+      out int feature)
+    {
+        feature = 0;
+        if (attribute.ConstructorArguments.Length == 0)
+        {
+            return true;
+        }
+
+        if (!featureContractAvailable || attribute.ConstructorArguments.Length != 1)
+        {
+            return false;
+        }
+
+        var argument = attribute.ConstructorArguments[0];
+        if (argument.Value is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            feature = Convert.ToInt32(argument.Value, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        return KnownFeatures.Contains(feature);
     }
 
     private static bool TryGetRuleId(
@@ -383,7 +446,9 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
         return type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
     }
 
-    private static string EmitCatalog(IReadOnlyList<RuleEntry> entries)
+    private static string EmitCatalog(
+      IReadOnlyList<RuleEntry> entries,
+      bool includeFeatures)
     {
         var builder = new StringBuilder();
         builder.AppendLine("// <auto-generated />");
@@ -392,10 +457,10 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
         builder.AppendLine();
         builder.AppendLine("public static class GeneratedRuleCatalog");
         builder.AppendLine("{");
-        EmitStage(builder, entries, StageKind.Mark, "Markers", "NLISSN.Core.Marking.RuleDefinitionMark");
-        EmitStage(builder, entries, StageKind.Propagate, "Propagators", "NLISSN.Core.Propagation.RuleDefinitionPropagate");
-        EmitStage(builder, entries, StageKind.Lift, "Lifters", "NLISSN.Core.Lifting.RuleDefinitionLift");
-        EmitStage(builder, entries, StageKind.Propose, "Proposers", "NLISSN.Core.Decision.RuleDefinitionPropose");
+        EmitStage(builder, entries, StageKind.Mark, "Markers", "NLISSN.Core.Marking.RuleDefinitionMark", includeFeatures);
+        EmitStage(builder, entries, StageKind.Propagate, "Propagators", "NLISSN.Core.Propagation.RuleDefinitionPropagate", includeFeatures);
+        EmitStage(builder, entries, StageKind.Lift, "Lifters", "NLISSN.Core.Lifting.RuleDefinitionLift", includeFeatures);
+        EmitStage(builder, entries, StageKind.Propose, "Proposers", "NLISSN.Core.Decision.RuleDefinitionPropose", includeFeatures);
         builder.AppendLine("}");
         return builder.ToString();
     }
@@ -405,7 +470,8 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
       IReadOnlyList<RuleEntry> entries,
       StageKind stage,
       string propertyName,
-      string stageTypeName)
+      string stageTypeName,
+      bool includeFeatures)
     {
         var stageEntries = entries
           .Where(entry => entry.Stage == stage)
@@ -424,11 +490,28 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
             builder.AppendLine($"                {Literal(entry.RuleId)},");
             builder.AppendLine($"                {Literal(entry.Type.Name)},");
             builder.AppendLine($"                {Literal(typeName)},");
+            if (includeFeatures)
+            {
+                builder.AppendLine($"                global::NLISSN.Core.Pipeline.RuleFeature.{GetFeatureName(entry.Feature)},");
+            }
             builder.AppendLine($"                static () => new global::{typeName}()),");
         }
 
         builder.AppendLine("        });");
         builder.AppendLine();
+    }
+
+    private static string GetFeatureName(int feature)
+    {
+        return feature switch
+        {
+            0 => "Core",
+            1 => "UnreachableMethodDeletion",
+            2 => "UnreferencedMethodDeletion",
+            3 => "UnusedInterfaceImplementationCleanup",
+            4 => "InternalOnlyPublicMethodPrivatization",
+            _ => throw new InvalidOperationException($"Unknown RuleFeature value {feature}.")
+        };
     }
 
     private static string Literal(string value)
@@ -473,7 +556,8 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
           INamedTypeSymbol lift,
           INamedTypeSymbol propose,
           INamedTypeSymbol registration,
-          INamedTypeSymbol ignore)
+          INamedTypeSymbol ignore,
+          INamedTypeSymbol? feature)
         {
             RuleDefinition = ruleDefinition;
             Mark = mark;
@@ -482,6 +566,7 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
             Propose = propose;
             Registration = registration;
             Ignore = ignore;
+            Feature = feature;
         }
 
         public INamedTypeSymbol RuleDefinition { get; }
@@ -491,20 +576,23 @@ public sealed class RuleCatalogGenerator : IIncrementalGenerator
         public INamedTypeSymbol Propose { get; }
         public INamedTypeSymbol Registration { get; }
         public INamedTypeSymbol Ignore { get; }
+        public INamedTypeSymbol? Feature { get; }
     }
 
     private sealed class RuleEntry
     {
-        public RuleEntry(INamedTypeSymbol type, StageKind stage, string ruleId)
+        public RuleEntry(INamedTypeSymbol type, StageKind stage, string ruleId, int feature)
         {
             Type = type;
             Stage = stage;
             RuleId = ruleId;
+            Feature = feature;
         }
 
         public INamedTypeSymbol Type { get; }
         public StageKind Stage { get; }
         public string RuleId { get; }
+        public int Feature { get; }
     }
 
     private enum StageKind

@@ -8,50 +8,88 @@ namespace NLISSN.Tests.Application;
 public sealed class RulePipelineComposerTests
 {
     [Fact]
-    public void Compose_UsesOnlyGeneratedRules()
+    public void Compose_DefaultSelectionIncludesOnlyCoreRules()
     {
         var result = RulePipelineComposer.Compose(new RuleSelection());
 
         Assert.Empty(result.Warnings);
-        Assert.Equal(GeneratedRuleCatalog.Markers.Count, result.Pipeline.Markers.Count);
-        Assert.Equal(GeneratedRuleCatalog.Propagators.Count, result.Pipeline.Propagators.Count);
-        Assert.Equal(GeneratedRuleCatalog.Lifters.Count, result.Pipeline.Lifters.Count);
-        Assert.Equal(GeneratedRuleCatalog.Proposers.Count, result.Pipeline.Proposers.Count);
+        Assert.Equal((19, 13, 5, 32), (
+          result.Pipeline.Markers.Count,
+          result.Pipeline.Propagators.Count,
+          result.Pipeline.Lifters.Count,
+          result.Pipeline.Proposers.Count));
+        Assert.DoesNotContain(
+          result.Pipeline.Markers,
+          rule => rule.RuleId is "mark.unreachable-method" or
+            "mark.unreferenced-method" or
+            "mark.clear-unused-interface-implementation" or
+            "mark.privatize-internal-only-public-method");
+        Assert.DoesNotContain(
+          result.Pipeline.Propagators,
+          rule => rule.RuleId is "propagate.unreachable-method" or
+            "propagate.unreferenced-method" or
+            "propagate.clear-unused-interface-implementation" or
+            "propagate.privatize-internal-only-public-method");
+        Assert.DoesNotContain(
+          result.Pipeline.Lifters,
+          rule => rule.RuleId is "lift.unreachable-method" or
+            "lift.unreferenced-method" or
+            "lift.clear-unused-interface-implementation" or
+            "lift.privatize-internal-only-public-method");
+        Assert.DoesNotContain(
+          result.Pipeline.Proposers,
+          rule => rule.RuleId is "propose.unreachable-method" or
+            "propose.unreferenced-method" or
+            "propose.clear-unused-interface-implementation" or
+            "propose.privatize-internal-only-public-method");
     }
 
-    [Fact]
-    public void Compose_DefaultSelectionMatchesGeneratedCatalog()
+    [Theory]
+    [InlineData(
+      RuleFeature.UnreachableMethodDeletion,
+      "mark.unreachable-method",
+      "propagate.unreachable-method",
+      "lift.unreachable-method",
+      "propose.unreachable-method")]
+    [InlineData(
+      RuleFeature.UnreferencedMethodDeletion,
+      "mark.unreferenced-method",
+      "propagate.unreferenced-method",
+      "lift.unreferenced-method",
+      "propose.unreferenced-method")]
+    [InlineData(
+      RuleFeature.UnusedInterfaceImplementationCleanup,
+      "mark.clear-unused-interface-implementation",
+      "propagate.clear-unused-interface-implementation",
+      "lift.clear-unused-interface-implementation",
+      "propose.clear-unused-interface-implementation")]
+    [InlineData(
+      RuleFeature.InternalOnlyPublicMethodPrivatization,
+      "mark.privatize-internal-only-public-method",
+      "propagate.privatize-internal-only-public-method",
+      "lift.privatize-internal-only-public-method",
+      "propose.privatize-internal-only-public-method")]
+    public void Compose_ExplicitFeatureAddsAllFourStages(
+      RuleFeature feature,
+      string markRuleId,
+      string propagateRuleId,
+      string liftRuleId,
+      string proposeRuleId)
     {
-        var result = RulePipelineComposer.Compose(new RuleSelection());
+        var result = RulePipelineComposer.Compose(new RuleSelection(new[] { feature }));
 
         Assert.Empty(result.Warnings);
-        Assert.Equal(GeneratedRuleCatalog.Markers.Count, result.Pipeline.Markers.Count);
-        Assert.Equal(GeneratedRuleCatalog.Propagators.Count, result.Pipeline.Propagators.Count);
-        Assert.Equal(GeneratedRuleCatalog.Lifters.Count, result.Pipeline.Lifters.Count);
-        Assert.Equal(GeneratedRuleCatalog.Proposers.Count, result.Pipeline.Proposers.Count);
-        Assert.Equal(
-          GeneratedRuleCatalog.Markers.Select(descriptor => descriptor.RuleId)
-            .OrderBy(ruleId => ruleId, StringComparer.Ordinal),
-          result.Pipeline.Markers.Select(rule => rule.RuleId)
-            .OrderBy(ruleId => ruleId, StringComparer.Ordinal));
-        Assert.Equal(
-          GeneratedRuleCatalog.Propagators.Select(descriptor => descriptor.RuleId),
-          result.Pipeline.Propagators.Select(rule => rule.RuleId));
-        Assert.Equal(
-          GeneratedRuleCatalog.Lifters.Select(descriptor => descriptor.RuleId),
-          result.Pipeline.Lifters.Select(rule => rule.RuleId));
-        Assert.Equal(
-          GeneratedRuleCatalog.Proposers.Select(descriptor => descriptor.RuleId)
-            .OrderBy(ruleId => ruleId, StringComparer.Ordinal),
-          result.Pipeline.Proposers.Select(rule => rule.RuleId)
-            .OrderBy(ruleId => ruleId, StringComparer.Ordinal));
+        Assert.Contains(result.Pipeline.Markers, rule => rule.RuleId == markRuleId);
+        Assert.Contains(result.Pipeline.Propagators, rule => rule.RuleId == propagateRuleId);
+        Assert.Contains(result.Pipeline.Lifters, rule => rule.RuleId == liftRuleId);
+        Assert.Contains(result.Pipeline.Proposers, rule => rule.RuleId == proposeRuleId);
     }
 
     [Fact]
     public void Compose_DisabledRuleRemainsInPipelineAndGraphAsDisabled()
     {
         var result = RulePipelineComposer.Compose(new RuleSelection(
-          new[] { "mark.target.identifier-name" }));
+          disabledRuleIds: new[] { "mark.target.identifier-name" }));
 
         Assert.Empty(result.Warnings);
         Assert.DoesNotContain(result.Pipeline.Markers, rule => rule.RuleId == "mark.target.identifier-name");
@@ -67,13 +105,7 @@ public sealed class RulePipelineComposerTests
     public void Compose_UnknownDisabledIdsAreCaseInsensitiveDeduplicatedAndStable()
     {
         var result = RulePipelineComposer.Compose(new RuleSelection(
-          new[]
-          {
-            "missing.z",
-            "MISSING.Z",
-            "missing.a",
-            "missing.rule"
-          }));
+          disabledRuleIds: new[] { "missing.z", "MISSING.Z", "missing.a", "missing.rule" }));
 
         Assert.Equal(
           new[] { "missing.a", "missing.rule", "missing.z" },
@@ -91,5 +123,4 @@ public sealed class RulePipelineComposerTests
         Assert.NotSame(first.Markers[0], second.Markers[0]);
         Assert.NotSame(first.Proposers[0], second.Proposers[0]);
     }
-
 }

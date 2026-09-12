@@ -10,16 +10,30 @@ namespace NLISSN.Tests.Application;
 public sealed class GeneratedRuleCatalogEquivalenceTests
 {
     [Fact]
-    public void Composer_DefaultMatchesFrozenIdentitySnapshot()
+    public void Composer_DefaultMatchesCoreIdentitySnapshot()
+    {
+        var snapshot = LoadIdentitySnapshot()
+          .Where(entry => !IsOptionalFeatureType(entry.Type));
+
+        Assert.Equal(
+          ExpectedStageSnapshot(snapshot),
+          StageSnapshot(RulePipelineComposer.Compose(new RuleSelection()).Pipeline));
+    }
+
+    [Fact]
+    public void Composer_AllFeaturesMatchesFrozenIdentitySnapshot()
     {
         var snapshot = LoadIdentitySnapshot();
 
         Assert.Equal(
           ExpectedStageSnapshot(snapshot),
-          StageSnapshot(RulePipelineComposer.Compose(new RuleSelection()).Pipeline));
-        Assert.Equal(
-          ExpectedStageSnapshot(snapshot),
-          StageSnapshot(RulePipelineComposer.Compose(new RuleSelection()).Pipeline));
+          StageSnapshot(RulePipelineComposer.Compose(new RuleSelection(new[]
+          {
+            RuleFeature.UnreachableMethodDeletion,
+            RuleFeature.UnreferencedMethodDeletion,
+            RuleFeature.UnusedInterfaceImplementationCleanup,
+            RuleFeature.InternalOnlyPublicMethodPrivatization
+          })).Pipeline));
     }
 
     [Fact]
@@ -41,8 +55,16 @@ public sealed class GeneratedRuleCatalogEquivalenceTests
         Assert.Equal(RuleKind.Mark, disabledNode.Kind);
     }
 
+    private static bool IsOptionalFeatureType(string type)
+    {
+        return type.Contains("UnreachableMethod", StringComparison.Ordinal) ||
+          type.Contains("UnreferencedMethod", StringComparison.Ordinal) ||
+          type.Contains("ClearUnusedInterfaceImplementation", StringComparison.Ordinal) ||
+          type.Contains("PrivatizeInternalOnlyPublicMethod", StringComparison.Ordinal);
+    }
+
     private static IReadOnlyList<string> ExpectedStageSnapshot(
-      IReadOnlyList<RuleIdentityBaseline> snapshot)
+      IEnumerable<RuleIdentityBaseline> snapshot)
     {
         return snapshot
           .OrderBy(entry => StageOrder(entry.Stage))

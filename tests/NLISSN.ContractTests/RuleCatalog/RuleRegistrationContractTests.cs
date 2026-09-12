@@ -10,14 +10,14 @@ public sealed class RuleRegistrationContractTests
     {
         var assembly = typeof(IRuleDefinition).Assembly;
 
-        Assert.Null(assembly.GetType("NLISSN.Core.Pipeline.RuleFeature"));
+        Assert.NotNull(assembly.GetType("NLISSN.Core.Pipeline.RuleFeature"));
         Assert.NotNull(assembly.GetType("NLISSN.Core.Pipeline.RuleRegistrationAttribute"));
         Assert.NotNull(assembly.GetType("NLISSN.Core.Pipeline.RuleCatalogIgnoreAttribute"));
         Assert.NotNull(assembly.GetType("NLISSN.Core.Pipeline.RuleRegistration`1"));
     }
 
     [Fact]
-    public void RuleRegistrationAttribute_IsAClassMarkerAndCannotRepeat()
+    public void RuleRegistrationAttribute_ExposesFeatureAndCannotRepeat()
     {
         var attributeType = typeof(IRuleDefinition).Assembly.GetType(
           "NLISSN.Core.Pipeline.RuleRegistrationAttribute");
@@ -31,12 +31,17 @@ public sealed class RuleRegistrationContractTests
         Assert.False(usage.Inherited);
 
         var constructors = attributeType.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-        var constructor = Assert.Single(constructors);
-        var parameters = constructor.GetParameters();
-        Assert.Empty(parameters);
+        Assert.Equal(2, constructors.Length);
+        Assert.Contains(constructors, constructor => constructor.GetParameters().Length == 0);
+        var featureType = typeof(IRuleDefinition).Assembly.GetType(
+          "NLISSN.Core.Pipeline.RuleFeature");
+        Assert.NotNull(featureType);
+        Assert.Contains(constructors, constructor =>
+          constructor.GetParameters() is [{ ParameterType: var parameterType }] &&
+          parameterType == featureType);
         Assert.DoesNotContain(
           attributeType.GetProperties(BindingFlags.Public | BindingFlags.Instance),
-          property => property.Name == "Feature");
+          property => property.Name is "DefaultEnabled" or "RuleId");
     }
 
     [Fact]
@@ -73,7 +78,7 @@ public sealed class RuleRegistrationContractTests
           .ToArray();
 
         Assert.Equal(
-          new[] { "Factory", "FullyQualifiedName", "RuleId", "TypeName" },
+          new[] { "Factory", "Feature", "FullyQualifiedName", "RuleId", "TypeName" },
           properties);
         Assert.DoesNotContain(
           descriptorType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance),

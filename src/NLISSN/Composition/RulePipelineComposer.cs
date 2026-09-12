@@ -1,4 +1,3 @@
-using NLCPG.Contracts;
 using NLISSN.Application;
 using NLISSN.Core.Decision;
 using NLISSN.Core.Lifting;
@@ -9,14 +8,14 @@ using NLISSN.Rules;
 
 namespace NLISSN.Composition;
 
-/// <summary>
-/// Composes the generated rules for the current rule-catalog framework.
-/// </summary>
 public static class RulePipelineComposer
 {
     public static RuleCompositionResult Compose(RuleSelection selection)
     {
         ArgumentNullException.ThrowIfNull(selection);
+
+        var enabledFeatures = selection.RequestedFeatures.ToHashSet();
+        enabledFeatures.Add(RuleFeature.Core);
 
         var allRuleIds = GetAllDescriptors()
           .Select(descriptor => descriptor.RuleId)
@@ -36,24 +35,12 @@ public static class RulePipelineComposer
             $"Unknown disabled RuleId '{id}' was ignored."))
           .ToArray();
 
-        var markers = ComposeStage(
-          GeneratedRuleCatalog.Markers,
-          disabledIds,
-          out var disabledMarkers);
-        var propagators = ComposeStage(
-          GeneratedRuleCatalog.Propagators,
-          disabledIds,
-          out var disabledPropagators);
-        var lifters = ComposeStage(
-          GeneratedRuleCatalog.Lifters,
-          disabledIds,
-          out var disabledLifters);
-        var proposers = ComposeStage(
-          GeneratedRuleCatalog.Proposers,
-          disabledIds,
-          out var disabledProposers);
+        var markers = ComposeStage(GeneratedRuleCatalog.Markers, enabledFeatures, disabledIds, out var disabledMarkers);
+        var propagators = ComposeStage(GeneratedRuleCatalog.Propagators, enabledFeatures, disabledIds, out var disabledPropagators);
+        var lifters = ComposeStage(GeneratedRuleCatalog.Lifters, enabledFeatures, disabledIds, out var disabledLifters);
+        var proposers = ComposeStage(GeneratedRuleCatalog.Proposers, enabledFeatures, disabledIds, out var disabledProposers);
 
-        var allSelectedRules = markers.Cast<IRuleDefinition>()
+        var selectedRules = markers.Cast<IRuleDefinition>()
           .Concat(propagators)
           .Concat(lifters)
           .Concat(proposers)
@@ -62,23 +49,24 @@ public static class RulePipelineComposer
           .Concat(disabledLifters)
           .Concat(disabledProposers)
           .ToArray();
-        RuleCatalog.ValidateRules(allSelectedRules);
+        RuleCatalog.ValidateRules(selectedRules);
 
         return new RuleCompositionResult(
           new RulePipeline(
-            Markers: markers,
-            Propagators: propagators,
-            Lifters: lifters,
-            Proposers: proposers,
-            DisabledMarkers: disabledMarkers,
-            DisabledPropagators: disabledPropagators,
-            DisabledLifters: disabledLifters,
-            DisabledProposers: disabledProposers),
+            markers,
+            propagators,
+            lifters,
+            proposers,
+            disabledMarkers,
+            disabledPropagators,
+            disabledLifters,
+            disabledProposers),
           warnings);
     }
 
     private static IReadOnlyList<TStage> ComposeStage<TStage>(
-      IEnumerable<RuleRegistration<TStage>> descriptors,
+      IReadOnlyList<RuleRegistration<TStage>> descriptors,
+      IReadOnlySet<RuleFeature> enabledFeatures,
       IReadOnlySet<string> disabledIds,
       out IReadOnlyList<TStage> disabledRules)
       where TStage : class, IRuleDefinition
@@ -86,6 +74,7 @@ public static class RulePipelineComposer
         var active = new List<TStage>();
         var disabled = new List<TStage>();
         foreach (var descriptor in descriptors
+          .Where(descriptor => enabledFeatures.Contains(descriptor.Feature))
           .OrderBy(descriptor => descriptor.TypeName, StringComparer.Ordinal)
           .ThenBy(descriptor => descriptor.FullyQualifiedName, StringComparer.Ordinal))
         {
@@ -104,17 +93,21 @@ public static class RulePipelineComposer
         return active;
     }
 
-    private static IEnumerable<RuleCatalogDescriptor> GetAllDescriptors()
+    private static IEnumerable<RuleCatalogEntry> GetAllDescriptors()
     {
-        return GeneratedRuleCatalog.Markers.Select(descriptor => new RuleCatalogDescriptor(
-            descriptor.RuleId))
-          .Concat(GeneratedRuleCatalog.Propagators.Select(descriptor => new RuleCatalogDescriptor(
-            descriptor.RuleId)))
-          .Concat(GeneratedRuleCatalog.Lifters.Select(descriptor => new RuleCatalogDescriptor(
-            descriptor.RuleId)))
-          .Concat(GeneratedRuleCatalog.Proposers.Select(descriptor => new RuleCatalogDescriptor(
-            descriptor.RuleId)));
+        return GeneratedRuleCatalog.Markers.Select(descriptor => new RuleCatalogEntry(
+            descriptor.RuleId,
+            descriptor.Feature))
+          .Concat(GeneratedRuleCatalog.Propagators.Select(descriptor => new RuleCatalogEntry(
+            descriptor.RuleId,
+            descriptor.Feature)))
+          .Concat(GeneratedRuleCatalog.Lifters.Select(descriptor => new RuleCatalogEntry(
+            descriptor.RuleId,
+            descriptor.Feature)))
+          .Concat(GeneratedRuleCatalog.Proposers.Select(descriptor => new RuleCatalogEntry(
+            descriptor.RuleId,
+            descriptor.Feature)));
     }
 
-    private sealed record RuleCatalogDescriptor(string RuleId);
+    private sealed record RuleCatalogEntry(string RuleId, RuleFeature Feature);
 }

@@ -1,20 +1,22 @@
 using Microsoft.CodeAnalysis.CSharp;
 using NLISSN.Core.Decision;
+using NLISSN.Core.Lifting;
 using NLISSN.Core.Marking;
 using NLISSN.Core.Propagation;
 
 namespace NLISSN.Rules;
 
 /// 将不可达方法的阶段事实转换为方法声明删除决策。
-[global::NLISSN.Core.Pipeline.RuleCatalogIgnore]
+[global::NLISSN.Core.Pipeline.RuleRegistration(
+    global::NLISSN.Core.Pipeline.RuleFeature.UnreachableMethodDeletion)]
 public sealed class UnreachableMethodProposalRule : RuleDefinitionPropose
 {
-    private static readonly RuleFactKind UnreachableMethodFactKind = RuleFactKind.UnreachableMethod;
-
     private static readonly RuleConsumesContract UnreachableMethodConsumes =
       new(new[]
       {
-        new RuleConsumedSyntax(new[] { SyntaxKind.MethodDeclaration }, UnreachableMethodFactKind)
+        new RuleConsumedSyntax(
+          new[] { SyntaxKind.MethodDeclaration },
+          UnreachableMethodFacts.Lifted)
       });
 
 
@@ -30,7 +32,7 @@ public sealed class UnreachableMethodProposalRule : RuleDefinitionPropose
     public override IReadOnlyList<SyntaxKind> MergeableNodeKinds { get; } =
       Array.Empty<SyntaxKind>();
 
-    // 为标记阶段已经证明不可达的方法直接生成删除决策。
+    // 为提升阶段已经证明不可达的方法生成删除决策。
     public override IEnumerable<DecisionUnit> Propose(
       IProposeRuleContext context,
       IReadOnlyList<MarkRecord> seedMarks,
@@ -38,15 +40,25 @@ public sealed class UnreachableMethodProposalRule : RuleDefinitionPropose
       IReadOnlyList<LiftedMarkRecord> liftedMarks)
     {
         _ = context;
+        _ = seedMarks;
         _ = propagatedMarks;
-        _ = liftedMarks;
 
-        foreach (var seedMark in seedMarks)
+        foreach (var liftedMark in liftedMarks)
         {
+            if (liftedMark.Mark.FactKind != UnreachableMethodFacts.Lifted ||
+                liftedMark.Payload is not MethodDeletionLiftPayload
+                {
+                    Kind: MethodDeletionKind.Unreachable,
+                    OriginalReason: var reason
+                })
+            {
+                continue;
+            }
+
             yield return DeleteDecisionFactory.CreateDeleteDecision(
               RuleId,
-              seedMark.SyntaxNode,
-              seedMark.Reason);
+              liftedMark.Mark.SyntaxNode,
+              reason);
         }
     }
 }
