@@ -18,4 +18,7 @@ public sealed record PerformanceRunIdentity(
   bool DiagnosticsEnabled,
   string? GraphSnapshot = null,
   string? RuleSnapshot = null,
-  string? ArtifactSnapshot = null);
+  string? ArtifactSnapshot = null,
+  string? GitCommit = null,
+  string? SourceManifestHash = null,
+  string? ConfigurationFingerprint = null);

@@ -24,6 +24,8 @@ public sealed record PerformanceSummaryDocument
 
   public bool IsComplete { get; init; }
 
+  public string? PublicationErrorKind { get; init; }
+
   public bool ComparisonEligible { get; init; }
 
   public IReadOnlyList<string> ComparisonReasons { get; init; } = Array.Empty<string>();
@@ -33,6 +35,8 @@ public sealed record PerformanceSummaryDocument
   public PerformanceSummaryStageDocument? RootStage { get; init; }
 
   public PerformanceSummaryDirectoryDocument? Directory { get; init; }
+
+  public PerformanceSummaryWorkspaceDocument? Workspace { get; init; }
 
   public IReadOnlyList<PerformanceSummaryStageDocument> Stages { get; init; } =
     Array.Empty<PerformanceSummaryStageDocument>();
@@ -75,11 +79,13 @@ public sealed record PerformanceSummaryDocument
       IsWarmup = report.IsWarmup,
       TerminalStatus = report.TerminalStatus.ToString().ToLowerInvariant(),
       IsComplete = report.IsComplete,
+      PublicationErrorKind = report.PublicationErrorKind,
       ComparisonEligible = report.ComparisonEligible,
       ComparisonReasons = report.ComparisonReasons.ToArray(),
       SampleAggregate = sampleAggregate is null ? null : ToDocument(sampleAggregate),
       RootStage = report.RootStage is null ? null : ToDocument(report.RootStage),
       Directory = report.Directory is null ? null : ToDocument(report.Directory),
+      Workspace = report.Workspace is null ? null : ToDocument(report.Workspace),
       Stages = report.Stages
         .OrderBy(stage => stage.StageId, StringComparer.Ordinal)
         .ThenBy(stage => stage.ItemId, StringComparer.Ordinal)
@@ -113,10 +119,13 @@ public sealed record PerformanceSummaryDocument
         report.Identity.CpgDop,
         report.Identity.RuleDop,
         report.Identity.Mode.ToString().ToLowerInvariant(),
-        report.Identity.DiagnosticsEnabled,
-        report.Identity.GraphSnapshot,
-        report.Identity.RuleSnapshot,
-        report.Identity.ArtifactSnapshot),
+         report.Identity.DiagnosticsEnabled,
+         report.Identity.GraphSnapshot,
+         report.Identity.RuleSnapshot,
+         report.Identity.ArtifactSnapshot,
+         report.Identity.GitCommit,
+         report.Identity.SourceManifestHash,
+         report.Identity.ConfigurationFingerprint),
       Items = report.Items
         .OrderBy(item => item.ItemId, StringComparer.Ordinal)
         .Select(ToDocument)
@@ -321,7 +330,43 @@ public sealed record PerformanceSummaryDocument
       facts.GraphSnapshot,
       facts.RuleSnapshot,
       facts.ArtifactSnapshot,
-      facts.ErrorKind);
+      facts.ErrorKind,
+      facts.Children
+        .OrderBy(item => item.ItemId, StringComparer.Ordinal)
+        .Select(ToDocument)
+        .ToArray());
+  }
+
+  private static PerformanceSummaryWorkspaceDocument ToDocument(
+    WorkspacePerformanceFacts facts)
+  {
+    return new PerformanceSummaryWorkspaceDocument(
+      facts.ItemId,
+      facts.ProjectSummary is null ? null : new PerformanceSummaryAggregateDocument(
+        facts.ProjectSummary.Count,
+        facts.ProjectSummary.CompletedCount,
+        facts.ProjectSummary.SumWallElapsedMs,
+        facts.ProjectSummary.MaxWallElapsedMs,
+        facts.ProjectSummary.SumAccumulatedElapsedMs,
+        facts.ProjectSummary.MaxAccumulatedElapsedMs,
+        facts.ProjectSummary.TopItemId,
+        facts.ProjectSummary.TopItemWallElapsedMs),
+      facts.Stage is null ? null : ToDocument(facts.Stage),
+      facts.Status.ToString().ToLowerInvariant(),
+      facts.ErrorKind,
+      facts.Projects
+        .OrderBy(project => project.ProjectPath, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(project => project.TargetFramework, StringComparer.OrdinalIgnoreCase)
+        .ThenBy(project => project.ProjectId, StringComparer.Ordinal)
+        .Select(project => new PerformanceSummaryWorkspaceProjectDocument(
+          project.ProjectId,
+          project.ProjectPath,
+          project.ProjectName,
+          project.TargetFramework,
+          project.Status.ToString().ToLowerInvariant(),
+          project.ErrorKind,
+          project.Directory is null ? null : ToDocument(project.Directory)))
+        .ToArray());
   }
 
   private static PerformanceSummarySampleAggregateDocument ToDocument(
@@ -522,7 +567,10 @@ public sealed record PerformanceSummaryIdentityDocument(
   bool DiagnosticsEnabled,
   string? GraphSnapshot,
   string? RuleSnapshot,
-  string? ArtifactSnapshot);
+  string? ArtifactSnapshot,
+  string? GitCommit,
+  string? SourceManifestHash,
+  string? ConfigurationFingerprint);
 
 public sealed record PerformanceSummaryAggregateDocument(
   int Count,
@@ -542,7 +590,25 @@ public sealed record PerformanceSummaryDirectoryDocument(
   string? GraphSnapshot,
   string? RuleSnapshot,
   string? ArtifactSnapshot,
-  string? ErrorKind);
+  string? ErrorKind,
+  IReadOnlyList<PerformanceSummaryItemDocument> Items);
+
+public sealed record PerformanceSummaryWorkspaceDocument(
+  string ItemId,
+  PerformanceSummaryAggregateDocument? ProjectSummary,
+  PerformanceSummaryStageDocument? Stage,
+  string Status,
+  string? ErrorKind,
+  IReadOnlyList<PerformanceSummaryWorkspaceProjectDocument> Projects);
+
+public sealed record PerformanceSummaryWorkspaceProjectDocument(
+  string ProjectId,
+  string ProjectPath,
+  string ProjectName,
+  string? TargetFramework,
+  string Status,
+  string? ErrorKind,
+  PerformanceSummaryDirectoryDocument? Directory);
 
 public sealed record PerformanceAttachmentDocument(
   string Kind,

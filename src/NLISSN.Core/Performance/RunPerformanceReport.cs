@@ -28,7 +28,9 @@ public sealed record RunPerformanceReport
     IReadOnlyList<PerformanceStageSample>? stages = null,
     PerformanceResourceFacts? resources = null,
     IReadOnlyList<PerformanceAttachmentReference>? attachments = null,
-    PerformanceRunIdentity? identity = null)
+    PerformanceRunIdentity? identity = null,
+    string? publicationErrorKind = null,
+    WorkspacePerformanceFacts? workspace = null)
   {
     if (string.IsNullOrWhiteSpace(runId))
     {
@@ -67,6 +69,8 @@ public sealed record RunPerformanceReport
     Attachments = new ReadOnlyCollection<PerformanceAttachmentReference>(
       (attachments ?? Array.Empty<PerformanceAttachmentReference>()).ToArray());
     Identity = identity;
+    PublicationErrorKind = publicationErrorKind;
+    Workspace = workspace;
   }
 
   public string RunId { get; }
@@ -103,6 +107,10 @@ public sealed record RunPerformanceReport
 
   public PerformanceRunIdentity? Identity { get; }
 
+  public string? PublicationErrorKind { get; }
+
+  public WorkspacePerformanceFacts? Workspace { get; }
+
   public bool IsComplete => TerminalSummary.IsComplete &&
     TerminalStatus == PerformanceStatus.Completed;
 
@@ -127,7 +135,110 @@ public sealed record RunPerformanceReport
       Stages,
       Resources,
       Attachments,
-      Identity);
+      Identity,
+      PublicationErrorKind,
+      Workspace);
+  }
+
+  public RunPerformanceReport WithIdentity(PerformanceRunIdentity identity)
+  {
+    ArgumentNullException.ThrowIfNull(identity);
+    return new RunPerformanceReport(
+      RunId,
+      InputKind,
+      InputIdentity,
+      Items,
+      RootStage,
+      TerminalSummary,
+      TerminalStatus,
+      Mode,
+      SampleNumber,
+      IsWarmup,
+      ComparisonEligible,
+      ComparisonReasons,
+      Directory,
+      Stages,
+      Resources,
+      Attachments,
+      identity,
+      PublicationErrorKind,
+      Workspace);
+  }
+
+  public RunPerformanceReport WithAttachments(
+    IReadOnlyList<PerformanceAttachmentReference> attachments)
+  {
+    ArgumentNullException.ThrowIfNull(attachments);
+    return new RunPerformanceReport(
+      RunId,
+      InputKind,
+      InputIdentity,
+      Items,
+      RootStage,
+      TerminalSummary,
+      TerminalStatus,
+      Mode,
+      SampleNumber,
+      IsWarmup,
+      ComparisonEligible,
+      ComparisonReasons,
+      Directory,
+      Stages,
+      Resources,
+      attachments,
+      Identity,
+      PublicationErrorKind,
+      Workspace);
+  }
+
+  public RunPerformanceReport WithPublicationFailure(string errorKind)
+  {
+    ArgumentException.ThrowIfNullOrWhiteSpace(errorKind);
+    return new RunPerformanceReport(
+      RunId,
+      InputKind,
+      InputIdentity,
+      Items,
+      RootStage,
+      TerminalSummary,
+      TerminalStatus,
+      Mode,
+      SampleNumber,
+      IsWarmup,
+      ComparisonEligible,
+      ComparisonReasons,
+      Directory,
+      Stages,
+      Resources,
+      Attachments,
+      Identity,
+      errorKind,
+      Workspace);
+  }
+
+  public RunPerformanceReport WithWorkspace(WorkspacePerformanceFacts workspace)
+  {
+    ArgumentNullException.ThrowIfNull(workspace);
+    return new RunPerformanceReport(
+      RunId,
+      InputKind,
+      InputIdentity,
+      Items,
+      RootStage,
+      TerminalSummary,
+      TerminalStatus,
+      Mode,
+      SampleNumber,
+      IsWarmup,
+      ComparisonEligible,
+      ComparisonReasons,
+      Directory,
+      Stages,
+      Resources,
+      Attachments,
+      Identity,
+      PublicationErrorKind,
+      workspace);
   }
 
   public static RunPerformanceReport Create(

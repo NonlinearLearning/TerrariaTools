@@ -2,7 +2,6 @@ using System.Diagnostics;
 using NLISSN.Core.Performance;
 using NLISSN.Performance;
 using Xunit;
-using Xunit.Sdk;
 
 namespace RoslynPrototype.Tests.Performance;
 
@@ -17,63 +16,66 @@ public sealed class ExternalDiagnosticIntegrationTests : IDisposable
     Directory.CreateDirectory(_runRoot);
   }
 
-  public static IEnumerable<object[]> SupportedTools()
+  [Fact]
+  public async Task InstalledToolProducesManifestWithSharedRunAndStage()
   {
-    return Enum.GetValues<ExternalDiagnosticTool>()
-      .Select(tool => new object[] { tool });
-  }
-
-  [Theory]
-  [MemberData(nameof(SupportedTools))]
-  public async Task InstalledToolProducesManifestWithSharedRunAndStage(
-    ExternalDiagnosticTool tool)
-  {
-    var executable = GetToolExecutable(tool);
-    if (!TryLocate(executable, out var executablePath))
+    if (!string.Equals(
+      Environment.GetEnvironmentVariable("NLISSN_RUN_EXTERNAL_DIAGNOSTIC_TESTS"),
+      "1",
+      StringComparison.Ordinal))
     {
-      throw SkipException.ForSkip($"{executable} is not installed or is not on PATH.");
+      return;
     }
 
-    var policy = new ExternalDiagnosticToolPolicy(
-      enabled: true,
-      duration: TimeSpan.FromMilliseconds(200),
-      timeout: TimeSpan.FromSeconds(20),
-      toolLocator: new FixedToolLocator(new ExternalDiagnosticToolInfo(
+    foreach (var tool in Enum.GetValues<ExternalDiagnosticTool>())
+    {
+      var executable = GetToolExecutable(tool);
+      if (!TryLocate(executable, out var executablePath))
+      {
+        continue;
+      }
+
+      var policy = new ExternalDiagnosticToolPolicy(
+        enabled: true,
+        duration: TimeSpan.FromMilliseconds(200),
+        timeout: TimeSpan.FromSeconds(20),
+        toolLocator: new FixedToolLocator(new ExternalDiagnosticToolInfo(
+          tool,
+          executablePath,
+          ReadVersion(executablePath))));
+
+      var attachment = await policy.CaptureAsync(
         tool,
-        executablePath,
-        ReadVersion(executablePath))));
+        Environment.ProcessId,
+        runId: "integration-run",
+        stageId: "Run",
+        mode: PerformanceMode.Profile,
+        runArtifactRoot: _runRoot);
 
-    var attachment = await policy.CaptureAsync(
-      tool,
-      Environment.ProcessId,
-      runId: "integration-run",
-      stageId: "Run",
-      mode: PerformanceMode.Profile,
-      runArtifactRoot: _runRoot);
+      Assert.Equal(tool, attachment.Tool);
+      Assert.Equal("integration-run", attachment.RunId);
+      Assert.Equal("Run", attachment.StageId);
+      Assert.Equal(PerformanceMode.Profile, attachment.Mode);
+      Assert.NotNull(attachment.Command);
+      Assert.NotNull(attachment.StartedAtUtc);
+      Assert.NotNull(attachment.CompletedAtUtc);
+      Assert.True(attachment.CompletedAtUtc >= attachment.StartedAtUtc);
 
-    Assert.Equal(tool, attachment.Tool);
-    Assert.Equal("integration-run", attachment.RunId);
-    Assert.Equal("Run", attachment.StageId);
-    Assert.Equal(PerformanceMode.Profile, attachment.Mode);
-    Assert.NotNull(attachment.Command);
-    Assert.NotNull(attachment.StartedAtUtc);
-    Assert.NotNull(attachment.CompletedAtUtc);
-    Assert.True(attachment.CompletedAtUtc >= attachment.StartedAtUtc);
-
-    if (attachment.Status == PerformanceStatus.Completed)
-    {
-      Assert.True(attachment.IsAvailable);
-      Assert.True(attachment.IsComplete);
-      Assert.Equal(0, attachment.ExitCode);
-      Assert.NotNull(attachment.RelativePath);
-      Assert.True(File.Exists(ResolveAttachmentPath(attachment.RelativePath!)));
-    }
-    else
-    {
-      Assert.Equal(PerformanceStatus.Failed, attachment.Status);
-      Assert.False(attachment.IsAvailable);
-      Assert.False(attachment.IsComplete);
-      Assert.NotNull(attachment.ErrorKind);
+      if (attachment.Status == PerformanceStatus.Completed)
+      {
+        Assert.True(attachment.IsAvailable);
+        Assert.True(attachment.IsComplete);
+        Assert.Equal(0, attachment.ExitCode);
+        Assert.NotNull(attachment.RelativePath);
+        Assert.True(File.Exists(ResolveAttachmentPath(attachment.RelativePath!)));
+      }
+      else
+      {
+        Assert.Equal(PerformanceStatus.Failed, attachment.Status);
+        Assert.False(attachment.IsAvailable);
+        Assert.False(attachment.IsComplete);
+        Assert.NotNull(attachment.ErrorKind);
+      }
     }
   }
 

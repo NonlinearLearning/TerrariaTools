@@ -54,11 +54,56 @@ public sealed class PerformanceSummarySchemaTests
     Assert.Equal(JsonValueKind.Null, sampleAggregate.GetProperty("accumulated").ValueKind);
   }
 
+  [Fact]
+  public void WorkspaceSchemaRetainsProjectsAndFileFactsInStableOrder()
+  {
+    var firstProject = new WorkspaceProjectPerformanceFacts(
+      "z-project|net10.0",
+      @"C:\workspace\z-project\z-project.csproj",
+      "ZProject",
+      "net10.0",
+      new DirectoryPerformanceFacts(
+        "z-project|net10.0",
+        new[] { new ApplicationPerformanceFacts("z.cs", null, null, null) }));
+    var secondProject = new WorkspaceProjectPerformanceFacts(
+      "a-project|net10.0",
+      @"C:\workspace\a-project\a-project.csproj",
+      "AProject",
+      "net10.0",
+      new DirectoryPerformanceFacts(
+        "a-project|net10.0",
+        new[] { new ApplicationPerformanceFacts("a.cs", null, null, null) }));
+    var workspace = new WorkspacePerformanceFacts(
+      "workspace",
+      new[] { firstProject, secondProject },
+      new PerformanceAggregateSummary(2, 2, 20, 12, null, null, "a-project|net10.0", 12),
+      new PerformanceStageSample(PerformanceStageId.WorkspaceLoad, PerformanceStageId.Run, "workspace", 8, null));
+    var report = CreateReport("workspace-run", 20, 20, 1, workspace);
+
+    var document = PerformanceSummaryDocument.FromReport(report);
+    using var json = JsonDocument.Parse(JsonSerializer.Serialize(
+      document,
+      PerformanceSummaryDocument.JsonOptions));
+
+    var projects = json.RootElement.GetProperty("workspace")
+      .GetProperty("projects")
+      .EnumerateArray()
+      .ToArray();
+    Assert.Equal(2, projects.Length);
+    Assert.Equal("AProject", projects[0].GetProperty("projectName").GetString());
+    Assert.Equal("a-project|net10.0", projects[0].GetProperty("projectId").GetString());
+    Assert.Equal("net10.0", projects[0].GetProperty("targetFramework").GetString());
+    Assert.Equal("a.cs", projects[0].GetProperty("directory").GetProperty("items")[0]
+      .GetProperty("itemId").GetString());
+    Assert.Equal("ZProject", projects[1].GetProperty("projectName").GetString());
+  }
+
   private static RunPerformanceReport CreateReport(
     string runId,
     long wall,
     long accumulated,
-    int sampleNumber)
+    int sampleNumber,
+    WorkspacePerformanceFacts? workspace = null)
   {
     return new RunPerformanceReport(
       runId,
@@ -93,6 +138,7 @@ public sealed class PerformanceSummarySchemaTests
         false,
         "graph",
         "rule",
-        "artifact"));
+        "artifact"),
+       workspace: workspace);
   }
 }

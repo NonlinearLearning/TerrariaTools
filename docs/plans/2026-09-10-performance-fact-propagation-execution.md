@@ -8,6 +8,8 @@
 
 **Tech Stack:** C#/.NET（以仓库 `global.json` 为准）、现有 NLCPG/NLISSN Application/Host/Infrastructure projects、xUnit、YamlDotNet、System.Text.Json、现有 `tests/NLISSN.*Tests` 与 `tests/NLISSN.PerformanceTests` harness。
 
+> **当前执行状态（2026-09-21）：** P1-P4 的生产接线已完成，Workspace 额外保留 project/TFM 层级；P5 的外部工具 attachment policy 和 opt-in integration wrapper 已完成。普通生产 CLI 不自动启动 `dotnet-trace`、`dotnet-counters` 或 `dotnet-gcdump`，这是当前设计边界。生产 NLISSN build、性能相关 focused tests 和 Workspace schema contract 已通过；常规 PerformanceTests 在未设置 `NLISSN_RUN_TERRARIA_EXTERNAL_TESTS=1` 时为 65 通过、5 跳过、0 失败，外部 Terraria 样本仍需显式启用并提供数据集。
+
 ---
 
 ## 执行规则
@@ -777,4 +779,16 @@ git diff --check
 - `git status --short` 只包含本功能实际修改和用户已有变更；无临时 JSON、profile、构建产物或测试输出被误加入版本控制。
 
 完成后，应按仓库流程提交最终变更，并把未实现的后续优化（通用 profiler、调度修改、自动回归判定）继续留在 non-goals，而不是隐式扩展本计划。
+
+## 当前验收证据和未闭合边界
+
+2026-09-21 的隔离 worktree 验证结果：
+
+- `dotnet build .\src\NLISSN\NLISSN.csproj --no-restore -p:UseSharedCompilation=false`：0 warning、0 error。
+- 性能相关 Unit / Contract / Host 定向测试、Workspace schema contract 和阶段失败语义测试均通过。
+- PerformanceTests 中 summary harness、DOP 矩阵、等价性和 external diagnostic wrapper 定向测试：21 通过。
+- Workspace project/TFM 层级 summary Host 回归：1 通过。
+- 完整 PerformanceTests：65 通过、5 跳过、0 失败；5 个跳过项属于显式 Terraria 外部测试，只有设置 `NLISSN_RUN_TERRARIA_EXTERNAL_TESTS=1` 才会运行。
+
+因此，“性能事实传播和报告实现”已经有可验证的生产接线，常规 PerformanceTests 也已在外部样本门禁下通过。若要验收 Terraria 外部样本，仍需在具备 `D:\lodes\TR\Backup\New1.27\1.45 2\TR` 的环境中显式启用该测试集合；不应复制用户原工作区内容、放宽断言或伪造 profile 结果。
 

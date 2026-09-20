@@ -1,5 +1,6 @@
 using NLISSN.Rules;
 using NL.Concurrency;
+using RoslynPrototype.Tests;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -160,7 +161,7 @@ public sealed class BoundedConcurrencyPoolConcurrencyTests
         Assert.InRange(startedCount, 1, 2);
     }
 
-    [Fact]
+    [TerrariaExternalFact]
     public async Task SelectOrderedAsync_TerrariaCodeSet_StressesAsyncAndConcurrentScheduling()
     {
         const int maxDegreeOfParallelism = 7;
@@ -209,7 +210,7 @@ public sealed class BoundedConcurrencyPoolConcurrencyTests
           $"terraria-done files={files.Count};peak={probe.PeakActiveCount};completed={probe.CompletedCount}");
     }
 
-    [Fact]
+    [TerrariaExternalFact]
     public async Task SelectOrderedAsync_TerrariaCodeSet_MixesFastSlowAndAsyncIoWorkItems()
     {
         const int itemCount = 257;
@@ -262,7 +263,7 @@ public sealed class BoundedConcurrencyPoolConcurrencyTests
           $"terraria-mixed-done files={files.Length};peak={probe.PeakActiveCount};completed={probe.CompletedCount}");
     }
 
-    [Fact]
+    [TerrariaExternalFact]
     public async Task SelectOrderedAsync_TerrariaCodeSet_PropagatesAsyncWorkItemFailure()
     {
         const int itemCount = 64;
@@ -290,7 +291,7 @@ public sealed class BoundedConcurrencyPoolConcurrencyTests
         Assert.Contains(files[failingIndex].RelativePath, exception.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
+    [TerrariaExternalFact]
     public async Task SelectOrderedAsync_TerrariaCodeSet_CancelsQueuedAsyncWork()
     {
         const int maxDegreeOfParallelism = 7;

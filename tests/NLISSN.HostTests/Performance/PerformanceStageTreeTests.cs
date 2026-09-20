@@ -34,4 +34,29 @@ public sealed class PerformanceStageTreeTests
     Assert.Equal(12, parentSample.AccumulatedElapsedMs);
     Assert.NotEqual(parentSample.WallElapsedMs, parentSample.AccumulatedElapsedMs);
   }
+
+  [Fact]
+  public void FailedScopeRecordsFailureStatusAndErrorKindOnlyOnce()
+  {
+    var samples = new List<PerformanceStageSample>();
+    using var scope = PerformanceStageScope.Start(
+      PerformanceStageId.DirectoryRead,
+      onCompleted: samples.Add);
+
+    var sample = scope.Fail(new InvalidOperationException("fixture failure"));
+
+    Assert.Equal(PerformanceStatus.Failed, sample.Status);
+    Assert.Equal(typeof(InvalidOperationException).FullName, sample.ErrorKind);
+    Assert.Single(samples);
+  }
+
+  [Fact]
+  public void CancelledScopeRecordsCancelledStatus()
+  {
+    using var scope = PerformanceStageScope.Start(PerformanceStageId.WorkspaceLoad);
+
+    var sample = scope.Fail(new OperationCanceledException());
+
+    Assert.Equal(PerformanceStatus.Cancelled, sample.Status);
+  }
 }

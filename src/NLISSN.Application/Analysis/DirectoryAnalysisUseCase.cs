@@ -91,7 +91,8 @@ public sealed class DirectoryAnalysisUseCase
       CSharpCompilation compilation,
       IReadOnlyList<CompiledDirectorySourceFile> sourceFiles,
       AnalysisRequestSettings settings,
-      AnalysisRuntime runtime)
+      AnalysisRuntime runtime,
+      string performanceItemId = "directory")
     {
         ArgumentNullException.ThrowIfNull(compilation);
         ArgumentNullException.ThrowIfNull(sourceFiles);
@@ -113,7 +114,7 @@ public sealed class DirectoryAnalysisUseCase
               CreateEmptyResult(),
               Array.Empty<DirectoryFileAnalysisResult>(),
               DirectoryPerformanceFactAggregator.Aggregate(
-                "empty-directory",
+                performanceItemId,
                 Array.Empty<DirectoryFileAnalysisResult>(),
                 wallElapsedMs: 0));
         }
@@ -122,7 +123,13 @@ public sealed class DirectoryAnalysisUseCase
           source => source.FilePath,
           source => source.SyntaxTree,
           StringComparer.Ordinal);
-        return AnalyzeCore(orderedSources, trees, compilation, settings, runtime);
+        return AnalyzeCore(
+          orderedSources,
+          trees,
+          compilation,
+          settings,
+          runtime,
+          performanceItemId);
     }
 
     private DirectoryAnalysisOutcome AnalyzeCore(
@@ -130,7 +137,8 @@ public sealed class DirectoryAnalysisUseCase
       IReadOnlyDictionary<string, SyntaxTree> trees,
       CSharpCompilation compilation,
       AnalysisRequestSettings settings,
-      AnalysisRuntime runtime)
+      AnalysisRuntime runtime,
+      string performanceItemId = "directory")
     {
         var stopwatch = Stopwatch.StartNew();
         var sourcesByPath = orderedSources.ToDictionary(
@@ -168,7 +176,7 @@ public sealed class DirectoryAnalysisUseCase
           : PostRewriteDiagnostics.GetRewriteDiagnostics(sourcesByPath, rewrittenSources);
         stopwatch.Stop();
         var performance = DirectoryPerformanceFactAggregator.Aggregate(
-          "directory",
+          performanceItemId,
           fileResults,
           stopwatch.ElapsedMilliseconds);
 

@@ -80,6 +80,10 @@ public sealed class AnalysisRuntime
 
     public IPerformanceEventSink? PerformanceEventSink { get; set; }
 
+    public IPartitionPerformanceEventSink? PartitionPerformanceEventSink { get; set; }
+
+    public IPerformanceStageCollector? PerformanceStageCollector { get; set; }
+
     public string? PerformanceRunId { get; set; }
 
     public string CacheScopeKey => $"epoch:{Epoch.EpochId}|cache:{Epoch.CacheVersion}";
@@ -96,7 +100,7 @@ public sealed class AnalysisRuntime
     public AnalysisRuntime InvalidateCaches()
     {
         // 保持同一注册表以复用仍有效的编译缓存，只改变作用域键以隔离失效后的视图。
-        return new AnalysisRuntime(
+        var runtime = new AnalysisRuntime(
           ExecutionOptions,
           Epoch with { CacheVersion = Epoch.CacheVersion + 1 },
           ConcurrencyPool,
@@ -104,13 +108,18 @@ public sealed class AnalysisRuntime
           ConcurrencyAdmissionController,
           _cacheRegistry,
           CpgBuildAdmissionBudget);
+        runtime.PerformanceEventSink = PerformanceEventSink;
+        runtime.PartitionPerformanceEventSink = PartitionPerformanceEventSink;
+        runtime.PerformanceStageCollector = PerformanceStageCollector;
+        runtime.PerformanceRunId = PerformanceRunId;
+        return runtime;
     }
 
     // 在源码轮次变更后同时推进 epoch、source 和 cache 版本，阻止旧事实串用。
     public AnalysisRuntime NextEpoch()
     {
         // 源文本变更后同时推进来源和缓存版本，禁止跨分析轮次复用结构事实。
-        return new AnalysisRuntime(
+        var runtime = new AnalysisRuntime(
           ExecutionOptions,
           new AnalysisEpoch(
             Epoch.EpochId + 1,
@@ -121,6 +130,11 @@ public sealed class AnalysisRuntime
           ConcurrencyAdmissionController,
           _cacheRegistry,
           CpgBuildAdmissionBudget);
+        runtime.PerformanceEventSink = PerformanceEventSink;
+        runtime.PartitionPerformanceEventSink = PartitionPerformanceEventSink;
+        runtime.PerformanceStageCollector = PerformanceStageCollector;
+        runtime.PerformanceRunId = PerformanceRunId;
+        return runtime;
     }
 
     // 把当前线程的 CPG 构建准入租约压入 AsyncLocal，供下游构图代码读取。

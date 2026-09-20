@@ -126,6 +126,7 @@ public sealed class ApplicationService
         ruleGraphMetrics = graphResult.Metrics;
         var validationReport = graphResult.ValidationReport;
         var ruleGraphPerformance = graphResult.Performance;
+        RecordRuleGraphStages(analysisContext, ruleGraphTelemetry);
 
         var filteredDecisions = FilterUnsafeLocalDeclarationDeletes(
           decisions,
@@ -136,17 +137,45 @@ public sealed class ApplicationService
             : graphResult.ExecutablePlan is { } plan
               ? new ExecutablePlan(plan.DecisionPlan, filteredDecisions)
               : null;
-        var rewriteResult = ShouldSkipRewrite(analysisContext.Session) ||
+        var rewriteScope = analysisContext.Session.Runtime.PerformanceStageCollector is not null
+          ? PerformanceStageScope.Start(
+            PerformanceStageId.ArtifactRewrite,
+            PerformanceStageId.Run,
+            analysisContext.CpgPerformance.ItemId,
+            PerformanceAttributionLevel.Stage)
+          : null;
+        var rewriteSkipped = ShouldSkipRewrite(analysisContext.Session) ||
           executablePlan is null ||
-          validationReport is { IsValid: false }
-          ? new PrototypeRewriteResult(
-            null,
-            Array.Empty<RewriteEdit>(),
-            DiffDocument.Empty)
-          : _rewriter.Rewrite(
-            analysisContext.Root,
-            analysisContext.SemanticModel,
-            executablePlan);
+          validationReport is { IsValid: false };
+        PrototypeRewriteResult rewriteResult;
+        try
+        {
+            rewriteResult = rewriteSkipped
+              ? new PrototypeRewriteResult(
+                null,
+                Array.Empty<RewriteEdit>(),
+                DiffDocument.Empty)
+              : _rewriter.Rewrite(
+                analysisContext.Root,
+                analysisContext.SemanticModel,
+                executablePlan!);
+        }
+        catch (Exception exception)
+        {
+            if (rewriteScope is not null)
+            {
+                analysisContext.Session.Runtime.PerformanceStageCollector!.Record(
+                  rewriteScope.Fail(exception));
+            }
+
+            throw;
+        }
+        if (rewriteScope is not null)
+        {
+            analysisContext.Session.Runtime.PerformanceStageCollector!.Record(
+              rewriteScope.Complete(
+                rewriteSkipped ? PerformanceStatus.Skipped : PerformanceStatus.Completed));
+        }
         var originalSources = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [analysisContext.Root.SyntaxTree.FilePath] = analysisContext.Root.ToFullString()
@@ -269,6 +298,11 @@ public sealed class ApplicationService
             MaxDegreeOfParallelism = runtime.CurrentCpgBuildAdmissionLease!.GrantedDegree,
             RequestedCapabilities = _pipeline.GetRequiredCapabilities(),
             CallFlowResolver = callFlowResolver,
+            PerformanceDiagnostics = runtime.PartitionPerformanceEventSink is null
+              ? NLCPGPerformanceDiagnosticsMode.Disabled
+              : NLCPGPerformanceDiagnosticsMode.Diagnostic,
+            PartitionPerformanceEventSink = runtime.PartitionPerformanceEventSink,
+            PerformanceRunId = runtime.PerformanceRunId,
         };
         var builder = new NLCPGBuilder(builderOptions);
         var graph = builder.BuildFromSemanticModel(
@@ -280,6 +314,29 @@ public sealed class ApplicationService
           filePath,
           CpgPerformanceFactMapper.ComputeSourceIdentity(source),
           builder.LastBuildMetrics);
+        runtime.PerformanceStageCollector?.Record(new PerformanceStageSample(
+          PerformanceStageId.CpgBuild,
+          PerformanceStageId.Run,
+          filePath,
+          cpgPerformance.BuildElapsedMs,
+          cpgPerformance.BuildElapsedMs,
+          cpgPerformance.Status,
+          cpgPerformance.ErrorKind,
+          nodeDelta: cpgPerformance.NodeCount,
+          edgeDelta: cpgPerformance.EdgeCount,
+          attribution: PerformanceAttributionLevel.Stage));
+        foreach (var pass in cpgPerformance.PassSamples)
+        {
+            runtime.PerformanceStageCollector?.Record(new PerformanceStageSample(
+              pass.StageId,
+              PerformanceStageId.CpgBuild,
+              filePath,
+              pass.WallElapsedMs,
+              pass.WallElapsedMs,
+              cpgPerformance.Status,
+              cpgPerformance.ErrorKind,
+              attribution: PerformanceAttributionLevel.Stage));
+        }
         var requestedCapabilities = builderOptions.RequestedCapabilities ?? new[] { NLCPGCapability.Default };
         var availableCapabilities = requestedCapabilities.Aggregate(
           NLCPGCapability.None,
@@ -303,6 +360,34 @@ public sealed class ApplicationService
     private static bool ShouldSkipRewrite(AnalysisSession session)
     {
         return session.Settings.SkipRewrite;
+    }
+
+    private static void RecordRuleGraphStages(
+      AnalysisContext analysisContext,
+      IReadOnlyList<RuleGraphNodeTelemetry> telemetry)
+    {
+        var collector = analysisContext.Session.Runtime.PerformanceStageCollector;
+        if (collector is null)
+        {
+            return;
+        }
+
+        foreach (var group in telemetry.GroupBy(node => node.NodeId.Kind).OrderBy(group => group.Key))
+        {
+            var samples = group.ToArray();
+            collector.Record(new PerformanceStageSample(
+              PerformanceStageId.ForRule(group.Key),
+              PerformanceStageId.Run,
+              analysisContext.CpgPerformance.ItemId,
+              samples.Length == 0 ? null : samples.Max(sample => sample.ElapsedMilliseconds),
+              samples.Length == 0 ? null : samples.Sum(sample => sample.ElapsedMilliseconds),
+              samples.All(sample => sample.Status == RuleGraphNodeStatus.Disabled)
+                ? PerformanceStatus.Skipped
+                : PerformanceStatus.Completed,
+              attribution: PerformanceAttributionLevel.Stage,
+              inputCount: samples.Sum(sample => sample.InputCount),
+              outputCount: samples.Sum(sample => sample.OutputCount)));
+        }
     }
 
     private static IReadOnlyList<RuleDecision> FilterUnsafeLocalDeclarationDeletes(

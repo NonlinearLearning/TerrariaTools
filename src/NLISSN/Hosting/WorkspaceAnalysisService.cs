@@ -1,7 +1,9 @@
 using NLISSN.Application;
+using NLISSN.Application.Performance;
 using NLISSN.Artifacts;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Rewrite;
+using NLISSN.Core.Performance;
 using NLISSN.Infrastructure.Configuration;
 using NLISSN.Infrastructure.Workspace;
 using System.Diagnostics;
@@ -26,71 +28,119 @@ internal sealed class WorkspaceAnalysisService
       ExecutionSettings execution,
       ArtifactSettings artifacts)
     {
-        var loadResult = await _loader.LoadAsync(
-          options,
-          runtime.ExecutionOptions.CancellationToken).ConfigureAwait(false);
-        if (!loadResult.IsSuccess)
+        PerformanceStageScope? loadScope = runtime.PerformanceStageCollector is not null
+          ? PerformanceStageScope.Start(
+            PerformanceStageId.WorkspaceLoad,
+            PerformanceStageId.Run,
+            options.Path,
+            PerformanceAttributionLevel.Stage)
+          : null;
+        try
         {
-            throw new InvalidOperationException(FormatDiagnostics(loadResult.Diagnostics));
-        }
+            var loadResult = await _loader.LoadAsync(
+              options,
+              runtime.ExecutionOptions.CancellationToken).ConfigureAwait(false);
+            if (!loadResult.IsSuccess)
+            {
+                throw new InvalidOperationException(FormatDiagnostics(loadResult.Diagnostics));
+            }
+            PerformanceStageSample? workspaceLoadStage = null;
+            if (loadScope is not null)
+            {
+                workspaceLoadStage = loadScope.Complete();
+                runtime.PerformanceStageCollector!.Record(workspaceLoadStage);
+                loadScope = null;
+            }
 
-        var stopwatch = Stopwatch.StartNew();
-        var projectOutcomes = new List<DirectoryAnalysisOutcome>(loadResult.Snapshot!.Projects.Count);
-        var useCase = new DirectoryAnalysisUseCase(_pipeline);
-        foreach (var project in loadResult.Snapshot.Projects)
+            var stopwatch = Stopwatch.StartNew();
+            var projectOutcomes = new List<DirectoryAnalysisOutcome>(loadResult.Snapshot!.Projects.Count);
+            var projectPerformance = new List<WorkspaceProjectPerformanceFacts>(loadResult.Snapshot.Projects.Count);
+            var useCase = new DirectoryAnalysisUseCase(_pipeline);
+            foreach (var project in loadResult.Snapshot.Projects)
+            {
+                runtime.ExecutionOptions.CancellationToken.ThrowIfCancellationRequested();
+                var projectId = WorkspacePerformanceFactAggregator.CreateProjectId(
+                  project.ProjectPath,
+                  project.TargetFramework);
+                var documents = string.IsNullOrWhiteSpace(options.TargetDocumentPath)
+                  ? project.Documents
+                  : project.Documents
+                    .Where(document => PathsEqual(document.FilePath, options.TargetDocumentPath))
+                    .ToArray();
+                var sources = documents
+                  .Select((document, index) => new CompiledDirectorySourceFile(
+                    index,
+                    document.FilePath,
+                    document.Source,
+                    document.SyntaxTree,
+                    document.IsGenerated,
+                    document.CanWrite))
+                  .ToArray();
+                var outcome = useCase.AnalyzeCompiled(
+                  project.Compilation,
+                  sources,
+                  settings,
+                  runtime,
+                  projectId);
+                var sourcesByPath = sources.ToDictionary(
+                  source => source.FilePath,
+                  source => source.Source,
+                  StringComparer.Ordinal);
+                var projectDirectory = Path.GetDirectoryName(project.ProjectPath)
+                  ?? loadResult.Snapshot.SolutionDirectory;
+                var materialized = DirectoryAnalysisService.MaterializeOutcome(
+                  projectDirectory,
+                  sourcesByPath,
+                  outcome,
+                  execution,
+                  artifacts,
+                  runtime);
+                projectOutcomes.Add(materialized);
+                projectPerformance.Add(new WorkspaceProjectPerformanceFacts(
+                  projectId,
+                  project.ProjectPath,
+                  project.ProjectName,
+                  project.TargetFramework,
+                  materialized.Performance,
+                  materialized.Performance?.Status ?? PerformanceStatus.Unavailable,
+                  materialized.Performance?.ErrorKind));
+            }
+
+            stopwatch.Stop();
+            var combinedResult = DirectoryAnalysisUseCase.CombineResults(
+              projectOutcomes.Select(outcome => outcome.Result).ToArray(),
+              options.TargetDocumentPath is null
+                ? loadResult.Snapshot.IsSolution ? "workspace" : "project"
+                : "document");
+            var performance = DirectoryPerformanceFactAggregator.Aggregate(
+              "workspace",
+              projectOutcomes.SelectMany(outcome => outcome.FileResults).ToArray(),
+              stopwatch.ElapsedMilliseconds);
+            var workspace = WorkspacePerformanceFactAggregator.Aggregate(
+              options.Path,
+              projectPerformance,
+              workspaceLoadStage,
+              performance.Status,
+              performance.ErrorKind);
+            return AnalysisRunOutcome.FromWorkspace(
+              string.IsNullOrWhiteSpace(artifacts.RunId) ? "unassigned" : artifacts.RunId,
+              options.TargetDocumentPath is null
+                ? loadResult.Snapshot.IsSolution ? "workspace" : "project"
+                : "document",
+              combinedResult,
+              performance,
+              workspace,
+              inputIdentity: options.Path);
+        }
+        catch (Exception exception)
         {
-            runtime.ExecutionOptions.CancellationToken.ThrowIfCancellationRequested();
-            var documents = string.IsNullOrWhiteSpace(options.TargetDocumentPath)
-              ? project.Documents
-              : project.Documents
-                .Where(document => PathsEqual(document.FilePath, options.TargetDocumentPath))
-                .ToArray();
-            var sources = documents
-              .Select((document, index) => new CompiledDirectorySourceFile(
-                index,
-                document.FilePath,
-                document.Source,
-                document.SyntaxTree,
-                document.IsGenerated,
-                document.CanWrite))
-              .ToArray();
-            var outcome = useCase.AnalyzeCompiled(
-              project.Compilation,
-              sources,
-              settings,
-              runtime);
-            var sourcesByPath = sources.ToDictionary(
-              source => source.FilePath,
-              source => source.Source,
-              StringComparer.Ordinal);
-            var projectDirectory = Path.GetDirectoryName(project.ProjectPath)
-              ?? loadResult.Snapshot.SolutionDirectory;
-            projectOutcomes.Add(DirectoryAnalysisService.MaterializeOutcome(
-              projectDirectory,
-              sourcesByPath,
-              outcome,
-              execution,
-              artifacts));
-        }
+            if (loadScope is not null)
+            {
+                runtime.PerformanceStageCollector!.Record(loadScope.Fail(exception));
+            }
 
-        stopwatch.Stop();
-        var combinedResult = DirectoryAnalysisUseCase.CombineResults(
-          projectOutcomes.Select(outcome => outcome.Result).ToArray(),
-          options.TargetDocumentPath is null
-            ? loadResult.Snapshot.IsSolution ? "workspace" : "project"
-            : "document");
-        var performance = DirectoryPerformanceFactAggregator.Aggregate(
-          "workspace",
-          projectOutcomes.SelectMany(outcome => outcome.FileResults).ToArray(),
-          stopwatch.ElapsedMilliseconds);
-        return AnalysisRunOutcome.FromDirectory(
-          string.IsNullOrWhiteSpace(artifacts.RunId) ? "unassigned" : artifacts.RunId,
-          options.TargetDocumentPath is null
-            ? loadResult.Snapshot.IsSolution ? "workspace" : "project"
-            : "document",
-          combinedResult,
-          performance,
-          inputIdentity: options.Path);
+            throw;
+        }
     }
 
     private static bool PathsEqual(string left, string right)

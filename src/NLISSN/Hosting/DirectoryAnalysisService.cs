@@ -1,10 +1,12 @@
 using NLISSN.Application;
+using NLISSN.Application.Performance;
 using NLISSN.Artifacts;
 using NLISSN.Infrastructure.Configuration;
 using System.Text;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Pipeline;
 using NLISSN.Core.Rewrite;
+using NLISSN.Core.Performance;
 
 namespace NLISSN.Hosting;
 
@@ -25,19 +27,43 @@ internal sealed class DirectoryAnalysisService
       ExecutionSettings execution,
       ArtifactSettings artifacts)
     {
-        var filePaths = EnumerateSourceFiles(directoryPath).ToList();
-        var sourcesByPath = await ReadSourcesAsync(filePaths, runtime.ExecutionOptions.CancellationToken);
-        var outcome = new DirectoryAnalysisUseCase(_pipeline).Analyze(
-          filePaths.Select((filePath, index) => new DirectorySourceFile(index, filePath, sourcesByPath[filePath])).ToArray(),
-          settings,
-          runtime);
-        var materialized = MaterializeOutcome(directoryPath, sourcesByPath, outcome, execution, artifacts);
-        return AnalysisRunOutcome.FromDirectory(
-          ResolveRunId(artifacts.RunId),
-          "directory",
-          materialized.Result,
-          materialized.Performance,
-          inputIdentity: directoryPath);
+        PerformanceStageScope? directoryScope = runtime.PerformanceStageCollector is not null
+          ? PerformanceStageScope.Start(
+            PerformanceStageId.DirectoryRead,
+            PerformanceStageId.Run,
+            directoryPath,
+            PerformanceAttributionLevel.Stage)
+          : null;
+        try
+        {
+            var filePaths = EnumerateSourceFiles(directoryPath).ToList();
+            var sourcesByPath = await ReadSourcesAsync(filePaths, runtime.ExecutionOptions.CancellationToken);
+            var outcome = new DirectoryAnalysisUseCase(_pipeline).Analyze(
+              filePaths.Select((filePath, index) => new DirectorySourceFile(index, filePath, sourcesByPath[filePath])).ToArray(),
+              settings,
+              runtime);
+            var materialized = MaterializeOutcome(directoryPath, sourcesByPath, outcome, execution, artifacts, runtime);
+            if (directoryScope is not null)
+            {
+                runtime.PerformanceStageCollector!.Record(directoryScope.Complete());
+                directoryScope = null;
+            }
+            return AnalysisRunOutcome.FromDirectory(
+              ResolveRunId(artifacts.RunId),
+              "directory",
+              materialized.Result,
+              materialized.Performance,
+              inputIdentity: directoryPath);
+        }
+        catch (Exception exception)
+        {
+            if (directoryScope is not null)
+            {
+                runtime.PerformanceStageCollector!.Record(directoryScope.Fail(exception));
+            }
+
+            throw;
+        }
     }
 
     internal static DirectoryAnalysisOutcome MaterializeOutcome(
@@ -45,7 +71,8 @@ internal sealed class DirectoryAnalysisService
       IReadOnlyDictionary<string, string> sourcesByPath,
       DirectoryAnalysisOutcome outcome,
       ExecutionSettings execution,
-      ArtifactSettings artifacts)
+      ArtifactSettings artifacts,
+      AnalysisRuntime? runtime = null)
     {
         var diffRootPath = artifacts.WriteDiff
           ? artifacts.DiffRoot
@@ -68,18 +95,66 @@ internal sealed class DirectoryAnalysisService
 
             if (diffRootPath is not null)
             {
-                writtenDiffCount += categoryDiffArtifactService.Write(
-                  directoryPath,
-                  fileResult.FilePath,
-                  sourcesByPath[fileResult.FilePath],
-                  result.Decisions,
-                  diffRootPath,
-                  artifacts.DiffView);
+                var diffScope = runtime?.PerformanceStageCollector is not null
+                  ? PerformanceStageScope.Start(
+                    PerformanceStageId.ArtifactDiff,
+                    PerformanceStageId.Run,
+                    fileResult.FilePath,
+                    PerformanceAttributionLevel.Stage)
+                  : null;
+                try
+                {
+                    writtenDiffCount += categoryDiffArtifactService.Write(
+                      directoryPath,
+                      fileResult.FilePath,
+                      sourcesByPath[fileResult.FilePath],
+                      result.Decisions,
+                      diffRootPath,
+                      artifacts.DiffView);
+                    if (diffScope is not null)
+                    {
+                        runtime!.PerformanceStageCollector!.Record(diffScope.Complete());
+                        diffScope = null;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    if (diffScope is not null)
+                    {
+                        runtime!.PerformanceStageCollector!.Record(diffScope.Fail(exception));
+                    }
+
+                    throw;
+                }
             }
 
             if (execution.WriteBack && result.RewrittenSource is not null)
             {
-                File.WriteAllText(fileResult.FilePath, result.RewrittenSource, Encoding.UTF8);
+                var writeBackScope = runtime?.PerformanceStageCollector is not null
+                  ? PerformanceStageScope.Start(
+                    PerformanceStageId.ArtifactWriteBack,
+                    PerformanceStageId.Run,
+                    fileResult.FilePath,
+                    PerformanceAttributionLevel.Stage)
+                  : null;
+                try
+                {
+                    File.WriteAllText(fileResult.FilePath, result.RewrittenSource, Encoding.UTF8);
+                    if (writeBackScope is not null)
+                    {
+                        runtime!.PerformanceStageCollector!.Record(writeBackScope.Complete());
+                        writeBackScope = null;
+                    }
+                }
+                catch (Exception exception)
+                {
+                    if (writeBackScope is not null)
+                    {
+                        runtime!.PerformanceStageCollector!.Record(writeBackScope.Fail(exception));
+                    }
+
+                    throw;
+                }
             }
         }
 

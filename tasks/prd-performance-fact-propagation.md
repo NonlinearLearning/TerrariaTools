@@ -37,18 +37,20 @@ NLCPG metrics
 
 ## 3. User Stories
 
+> **实现状态（2026-09-21）：** US-001 至 US-006 的生产代码、Workspace project/TFM summary 和 focused acceptance tests 已接入。P5 外部工具只提供显式 profile policy 和 opt-in wrapper，普通 CLI 不自动启动外部工具。常规 PerformanceTests 在外部 Terraria 测试未显式启用时为 65 通过、5 跳过、0 失败；设置 `NLISSN_RUN_TERRARIA_EXTERNAL_TESTS=1` 并提供数据集后，外部样本需要单独验收。
+
 ### US-001: 查看单文件 CPG 性能事实
 
 **Description:** As a NLISSN maintainer, I want each analyzed source file to retain its CPG build facts so that I can identify slow passes and cache behavior without rerunning the builder manually.
 
 **Acceptance Criteria:**
 
-- [ ] `NLCPGBuildMetrics` 在 builder 返回后被一次性映射为不依赖 NLCPG 类型的 `CpgPerformanceFacts`。
-- [ ] facts 包含 build elapsed、node/edge、pass、anchor discovery、persistence/cache 和 data-flow 可用事实。
-- [ ] `PrototypeAnalysisResult.Performance` 只携带当前文件的应用级性能事实，不递归携带目录或 Run children。
-- [ ] facts 映射不读取或修改 CPG graph、SemanticModel、Compilation、规则事实或 rewrite plan。
-- [ ] builder metrics 缺失的字段使用明确的 `null`/状态，而不是用零伪造未知值。
-- [ ] focused CPG/Application tests 通过。
+- [x] `NLCPGBuildMetrics` 在 builder 返回后被一次性映射为不依赖 NLCPG 类型的 `CpgPerformanceFacts`。
+- [x] facts 包含 build elapsed、node/edge、pass、anchor discovery、persistence/cache 和 data-flow 可用事实。
+- [x] `PrototypeAnalysisResult.Performance` 只携带当前文件的应用级性能事实，不递归携带目录或 Run children。
+- [x] facts 映射不读取或修改 CPG graph、SemanticModel、Compilation、规则事实或 rewrite plan。
+- [x] builder metrics 缺失的字段使用明确的 `null`/状态，而不是用零伪造未知值。
+- [x] focused CPG/Application tests 通过。
 
 ### US-002: 保留并聚合目录文件事实
 
@@ -56,12 +58,12 @@ NLCPG metrics
 
 **Acceptance Criteria:**
 
-- [ ] `DirectoryAnalysisOutcome` 保留按稳定 `Index`/`FilePath` 排序的文件事实。
-- [ ] `CombineResults` 和 `BuildResult` 不再丢弃文件级性能事实。
-- [ ] 目录 wall time 由目录 owner 独立测量；它不会由并发文件 elapsed 相加推导。
-- [ ] `sum`、`max`、样本数量和 top item 的定义在聚合结果中明确，且 children 不依赖完成顺序。
-- [ ] 空目录、失败文件、取消和 skipped/unavailable 状态可以区分。
-- [ ] directory parallelism enabled/disabled 的业务 snapshot 等价测试通过。
+- [x] `DirectoryAnalysisOutcome` 保留按稳定 `Index`/`FilePath` 排序的文件事实。
+- [x] `CombineResults` 和 `BuildResult` 不再丢弃文件级性能事实。
+- [x] 目录 wall time 由目录 owner 独立测量；它不会由并发文件 elapsed 相加推导。
+- [x] `sum`、`max`、样本数量和 top item 的定义在聚合结果中明确，且 children 不依赖完成顺序。
+- [x] 空目录、失败文件、取消和 skipped/unavailable 状态可以区分。
+- [x] directory parallelism enabled/disabled 的业务 snapshot 等价测试通过。
 
 ### US-003: 生成 Run 级终态报告
 
@@ -69,12 +71,12 @@ NLCPG metrics
 
 **Acceptance Criteria:**
 
-- [ ] Application/Host 通过独立 `AnalysisRunOutcome` 携带业务结果和 `RunPerformanceReport`。
-- [ ] 报告包含 run identity、输入 identity、环境、规则/capability/cache fingerprint、分层 DOP、mode/sample metadata 和 snapshot identity。
-- [ ] 阶段协议名稳定，不依赖实现类名；未接通阶段为 `unavailable`，配置跳过阶段为 `skipped`，无法可靠取得的值为 `unknown`。
-- [ ] terminal summary 同时保留端到端 wall time、阶段汇总、业务计数、图/规则/制品规模和资源事实。
-- [ ] 报告完整性和 snapshot 等价校验结果明确表示 `comparisonEligible`。
-- [ ] 终态 JSON 只在所有可用事实聚合完成后发布。
+- [x] Application/Host 通过独立 `AnalysisRunOutcome` 携带业务结果和 `RunPerformanceReport`。
+- [x] 报告包含 run identity、输入 identity、环境、规则/capability/cache fingerprint、分层 DOP、mode/sample metadata 和 snapshot identity。
+- [x] 阶段协议名稳定，不依赖实现类名；未接通阶段为 `unavailable`，配置跳过阶段为 `skipped`，无法可靠取得的值为 `unknown`。
+- [x] terminal summary 同时保留端到端 wall time、阶段汇总、业务计数、图/规则/制品规模和资源事实。
+- [x] 报告完整性和 snapshot 等价校验结果明确表示 `comparisonEligible`。
+- [x] 终态 JSON 只在所有可用事实聚合完成后发布。
 
 ### US-004: 可选启用性能 artifact
 
@@ -82,12 +84,12 @@ NLCPG metrics
 
 **Acceptance Criteria:**
 
-- [ ] schema 2 支持 `artifacts.performance.enabled`，默认值为 `false`。
-- [ ] `artifacts.performance` 与 `artifacts.runtimeLog` 独立配置；启用其中一个不会隐式启用另一个。
-- [ ] 启用后终态报告写入 `<runRoot>/Performance/summary.json`。
-- [ ] worker 不直接写最终 JSON；writer 采用临时文件加原子发布。
-- [ ] writer 失败不会使已成功的业务分析失败，并留下可观察的诊断状态。
-- [ ] 配置 schema、loader、resolved configuration 和 host tests 通过。
+- [x] schema 2 支持 `artifacts.performance.enabled`，默认值为 `false`。
+- [x] `artifacts.performance` 与 `artifacts.runtimeLog` 独立配置；启用其中一个不会隐式启用另一个。
+- [x] 启用后终态报告写入 `<runRoot>/Performance/summary.json`。
+- [x] worker 不直接写最终 JSON；writer 采用临时文件加原子发布。
+- [x] writer 失败不会使已成功的业务分析失败，并留下可观察的诊断状态。
+- [x] 配置 schema、loader、resolved configuration 和 host tests 通过。
 
 ### US-005: 隔离诊断事件与正式统计
 
@@ -95,11 +97,11 @@ NLCPG metrics
 
 **Acceptance Criteria:**
 
-- [ ] `normal`、`diagnostic`、`profile`、`benchmark` 是显式 mode，且报告记录 mode 和 sample metadata。
-- [ ] `PerformanceEventSink` 是可选旁路；完成摘要不依赖 sink，sink 丢弃或抛异常只影响诊断数据完整性。
-- [ ] diagnostic/profile 事件不进入 normal/benchmark median 或 p95。
-- [ ] P1/P2 不实现通用 profiler、partition 级诊断或调度修改；partition 诊断明确留到 P3。
-- [ ] diagnostic 失败隔离、模式混合拒绝和等价性测试通过。
+- [x] `normal`、`diagnostic`、`profile`、`benchmark` 是显式 mode，且报告记录 mode 和 sample metadata。
+- [x] `PerformanceEventSink` 是可选旁路；完成摘要不依赖 sink，sink 丢弃或抛异常只影响诊断数据完整性。
+- [x] diagnostic/profile 事件不进入 normal/benchmark median 或 p95。
+- [x] P1/P2 不实现通用 profiler、partition 级诊断或调度修改；partition 诊断明确留到 P3。
+- [x] diagnostic 失败隔离、模式混合拒绝和等价性测试通过。
 
 ### US-006: 比较运行结果而不误报回归
 
@@ -107,11 +109,11 @@ NLCPG metrics
 
 **Acceptance Criteria:**
 
-- [ ] 不同输入、rule profile、capability、cache、DOP、环境、诊断开关或 graph/rule/artifact snapshot 的样本保留原始 facts，但 `comparisonEligible=false`。
-- [ ] 失败、取消、缺少成功 terminal summary 或 snapshot 不等价的样本不进入统计集合。
-- [ ] 少于三次 measurement 时报告原始值并标记低置信度；达到样本要求时提供 median 和 p95。
-- [ ] 性能组件只报告事实、完整性和等价性，不自动宣布性能回归或改变分析决策。
-- [ ] 现有 performance tests 能验证 DOP 矩阵的业务 snapshot 等价。
+- [x] 不同输入、rule profile、capability、cache、DOP、环境、诊断开关或 graph/rule/artifact snapshot 的样本保留原始 facts，但 `comparisonEligible=false`。
+- [x] 失败、取消、缺少成功 terminal summary 或 snapshot 不等价的样本不进入统计集合。
+- [x] 少于三次 measurement 时报告原始值并标记低置信度；达到样本要求时提供 median 和 p95。
+- [x] 性能组件只报告事实、完整性和等价性，不自动宣布性能回归或改变分析决策。
+- [x] 现有 performance tests 能验证 DOP 矩阵的业务 snapshot 等价。
 
 ## 4. Functional Requirements
 

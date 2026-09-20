@@ -48,12 +48,25 @@ public sealed class  CommandHost
     {
         var inputPath = configuration.InputPath;
         var settings = configuration.CreateAnalysisRequestSettings();
+        var performanceMode = ParsePerformanceMode(configuration.Artifacts.PerformanceMode);
         var runtime = AnalysisRuntimeFactory.Create(new RoslynPrototypeExecutionOptions(
           configuration.Execution.MaxDegreeOfParallelism,
           configuration.Execution.DirectoryParallelism,
           configuration.Execution.GroupParallelism,
           configuration.Execution.HelperParallelism,
           CpgMaxDegreeOfParallelism: configuration.Execution.CpgMaxDegreeOfParallelism));
+        PerformanceDiagnosticsCollector? diagnosticsCollector = null;
+        if (configuration.Artifacts.WritePerformanceSummary)
+        {
+            runtime.PerformanceStageCollector = new PerformanceStageCollector();
+            if (performanceMode is PerformanceMode.Diagnostic or PerformanceMode.Profile)
+            {
+                diagnosticsCollector = new PerformanceDiagnosticsCollector();
+                runtime.PerformanceEventSink = diagnosticsCollector;
+                runtime.PartitionPerformanceEventSink = diagnosticsCollector;
+            }
+            runtime.PerformanceRunId = ResolveRunId(configuration.Artifacts.RunId);
+        }
         await using var runtimeLog = RuntimeMeasurementLog.TryCreate(
           configuration.Artifacts.WriteRuntimeLog ? configuration.Artifacts.RuntimeLogPath : null,
           configuration.Logging,
@@ -84,7 +97,7 @@ public sealed class  CommandHost
                       "replay",
                       replayResult,
                       inputIdentity: inputPath);
-                    replayOutcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, replayOutcome, runtime, performanceMeasurement);
+                    replayOutcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, replayOutcome, runtime, rules, performanceMeasurement);
                     return replayOutcome;
                 }
 
@@ -94,13 +107,13 @@ public sealed class  CommandHost
                   runtime,
                   configuration.Execution,
                   configuration.Artifacts);
-                directoryOutcome = directoryOutcome.WithMode(ParsePerformanceMode(configuration.Artifacts.PerformanceMode));
+                directoryOutcome = directoryOutcome.WithMode(performanceMode);
                 if (configuration.Artifacts.RewritePlanMode == RewritePlanMode.Capture)
                 {
                     CaptureRewritePlan(inputPath, configuration.Artifacts.RewritePlanRoot, directoryOutcome.Result);
                 }
 
-                directoryOutcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, directoryOutcome, runtime, performanceMeasurement);
+                directoryOutcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, directoryOutcome, runtime, rules, performanceMeasurement);
                 return directoryOutcome;
             }
 
@@ -112,7 +125,7 @@ public sealed class  CommandHost
                   runtime,
                   configuration.Execution,
                   configuration.Artifacts);
-                workspaceOutcome = workspaceOutcome.WithMode(ParsePerformanceMode(configuration.Artifacts.PerformanceMode));
+                workspaceOutcome = workspaceOutcome.WithMode(performanceMode);
                 if (configuration.Artifacts.RewritePlanMode == RewritePlanMode.Capture)
                 {
                     CaptureRewritePlan(
@@ -122,7 +135,7 @@ public sealed class  CommandHost
                       configuration.Workspace.TargetDocumentPath is null ? null : 1);
                 }
 
-                workspaceOutcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, workspaceOutcome, runtime, performanceMeasurement);
+                workspaceOutcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, workspaceOutcome, runtime, rules, performanceMeasurement);
                 return workspaceOutcome;
             }
 
@@ -144,15 +157,29 @@ public sealed class  CommandHost
                   ResolveRunId(configuration.Artifacts.RunId),
                   "file",
                   result,
-                  mode: ParsePerformanceMode(configuration.Artifacts.PerformanceMode),
+                  mode: performanceMode,
                   inputIdentity: filePath);
-                outcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, outcome, runtime, performanceMeasurement);
+                outcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, outcome, runtime, rules, performanceMeasurement);
                 return outcome;
             }
 
             if (configuration.Execution.WriteBack)
             {
-                File.WriteAllText(inputPath, result.RewrittenSource ?? source, Encoding.UTF8);
+                var writeBackScope = StartStage(
+                  runtime,
+                  PerformanceStageId.ArtifactWriteBack,
+                  PerformanceStageId.Run,
+                  filePath);
+                try
+                {
+                    File.WriteAllText(inputPath, result.RewrittenSource ?? source, Encoding.UTF8);
+                    writeBackScope?.Complete();
+                }
+                catch (Exception exception)
+                {
+                    writeBackScope?.Fail(exception);
+                    throw;
+                }
             }
 
             if (!configuration.Artifacts.WriteDiff)
@@ -161,21 +188,36 @@ public sealed class  CommandHost
                   ResolveRunId(configuration.Artifacts.RunId),
                   "file",
                   result,
-                  mode: ParsePerformanceMode(configuration.Artifacts.PerformanceMode),
+                  mode: performanceMode,
                   inputIdentity: filePath);
-                outcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, outcome, runtime, performanceMeasurement);
+                outcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, outcome, runtime, rules, performanceMeasurement);
                 return outcome;
             }
 
             var inputRoot = Path.GetDirectoryName(Path.GetFullPath(inputPath))
               ?? throw new InvalidOperationException("The input file must have a parent directory.");
-            var writtenDiffCount = new CategoryDiffArtifactService().Write(
-              inputRoot,
-              Path.GetFullPath(inputPath),
-              source,
-              result.Decisions,
-              configuration.Artifacts.DiffRoot,
-              configuration.Artifacts.DiffView);
+            var diffScope = StartStage(
+              runtime,
+              PerformanceStageId.ArtifactDiff,
+              PerformanceStageId.Run,
+              filePath);
+            int writtenDiffCount;
+            try
+            {
+                writtenDiffCount = new CategoryDiffArtifactService().Write(
+                  inputRoot,
+                  Path.GetFullPath(inputPath),
+                  source,
+                  result.Decisions,
+                  configuration.Artifacts.DiffRoot,
+                  configuration.Artifacts.DiffView);
+                diffScope?.Complete();
+            }
+            catch (Exception exception)
+            {
+                diffScope?.Fail(exception);
+                throw;
+            }
             result = result with
             {
                 DiffFilePath = writtenDiffCount > 0 ? configuration.Artifacts.DiffRoot : null,
@@ -184,9 +226,9 @@ public sealed class  CommandHost
               ResolveRunId(configuration.Artifacts.RunId),
               "file",
               result,
-              mode: ParsePerformanceMode(configuration.Artifacts.PerformanceMode),
+              mode: performanceMode,
               inputIdentity: filePath);
-            finalOutcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, finalOutcome, runtime, performanceMeasurement);
+            finalOutcome = await CompleteRuntimeLogAsync(configuration, runtimeLog, finalOutcome, runtime, rules, performanceMeasurement);
             return finalOutcome;
         }
         catch (Exception exception)
@@ -194,6 +236,23 @@ public sealed class  CommandHost
             if (runtimeLog is not null)
             {
                 await runtimeLog.FailAsync(exception, runtime);
+            }
+
+            if (configuration.Artifacts.WritePerformanceSummary)
+            {
+                try
+                {
+                    PublishFailedPerformanceSummary(
+                      configuration,
+                      runtime,
+                      performanceMeasurement,
+                      performanceMode,
+                      exception);
+                }
+                catch
+                {
+                    // Performance failure reporting is fail-open with respect to the business exception.
+                }
             }
 
             throw;
@@ -241,16 +300,46 @@ public sealed class  CommandHost
         RuntimeMeasurementLog? runtimeLog,
         AnalysisRunOutcome outcome,
         AnalysisRuntime runtime,
+        RulePipeline rules,
         PerformanceRunMeasurement performanceMeasurement)
     {
         var result = outcome.Result;
+        var diagnosticsCollector = runtime.PerformanceEventSink as PerformanceDiagnosticsCollector;
         if (configuration.Artifacts.WriteEvidence && result.Evidence is not null)
         {
-            AnalysisEvidenceArtifactService.Write(configuration.Artifacts.EvidencePath, result.Evidence, configuration);
+            var evidenceScope = StartStage(
+              runtime,
+              PerformanceStageId.ArtifactEvidence,
+              PerformanceStageId.Run,
+              outcome.Performance.InputIdentity);
+            try
+            {
+                AnalysisEvidenceArtifactService.Write(configuration.Artifacts.EvidencePath, result.Evidence, configuration);
+                evidenceScope?.Complete();
+            }
+            catch (Exception exception)
+            {
+                evidenceScope?.Fail(exception);
+                throw;
+            }
         }
         else if (configuration.Artifacts.WriteEvidence)
         {
-            AnalysisEvidenceArtifactService.WriteReplayNotice(configuration.Artifacts.EvidencePath, configuration);
+            var evidenceScope = StartStage(
+              runtime,
+              PerformanceStageId.ArtifactEvidence,
+              PerformanceStageId.Run,
+              outcome.Performance.InputIdentity);
+            try
+            {
+                AnalysisEvidenceArtifactService.WriteReplayNotice(configuration.Artifacts.EvidencePath, configuration);
+                evidenceScope?.Complete();
+            }
+            catch (Exception exception)
+            {
+                evidenceScope?.Fail(exception);
+                throw;
+            }
         }
 
         if (runtimeLog is not null)
@@ -262,11 +351,7 @@ public sealed class  CommandHost
           PerformanceStageId.Run,
           outcome.Performance.InputIdentity,
           runtime);
-        var stages = outcome.Performance.Stages
-          .Concat(outcome.Performance.RootStage is null
-            ? Array.Empty<PerformanceStageSample>()
-            : new[] { outcome.Performance.RootStage })
-          .Concat(PerformanceStageId.Required.Select(stageId =>
+        var stages = PerformanceStageId.Required.Select(stageId =>
             new PerformanceStageSample(
               stageId,
               PerformanceStageId.Run,
@@ -274,7 +359,16 @@ public sealed class  CommandHost
               null,
               null,
               PerformanceStatus.Unavailable,
-              "stage-not-instrumented")))
+              "stage-not-instrumented"))
+          .Concat(outcome.Performance.Stages)
+          .Concat(outcome.Performance.RootStage is null
+            ? Array.Empty<PerformanceStageSample>()
+            : new[] { outcome.Performance.RootStage })
+          .Concat(outcome.Performance.Directory?.Stage is { } directoryStage
+            ? new[] { directoryStage }
+            : Array.Empty<PerformanceStageSample>())
+          .Concat(runtime.PerformanceStageCollector?.Snapshot()
+            ?? Array.Empty<PerformanceStageSample>())
           .Append(rootStage)
           .GroupBy(stage => $"{stage.StageId}\u0000{stage.ItemId}", StringComparer.Ordinal)
           .Select(group => group.Last())
@@ -285,15 +379,147 @@ public sealed class  CommandHost
           rootStage,
           stages,
           performanceMeasurement.CompleteResources(runtime));
+        outcome = outcome.WithIdentity(
+          PerformanceRunIdentityFactory.Create(
+            configuration,
+            rules,
+            outcome,
+            runtime,
+            outcome.Performance.Mode));
+
+        if (diagnosticsCollector is not null && configuration.Artifacts.WritePerformanceSummary)
+        {
+            var runRoot = PerformanceDiagnosticAttachment.ResolveRunArtifactRoot(
+              configuration.Artifacts.PerformanceSummaryPath);
+            var diagnosticPath = Path.Combine(runRoot, "Performance", "diagnostic-events.json");
+            var diagnosticStatus = diagnosticsCollector.TryWriteJson(diagnosticPath, out var diagnosticError);
+            var attachment = diagnosticStatus
+              ? PerformanceDiagnosticAttachment.Create(
+                "diagnostic-events",
+                outcome.Performance.RunId,
+                PerformanceStageId.Run,
+                outcome.Performance.Mode,
+                runRoot,
+                diagnosticPath)
+              : PerformanceDiagnosticAttachment.CreateUnavailable(
+                "diagnostic-events",
+                outcome.Performance.RunId,
+                PerformanceStageId.Run,
+                outcome.Performance.Mode,
+                "Performance/diagnostic-events.json",
+                diagnosticError ?? "diagnostic-artifact-write-failed");
+            outcome = outcome with
+            {
+                Performance = outcome.Performance.WithAttachments(
+                  outcome.Performance.Attachments.Append(attachment).ToArray())
+            };
+        }
 
         if (configuration.Artifacts.WritePerformanceSummary)
         {
-            _ = new PerformanceSummaryPublisher().Publish(
+            var publication = new PerformanceSummaryPublisher().Publish(
               configuration.Artifacts.PerformanceSummaryPath,
               outcome.Performance);
+            if (publication.Status == PerformancePublicationStatus.Failed && publication.ErrorKind is not null)
+            {
+                outcome = outcome with
+                {
+                    Performance = outcome.Performance.WithPublicationFailure(publication.ErrorKind)
+                };
+            }
         }
 
         return outcome;
+    }
+
+    private static PerformanceStageScope? StartStage(
+        AnalysisRuntime runtime,
+        string stageId,
+        string parentStageId,
+        string? itemId)
+    {
+        return runtime.PerformanceStageCollector is PerformanceStageCollector collector
+          ? collector.Start(stageId, parentStageId, itemId)
+          : null;
+    }
+
+    private static void PublishFailedPerformanceSummary(
+        AnalysisConfiguration configuration,
+        AnalysisRuntime runtime,
+        PerformanceRunMeasurement performanceMeasurement,
+        PerformanceMode mode,
+        Exception exception)
+    {
+        var errorKind = exception.GetType().FullName ?? exception.GetType().Name;
+        var rootStage = performanceMeasurement.CompleteRoot(
+          PerformanceStageId.Run,
+          configuration.InputPath,
+          runtime,
+          PerformanceStatus.Failed,
+          errorKind);
+        var stages = PerformanceStageId.Required
+          .Select(stageId => new PerformanceStageSample(
+            stageId,
+            PerformanceStageId.Run,
+            configuration.InputPath,
+            null,
+            null,
+            PerformanceStatus.Unavailable,
+            "stage-not-instrumented"))
+          .Concat(runtime.PerformanceStageCollector?.Snapshot()
+            ?? Array.Empty<PerformanceStageSample>())
+          .Append(rootStage)
+          .GroupBy(stage => $"{stage.StageId}\u0000{stage.ItemId}", StringComparer.Ordinal)
+          .Select(group => group.Last())
+          .OrderBy(stage => stage.StageId, StringComparer.Ordinal)
+          .ThenBy(stage => stage.ItemId, StringComparer.Ordinal)
+          .ToArray();
+        var report = new RunPerformanceReport(
+          ResolveRunId(configuration.Artifacts.RunId),
+          configuration.InputPath is not null && Directory.Exists(configuration.InputPath)
+            ? "directory"
+            : "file",
+          configuration.InputPath,
+          Array.Empty<ApplicationPerformanceFacts>(),
+          rootStage,
+          new PerformanceTerminalSummary(
+            rootStage.WallElapsedMs,
+            rootStage.AccumulatedElapsedMs,
+            PerformanceStatus.Failed,
+            false,
+            errorKind),
+          PerformanceStatus.Failed,
+          mode,
+          stages: stages,
+          resources: performanceMeasurement.CompleteResources(runtime));
+        var diagnosticsCollector = runtime.PerformanceEventSink as PerformanceDiagnosticsCollector;
+        if (diagnosticsCollector is not null)
+        {
+            var runRoot = PerformanceDiagnosticAttachment.ResolveRunArtifactRoot(
+              configuration.Artifacts.PerformanceSummaryPath);
+            var diagnosticPath = Path.Combine(runRoot, "Performance", "diagnostic-events.json");
+            var diagnosticStatus = diagnosticsCollector.TryWriteJson(diagnosticPath, out var diagnosticError);
+            var attachment = diagnosticStatus
+              ? PerformanceDiagnosticAttachment.Create(
+                "diagnostic-events",
+                report.RunId,
+                PerformanceStageId.Run,
+                mode,
+                runRoot,
+                diagnosticPath)
+              : PerformanceDiagnosticAttachment.CreateUnavailable(
+                "diagnostic-events",
+                report.RunId,
+                PerformanceStageId.Run,
+                mode,
+                "Performance/diagnostic-events.json",
+                diagnosticError ?? "diagnostic-artifact-write-failed");
+            report = report.WithAttachments(new[] { attachment });
+        }
+
+        _ = new PerformanceSummaryPublisher().Publish(
+          configuration.Artifacts.PerformanceSummaryPath,
+          report);
     }
 
     private static void CaptureRewritePlan(

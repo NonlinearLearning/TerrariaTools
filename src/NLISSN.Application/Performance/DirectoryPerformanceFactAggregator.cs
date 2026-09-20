@@ -35,36 +35,38 @@ public static class DirectoryPerformanceFactAggregator
       .Select(child => new
       {
         child.ItemId,
-        ElapsedMs = child.Cpg?.BuildElapsedMs
+        WallElapsedMs = child.Cpg?.BuildElapsedMs,
+        AccumulatedElapsedMs = child.Cpg?.BuildElapsedMs
       })
-      .Where(measurement => measurement.ElapsedMs.HasValue)
+      .Where(measurement => measurement.WallElapsedMs.HasValue)
       .Select(measurement => new
       {
         measurement.ItemId,
-        ElapsedMs = measurement.ElapsedMs!.Value
+        WallElapsedMs = measurement.WallElapsedMs!.Value,
+        AccumulatedElapsedMs = measurement.AccumulatedElapsedMs!.Value
       })
       .ToArray();
     var summary = new PerformanceAggregateSummary(
       children.Length,
       children.Count(child => child.Status == PerformanceStatus.Completed),
-      childMeasurements.Length == 0 ? null : childMeasurements.Sum(value => value.ElapsedMs),
-      childMeasurements.Length == 0 ? null : childMeasurements.Max(value => value.ElapsedMs),
-      null,
-      null,
+      childMeasurements.Length == 0 ? null : childMeasurements.Sum(value => value.WallElapsedMs),
+      childMeasurements.Length == 0 ? null : childMeasurements.Max(value => value.WallElapsedMs),
+      childMeasurements.Length == 0 ? null : childMeasurements.Sum(value => value.AccumulatedElapsedMs),
+      childMeasurements.Length == 0 ? null : childMeasurements.Max(value => value.AccumulatedElapsedMs),
       childMeasurements
-        .OrderByDescending(value => value.ElapsedMs)
+        .OrderByDescending(value => value.WallElapsedMs)
         .ThenBy(value => value.ItemId, StringComparer.Ordinal)
         .Select(value => value.ItemId)
         .FirstOrDefault(),
       childMeasurements.Length == 0
         ? null
-        : childMeasurements.Max(value => value.ElapsedMs));
+        : childMeasurements.Max(value => value.WallElapsedMs));
     var stage = new PerformanceStageSample(
-      "Directory.Analyze",
-      null,
+      PerformanceStageId.DirectoryRead,
+      PerformanceStageId.Run,
       itemId,
       wallElapsedMs,
-      summary.SumWallElapsedMs,
+      summary.SumAccumulatedElapsedMs,
       status,
       attribution: PerformanceAttributionLevel.Stage);
     return new DirectoryPerformanceFacts(

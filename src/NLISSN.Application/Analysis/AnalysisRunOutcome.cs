@@ -35,7 +35,9 @@ public sealed record AnalysisRunOutcome(
         Performance.Stages,
         Performance.Resources,
         Performance.Attachments,
-        Performance.Identity)
+        Performance.Identity,
+        Performance.PublicationErrorKind,
+        Performance.Workspace)
     };
   }
 
@@ -69,8 +71,16 @@ public sealed record AnalysisRunOutcome(
         stages,
         resources,
         Performance.Attachments,
-        Performance.Identity)
+        Performance.Identity,
+        Performance.PublicationErrorKind,
+        Performance.Workspace)
     };
+  }
+
+  public AnalysisRunOutcome WithIdentity(PerformanceRunIdentity identity)
+  {
+    ArgumentNullException.ThrowIfNull(identity);
+    return this with { Performance = Performance.WithIdentity(identity) };
   }
 
   public static AnalysisRunOutcome FromItem(
@@ -149,5 +159,30 @@ public sealed record AnalysisRunOutcome(
       mode,
       Directory: facts);
     return new AnalysisRunOutcome(result, report);
+  }
+
+  public static AnalysisRunOutcome FromWorkspace(
+    string runId,
+    string inputKind,
+    PrototypeAnalysisResult result,
+    DirectoryPerformanceFacts directory,
+    WorkspacePerformanceFacts workspace,
+    PerformanceMode mode = PerformanceMode.Normal,
+    string? inputIdentity = null)
+  {
+    ArgumentNullException.ThrowIfNull(directory);
+    ArgumentNullException.ThrowIfNull(workspace);
+
+    var outcome = FromDirectory(
+      runId,
+      inputKind,
+      result,
+      directory,
+      mode,
+      inputIdentity);
+    return outcome with
+    {
+      Performance = outcome.Performance.WithWorkspace(workspace)
+    };
   }
 }

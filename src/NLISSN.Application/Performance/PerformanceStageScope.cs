@@ -11,13 +11,15 @@ public sealed class PerformanceStageScope : IDisposable
   private readonly string? _parentStageId;
   private readonly string? _itemId;
   private readonly PerformanceAttributionLevel _attribution;
+  private readonly Action<PerformanceStageSample>? _onCompleted;
   private PerformanceStageSample? _sample;
 
   private PerformanceStageScope(
     string stageId,
     string? parentStageId,
     string? itemId,
-    PerformanceAttributionLevel attribution)
+    PerformanceAttributionLevel attribution,
+    Action<PerformanceStageSample>? onCompleted)
   {
     if (string.IsNullOrWhiteSpace(stageId))
     {
@@ -28,6 +30,7 @@ public sealed class PerformanceStageScope : IDisposable
     _parentStageId = parentStageId;
     _itemId = itemId;
     _attribution = attribution;
+    _onCompleted = onCompleted;
   }
 
   public PerformanceStageSample? Sample => _sample;
@@ -36,9 +39,10 @@ public sealed class PerformanceStageScope : IDisposable
     string stageId,
     string? parentStageId = null,
     string? itemId = null,
-    PerformanceAttributionLevel attribution = PerformanceAttributionLevel.Stage)
+    PerformanceAttributionLevel attribution = PerformanceAttributionLevel.Stage,
+    Action<PerformanceStageSample>? onCompleted = null)
   {
-    return new PerformanceStageScope(stageId, parentStageId, itemId, attribution);
+    return new PerformanceStageScope(stageId, parentStageId, itemId, attribution, onCompleted);
   }
 
   public PerformanceStageSample Complete(
@@ -77,7 +81,18 @@ public sealed class PerformanceStageScope : IDisposable
       peakActive,
       peakBuffer,
       attribution: _attribution);
+    _onCompleted?.Invoke(_sample);
     return _sample;
+  }
+
+  public PerformanceStageSample Fail(Exception exception)
+  {
+    ArgumentNullException.ThrowIfNull(exception);
+    return Complete(
+      exception is OperationCanceledException
+        ? PerformanceStatus.Cancelled
+        : PerformanceStatus.Failed,
+      exception.GetType().FullName ?? exception.GetType().Name);
   }
 
   public void Dispose()

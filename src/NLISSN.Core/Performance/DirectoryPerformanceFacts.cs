@@ -88,4 +88,19 @@ public sealed record DirectoryPerformanceFacts
   public string? ArtifactSnapshot { get; }
 
   public string? ErrorKind { get; }
+
+  public DirectoryPerformanceFacts WithStage(PerformanceStageSample stage)
+  {
+    ArgumentNullException.ThrowIfNull(stage);
+    return new DirectoryPerformanceFacts(
+      ItemId,
+      Children,
+      StageSummary,
+      stage,
+      Status,
+      GraphSnapshot,
+      RuleSnapshot,
+      ArtifactSnapshot,
+      ErrorKind);
+  }
 }
