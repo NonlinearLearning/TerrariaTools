@@ -41,6 +41,51 @@ namespace NLCPG.Builder
           bool QueriedSemanticModel,
           bool ReusedReferencedSymbolType);
 
+        /// <summary>
+        /// <c>SyntaxPass</c> 最近一次运行的**专用遥测**。
+        /// <para>
+        /// 存在的理由：<c>SyntaxPassMetrics</c> 是私有嵌套类且只被局部变量持有，
+        /// 构建结束后完全不可达，于是"声明符号查询只对可声明节点发起"这一语义
+        /// <b>没有任何可观测面</b>——既无法在测试中断言，也无法做出前后的计数对比。
+        /// 本记录把该计数提升为可在构建后读取的事实。
+        /// </para>
+        /// </summary>
+        /// <param name="DeclaredSymbolQueryCount">
+        /// 实际发起 <c>GetDeclaredSymbol</c> 的语法节点数。
+        /// <b>不等于</b> <paramref name="SyntaxNodeCount"/>：只有
+        /// <c>CanDeclareSymbol</c> 认可的节点才计数，这正是本优化要护住的性质。
+        /// </param>
+        /// <param name="Partitioned">
+        /// 本次运行走的是分区语法路径（<see langword="true"/>）还是 legacy 路径。
+        /// 两条路径各自创建自己的 metrics，靠该字段区分来源。
+        /// </param>
+        internal readonly record struct SyntaxPassTelemetry(
+          int DeclaredSymbolQueryCount,
+          int DeclaredSymbolResolvedCount,
+          int SyntaxNodeCount,
+          int SyntaxTokenCount,
+          long TraversalElapsedMilliseconds,
+          bool Partitioned)
+        {
+            /// <summary>可声明节点中被查询、但未解析出符号的数量。</summary>
+            internal int UnresolvedDeclarationCount =>
+              DeclaredSymbolQueryCount - DeclaredSymbolResolvedCount;
+
+            /// <summary>
+            /// 被"不可声明"判定挡下的语法节点数——即本优化省掉的查询量。
+            /// 非负是本优化的核心不变量。
+            /// </summary>
+            internal int SkippedDeclaredSymbolQueryCount =>
+              SyntaxNodeCount - DeclaredSymbolQueryCount;
+        }
+
+        /// <summary>
+        /// <c>SyntaxPass</c> 最近一次运行的遥测；默认值表示该 pass 尚未运行。
+        /// 声明在 <c>SyntaxPass.cs</c>（它持有 <c>NLCPG.Builder</c> partial）内，
+        /// 避免触碰并发会话正在重写的 <c>NLCPGBuilder.cs</c>。
+        /// </summary>
+        internal SyntaxPassTelemetry LastSyntaxPassTelemetry { get; private set; }
+
         private sealed class SyntaxPassMetrics
         {
             public long TraversalElapsedMilliseconds { get; set; }
@@ -74,6 +119,22 @@ namespace NLCPG.Builder
               context.FilePath,
               metrics,
               buildPlan);
+            PublishSyntaxPassTelemetry(metrics, partitioned: false);
+        }
+
+        /// <summary>
+        /// 把某条语法路径的局部 metrics 提升为构建后可读的遥测。
+        /// 在两条路径各自的出口各调用一次——它们是互斥的，所以谁最后跑谁生效。
+        /// </summary>
+        private void PublishSyntaxPassTelemetry(SyntaxPassMetrics metrics, bool partitioned)
+        {
+            LastSyntaxPassTelemetry = new SyntaxPassTelemetry(
+              DeclaredSymbolQueryCount: metrics.DeclaredSymbolQueryCount,
+              DeclaredSymbolResolvedCount: metrics.DeclaredSymbolResolvedCount,
+              SyntaxNodeCount: metrics.SyntaxNodeCount,
+              SyntaxTokenCount: metrics.SyntaxTokenCount,
+              TraversalElapsedMilliseconds: metrics.TraversalElapsedMilliseconds,
+              Partitioned: partitioned);
         }
 
         internal void RunSyntaxPass(NLCPGBuildContext context)
@@ -143,6 +204,8 @@ namespace NLCPG.Builder
                     }
                 }
             }
+
+            PublishSyntaxPassTelemetry(metrics, partitioned: true);
         }
 
         private void VisitSyntaxOutsidePartitions(
@@ -197,7 +260,7 @@ namespace NLCPG.Builder
                 if (frame.EmitTokens)
                 {
                     // 第二次出栈只补 token，保持“先节点后 token”的稳定结构。
-                    EmitChildTokens(frame.Syntax, frame.Current!, graph, filePath, metrics, buildPlan);
+                    EmitChildTokens(frame.Syntax, frame.Current!.Value, graph, filePath, metrics, buildPlan);
                     continue;
                 }
 
@@ -233,9 +296,8 @@ namespace NLCPG.Builder
           CapabilityBuildPlan buildPlan)
         {
             var createNodeStopwatch = Stopwatch.StartNew();
-            var syntaxNode = graph.AddNode(new NLCPGNode(
+            var syntaxNode = graph.AddNode(new NLCPGNodeDraft(
               Kind: NLCPGNodeKind.SyntaxNode,
-              DisplayKind: syntax.Kind().ToString(),
               Name: syntax switch
               {
                   BaseTypeDeclarationSyntax typeDeclaration => typeDeclaration.Identifier.ValueText,
@@ -246,7 +308,8 @@ namespace NLCPG.Builder
               },
               FilePath: filePath,
               SpanStart: syntax.SpanStart,
-              SpanEnd: syntax.Span.End));
+              SpanEnd: syntax.Span.End,
+              StableIdentityText: syntax.Kind().ToString()));
             createNodeStopwatch.Stop();
             metrics.CreateSyntaxNodeElapsedMilliseconds += createNodeStopwatch.ElapsedMilliseconds;
             metrics.SyntaxNodeCount += 1;
@@ -405,13 +468,13 @@ namespace NLCPG.Builder
             var tokenCount = 0;
             foreach (var childToken in syntax.ChildTokens())
             {
-                var tokenNode = graph.AddNode(new NLCPGNode(
+                var tokenNode = graph.AddNode(new NLCPGNodeDraft(
                   Kind: NLCPGNodeKind.SyntaxToken,
-                  DisplayKind: childToken.Kind().ToString(),
                   Name: childToken.ValueText.Length > 0 ? childToken.ValueText : childToken.Text,
                   FilePath: filePath,
                   SpanStart: childToken.SpanStart,
-                  SpanEnd: childToken.Span.End));
+                  SpanEnd: childToken.Span.End,
+                  StableIdentityText: childToken.Kind().ToString()));
                 graph.AddEdge(syntaxNode, tokenNode, NLCPGEdgeKind.TokenChild);
                 tokenCount += 1;
             }
