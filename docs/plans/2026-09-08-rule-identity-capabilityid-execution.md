@@ -64,10 +64,10 @@
 
 **Files:**
 
-- Read: `Context/AGENTS.md`、`Context/progress.md`、`Context/feature_list.json`、`Miscellaneous/init.ps1`、`docs/harness-runtime.md`、`src/NLISSN/AGENTS.md`、`tests/AGENTS.md`、`docs/AGENTS.md`。
+- Read: `AGENTS.md`、`Context/progress.md`、`Context/feature_list.json`、`Miscellaneous/init.ps1`、`docs/harness-runtime.md`、`src/NLISSN/AGENTS.md`、`tests/AGENTS.md`、`docs/AGENTS.md`。
 - Modify at implementation start: `Context/feature_list.json`、`Context/progress.md`。
 - Create: `tests/NLISSN.HostTests/Identity/RuleIdentityBaselineTests.cs`。
-- Read: `src/NLISSN/Composition/RuleRegistry.cs` and the four `RuleDefinition*` stage bases。
+- Read: `src/NLISSN/Composition/RulePipelineComposer.cs` and the four `RuleDefinition*` stage bases。
 
 ### Step 0.1: 保存工作区边界并运行启动检查
 
@@ -488,7 +488,7 @@ Expected: Unit, Contract, Host, and Performance records all exit `0`. Keep the g
 pwsh -File .\Miscellaneous\scripts\check-harness-consistency.ps1
 ~~~
 
-Expected: the script prints `[check-harness-consistency] OK` and its configuration smoke exits `0`. If the known pre-existing `Context/AGENTS.md` wording assertion still fails, record that exact failure and do not claim the harness passed.
+Expected: the script prints `[check-harness-consistency] OK` and its configuration smoke exits `0`. If the known pre-existing `AGENTS.md` wording assertion still fails, record that exact failure and do not claim the harness passed.
 
 ### Step 8.4: Identity and document audits
 

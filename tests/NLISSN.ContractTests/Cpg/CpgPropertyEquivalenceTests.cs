@@ -27,7 +27,7 @@ public sealed class CpgPropertyEquivalenceTests
       Assert.Contains(
         graph.Nodes,
         node => string.Equals(
-          node.FullName,
+          graph.ResolveFullName(node),
           "Generated.Mapper.Invoke:int(int)#0:value",
           StringComparison.Ordinal));
     }
@@ -112,7 +112,7 @@ public sealed class CpgPropertyEquivalenceTests
   {
     return new CpgExecutionSnapshot(
       graph.GraphSnapshotVersion,
-      graph.Nodes.Select(node => $"{node.NodeId}:{node.Kind}:{node.DisplayKind}:{node.FilePath}:{node.SpanStart}:{node.SpanEnd}").ToArray(),
+      graph.Nodes.Select(node => $"{node.NodeId}:{node.Kind}:{graph.ResolveDisplayKind(node)}:{graph.ResolveFilePath(node)}:{node.SpanStart}:{node.SpanEnd}").ToArray(),
       graph.Edges.Select(edge => $"{edge.SourceNodeId}>{edge.TargetNodeId}:{edge.Kind}:{edge.ContextId}").ToArray(),
       [], [], [], [], string.Empty, string.Empty);
   }

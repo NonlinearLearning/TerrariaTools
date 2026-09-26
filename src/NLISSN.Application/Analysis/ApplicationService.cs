@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using NLCPG.Builder;
 using NLCPG.Contracts;
+using NLCPG.Model;
 using NLCPG.Analysis.FlowSummaries;
 using NLISSN.Core.Analysis;
 using NLISSN.Core.Decision;
@@ -49,11 +50,17 @@ public sealed class ApplicationService
 
     public PrototypeAnalysisResult Analyze(string source, string filePath, AnalysisRequestSettings settings)
     {
-        return Analyze(
-          source,
-          filePath,
-          settings,
-          AnalysisRuntimeFactory.CreateDefault());
+        // G0-L：本重载在内部自建 runtime，故由本方法负责释放其内核（Task.Run 式的
+        // 固定功能约定：内部创建的资源在返回前释放）。异常路径同样经 finally 释放。
+        var runtime = AnalysisRuntimeFactory.CreateDefault();
+        try
+        {
+            return Analyze(source, filePath, settings, runtime);
+        }
+        finally
+        {
+            runtime.DisposeSchedulerAsync().AsTask().GetAwaiter().GetResult();
+        }
     }
 
     public PrototypeAnalysisResult Analyze(
@@ -73,13 +80,22 @@ public sealed class ApplicationService
       SemanticModel semanticModel,
       SyntaxNode root)
     {
-        return Analyze(
-          source,
-          filePath,
-          settings,
-          AnalysisRuntimeFactory.CreateDefault(),
-          semanticModel,
-          root);
+        // G0-L：同上，本重载内部自建 runtime，故负责释放其内核。
+        var runtime = AnalysisRuntimeFactory.CreateDefault();
+        try
+        {
+            return Analyze(
+              source,
+              filePath,
+              settings,
+              runtime,
+              semanticModel,
+              root);
+        }
+        finally
+        {
+            runtime.DisposeSchedulerAsync().AsTask().GetAwaiter().GetResult();
+        }
     }
 
     public PrototypeAnalysisResult Analyze(
@@ -98,6 +114,151 @@ public sealed class ApplicationService
           semanticModel,
           root);
         return RunAnalysis(analysisContext);
+    }
+
+    /// <summary>
+    /// 为一批**共享同一个 compilation** 的源文件批量构图，使 CPG 工作批次**跨文件**装箱（D1）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这是 D1 的生产入口：与逐个 <see cref="NLCPGBuilder.BuildFromSemanticModel"/> 的差别是
+    /// 整批**一次**构建，因而工作批次可以跨文件凑成标准大小；但每文件仍得到**自己独立**的一张图。
+    /// </para>
+    /// <para>
+    /// 本方法**只构图**，不做标记/传播/决策/改写——调用方随后用
+    /// <see cref="AnalyzeWithGraph"/> 逐文件跑规则。这样拆分是为了让目录分析既能拿到跨文件装箱，
+    /// 又能保留它原有的**逐文件并行**规则分析结构。
+    /// </para>
+    /// <para>
+    /// <b>为什么必须共享 compilation：</b>见 <see cref="NLCPGBuildDocument"/> 的说明——
+    /// 每文件各持一份 compilation 会让跨文件调用解析不出来。
+    /// </para>
+    /// </remarks>
+    public NLCPGMultiFileBuildResult BuildGraphBatch(
+      IReadOnlyList<BatchAnalysisFile> files,
+      AnalysisRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(files);
+        ArgumentNullException.ThrowIfNull(runtime);
+        if (files.Count == 0)
+        {
+            throw new ArgumentException("At least one source file is required.", nameof(files));
+        }
+
+        if (runtime.CurrentCpgBuildAdmissionLease is not null)
+        {
+            return BuildGraphBatchCore(files, runtime);
+        }
+
+        // 整批只占**一次** CPG 构建配额：一次 BuildManyDocuments 就是一次构建。
+        using var lease = runtime.CpgBuildAdmissionBudget
+          .AcquireAsync(
+            runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism,
+            runtime.ExecutionOptions.CancellationToken)
+          .GetAwaiter()
+          .GetResult();
+        using var scope = runtime.PushCpgBuildAdmissionLease(lease);
+        return BuildGraphBatchCore(files, runtime);
+    }
+
+    private NLCPGMultiFileBuildResult BuildGraphBatchCore(
+      IReadOnlyList<BatchAnalysisFile> files,
+      AnalysisRuntime runtime)
+    {
+        var configuration = CreateBuilderConfiguration(files[0].SemanticModel.Compilation, runtime);
+        var documents = new NLCPGBuildDocument[files.Count];
+        for (var index = 0; index < files.Count; index += 1)
+        {
+            documents[index] = new NLCPGBuildDocument(
+              files[index].FilePath,
+              files[index].Source,
+              files[index].SemanticModel,
+              files[index].Root);
+        }
+
+        // S5-2：把应用层的分片规划器接到构图器上。
+        //
+        // 只需挂一个端口：计划在构图器**内部**现算（用正在构图的那个实例自己的枚举），
+        // 故不存在「两个 builder 配置必须一致」这种只能靠约定维持的约束，
+        // 也不会为算计划而把每个语法树多枚举一遍。
+        var builder = new NLCPGBuilder(
+          configuration.Options with { WorkShardPlanner = new DocumentShardPlanAdapter() });
+
+        return builder.BuildManyDocuments(documents);
+    }
+
+    /// <summary>
+    /// 用**已构建**的图跑单文件的规则分析（标记/传播/提升/决策/改写）。
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="batchMetrics"/> 是整批共享构建的指标；本方法只取其中的
+    /// 阶段耗时与缓存计数，并把节点/边规模**换成该文件自己那张图**的规模
+    /// （整批口径的 NodeCount/EdgeCount 是合计值，直接透传会让每个文件都报出整批总量）。
+    /// </remarks>
+    public PrototypeAnalysisResult AnalyzeWithGraph(
+      BatchAnalysisFile file,
+      NLCPGGraph graph,
+      NLCPGBuildMetrics batchMetrics,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(graph);
+        ArgumentNullException.ThrowIfNull(batchMetrics);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(runtime);
+
+        // 构图那一批的配额租约在 BuildGraphBatch 返回时已经释放，故这里要**自己**取一次：
+        // 规则分析同样受 CPG 并发配额管辖（与单文件路径一致）。
+        // 若调用方已持有租约（例如本方法被内核工作项调用），则直接复用，不重复获取。
+        if (runtime.CurrentCpgBuildAdmissionLease is not null)
+        {
+            return AnalyzeWithGraphCore(file, graph, batchMetrics, settings, runtime);
+        }
+
+        using var lease = runtime.CpgBuildAdmissionBudget
+          .AcquireAsync(
+            runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism,
+            runtime.ExecutionOptions.CancellationToken)
+          .GetAwaiter()
+          .GetResult();
+        using var scope = runtime.PushCpgBuildAdmissionLease(lease);
+        return AnalyzeWithGraphCore(file, graph, batchMetrics, settings, runtime);
+    }
+
+    private PrototypeAnalysisResult AnalyzeWithGraphCore(
+      BatchAnalysisFile file,
+      NLCPGGraph graph,
+      NLCPGBuildMetrics batchMetrics,
+      AnalysisRequestSettings settings,
+      AnalysisRuntime runtime)
+    {
+        var configuration = CreateBuilderConfiguration(file.SemanticModel.Compilation, runtime);
+
+        // ⚠ 节点/边必须是**本文件**的规模，而非整批合计。
+        var perFileMetrics = batchMetrics with
+        {
+            NodeCount = graph.Nodes.Count,
+            EdgeCount = graph.Edges.Count,
+        };
+        var cpgPerformance = CpgPerformanceFactMapper.Map(
+          file.FilePath,
+          CpgPerformanceFactMapper.ComputeSourceIdentity(file.Source),
+          perFileMetrics);
+        RecordCpgBuildStages(runtime, file.FilePath, cpgPerformance);
+        var cpgAnalysisContext = new CpgAnalysisContext(
+          graph,
+          file.SemanticModel,
+          file.Root,
+          configuration.AvailableCapabilities,
+          CallFlowResolver: configuration.CallFlowResolver);
+        var session = new AnalysisSession(cpgAnalysisContext, settings, runtime: runtime);
+        return RunAnalysis(new AnalysisContext(
+          file.Root,
+          file.SemanticModel,
+          session,
+          cpgAnalysisContext,
+          cpgPerformance));
     }
 
     private PrototypeAnalysisResult RunAnalysis(AnalysisContext analysisContext)
@@ -267,8 +428,7 @@ public sealed class ApplicationService
         using var lease = runtime.CpgBuildAdmissionBudget
           .AcquireAsync(
             runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism,
-            runtime.ExecutionOptions.CancellationToken,
-            CpgBuildAdmissionPolicy.WholeBuild)
+            runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
           .GetResult();
         using var scope = runtime.PushCpgBuildAdmissionLease(lease);
@@ -289,9 +449,44 @@ public sealed class ApplicationService
       SemanticModel semanticModel,
       SyntaxNode root)
     {
+        var configuration = CreateBuilderConfiguration(semanticModel.Compilation, runtime);
+        var builder = new NLCPGBuilder(configuration.Options);
+        var graph = builder.BuildFromSemanticModel(
+          semanticModel,
+          root,
+          source,
+          filePath);
+        var cpgPerformance = CpgPerformanceFactMapper.Map(
+          filePath,
+          CpgPerformanceFactMapper.ComputeSourceIdentity(source),
+          builder.LastBuildMetrics);
+        RecordCpgBuildStages(runtime, filePath, cpgPerformance);
+        var cpgAnalysisContext = new CpgAnalysisContext(
+          graph,
+          semanticModel,
+          root,
+          configuration.AvailableCapabilities,
+          CallFlowResolver: configuration.CallFlowResolver);
+        var session = new AnalysisSession(cpgAnalysisContext, settings, runtime: runtime);
+
+        return new AnalysisContext(
+          root,
+          semanticModel,
+          session,
+          cpgAnalysisContext,
+          cpgPerformance);
+    }
+
+    /// <summary>
+    /// 组装构图配置。单文件与批量两条路径**共用**本方法，以免二者漂移。
+    /// </summary>
+    private BuilderConfiguration CreateBuilderConfiguration(
+      Compilation compilation,
+      AnalysisRuntime runtime)
+    {
         var callFlowResolver = _callFlowResolver ??
           _defaultCallFlowResolvers.GetOrAdd(
-            semanticModel.Compilation,
+            compilation,
             FlowSummaryResolverFactory.Create);
         var builderOptions = NLCPGBuilderOptions.CreateDefault() with
         {
@@ -304,16 +499,19 @@ public sealed class ApplicationService
             PartitionPerformanceEventSink = runtime.PartitionPerformanceEventSink,
             PerformanceRunId = runtime.PerformanceRunId,
         };
-        var builder = new NLCPGBuilder(builderOptions);
-        var graph = builder.BuildFromSemanticModel(
-          semanticModel,
-          root,
-          source,
-          filePath);
-        var cpgPerformance = CpgPerformanceFactMapper.Map(
-          filePath,
-          CpgPerformanceFactMapper.ComputeSourceIdentity(source),
-          builder.LastBuildMetrics);
+        var requestedCapabilities = builderOptions.RequestedCapabilities ?? new[] { NLCPGCapability.Default };
+        var availableCapabilities = requestedCapabilities.Aggregate(
+          NLCPGCapability.None,
+          static (current, capability) => current | capability);
+        return new BuilderConfiguration(builderOptions, availableCapabilities, callFlowResolver);
+    }
+
+    /// <summary>记录一次 CPG 构建的阶段样本（单文件与批量两条路径共用）。</summary>
+    private static void RecordCpgBuildStages(
+      AnalysisRuntime runtime,
+      string filePath,
+      CpgPerformanceFacts cpgPerformance)
+    {
         runtime.PerformanceStageCollector?.Record(new PerformanceStageSample(
           PerformanceStageId.CpgBuild,
           PerformanceStageId.Run,
@@ -337,24 +535,6 @@ public sealed class ApplicationService
               cpgPerformance.ErrorKind,
               attribution: PerformanceAttributionLevel.Stage));
         }
-        var requestedCapabilities = builderOptions.RequestedCapabilities ?? new[] { NLCPGCapability.Default };
-        var availableCapabilities = requestedCapabilities.Aggregate(
-          NLCPGCapability.None,
-          static (current, capability) => current | capability);
-        var cpgAnalysisContext = new CpgAnalysisContext(
-          graph,
-          semanticModel,
-          root,
-          availableCapabilities,
-          CallFlowResolver: callFlowResolver);
-        var session = new AnalysisSession(cpgAnalysisContext, settings, runtime: runtime);
-
-        return new AnalysisContext(
-          root,
-          semanticModel,
-          session,
-          cpgAnalysisContext,
-          cpgPerformance);
     }
 
     private static bool ShouldSkipRewrite(AnalysisSession session)
@@ -442,4 +622,24 @@ public sealed class ApplicationService
       AnalysisSession Session,
       CpgAnalysisContext CpgAnalysisContext,
       CpgPerformanceFacts CpgPerformance);
+
+    /// <summary>构图配置（单文件与批量两条路径共用），避免二者漂移。</summary>
+    private sealed record BuilderConfiguration(
+      NLCPGBuilderOptions Options,
+      NLCPGCapability AvailableCapabilities,
+      ICallFlowResolver CallFlowResolver);
 }
+
+/// <summary>
+/// 批量分析的一个输入文件：源码 + 它在**共享 compilation** 中的语义模型与语法根。
+/// </summary>
+/// <remarks>
+/// 语义模型必须来自同一个 <see cref="Compilation"/>——这是跨文件调用能解析出来的前提。
+/// 调用方（目录分析）已为整个目录建好一份 compilation，故直接传入其语义模型，
+/// 而不是让 <c>ApplicationService</c> 再解析一遍（那会得到两个不同的实例）。
+/// </remarks>
+public sealed record BatchAnalysisFile(
+  string FilePath,
+  string Source,
+  SemanticModel SemanticModel,
+  SyntaxNode Root);

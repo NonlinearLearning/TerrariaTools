@@ -224,7 +224,7 @@ public sealed class RuleBindingValidator
       return;
     }
 
-    var graphNode = mark.PrimaryGraphNode;
+    var graphNode = mark.PrimaryGraphNode.Value;
     if (graphNode.IsImplicit)
     {
       return;
@@ -242,7 +242,7 @@ public sealed class RuleBindingValidator
       return;
     }
 
-    if (!string.Equals(graphNode.FilePath, mark.SyntaxNode.SyntaxTree.FilePath, StringComparison.Ordinal) ||
+    if (!string.Equals(session.Graph.ResolveFilePath(graphNode), mark.SyntaxNode.SyntaxTree.FilePath, StringComparison.Ordinal) ||
         graphNode.SpanStart != mark.SyntaxNode.SpanStart ||
         graphNode.SpanEnd != mark.SyntaxNode.Span.End)
     {

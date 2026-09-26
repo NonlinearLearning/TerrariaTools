@@ -747,7 +747,7 @@ public sealed class AnalysisEvidenceCollector
       : description[.._budget.MaxDescriptionLength];
   }
 
-  private sealed record PendingNode(
+  private readonly record struct PendingNode(
     string Key,
     AnalysisEvidenceKind Kind,
     string? RuleId,
@@ -759,7 +759,7 @@ public sealed class AnalysisEvidenceCollector
     public string SortKey => Key;
   }
 
-  private sealed record PendingEdge(
+  private readonly record struct PendingEdge(
     string SourceKey,
     string TargetKey,
     AnalysisEvidenceEdgeKind Kind);

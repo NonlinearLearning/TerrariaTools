@@ -50,7 +50,7 @@ public sealed class DecisionBindingValidator
     {
       if (fragment.NodeId is not { } nodeId || !fragmentIds.Add(nodeId))
       {
-        issues.Add(CreateIssue("DEC002", $"{unit.RuleId}:{fragment.Name}", "A decision fragment has no unique NodeId.", unit.RuleId));
+        issues.Add(CreateIssue("DEC002", $"{unit.RuleId}:{DecisionCpgFactory.GetFragmentRole(fragment)}", "A decision fragment has no unique NodeId.", unit.RuleId));
         continue;
       }
 
@@ -60,9 +60,9 @@ public sealed class DecisionBindingValidator
         continue;
       }
 
-      var isReplacementFragment = string.Equals(fragment.Name, "replacement", StringComparison.Ordinal);
+      var isReplacementFragment = string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal);
       if ((!isReplacementFragment && !IsInOriginalTree(compilationRoot, syntaxNode)) ||
-          !string.Equals(fragment.FilePath, syntaxNode.SyntaxTree.FilePath, StringComparison.Ordinal) ||
+          !string.Equals(DecisionCpgFactory.ResolveFilePath(fragment), syntaxNode.SyntaxTree.FilePath, StringComparison.Ordinal) ||
           fragment.SpanStart != syntaxNode.SpanStart || fragment.SpanEnd != syntaxNode.Span.End)
       {
         issues.Add(CreateIssue(
@@ -76,7 +76,7 @@ public sealed class DecisionBindingValidator
       }
     }
 
-    var replacementCount = unit.Fragments.Count(fragment => string.Equals(fragment.Name, "replacement", StringComparison.Ordinal));
+    var replacementCount = unit.Fragments.Count(fragment => string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal));
     if (unit.Action == DecisionActionKind.Replace && replacementCount != 1)
     {
       issues.Add(CreateIssue("DEC005", unit.RuleId, "A Replace decision unit requires exactly one replacement fragment.", unit.RuleId));

@@ -54,6 +54,41 @@ public sealed class PerformanceSummarySchemaTests
     Assert.Equal(JsonValueKind.Null, sampleAggregate.GetProperty("accumulated").ValueKind);
   }
 
+  /// <summary>
+  /// 目录运行的文件条目**只能**序列化一份：挂在 <c>directory.items</c> 下。
+  /// </summary>
+  /// <remarks>
+  /// 回归锁：模型层刻意让 <c>report.Items</c> 与 <c>report.Directory.Children</c>
+  /// 指向同一批 facts（identity 指纹与样本聚合都读 <c>report.Items</c>），
+  /// 但线上格式若两处都写，每个 item 就会在 JSON 里出现两次——
+  /// 967 文件的真实运行据此写出 3.97 GB 摘要（两个 items 数组各占约一半）。
+  /// </remarks>
+  [Fact]
+  public void DirectorySchemaSerializesFileFactsOnceUnderDirectoryItems()
+  {
+    var child = new ApplicationPerformanceFacts("a.cs", null, null, null);
+    var directory = new DirectoryPerformanceFacts("directory", new[] { child });
+    var report = CreateReport("directory-run", 10, 10, 1, directory: directory);
+
+    var document = PerformanceSummaryDocument.FromReport(report);
+    using var json = JsonDocument.Parse(JsonSerializer.Serialize(
+      document,
+      PerformanceSummaryDocument.JsonOptions));
+
+    var root = json.RootElement;
+    Assert.Equal(
+      new[] { "a.cs" },
+      root.GetProperty("directory").GetProperty("items")
+        .EnumerateArray()
+        .Select(item => item.GetProperty("itemId").GetString()));
+    Assert.Empty(root.GetProperty("items").EnumerateArray());
+    // 整份 JSON 里该文件只出现一次（directory 自身的 itemId 是 "directory"）。
+    Assert.Equal(
+      1,
+      JsonSerializer.Serialize(document, PerformanceSummaryDocument.JsonOptions)
+        .Split("\"a.cs\"", StringSplitOptions.None).Length - 1);
+  }
+
   [Fact]
   public void WorkspaceSchemaRetainsProjectsAndFileFactsInStableOrder()
   {
@@ -103,13 +138,14 @@ public sealed class PerformanceSummarySchemaTests
     long wall,
     long accumulated,
     int sampleNumber,
-    WorkspacePerformanceFacts? workspace = null)
+    WorkspacePerformanceFacts? workspace = null,
+    DirectoryPerformanceFacts? directory = null)
   {
     return new RunPerformanceReport(
       runId,
       "file",
       "fixture",
-      Array.Empty<ApplicationPerformanceFacts>(),
+      directory?.Children ?? Array.Empty<ApplicationPerformanceFacts>(),
       new PerformanceStageSample(
         PerformanceStageId.Run,
         null,
@@ -139,6 +175,7 @@ public sealed class PerformanceSummarySchemaTests
         "graph",
         "rule",
         "artifact"),
+       Directory: directory,
        workspace: workspace);
   }
 }

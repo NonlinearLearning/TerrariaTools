@@ -11,7 +11,7 @@ using System.Text;
 
 namespace NLCPG.Builder;
 
-internal sealed record CpgRestoreMetrics(
+internal readonly record struct CpgRestoreMetrics(
   long CatalogReadMilliseconds,
   long ShardReadMilliseconds,
   int RestoredShardCount,
@@ -22,7 +22,7 @@ internal sealed record CpgRestoreMetrics(
     internal static CpgRestoreMetrics Empty { get; } = new(0, 0, 0, 0, 0, 0);
 }
 
-internal sealed record CpgBaseRestoreResult(CpgFrozenShardGraphFacts Facts);
+internal readonly record struct CpgBaseRestoreResult(CpgFrozenShardGraphFacts Facts);
 
 internal sealed class CpgShardBuildCoordinator
 {
@@ -412,7 +412,7 @@ internal sealed class CpgShardBuildCoordinator
     }
 }
 
-internal sealed record CpgShardExportRequest(
+internal readonly record struct CpgShardExportRequest(
   long Sequence,
   string Kind,
   TextSpan Span,

@@ -2,8 +2,8 @@ using NLCPG.Contracts;
 
 namespace NLCPG.Model;
 
-/// 表示两个图节点之间的一条带类型关系边。
-public sealed record NLCPGEdge
+/// 表示两个图节点之间的一条带类型关系边值。
+public readonly record struct NLCPGEdge
 {
     // 创建一条图边，并在需要时校验调用点上下文与上下文标识一致。
     public NLCPGEdge(NodeId sourceNodeId, NodeId targetNodeId, NLCPGEdgeKind kind, NLCPGEdgeLabel? structuredLabel = null, NLCPGContextId? contextId = null, NLCPGCallSiteContext? callSiteContext = null)
@@ -25,15 +25,57 @@ public sealed record NLCPGEdge
         CallSiteContext = callSiteContext;
     }
 
-    public NodeId SourceNodeId { get; init; }
+    // 由已解析的字段直接构造，跳过 ToContextId() 归一化。
+    //
+    // 仅供 CanonicalEdgeStore 投影使用：那里的 ContextId 在构图期已由本类型的公开构造函数
+    // 解析并存入元数据池，故再次归一化只会重复插值（CallSiteContext.ToContextId() 每次
+    // 访问都重新构造字符串），把构图的"每边一次"放大成"每次读取一次"。
+    private NLCPGEdge(
+      NodeId sourceNodeId,
+      NodeId targetNodeId,
+      NLCPGEdgeKind kind,
+      NLCPGEdgeLabel? structuredLabel,
+      NLCPGContextId? contextId,
+      NLCPGCallSiteContext? callSiteContext,
+      bool skipNormalization)
+    {
+        _ = skipNormalization;
+        SourceNodeId = sourceNodeId;
+        TargetNodeId = targetNodeId;
+        Kind = kind;
+        StructuredLabel = structuredLabel;
+        ContextId = contextId;
+        CallSiteContext = callSiteContext;
+    }
 
-    public NodeId TargetNodeId { get; init; }
+    // 按已解析字段投影一条边，不做归一化校验。字段值与公开构造函数的结果逐字段相同。
+    internal static NLCPGEdge CreateProjected(
+      NodeId sourceNodeId,
+      NodeId targetNodeId,
+      NLCPGEdgeKind kind,
+      NLCPGEdgeLabel? structuredLabel,
+      NLCPGContextId? contextId,
+      NLCPGCallSiteContext? callSiteContext)
+    {
+        return new NLCPGEdge(
+          sourceNodeId,
+          targetNodeId,
+          kind,
+          structuredLabel,
+          contextId,
+          callSiteContext,
+          skipNormalization: true);
+    }
 
-    public NLCPGEdgeKind Kind { get; init; }
+    public NodeId SourceNodeId { get; }
 
-    public NLCPGEdgeLabel? StructuredLabel { get; init; }
+    public NodeId TargetNodeId { get; }
 
-    public NLCPGContextId? ContextId { get; init; }
+    public NLCPGEdgeKind Kind { get; }
 
-    public NLCPGCallSiteContext? CallSiteContext { get; init; }
+    public NLCPGEdgeLabel? StructuredLabel { get; }
+
+    public NLCPGContextId? ContextId { get; }
+
+    public NLCPGCallSiteContext? CallSiteContext { get; }
 }

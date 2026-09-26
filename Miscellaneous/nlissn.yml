@@ -1,35 +1,41 @@
-schemaVersion: 2
-runId: dop12-main-merged-20260804
+schemaVersion: 3
+tool: nlissn
+runId: library-entry-smoke
 input:
-  path: ../Build/RandomSamples/run-20260802200403975-ecade51311b34d8a8ae0561b8b0e37b6/source/Terraria/Main.cs
+  path: ../tests/NLISSN.Testing/TestCodeSet/Workspace/Library/Library.cs
 analysis:
-  targetName: PlayerInput
-  deleteClass: PlayerInput
+  targetName: LibraryEntry
+  deleteClass: LibraryEntry
   disabledRuleTypes: []
   validateBindings: false
-  deleteUnreachableMethods: true
-  deleteUnreferencedMethods: true
-  clearUnusedInterfaceImplementations: true
-  privatizeInternalOnlyPublicMethods: true
+  deleteUnreachableMethods: false
+  deleteUnreferencedMethods: false
+  clearUnusedInterfaceImplementations: false
+  privatizeInternalOnlyPublicMethods: false
 execution:
   writeBack: false
-  skipRewrite: false
-  maxDegreeOfParallelism: 12
-  cpgMaxDegreeOfParallelism: 12
+  skipRewrite: true
+  directoryMaxDegreeOfParallelism: 1
+  cpgMaxDegreeOfParallelism: 1
+  groupMaxDegreeOfParallelism: 1
+  helperMaxDegreeOfParallelism: 1
+  replayMaxDegreeOfParallelism: 1
+  maxConcurrentOperations: 1
   directoryParallelism: true
   groupParallelism: false
   helperParallelism: true
   fastDeleteClassDirectory: false
   filterDeleteClassFilesByTargetName: false
 artifacts:
-  diff: { enabled: true, view: readable }
+  root: tmp
+  diff: { enabled: false, view: readable }
   runtimeLog: { enabled: true }
   evidence: { enabled: true }
-  rewritePlan: { mode: capture }
+  rewritePlan: { mode: none }
   analysisLog: { enabled: false }
 logging:
-  profile: benchmark
-  level: debug
+  profile: normal
+  level: info
   categories: []
   events: []
   view: normal

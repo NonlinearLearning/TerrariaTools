@@ -33,8 +33,8 @@ public sealed class CpgRelationQueryTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var source = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "source"));
-        var sink = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "sink"));
+        var source = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "source"));
+        var sink = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "sink"));
         graph.AddEdge(source, sink, NLCPGEdgeKind.DataFlow);
         graph.FreezeQueryIndex();
         var service = new CpgRelationQueryService(graph);
@@ -56,8 +56,8 @@ public sealed class CpgRelationQueryTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var parent = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "parent"));
-        var child = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "child"));
+        var parent = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "parent"));
+        var child = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "child"));
         graph.AddEdge(parent, child, NLCPGEdgeKind.SyntaxChild);
         graph.FreezeQueryIndex();
         var service = new CpgRelationQueryService(graph);
@@ -84,8 +84,8 @@ public sealed class CpgRelationQueryTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var source = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "source"));
-        var sink = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "sink"));
+        var source = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "source"));
+        var sink = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "sink"));
         graph.AddEdge(source, sink, NLCPGEdgeKind.DataFlow);
         graph.FreezeQueryIndex();
         var service = new CpgRelationQueryService(graph, NLCPGCapability.SyntaxSemantic);
@@ -107,9 +107,9 @@ public sealed class CpgRelationQueryTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var source = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "source"));
-        var middle = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "middle"));
-        var sink = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "sink"));
+        var source = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "source"));
+        var middle = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "middle"));
+        var sink = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "sink"));
         graph.AddEdge(source, middle, NLCPGEdgeKind.SyntaxChild);
         graph.AddEdge(middle, sink, NLCPGEdgeKind.SyntaxChild);
         graph.FreezeQueryIndex();
@@ -249,9 +249,9 @@ public sealed class CpgRelationQueryTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var callerOne = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "callerOne"));
-        var callerTwo = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "callerTwo"));
-        var sink = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "sink"));
+        var callerOne = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "callerOne"));
+        var callerTwo = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "callerTwo"));
+        var sink = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "sink"));
         graph.AddEdge(callerOne, sink, NLCPGEdgeKind.InterproceduralDataFlow);
         graph.AddEdge(callerTwo, sink, NLCPGEdgeKind.InterproceduralDataFlow);
         graph.FreezeQueryIndex();
@@ -321,7 +321,7 @@ public sealed class CpgRelationQueryTests
 
     private static NodeId FindNodeId(NLCPGGraph graph, string name)
     {
-        return graph.Nodes.Single(node => node.Name == name).NodeId!.Value;
+        return graph.Nodes.Single(node => graph.ResolveName(node) == name).NodeId!.Value;
     }
 
     private static string FormatEdge(NLCPGEdge edge)

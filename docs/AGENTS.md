@@ -1,6 +1,6 @@
 # `docs/` 工作约束
 
-本目录包含面向读者的门户页、验证参考和代理执行约束。`Context/AGENTS.md` 是仓库级规则的权威来源。
+本目录包含面向读者的门户页、验证参考和代理执行约束。[根级 AGENTS.md](../AGENTS.md) 是仓库级规则的权威来源。
 
 ## 文档分类
 
@@ -20,4 +20,4 @@
 
 ## 状态来源
 
-`Context/feature_list.json` 是 feature 状态与完成条件的唯一来源。`Context/progress.md` 只保留当前事实、验证边界和下一步；详细历史留在 `Context/progressinfo.md`。
+`Context/feature_list.json` 是 feature 状态与完成条件的唯一来源。`Context/progress.md` 只保留当前事实、验证边界和下一步；设计和研究历史留在 `docs/plans/` 与 `docs/research/`。

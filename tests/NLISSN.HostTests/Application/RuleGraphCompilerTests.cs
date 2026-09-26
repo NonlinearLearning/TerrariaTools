@@ -240,11 +240,22 @@ public sealed class RuleGraphCompilerTests
     [Fact]
     public void Analyze_WithDefaultPipeline_UsesOneDependencyGraphSubmission()
     {
-        var concurrencyPool = new DependencyGraphCountingPool();
+        // 内核迁移后，规则图不再经 IConcurrencyPool，而是恰好提交一次到 Runtime.Scheduler。
+        var telemetry = new WorkTelemetryCollector();
+        var options = new RoslynPrototypeExecutionOptions(
+          DirectoryMaxDegreeOfParallelism: 1,
+          CpgMaxDegreeOfParallelism: 1,
+          GroupMaxDegreeOfParallelism: 1,
+          HelperMaxDegreeOfParallelism: 1,
+          ReplayMaxDegreeOfParallelism: 1,
+          MaxConcurrentOperations: 1,
+          EnableGroupParallelism: true);
         var runtime = new AnalysisRuntime(
-          new RoslynPrototypeExecutionOptions(1, EnableGroupParallelism: true),
+          options,
           new AnalysisEpoch(0, 0, 0),
-          concurrencyPool);
+          scheduler: new WorkScheduler(
+            AnalysisRuntime.CreateSchedulerOptions(options),
+            telemetry));
         var service = new ApplicationService(new RulePipeline(
           new RuleDefinitionMark[] { new CrossGroupMarker() },
           Array.Empty<RuleDefinitionPropagate>(),
@@ -258,7 +269,9 @@ public sealed class RuleGraphCompilerTests
           runtime);
 
         Assert.Single(result.SeedMarks);
-        Assert.Equal(1, concurrencyPool.DependencyGraphInvocationCount);
+        Assert.Single(
+          telemetry.Records,
+          record => record.Category == WorkCategories.RuleGroup);
     }
 
     [Fact]
@@ -772,120 +785,6 @@ public sealed class RuleGraphCompilerTests
               null,
               RuleId,
               SemanticTag: CrossGroupTag);
-        }
-    }
-
-    private sealed class DependencyGraphCountingPool : IConcurrencyPool
-    {
-        private readonly IConcurrencyPool _inner = new BoundedConcurrencyPool();
-
-        public int DependencyGraphInvocationCount { get; private set; }
-
-        public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TResult>(
-          int itemCount,
-          int maxDegreeOfParallelism,
-          Func<int, CancellationToken, Task<TResult>> workItem,
-          CancellationToken cancellationToken = default)
-        {
-            return _inner.SelectOrderedAsync(
-              itemCount,
-              maxDegreeOfParallelism,
-              workItem,
-              cancellationToken);
-        }
-
-        public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TSource, TResult>(
-          IReadOnlyList<TSource> sources,
-          int maxDegreeOfParallelism,
-          Func<TSource, int, CancellationToken, Task<TResult>> workItem,
-          CancellationToken cancellationToken = default)
-        {
-            return _inner.SelectOrderedAsync(
-              sources,
-              maxDegreeOfParallelism,
-              workItem,
-              cancellationToken);
-        }
-
-        public Task<IReadOnlyList<TResult>> SelectCpuBoundOrdered<TSource, TResult>(
-          IReadOnlyList<TSource> sources,
-          int maxDegreeOfParallelism,
-          Func<TSource, int, CancellationToken, TResult> workItem,
-          CancellationToken cancellationToken = default)
-        {
-            return _inner.SelectCpuBoundOrdered(
-              sources,
-              maxDegreeOfParallelism,
-              workItem,
-              cancellationToken);
-        }
-
-        public void CommitOrdered<TSource, TResult>(
-          IReadOnlyList<TSource> sources,
-          ConcurrencyWindowOptions options,
-          Func<TSource, int, TResult> workItem,
-          Action<TResult, int> commit,
-          Func<TResult, int>? retainedRecordCount = null,
-          CancellationToken cancellationToken = default)
-        {
-            _inner.CommitOrdered(
-              sources,
-              options,
-              workItem,
-              commit,
-              retainedRecordCount,
-              cancellationToken);
-        }
-
-        public void CommitTwoStageOrdered<TSource, TCollected, TPrepared, TResult>(
-          IReadOnlyList<TSource> sources,
-          ConcurrencyWindowOptions options,
-          Func<TSource, int, TCollected> collect,
-          Func<TCollected, int, TPrepared> prepare,
-          Func<TPrepared, int, TResult> solve,
-          Action<TResult, int> commit,
-          Func<TCollected, int>? collectedRetainedRecordCount = null,
-          Func<TResult, int>? resultRetainedRecordCount = null,
-          CancellationToken cancellationToken = default)
-        {
-            _inner.CommitTwoStageOrdered(
-              sources,
-              options,
-              collect,
-              prepare,
-              solve,
-              commit,
-              collectedRetainedRecordCount,
-              resultRetainedRecordCount,
-              cancellationToken);
-        }
-
-        public Task ForEachAsync<TSource>(
-          IReadOnlyList<TSource> sources,
-          int maxDegreeOfParallelism,
-          Func<TSource, int, CancellationToken, Task> workItem,
-          CancellationToken cancellationToken = default)
-        {
-            return _inner.ForEachAsync(
-              sources,
-              maxDegreeOfParallelism,
-              workItem,
-              cancellationToken);
-        }
-
-        public Task<DependencyExecutionResult<TNode, TResult>> RunDependencyGraphAsync<TNode, TResult>(
-          IReadOnlyList<DependencyWorkItem<TNode, TResult>> workItems,
-          int maxDegreeOfParallelism,
-          IComparer<TNode> readyOrder,
-          CancellationToken cancellationToken = default)
-          where TNode : notnull
-        {
-            DependencyGraphInvocationCount++;
-            return _inner.RunDependencyGraphAsync(
-              workItems,
-              maxDegreeOfParallelism,
-              readyOrder,
-              cancellationToken);
         }
     }
 

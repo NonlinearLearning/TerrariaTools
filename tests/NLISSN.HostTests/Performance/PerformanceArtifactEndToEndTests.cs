@@ -167,7 +167,7 @@ public sealed class PerformanceArtifactEndToEndTests : IDisposable
     return new AnalysisConfiguration(
       sourcePath,
       new RulePolicySettings(null, null, new HashSet<string>(StringComparer.Ordinal), false, false, false, false, false),
-      new ExecutionSettings(false, false, 1, null, false, false, true, false, false),
+      new ExecutionSettings(false, false, 1, 1, 1, 1, 1, 1, false, false, true, false, false),
       new ArtifactSettings(
         Path.Combine(_root, "run"),
         Path.Combine(_root, "diff"),

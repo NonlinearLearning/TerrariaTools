@@ -447,4 +447,158 @@ public static class CpgBuilderSources
       }
       """;
 
+  /// <summary>
+  /// 稀疏位集溢出临界构造：4 个参数定义（含 <c>ref</c>/<c>out</c>）在同一使用点同时活跃。
+  ///
+  /// **为什么要多参数**：实测（1692 个真实方法）确认 <c>cardMax ≤ 参数个数</c> 恒成立，
+  /// 且 74.4% 的方法取等号——out-set 的基数由**同时活跃的参数定义**驱动。
+  /// 纯局部变量构造（单参数 + 多个局部）实测 <c>cardMax == 1</c>，
+  /// **无法触发** <c>k=1</c> 的溢出通道，会让"溢出不截断"测试变成空测试。
+  /// 本 fixture 实测 <c>cardMax == 4</c>、9 个节点的基数 ≥ 2。
+  /// </summary>
+  public const string DataFlowSparseOverflowRefOut = """
+      namespace Demo;
+
+      public sealed class SparseOverflowFour
+      {
+        public int Run(int seed, ref int first, ref int second, out int third)
+        {
+          first = seed + 1;
+          second = seed + 2;
+          third = seed + 3;
+          return first + second + third;
+        }
+      }
+      """;
+
+  /// <summary>
+  /// 稀疏位集溢出临界构造（纯值参数版）：5 个参数定义同时活跃。
+  /// 实测 <c>cardMax == 5</c>、10 个节点的基数 ≥ 2。
+  /// 与 <see cref="DataFlowSparseOverflowRefOut"/> 互为佐证：
+  /// 溢出由参数定义数驱动，与参数是否为 <c>ref</c>/<c>out</c> 无关。
+  /// </summary>
+  public const string DataFlowSparseOverflowValueParams = """
+      namespace Demo;
+
+      public sealed class SparseOverflowFive
+      {
+        public int Run(int a, int b, int c, int d, int e)
+        {
+          var total = a + b;
+          total += c;
+          total += d;
+          return total + e;
+        }
+      }
+      """;
+  /// <summary>
+  /// 跨过程计划容量压力构造：单个方法内 <paramref name="callCount"/> 个独立调用点，
+  /// 每个调用点解析到同一个 <c>Leaf</c>，因此每个调用点各自形成一个计划组。
+  /// </summary>
+  /// <remarks>
+  /// M1 发布窗口的双上界是 64 组 / 131072 行，故 <c>callCount &gt; 64</c> 才能真正跨越窗口边界
+  /// （64 组窗口 + 余数），否则"窗口容量治理"这条路径从未被执行过，测试是空的。
+  /// 实测（DOP=1）：calls=70 → 70/140/4971 条边（预算 1/2/10000），calls=90 → 90/180/8191。
+  /// 调用点数量改变会显著改变边数，故断言不得写死边数，只能断言账本关系。
+  /// </remarks>
+  /// <summary>
+  /// 行上界压力构造：被调方法带 <paramref name="parameterCount"/> 个形参，且被调用
+  /// <paramref name="callCount"/> 次，使【每个计划组】的行数约为
+  /// <c>parameterCount * callCount</c>。
+  /// </summary>
+  /// <remarks>
+  /// 为什么需要它：<see cref="InterproceduralPlanCapacityPressure"/> 的每个组只有 O(1) 行，
+  /// 只能把【组】上界（64）撑满，永远碰不到【行】上界（131072）。
+  /// 实测确认的组大小定律是 <b>组行数 ≈ 形参个数 × 指向该方法的调用点数</b>
+  /// （因为实参边桶按被调方法共享，每个调用点都拿到整桶）：
+  ///
+  /// - <c>params=40, calls=64</c> → maxCount=2562，峰值 <b>133173 行 &gt; 131072</b>，
+  ///   且 <b>peakGroups=52 &lt; 64</b> —— 证明冲刷确实由【行】而非【组】触发，耗时约 9 s。
+  /// - <c>params=20, calls=64</c> → maxCount=1282，峰值 81985 行，仍未越界（对照组）。
+  ///
+  /// 注意：单独靠"加大形参个数"构造该形态代价极高且超线性
+  /// （params=5000 约 84 s、params=20000 约 512 s），是行不通的路子；
+  /// 【形参 × 调用点】才是低成本构造方式。
+  /// </remarks>
+  public static string InterproceduralPlanRowThresholdPressure(
+    int parameterCount,
+    int callCount)
+  {
+    ArgumentOutOfRangeException.ThrowIfNegativeOrZero(parameterCount);
+    ArgumentOutOfRangeException.ThrowIfNegativeOrZero(callCount);
+
+    var parameters = string.Join(
+      ", ",
+      Enumerable.Range(0, parameterCount).Select(index => $"int p{index}"));
+
+    var body = new System.Text.StringBuilder();
+    for (var index = 0; index < parameterCount; index += 1)
+    {
+      body.AppendLine($"      p{index} = p{index} + 1;");
+    }
+
+    var argumentList = string.Join(
+      ", ",
+      Enumerable.Range(0, parameterCount).Select(index => $"seed + {index}"));
+
+    var calls = new System.Text.StringBuilder();
+    for (var index = 0; index < callCount; index += 1)
+    {
+      calls.AppendLine($"    var r{index} = Leaf({argumentList});");
+    }
+
+    var sum = string.Join(
+      " + ",
+      Enumerable.Range(0, callCount).Select(index => $"r{index}"));
+
+    return $$"""
+        namespace Demo;
+
+        public sealed class RowThresholdPressure
+        {
+          public int Leaf({{parameters}})
+          {
+        {{body}}    return p0;
+          }
+
+          public int Run(int seed)
+          {
+        {{calls}}    return {{sum}};
+          }
+        }
+        """;
+  }
+
+  public static string InterproceduralPlanCapacityPressure(int callCount)
+  {
+    ArgumentOutOfRangeException.ThrowIfNegativeOrZero(callCount);
+
+    var builder = new System.Text.StringBuilder();
+    for (var index = 0; index < callCount; index += 1)
+    {
+      builder.AppendLine($"    var r{index} = Leaf(seed + {index});");
+    }
+
+    var sum = string.Join(
+      " + ",
+      Enumerable.Range(0, callCount).Select(index => $"r{index}"));
+
+    return $$"""
+        namespace Demo;
+
+        public sealed class CapacityPressure
+        {
+          public int Leaf(int value)
+          {
+            return value + 1;
+          }
+
+          public int Run(int seed)
+          {
+        {{builder}}    return {{sum}};
+          }
+        }
+        """;
+  }
+
 }

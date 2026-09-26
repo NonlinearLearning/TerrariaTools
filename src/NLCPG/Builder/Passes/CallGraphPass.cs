@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
+using NLCPG.Builder.Concurrency;
 using NLCPG.Contracts;
 using NLCPG.Model;
 
@@ -27,37 +28,267 @@ namespace NLCPG.Builder
 {
     public sealed partial class NLCPGBuilder
     {
+        private sealed record CallGraphOperationWork(
+            IInvocationOperation? Invocation,
+            IPropertyReferenceOperation? PropertyReference)
+        {
+            internal SyntaxNode Syntax => (SyntaxNode?)Invocation?.Syntax ?? PropertyReference!.Syntax;
+        }
+
+        private sealed record CallGraphFact(
+            int StableOrder,
+            IInvocationOperation? Invocation,
+            IPropertyReferenceOperation? PropertyReference,
+            IReadOnlyList<IMethodSymbol> ResolvedCandidates);
+
+        /// <summary>
+        /// worker 结果。⚠ <b>按文件路由</b>：<see cref="Groups"/> 使归并回调能把事实
+        /// 写入**它自己所属文件**的图，而非构造期的 <c>context.Graph</c>（D1）。
+        /// 一个批次可跨多个文件（T3 已放宽装箱），故结果内部按文件分离；
+        /// 但**仍是单个结果对象**，故执行器的归并/度量契约无需改动。
+        /// </summary>
+        private sealed record CallGraphWorkBatchResult(
+            IReadOnlyList<SourceRoutedGroup<CallGraphFact>> Groups);
+
         internal void RunCallGraphPass(NLCPGBuildContext context)
         {
-            // 显式方法调用会直接产出调用点和调用目标边。
-            foreach (var invocationOperation in context.InvocationOperations)
+            // G0-P R-3：本阶段的规划已在【执行相位之前】完成并登记（见 PlanStagesBeforeExecution）。
+            // 这里只消费既有 plan，并重建与 plan 一致的操作视图。
+            var plan = TakeRecordedStagePlan(StageDependencyTable.Stage.CallGraph);
+            if (plan is null)
             {
-                var operationNode = GetOrCreateOperationNode(invocationOperation, context.Graph);
-                AddCallSite(invocationOperation, operationNode, context.Graph);
+                // 规划相位【只在无可分析操作时】返回 null（见 PlanCallGraphStage）。
+                if (BuildCallGraphOperationWork(context).Length != 0)
+                {
+                    throw new InvalidOperationException(
+                      "CallGraph 阶段被请求执行，但规划相位没有登记它的 plan（G0-P R-3）。"
+                      + "规划必须在任何 worker 启动之前完成；此处不重新规划，以免把规划时点拉回执行相位。");
+                }
+
+                _callGraphBatchCount = 0;
+                return;
             }
 
-            // 属性引用可能隐式落到 getter/setter，需要单独补调用点。
-            foreach (var propertyReferenceOperation in context.PropertyReferenceOperations)
+            CommitCallGraphStage(context, plan);
+        }
+
+        /// <summary>
+        /// G0-P **R-3** 规划步：**只读**——算出批次，不触碰图。
+        /// <para>
+        /// 返回 <c>null</c> 表示无可分析的调用/属性访问操作
+        /// （与拆分前的提前 <c>return</c> 语义一致）。
+        /// </para>
+        /// <para>
+        /// <b>为何可静态规划（源码确证）：</b>批次只由
+        /// <c>context.InvocationOperations</c> 与 <c>context.PropertyReferenceOperations</c>
+        /// 两个**快照集合**推导（排序 → 编号 → 构造 <c>CpgWorkItem</c> → <c>_workBatchBuilder.Build</c>），
+        /// 再配合无实例状态的批次构造器；**不读图、不读前序 pass 的运行期产物**。
+        /// 这两个集合由 Operation 阶段填充，而规划相位位于 Operation 阶段之后，故输入已就绪。
+        /// </para>
+        /// </summary>
+        private StagePlan? PlanCallGraphStage(NLCPGBuildContext context)
+        {
+            var workItems = new List<CpgWorkItem>();
+            var any = false;
+            foreach (var document in context.Documents)
             {
-                var operationNode = GetOrCreateOperationNode(propertyReferenceOperation, context.Graph);
-                AddPropertyAccessorCallSite(propertyReferenceOperation, operationNode, context.Graph);
+                var operationWork = BuildCallGraphOperationWork(document);
+                if (operationWork.Length == 0)
+                {
+                    continue;
+                }
+
+                any = true;
+                workItems.AddRange(BuildCallGraphWorkItems(document, operationWork));
+            }
+
+            if (!any)
+            {
+                return null;
+            }
+
+            return new StagePlan(
+              StageDependencyTable.Stage.CallGraph,
+              // D1：跨文件聚合装箱。单文件时与 _workBatchBuilder.Build(context.FilePath, …) 逐字相同。
+              // S5-2：走 BuildWorkBatches（装箱的**唯一入口**），由其套用全局分片序号。
+              BuildWorkBatches(
+                context.DocumentSet is null ? context.FilePath : workItems[0].SourceFilePath,
+                workItems));
+        }
+
+        /// <summary>
+        /// G0-P **R-3** 提交步：消费 plan，执行 worker 并发布（**唯一写图者**）。
+        /// </summary>
+        private void CommitCallGraphStage(NLCPGBuildContext context, StagePlan plan)
+        {
+            // D1：**逐文件**建立 order→work 索引。StableOrder 是文件内局部序号，
+            //   且批次可跨文件，故单一扁平表在跨文件下会取到别的文件的操作（静默错配）。
+            var operationWorkByFile = new Dictionary<string, Dictionary<int, CallGraphOperationWork>>(
+              StringComparer.Ordinal);
+            foreach (var document in context.Documents)
+            {
+                operationWorkByFile[document.FilePath] = BuildCallGraphOperationWork(document)
+                  .ToDictionary(item => item.StableOrder, item => item.Work);
+            }
+
+            var workBatches = plan.Batches;
+            _callGraphBatchCount = workBatches.Count;
+            _workBatchExecutor.ExecuteAsync(
+              workBatches,
+              (batch, _, cancellationToken) => CollectCallGraphWorkBatch(
+                batch,
+                operationWorkByFile,
+                cancellationToken),
+              result => PublishCallGraphWorkBatch(result, context),
+              CancellationToken.None,
+              CpgWorkBatchPerformanceStageId.CallGraph).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// 构造本阶段的操作工作视图。
+        /// <para>
+        /// ⚠ 规划与提交**必须**用同一套推导：本方法把"排序 + 稳定编号"固定在一处，
+        /// 使 <c>StableOrder</c> 在两个相位之间一一对应。若各写一份，
+        /// 提交步就会按错误的序号取操作——这是静默错配而非编译错误。
+        /// </para>
+        /// </summary>
+        private static (CallGraphOperationWork Work, int StableOrder)[] BuildCallGraphOperationWork(
+          NLCPGBuildContext context)
+        {
+            return context.InvocationOperations
+              .Select(invocation => new CallGraphOperationWork(invocation, null))
+              .Concat(context.PropertyReferenceOperations.Select(property => new CallGraphOperationWork(null, property)))
+              .OrderBy(work => work.Syntax.SpanStart)
+              .ThenBy(work => work.Syntax.Span.End)
+              .ThenBy(work => work.Invocation is null ? 1 : 0)
+              .Select((work, stableOrder) => (Work: work, StableOrder: stableOrder))
+              .ToArray();
+        }
+
+        private static CpgWorkItem[] BuildCallGraphWorkItems(
+          NLCPGBuildContext context,
+          (CallGraphOperationWork Work, int StableOrder)[] operationWork)
+        {
+            return operationWork
+              .Select(item => new CpgWorkItem(
+                item.StableOrder,
+                context.FilePath,
+                null,
+                item.Work.Syntax.SpanStart,
+                item.Work.Syntax.Span.End,
+                1,
+                CpgWorkItemKind.Declaration))
+              .ToArray();
+        }
+
+        private CallGraphWorkBatchResult CollectCallGraphWorkBatch(
+          CpgWorkBatch batch,
+          IReadOnlyDictionary<string, Dictionary<int, CallGraphOperationWork>> operationWorkByFile,
+          CancellationToken cancellationToken)
+        {
+            // ⚠ 一个批次可跨多个文件（T3），故结果内按文件分离，各自可路由到正确的图。
+            //   单文件批次下恒只有一组，行为与改造前逐字一致。
+            var groups = new List<SourceRoutedGroup<CallGraphFact>>();
+            foreach (var group in SourceFilePartition.BySourceFile(batch.Items))
+            {
+                var dispatchCache = new Dictionary<string, IReadOnlyList<IMethodSymbol>>(StringComparer.Ordinal);
+                // ⚠ 用**该文件自己的** order→work 索引（D1）。
+                var operationWorkByOrder = operationWorkByFile.TryGetValue(group.SourceFilePath, out var fileWork)
+                  ? fileWork
+                  : new Dictionary<int, CallGraphOperationWork>();
+                var facts = new List<CallGraphFact>(group.Items.Count);
+                foreach (var item in group.Items.OrderBy(item => item.StableOrder))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!operationWorkByOrder.TryGetValue(item.StableOrder, out var work))
+                    {
+                        throw new InvalidOperationException(
+                          $"Call graph WorkBatch item {item.StableOrder} has no operation fact.");
+                    }
+
+                    if (work.Invocation is { } invocation)
+                    {
+                        var targetMethod = invocation.TargetMethod;
+                        var resolvedCandidates = targetMethod is null
+                          ? Array.Empty<IMethodSymbol>()
+                          : ResolveEffectiveCallTargets(invocation, targetMethod, dispatchCache);
+                        facts.Add(new CallGraphFact(
+                          item.StableOrder,
+                          invocation,
+                          null,
+                          resolvedCandidates));
+                        continue;
+                    }
+
+                    var propertyReference = work.PropertyReference!;
+                    var accessorMethod = ResolvePropertyAccessorMethod(propertyReference);
+                    var accessorCandidates = accessorMethod is null
+                      ? Array.Empty<IMethodSymbol>()
+                      : ResolvePreferredCallTargets(
+                        ResolveAccessorTargetCandidates(accessorMethod, propertyReference.Instance?.Type),
+                        accessorMethod,
+                        propertyReference.Instance?.Type).ToArray();
+                    facts.Add(new CallGraphFact(
+                      item.StableOrder,
+                      null,
+                      propertyReference,
+                      accessorCandidates));
+                }
+
+                groups.Add(new SourceRoutedGroup<CallGraphFact>(group.SourceFilePath, facts));
+            }
+
+            return new CallGraphWorkBatchResult(groups);
+        }
+
+        /// <summary>
+        /// 把事实发布到**各自所属文件**的图（D1 按项路由）。
+        /// </summary>
+        /// <remarks>
+        /// 旧实现直接收 <c>context.Graph</c>；多文件下那会把 B 文件的事实写进 A 文件的图。
+        /// </remarks>
+        private void PublishCallGraphWorkBatch(CallGraphWorkBatchResult result, NLCPGBuildContext context)
+        {
+            foreach (var group in result.Groups)
+            {
+                var graph = context.ResolveGraph(group.SourceFilePath);
+                foreach (var fact in group.Items.OrderBy(fact => fact.StableOrder))
+                {
+                    if (fact.Invocation is { } invocation)
+                    {
+                        var operationNode = GetOrCreateOperationNode(invocation, graph);
+                        AddCallSite(invocation, operationNode, graph, fact.ResolvedCandidates);
+                        continue;
+                    }
+
+                    var propertyReference = fact.PropertyReference!;
+                    var operationNodeForProperty = GetOrCreateOperationNode(propertyReference, graph);
+                    AddPropertyAccessorCallSite(
+                      propertyReference,
+                      operationNodeForProperty,
+                      graph,
+                      fact.ResolvedCandidates);
+                }
             }
         }
 
-        private void AddCallSite(IInvocationOperation invocationOperation, NLCPGNode operationNode, NLCPGGraph graph)
+        private void AddCallSite(
+          IInvocationOperation invocationOperation,
+          NLCPGNode operationNode,
+          NLCPGGraph graph,
+          IReadOnlyList<IMethodSymbol>? precomputedCandidates = null)
         {
             var targetMethod = invocationOperation.TargetMethod;
             // Roslyn 已解析到目标时，继续扩充候选集并按内部优先规则排序。
             var resolvedCandidates = targetMethod is null
               ? null
-              : ResolveEffectiveCallTargets(invocationOperation, targetMethod);
+              : precomputedCandidates ?? ResolveEffectiveCallTargets(invocationOperation, targetMethod);
             // 调用点节点复用操作节点的源码位置，但名字和签名以目标方法为准。
-            var callSiteNode = graph.AddNode(new NLCPGNode(
+            var callSiteNode = graph.AddNode(new NLCPGNodeDraft(
               Kind: NLCPGNodeKind.CallSite,
-              DisplayKind: nameof(NLCPGNodeKind.CallSite),
-              Name: targetMethod?.Name ?? operationNode.Name,
-              FullName: targetMethod is null ? operationNode.FullName : ComposeInvocationMethodFullName(targetMethod),
-              Signature: targetMethod is null ? operationNode.Signature : ComposeInvocationSignature(targetMethod),
+              Name: targetMethod?.Name ?? graph.ResolveName(operationNode),
+              FullName: targetMethod is null ? graph.ResolveFullName(operationNode) : ComposeInvocationMethodFullName(targetMethod),
+              Signature: targetMethod is null ? graph.ResolveSignature(operationNode) : ComposeInvocationSignature(targetMethod),
               DispatchKind: targetMethod is null
                 ? null
                 : ComposeResolvedDispatchKind(
@@ -66,16 +297,29 @@ namespace NLCPG.Builder
                   invocationOperation.Instance?.Type,
                   ComposeCallDispatchKind(resolvedCandidates[0], invocationOperation.Instance is not null)),
               TypeFullName: ComposeTypeFullName(invocationOperation.Type),
-              FilePath: operationNode.FilePath,
+              FilePath: graph.ResolveFilePath(operationNode),
               SpanStart: operationNode.SpanStart,
               SpanEnd: operationNode.SpanEnd));
             graph.AddEdge(operationNode, callSiteNode, NLCPGEdgeKind.SyntaxChild);
-            _callSiteNodesByInvocation[invocationOperation] = callSiteNode;
+            // G0-P R.3 L1：本方法是**归并回调**，运行在归并线程上；执行器已为归并线程
+            // 开共享态窗口，故这些 builder 级具名容器的写入走 WriteSharedState。
+            //
+            // ⚠ 如实记录：按**当前**代码，这里并非活跃的数据竞争。它成立依赖两条
+            //   「恰好如此、却从未写下」的事实：① 本阶段归并回调只有一个
+            //   （resultChannel 为 SingleReader），彼此串行；② 这些容器的读者
+            //   （DataFlowPass 的 FindCallSiteNode）都在本阶段结束后的**串行**相位。
+            //   本机制不改变今天的可观测行为，它消除的是"把 L1 不变式寄托在这两条巧合上"
+            //   ——任一条将来变化（多归并者，或让 worker 也读写），就会变成静默损坏
+            //   （丢失更新/枚举中途变形，**不抛异常**，与轮次 29 实测同源）。
+            WriteSharedState(
+              () => _callSiteNodesByInvocation[invocationOperation] = callSiteNode);
 
             // 只有拿到目标方法时，才继续补充调用目标和求值类型。
             if (targetMethod is not null)
             {
-                _resolvedCallTargetsByInvocation[invocationOperation] = resolvedCandidates!;
+                WriteSharedState(
+                  () => _resolvedCallTargetsByInvocation[invocationOperation] = resolvedCandidates!);
+
                 foreach (var candidateMethod in resolvedCandidates!)
                 {
                     var methodNode = GetOrCreateSymbolNode(candidateMethod, graph);
@@ -86,7 +330,11 @@ namespace NLCPG.Builder
             }
         }
 
-        private NLCPGNode? AddPropertyAccessorCallSite(IPropertyReferenceOperation propertyReference, NLCPGNode operationNode, NLCPGGraph graph)
+        private NLCPGNode? AddPropertyAccessorCallSite(
+          IPropertyReferenceOperation propertyReference,
+          NLCPGNode operationNode,
+          NLCPGGraph graph,
+          IReadOnlyList<IMethodSymbol>? precomputedCandidates = null)
         {
             var accessorMethod = ResolvePropertyAccessorMethod(propertyReference);
             // 无访问器可解析时直接退出，避免写出半截调用点。
@@ -96,15 +344,14 @@ namespace NLCPG.Builder
             }
 
             // 访问器候选解析与普通方法类似，但输入是属性访问器符号。
-            var resolvedCandidates = ResolvePreferredCallTargets(
-              ResolveAccessorTargetCandidates(accessorMethod, propertyReference.Instance?.Type),
-              accessorMethod,
-              propertyReference.Instance?.Type);
+            var resolvedCandidates = precomputedCandidates ?? ResolvePreferredCallTargets(
+                ResolveAccessorTargetCandidates(accessorMethod, propertyReference.Instance?.Type),
+                accessorMethod,
+                propertyReference.Instance?.Type);
             var accessorEvalType = ResolvePropertyAccessorEvalType(propertyReference, accessorMethod);
             // 访问器调用点同样挂在原操作节点下，方便后续统一查询。
-            var callSiteNode = graph.AddNode(new NLCPGNode(
+            var callSiteNode = graph.AddNode(new NLCPGNodeDraft(
               Kind: NLCPGNodeKind.CallSite,
-              DisplayKind: nameof(NLCPGNodeKind.CallSite),
               Name: accessorMethod.Name,
               FullName: ComposeInvocationMethodFullName(accessorMethod),
               Signature: ComposeInvocationSignature(accessorMethod),
@@ -114,12 +361,14 @@ namespace NLCPG.Builder
                 propertyReference.Instance?.Type,
                 ComposePropertyAccessorDispatchKind(resolvedCandidates[0], propertyReference.Instance is not null)),
               TypeFullName: ComposeTypeFullName(accessorEvalType),
-              FilePath: operationNode.FilePath,
+              FilePath: graph.ResolveFilePath(operationNode),
               SpanStart: operationNode.SpanStart,
               SpanEnd: operationNode.SpanEnd));
             graph.AddEdge(operationNode, callSiteNode, NLCPGEdgeKind.SyntaxChild);
-            _propertyAccessorCallSiteNodesByKey[PropertyAccessorCallSiteKey(propertyReference, accessorMethod)] =
-              callSiteNode;
+            // G0-P R.3 L1：同 AddCallSite——归并线程上的共享态写入必须经 WriteSharedState。
+            WriteSharedState(
+              () => _propertyAccessorCallSiteNodesByKey[PropertyAccessorCallSiteKey(propertyReference, accessorMethod)] =
+                callSiteNode);
 
             foreach (var candidateMethod in resolvedCandidates)
             {
@@ -225,12 +474,16 @@ namespace NLCPG.Builder
             return candidates.Values;
         }
 
-        private IReadOnlyList<IMethodSymbol> ResolveEffectiveCallTargets(IInvocationOperation invocationOperation, IMethodSymbol targetMethod)
+        private IReadOnlyList<IMethodSymbol> ResolveEffectiveCallTargets(
+          IInvocationOperation invocationOperation,
+          IMethodSymbol targetMethod,
+          IDictionary<string, IReadOnlyList<IMethodSymbol>>? localCache = null)
         {
             var canonicalTarget = CanonicalMethodSymbol(targetMethod);
             var receiverType = invocationOperation.Instance?.Type;
             var cacheKey = $"{ComposeMethodFullName(canonicalTarget)}|{ComposeTypeFullName(receiverType)}";
-            if (_resolvedCallTargetsByDispatchShape.TryGetValue(cacheKey, out var cachedTargets))
+            var cache = localCache ?? _resolvedCallTargetsByDispatchShape;
+            if (cache.TryGetValue(cacheKey, out var cachedTargets))
             {
                 return cachedTargets;
             }
@@ -240,29 +493,47 @@ namespace NLCPG.Builder
               canonicalTarget,
               receiverType)
               .ToArray();
-            _resolvedCallTargetsByDispatchShape[cacheKey] = resolvedTargets;
+
+            // G0-P R.3 L1：worker 路径总是传入**批次局部** dispatchCache（见
+            // CollectCallGraphWorkBatch），故 worker 从不写本字段；只有归并回调
+            // （AddCallSite，此时 localCache 为 null）会写它，而归并线程处于共享态窗口内，
+            // 因此同样经 WriteSharedState。
+            //
+            // 这里刻意**不**依赖"恰好只有归并者写"这一未写下的巧合：那是"声明代替机制"，
+            // 且一旦某天 worker 漏传 localCache，就会退化成无门的共享字典写入（静默损坏）。
+            // 分支把两种情形分开，使 worker 路径保持纯批次局部、零加锁。
+            if (localCache is null)
+            {
+                WriteSharedState(
+                  () => _resolvedCallTargetsByDispatchShape[cacheKey] = resolvedTargets);
+            }
+            else
+            {
+                localCache[cacheKey] = resolvedTargets;
+            }
+
             return resolvedTargets;
         }
 
         private IEnumerable<IMethodSymbol> ResolveExactMethodFallbackCandidates(IMethodSymbol targetMethod)
         {
             var fullName = ComposeMethodFullName(targetMethod);
-            if (_methodSymbolsByFullName.TryGetValue(fullName, out var methodsByFullName))
+            var nameAndSignatureKey = ComposeMethodLookupKey(targetMethod);
+            var candidates = new List<IMethodSymbol>();
+            lock (_cacheGate)
             {
-                foreach (var method in methodsByFullName)
+                if (_methodSymbolsByFullName.TryGetValue(fullName, out var methodsByFullName))
                 {
-                    yield return method;
+                    candidates.AddRange(methodsByFullName);
+                }
+
+                if (_methodSymbolsByNameAndSignature.TryGetValue(nameAndSignatureKey, out var methodsByNameAndSignature))
+                {
+                    candidates.AddRange(methodsByNameAndSignature);
                 }
             }
 
-            var nameAndSignatureKey = ComposeMethodLookupKey(targetMethod);
-            if (_methodSymbolsByNameAndSignature.TryGetValue(nameAndSignatureKey, out var methodsByNameAndSignature))
-            {
-                foreach (var method in methodsByNameAndSignature)
-                {
-                    yield return method;
-                }
-            }
+            return candidates;
         }
 
         private IEnumerable<IMethodSymbol> ResolveSuperTypeFallbackCandidates(IMethodSymbol targetMethod, ITypeSymbol receiverType)
@@ -289,24 +560,26 @@ namespace NLCPG.Builder
                 yield break;
             }
 
-            foreach (var methodGroup in _methodSymbolsByNameAndSignature.Values)
+            // 归并 reducer 会在 worker 运行期间向该字典写入新方法，故先持门快照再枚举。
+            List<IMethodSymbol> extensionCandidates;
+            lock (_cacheGate)
             {
-                foreach (var method in methodGroup)
+                extensionCandidates = _methodSymbolsByNameAndSignature.Values
+                  .SelectMany(methodGroup => methodGroup)
+                  .Where(method => method.IsExtensionMethod)
+                  .ToList();
+            }
+
+            foreach (var method in extensionCandidates)
+            {
+                var canonicalMethod = CanonicalMethodSymbol(method);
+                if (!MethodSignatureMatches(canonicalMethod, targetMethod) ||
+                    !CanDispatchToExtensionReceiver(canonicalMethod, receiverType))
                 {
-                    if (!method.IsExtensionMethod)
-                    {
-                        continue;
-                    }
-
-                    var canonicalMethod = CanonicalMethodSymbol(method);
-                    if (!MethodSignatureMatches(canonicalMethod, targetMethod) ||
-                        !CanDispatchToExtensionReceiver(canonicalMethod, receiverType))
-                    {
-                        continue;
-                    }
-
-                    yield return canonicalMethod;
+                    continue;
                 }
+
+                yield return canonicalMethod;
             }
         }
 
@@ -336,7 +609,13 @@ namespace NLCPG.Builder
             {
                 var baseDefinition = accessorMethod.OriginalDefinition.OverriddenMethod ?? accessorMethod.OriginalDefinition;
                 // 先在工程内声明类型里补齐重写/实现候选。
-                foreach (var declaredType in _declaredTypes)
+                List<INamedTypeSymbol> declaredTypesSnapshot;
+                lock (_cacheGate)
+                {
+                    declaredTypesSnapshot = _declaredTypes.ToList();
+                }
+
+                foreach (var declaredType in declaredTypesSnapshot)
                 {
                     if (!InheritsFrom(declaredType, targetDeclaringType) ||
                         !InheritsFrom(declaredType, receiverType))
@@ -522,8 +801,13 @@ namespace NLCPG.Builder
         private void RegisterMethodSymbol(IMethodSymbol methodSymbol)
         {
             var canonicalMethod = CanonicalMethodSymbol(methodSymbol);
-            RegisterMethodLookup(_methodSymbolsByFullName, ComposeMethodFullName(canonicalMethod), canonicalMethod);
-            RegisterMethodLookup(_methodSymbolsByNameAndSignature, ComposeMethodLookupKey(canonicalMethod), canonicalMethod);
+            // 归并 reducer 会写入这两个查找表，而 worker 同时读取它们；
+            // 写入必须与读取处于同一临界区。锁可重入，嵌套在 GetOrCreateSymbolNode 内亦安全。
+            lock (_cacheGate)
+            {
+                RegisterMethodLookup(_methodSymbolsByFullName, ComposeMethodFullName(canonicalMethod), canonicalMethod);
+                RegisterMethodLookup(_methodSymbolsByNameAndSignature, ComposeMethodLookupKey(canonicalMethod), canonicalMethod);
+            }
         }
 
         private static void RegisterMethodLookup(Dictionary<string, List<IMethodSymbol>> methodLookup, string key, IMethodSymbol methodSymbol)

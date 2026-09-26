@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.CodeAnalysis.Text;
 using NLISSN.Core.Rewrite;
 using NLISSN.Core.Pipeline;
+using NL.Concurrency;
 
 namespace NLISSN.Artifacts;
 
@@ -22,10 +23,21 @@ internal sealed class RewritePlanReplayService
       ArtifactSettings artifacts)
     {
         var (_, plans) = _artifactService.ReadAndValidate(artifactRoot, inputRoot);
-        var results = await runtime.ConcurrencyPool.SelectOrderedAsync(
-          plans.Count,
-          runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
-          (index, cancellationToken) => Task.FromResult(Execute(inputRoot, plans[index], cancellationToken)),
+        // 回放是顶层路径（CommandHost 直接调用），不在任何工作项内部，故可安全提交给内核。
+        var items = plans
+          .Select((plan, index) => new WorkItem<ReplayFileResult>
+          {
+              StableOrder = index,
+              ExecuteAsync = (_, cancellationToken) =>
+                Task.FromResult(Execute(inputRoot, plan, cancellationToken)),
+          })
+          .ToArray();
+        var results = await runtime.Scheduler.RunAsync(
+          new WorkSubmission<ReplayFileResult>
+          {
+              Items = items,
+              Category = WorkCategories.Replay,
+          },
           runtime.ExecutionOptions.CancellationToken);
         var edits = new List<RewriteEdit>();
         var documents = new List<DiffDocument>();

@@ -49,7 +49,12 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
           execution:
             writeBack: true
             skipRewrite: false
-            maxDegreeOfParallelism: 1
+            directoryMaxDegreeOfParallelism: 1
+            cpgMaxDegreeOfParallelism: 1
+            groupMaxDegreeOfParallelism: 1
+            helperMaxDegreeOfParallelism: 1
+            replayMaxDegreeOfParallelism: 1
+            maxConcurrentOperations: 1
           artifacts:
             root: artifacts
             diff:
@@ -96,7 +101,12 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
           execution:
             writeBack: true
             skipRewrite: false
-            maxDegreeOfParallelism: 1
+            directoryMaxDegreeOfParallelism: 1
+            cpgMaxDegreeOfParallelism: 1
+            groupMaxDegreeOfParallelism: 1
+            helperMaxDegreeOfParallelism: 1
+            replayMaxDegreeOfParallelism: 1
+            maxConcurrentOperations: 1
           artifacts:
             root: artifacts
             diff:
@@ -145,7 +155,12 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
           execution:
             writeBack: false
             skipRewrite: true
-            maxDegreeOfParallelism: 1
+            directoryMaxDegreeOfParallelism: 1
+            cpgMaxDegreeOfParallelism: 1
+            groupMaxDegreeOfParallelism: 1
+            helperMaxDegreeOfParallelism: 1
+            replayMaxDegreeOfParallelism: 1
+            maxConcurrentOperations: 1
           artifacts:
             root: artifacts
             diff:
@@ -199,7 +214,12 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
           execution:
             writeBack: false
             skipRewrite: true
-            maxDegreeOfParallelism: 1
+            directoryMaxDegreeOfParallelism: 1
+            cpgMaxDegreeOfParallelism: 1
+            groupMaxDegreeOfParallelism: 1
+            helperMaxDegreeOfParallelism: 1
+            replayMaxDegreeOfParallelism: 1
+            maxConcurrentOperations: 1
           artifacts:
             root: artifacts
           """);
@@ -264,7 +284,12 @@ public sealed class WorkspaceAnalysisHostTests : IDisposable
           execution:
             writeBack: false
             skipRewrite: true
-            maxDegreeOfParallelism: 1
+            directoryMaxDegreeOfParallelism: 1
+            cpgMaxDegreeOfParallelism: 1
+            groupMaxDegreeOfParallelism: 1
+            helperMaxDegreeOfParallelism: 1
+            replayMaxDegreeOfParallelism: 1
+            maxConcurrentOperations: 1
           artifacts:
             root: artifacts
             diff:

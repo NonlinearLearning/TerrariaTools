@@ -126,10 +126,18 @@ public sealed record PerformanceSummaryDocument
          report.Identity.GitCommit,
          report.Identity.SourceManifestHash,
          report.Identity.ConfigurationFingerprint),
-      Items = report.Items
-        .OrderBy(item => item.ItemId, StringComparer.Ordinal)
-        .Select(ToDocument)
-        .ToArray(),
+      // ⚠ 目录/工作区运行里 report.Items 与 report.Directory.Children 是**同一批** facts
+      // （AnalysisRunOutcome.FromDirectory 把同一个列表既传给顶层 items 又传给 Directory）。
+      // 模型层必须保留 report.Items——identity 指纹与样本聚合都读它——但**线上格式只能写一份**，
+      // 否则每个 item 会在 JSON 里出现两次（967 文件即多出一倍体积）。
+      // 约定：顶层 items 只用于**没有 Directory 的单文件/单项运行**；目录运行的文件条目
+      // 一律挂在 directory.items 下（那里还带 stageSummary 等运行级元数据）。
+      Items = report.Directory is null
+        ? report.Items
+          .OrderBy(item => item.ItemId, StringComparer.Ordinal)
+          .Select(ToDocument)
+          .ToArray()
+        : Array.Empty<PerformanceSummaryItemDocument>(),
       TerminalSummary = new PerformanceSummaryTerminalDocument(
         report.TerminalSummary.WallElapsedMs,
         report.TerminalSummary.AccumulatedElapsedMs,

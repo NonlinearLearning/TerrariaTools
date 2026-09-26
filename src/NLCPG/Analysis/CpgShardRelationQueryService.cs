@@ -156,10 +156,11 @@ public sealed class CpgShardRelationQueryService : ICpgRelationQueryService
     {
         var nodes = new Dictionary<NodeId, NLCPGNode>();
         var edges = new HashSet<NLCPGEdge>();
+        var stringInterner = new StringInterner();
         var shardList = shards.ToArray();
         foreach (var shard in shardList)
         {
-            var graph = CpgFrozenShardGraphReader.ReadGraph(shard);
+            var graph = CpgFrozenShardGraphReader.ReadGraph(shard, stringInterner);
             foreach (var node in graph.Nodes)
             {
                 nodes.TryAdd(node.NodeId!.Value, node);
@@ -176,7 +177,7 @@ public sealed class CpgShardRelationQueryService : ICpgRelationQueryService
             }
         }
 
-        return NLCPGGraph.CreateFrozen(nodes.Values, edges);
+        return NLCPGGraph.CreateFrozen(nodes.Values, edges, stringInterner);
     }
 
     private static IEnumerable<NodeId> GetNeighbors(

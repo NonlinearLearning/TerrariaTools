@@ -35,9 +35,18 @@ public static class CpgPerformanceFactMapper
       ["operationRoot.miss"] = metrics.OperationRootCacheMissCount,
       ["operationInventory.count"] = metrics.OperationInventoryCount
     };
+    // ⚠ 多文件构建的 builder 级列表是**整批合并**的（一次 Build 只有一份指标）。
+    // 若原样透传，每个文件的性能条目都会带出整批方法集——967 文件语料下
+    // 会让报告体积按"文件数 × 全局方法数"膨胀，且逐文件方法数/溢出原因全部失真。
+    // 故按 SourceFilePath 归到本项；路径与 itemId 同域（都来自同一份文件路径字符串），
+    // 用序数比较。路径为空表示来源不明，一律不归属（宁可少报也不跨文件污染）。
     var dataFlowMethodSamples = metrics.DataFlowMethodMetrics is null
       ? Array.Empty<CpgDataFlowMethodPerformanceFact>()
       : metrics.DataFlowMethodMetrics
+        .Where(method => string.Equals(
+          method.SourceFilePath,
+          itemId,
+          StringComparison.Ordinal))
         .Select(method => new CpgDataFlowMethodPerformanceFact(
           method.MethodName,
           method.FlowNodeCount,

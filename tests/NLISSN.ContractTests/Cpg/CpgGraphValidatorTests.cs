@@ -131,8 +131,7 @@ public sealed class CpgGraphValidatorTests
   {
     return new NLCPGNode(
       NLCPGNodeKind.SyntaxNode,
-      nameof(NLCPGNodeKind.SyntaxNode),
-      FilePath: "fixture.cs",
+      FilePathId: 1,
       SpanStart: 0,
       SpanEnd: 1,
       NodeId: nodeId,

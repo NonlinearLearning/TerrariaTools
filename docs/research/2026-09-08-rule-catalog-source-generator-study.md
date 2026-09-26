@@ -141,9 +141,9 @@ Foundatio.Mediator 的 README 宣称 handler 可以不实现接口或基类，�
 
 ## 当前 NLISSN 的事实约束
 
-### 手动目录的位置和语义
+### 研究时的手动目录位置和语义
 
-[`RuleRegistry.CreateDefaultRules`](../../src/NLISSN/Composition/RuleRegistry.cs) 当前按四个阶段显式构造规则，并按四组 feature 开关追加可选规则。之后它调用 `RuleCatalog.ValidateRules`，再按 `disabledRuleTypes` 过滤并构造 `RulePipeline`。
+研究时，`RuleRegistry.CreateDefaultRules` 按四个阶段显式构造规则，并按四组 feature 开关追加可选规则。之后它调用 `RuleCatalog.ValidateRules`，再按 `disabledRuleTypes` 过滤并构造 `RulePipeline`。当前实现已由 [`RulePipelineComposer`](../../src/NLISSN/Composition/RulePipelineComposer.cs) 与生成的 `GeneratedRuleCatalog` 取代；本节保留迁移前的约束说明。
 
 [`IRuleDefinition`](../../src/NLISSN.Rule/IRuleDefinition.cs) 当前只包含 `CapabilityId`、`RuleId`、`InputCardinality`、`Consumes` 和 `Produces`。这些是执行契约，不足以表达“阶段归属、默认 feature、生成策略”。四个阶段基类可以表达阶段，但不能表达 feature。
 

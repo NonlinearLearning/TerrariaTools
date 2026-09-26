@@ -178,8 +178,8 @@ public sealed class NLCPGPartitionedBuilderTests
     var condition = Assert.Single(graph.Nodes, node => node.Kind == NLCPGNodeKind.OpBinary && graph.GetDisplayText(node) == "value > 0");
     var trueBranchAssignment = Assert.Single(graph.Nodes, node => node.Kind == NLCPGNodeKind.OpAssignment && graph.GetDisplayText(node) == "value += 1");
     var falseBranchAssignment = Assert.Single(graph.Nodes, node => node.Kind == NLCPGNodeKind.OpAssignment && graph.GetDisplayText(node) == "value -= 1");
-    var entry = Assert.Single(graph.Nodes, node => node.Kind == NLCPGNodeKind.MethodEntry && node.Name == "Adjust:entry");
-    var exit = Assert.Single(graph.Nodes, node => node.Kind == NLCPGNodeKind.MethodExit && node.Name == "Adjust:exit");
+    var entry = Assert.Single(graph.Nodes, node => node.Kind == NLCPGNodeKind.MethodEntry && graph.ResolveName(node) == "Adjust:entry");
+    var exit = Assert.Single(graph.Nodes, node => node.Kind == NLCPGNodeKind.MethodExit && graph.ResolveName(node) == "Adjust:exit");
 
     Assert.Contains(graph.Controls(RequireNodeId(condition)), edge => edge.TargetNodeId == RequireNodeId(trueBranchAssignment));
     Assert.Contains(graph.Controls(RequireNodeId(condition)), edge => edge.TargetNodeId == RequireNodeId(falseBranchAssignment));
@@ -272,7 +272,8 @@ public sealed class NLCPGPartitionedBuilderTests
     var runMetrics = Assert.Single(methodMetrics!);
     Assert.Contains("Run", runMetrics.MethodName, StringComparison.Ordinal);
     Assert.True(runMetrics.FlowNodeCount > 0);
-    Assert.Equal((runMetrics.FlowNodeCount + 63) / 64, runMetrics.WordsPerSet);
+    // 位集宽度由定义数决定（位集只会被定义节点置位）；压缩前的宽度可由 FlowNodeCount 反推。
+    Assert.Equal((runMetrics.DefinitionCount + 63) / 64, runMetrics.WordsPerSet);
     Assert.True(runMetrics.DefinitionCount > 0);
     Assert.True(runMetrics.WorklistIterations >= runMetrics.FlowNodeCount);
     Assert.True(runMetrics.RawCandidateCount > 0);
@@ -487,18 +488,18 @@ public sealed class NLCPGPartitionedBuilderTests
     var graph = new NLCPGBuilder().BuildFromSource(source, "graph-correctness.cs");
 
     var methodNode = Assert.Single(graph.Nodes, node =>
-      node.Kind == NLCPGNodeKind.SyntaxNode && node.Name == "Increment");
+      node.Kind == NLCPGNodeKind.SyntaxNode && graph.ResolveName(node) == "Increment");
     var parameterNode = Assert.Single(graph.Nodes, node =>
-      node.Kind == NLCPGNodeKind.SyntaxNode && node.Name == "seed");
+      node.Kind == NLCPGNodeKind.SyntaxNode && graph.ResolveName(node) == "seed");
     var localNode = Assert.Single(graph.Nodes, node =>
-      node.Kind == NLCPGNodeKind.SyntaxNode && node.Name == "value");
+      node.Kind == NLCPGNodeKind.SyntaxNode && graph.ResolveName(node) == "value");
     var seedReferences = graph.Nodes.Where(node =>
       node.Kind == NLCPGNodeKind.SyntaxNode &&
-      node.DisplayKind == "IdentifierName" &&
+      graph.ResolveDisplayKind(node) == "IdentifierName" &&
       graph.GetDisplayText(node) == "seed").ToArray();
     var valueReferences = graph.Nodes.Where(node =>
       node.Kind == NLCPGNodeKind.SyntaxNode &&
-      node.DisplayKind == "IdentifierName" &&
+      graph.ResolveDisplayKind(node) == "IdentifierName" &&
       graph.GetDisplayText(node) == "value").ToArray();
 
     Assert.Contains(graph.Edges, edge =>
@@ -579,7 +580,7 @@ public sealed class NLCPGPartitionedBuilderTests
     foreach (var declarationKind in declarationKinds)
     {
       var declarationNodes = graph.Nodes.Where(node =>
-        node.Kind == NLCPGNodeKind.SyntaxNode && node.DisplayKind == declarationKind).ToArray();
+        node.Kind == NLCPGNodeKind.SyntaxNode && graph.ResolveDisplayKind(node) == declarationKind).ToArray();
       Assert.True(declarationNodes.Length > 0, $"Missing {declarationKind} syntax node.");
       Assert.All(declarationNodes, node => Assert.Contains(graph.Edges, edge =>
         edge.SourceNodeId == RequireNodeId(node) && edge.Kind == NLCPGEdgeKind.DeclaresSymbol));
@@ -600,7 +601,7 @@ public sealed class NLCPGPartitionedBuilderTests
     foreach (var declarationKind in methodLikeDeclarationKinds)
     {
       foreach (var declarationNode in graph.Nodes.Where(node =>
-        node.Kind == NLCPGNodeKind.SyntaxNode && node.DisplayKind == declarationKind))
+        node.Kind == NLCPGNodeKind.SyntaxNode && graph.ResolveDisplayKind(node) == declarationKind))
       {
         Assert.Contains(graph.Edges, edge =>
           edge.SourceNodeId == RequireNodeId(declarationNode) &&
@@ -720,7 +721,7 @@ public sealed class NLCPGPartitionedBuilderTests
       "candidate-budget-skip.cs");
 
     Assert.DoesNotContain(graph.Edges, edge => edge.Kind == NLCPGEdgeKind.DataFlow);
-    Assert.Contains(graph.Nodes, node => node.Kind == NLCPGNodeKind.Method && node.Name == "Run");
+    Assert.Contains(graph.Nodes, node => node.Kind == NLCPGNodeKind.Method && graph.ResolveName(node) == "Run");
     Assert.Contains(
       builder.LastBuildMetrics.DataFlowMethodMetrics!,
       metric => metric.OverflowReason == NLCPGDataFlowOverflowReason.CandidateEdgeLimitExceeded &&
@@ -862,10 +863,10 @@ public sealed class NLCPGPartitionedBuilderTests
 
     var methodNode = Assert.Single(graph.Nodes, node =>
       node.Kind == NLCPGNodeKind.Method &&
-      node.Name == "Helper");
+      graph.ResolveName(node) == "Helper");
     var callSiteNode = Assert.Single(graph.Nodes, node =>
       node.Kind == NLCPGNodeKind.CallSite &&
-      node.Name == "Helper");
+      graph.ResolveName(node) == "Helper");
     var methodDispatch = Assert.IsType<NLCPGDispatchKind>(methodNode.DispatchKind);
     var callSiteDispatch = Assert.IsType<NLCPGDispatchKind>(callSiteNode.DispatchKind);
 
@@ -927,13 +928,13 @@ public sealed class NLCPGPartitionedBuilderTests
     Assert.Equal(
       expected.Nodes
         .OrderBy(node => node.NodeId)
-        .ThenBy(node => node.FullName, StringComparer.Ordinal)
-        .Select(FormatNode)
+        .ThenBy(node => expected.ResolveFullName(node), StringComparer.Ordinal)
+        .Select(node => FormatNode(expected, node))
         .ToArray(),
       actual.Nodes
         .OrderBy(node => node.NodeId)
-        .ThenBy(node => node.FullName, StringComparer.Ordinal)
-        .Select(FormatNode)
+        .ThenBy(node => actual.ResolveFullName(node), StringComparer.Ordinal)
+        .Select(node => FormatNode(actual, node))
         .ToArray());
     Assert.Equal(
       expected.Edges
@@ -958,14 +959,14 @@ public sealed class NLCPGPartitionedBuilderTests
       expected.Nodes
         .Where(node => node.Kind == NLCPGNodeKind.TypeRef)
         .OrderBy(node => node.NodeId)
-        .ThenBy(node => node.FullName, StringComparer.Ordinal)
-        .Select(FormatNode)
+        .ThenBy(node => expected.ResolveFullName(node), StringComparer.Ordinal)
+        .Select(node => FormatNode(expected, node))
         .ToArray(),
       actual.Nodes
         .Where(node => node.Kind == NLCPGNodeKind.TypeRef)
         .OrderBy(node => node.NodeId)
-        .ThenBy(node => node.FullName, StringComparer.Ordinal)
-        .Select(FormatNode)
+        .ThenBy(node => actual.ResolveFullName(node), StringComparer.Ordinal)
+        .Select(node => FormatNode(actual, node))
         .ToArray());
     Assert.Equal(
       expected.Edges
@@ -1025,23 +1026,22 @@ public sealed class NLCPGPartitionedBuilderTests
       SyntaxLargeFileLineThreshold: 40);
   }
 
-  private static string FormatNode(NLCPGNode node)
+  private static string FormatNode(NLCPGGraph graph, NLCPGNode node)
   {
     return string.Join(
       "|",
       node.NodeId,
       node.Kind,
-      node.DisplayKind,
-      node.Name,
-      node.FullName,
-      node.Signature,
+      graph.ResolveDisplayKind(node),
+      graph.ResolveName(node),
+      graph.ResolveFullName(node),
+      graph.ResolveSignature(node),
       node.DispatchKind?.ToString(),
-      node.TypeFullName,
-      node.FilePath,
+      graph.ResolveTypeFullName(node),
+      graph.ResolveFilePath(node),
       node.SpanStart,
       node.SpanEnd,
-      node.IsImplicit,
-      node.Text);
+      node.IsImplicit);
   }
 
   private static string[] DescribeDataFlowEdges(NLCPGGraph graph)
@@ -1062,7 +1062,7 @@ public sealed class NLCPGPartitionedBuilderTests
       {
         var targets = graph.Edges
           .Where(edge => edge.Kind == NLCPGEdgeKind.CallTargets && edge.SourceNodeId == RequireNodeId(callSite))
-          .Select(edge => FindNode(graph, edge.TargetNodeId).FullName)
+          .Select(edge => graph.ResolveFullName(FindNode(graph, edge.TargetNodeId)))
           .ToArray();
         return $"{graph.GetDisplayText(callSite)}|{callSite.DispatchKind}|{string.Join(",", targets)}";
       })
@@ -1071,7 +1071,7 @@ public sealed class NLCPGPartitionedBuilderTests
 
   private static NLCPGNode FindNode(NLCPGGraph graph, NodeId nodeId)
   {
-    return graph.GetNode(nodeId);
+    return graph.GetNode(nodeId).GetValueOrDefault();
   }
 
   private static string DescribeNode(NLCPGGraph graph, NLCPGNode node)
@@ -1079,10 +1079,10 @@ public sealed class NLCPGPartitionedBuilderTests
     var displayText = graph.GetDisplayText(node).Replace("\r\n", "\n", StringComparison.Ordinal);
     return node.Kind switch
     {
-      NLCPGNodeKind.MethodParameter => $"MethodParameter:{node.Name}",
-      NLCPGNodeKind.MethodReturn => $"MethodReturn:{node.Name}",
-      NLCPGNodeKind.MethodExit => $"MethodExit:{node.Name}",
-      NLCPGNodeKind.CallSite => $"CallSite:{node.Name}",
+      NLCPGNodeKind.MethodParameter => $"MethodParameter:{graph.ResolveName(node)}",
+      NLCPGNodeKind.MethodReturn => $"MethodReturn:{graph.ResolveName(node)}",
+      NLCPGNodeKind.MethodExit => $"MethodExit:{graph.ResolveName(node)}",
+      NLCPGNodeKind.CallSite => $"CallSite:{graph.ResolveName(node)}",
       _ => $"{node.Kind}:{displayText}",
     };
   }

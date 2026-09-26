@@ -44,7 +44,7 @@ public sealed class StructureViewBuilderTests
         var graph = new NLCPG.Model.NLCPGGraph();
         var second = CreateLabeledNode("second");
         var first = CreateLabeledNode("first");
-        var method = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.Method, "Method", Name: "method");
+        var method = new NLCPG.Model.NLCPGNodeDraft(NLCPGNodeKind.Method, Name: "method");
 
         graph.AddNode(second);
         graph.AddNode(method);
@@ -52,8 +52,8 @@ public sealed class StructureViewBuilderTests
         graph.FreezeQueryIndex();
 
         Assert.Equal(
-            graph.GetNodes(NLCPGNodeKind.Operation).OrderBy(node => node.NodeId).Select(node => node.Name),
-            graph.GetNodes(NLCPGNodeKind.Operation).Select(node => node.Name));
+            graph.GetNodes(NLCPGNodeKind.Operation).OrderBy(node => node.NodeId).Select(node => graph.ResolveName(node)),
+            graph.GetNodes(NLCPGNodeKind.Operation).Select(node => graph.ResolveName(node)));
     }
 
     [Fact]
@@ -78,10 +78,10 @@ public sealed class StructureViewBuilderTests
     public void QueryIndex_AfterFreeze_ResolvesSymbolReferencesCallsitesAndHalfOpenFileSpan()
     {
         var graph = new NLCPG.Model.NLCPGGraph();
-        var symbol = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.SymbolMethod, "SymbolMethod", Name: "symbol", FullName: "Demo.Callee");
-        var reference = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.Reference, "Reference", Name: "reference", FilePath: "sample.cs", SpanStart: 2, SpanEnd: 4);
-        var callSite = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.CallSite, "CallSite", Name: "call", FilePath: "sample.cs", SpanStart: 4, SpanEnd: 8);
-        var method = new NLCPG.Model.NLCPGNode(NLCPGNodeKind.Method, "Method", Name: "method", FullName: "Demo.Caller");
+        var symbol = graph.AddNode(new NLCPG.Model.NLCPGNodeDraft(NLCPGNodeKind.SymbolMethod, Name: "symbol", FullName: "Demo.Callee"));
+        var reference = graph.AddNode(new NLCPG.Model.NLCPGNodeDraft(NLCPGNodeKind.Reference, Name: "reference", FilePath: "sample.cs", SpanStart: 2, SpanEnd: 4));
+        var callSite = graph.AddNode(new NLCPG.Model.NLCPGNodeDraft(NLCPGNodeKind.CallSite, Name: "call", FilePath: "sample.cs", SpanStart: 4, SpanEnd: 8));
+        var method = graph.AddNode(new NLCPG.Model.NLCPGNodeDraft(NLCPGNodeKind.Method, Name: "method", FullName: "Demo.Caller"));
         graph.AddEdge(reference, symbol, NLCPGEdgeKind.Ref);
         graph.AddEdge(callSite, symbol, NLCPGEdgeKind.CallTargets);
         graph.AddEdge(method, callSite, NLCPGEdgeKind.ContainsSymbol);
@@ -89,9 +89,9 @@ public sealed class StructureViewBuilderTests
         var frozenSymbol = FindNode(graph, "symbol");
         var frozenMethod = FindNode(graph, "method");
 
-        Assert.Equal(new[] { "reference" }, graph.GetSymbolReferences(RequireNodeId(frozenSymbol)).Select(node => node.Name));
-        Assert.Equal(new[] { "call" }, graph.GetMethodOwnedCallSites(RequireNodeId(frozenMethod)).Select(node => node.Name));
-        Assert.Equal(new[] { "reference" }, graph.GetNodesInFileSpan("sample.cs", 2, 4).Select(node => node.Name));
+        Assert.Equal(new[] { "reference" }, graph.GetSymbolReferences(RequireNodeId(frozenSymbol)).Select(node => graph.ResolveName(node)));
+        Assert.Equal(new[] { "call" }, graph.GetMethodOwnedCallSites(RequireNodeId(frozenMethod)).Select(node => graph.ResolveName(node)));
+        Assert.Equal(new[] { "reference" }, graph.GetNodesInFileSpan("sample.cs", 2, 4).Select(node => graph.ResolveName(node)));
         Assert.NotEqual(0, graph.GetEdgeMaskId(new HashSet<NLCPGEdgeKind> { NLCPGEdgeKind.DataFlow }));
     }
 
@@ -317,22 +317,16 @@ public sealed class StructureViewBuilderTests
         var semanticModel = compilation.GetSemanticModel(tree);
         var graphWithPath = new NLCPGBuilder().BuildFromSource(source, "structure-view-no-path.cs");
         var graph = new NLCPG.Model.NLCPGGraph();
-        foreach (var node in graphWithPath.Nodes)
-        {
-            graph.AddNode(node with { FilePath = string.Empty });
-        }
-
         var addedNodes = graphWithPath.Nodes
-            .Select(node => graph.AddNode(node with { FilePath = string.Empty }))
-            .ToDictionary(BuildNodeContractKey, StringComparer.Ordinal);
+            .ToDictionary(
+                node => node.NodeId!.Value,
+                node => RematerializeWithoutFilePath(graphWithPath, graph, node));
 
         foreach (var edge in graphWithPath.Edges)
         {
-            var sourceNode = addedNodes[BuildNodeContractKey(graphWithPath.GetNode(edge.SourceNodeId)! with { FilePath = string.Empty })];
-            var targetNode = addedNodes[BuildNodeContractKey(graphWithPath.GetNode(edge.TargetNodeId)! with { FilePath = string.Empty })];
             graph.AddEdge(
-              sourceNode,
-              targetNode,
+              addedNodes[edge.SourceNodeId],
+              addedNodes[edge.TargetNodeId],
               edge.Kind,
               edge.StructuredLabel,
               edge.ContextId);
@@ -359,24 +353,14 @@ public sealed class StructureViewBuilderTests
             new[] { tree },
             new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
         var graph = new NLCPGGraph();
-        graph.AddNode(new NLCPGNode(
-            NLCPGNodeKind.SyntaxNode,
-            "SyntaxNode",
-            "first",
-            FilePath: tree.FilePath,
-            SpanStart: root.SpanStart,
-            SpanEnd: root.Span.End,
-            StableAnchor: new StableNodeAnchor(
-                NLCPGNodeKind.SyntaxNode, 1, root.SpanStart, root.Span.End, StableNodeRole.SyntaxNode, 0, 1)));
-        graph.AddNode(new NLCPGNode(
-            NLCPGNodeKind.SyntaxNode,
-            "SyntaxNode",
-            "second",
-            FilePath: tree.FilePath,
-            SpanStart: root.SpanStart,
-            SpanEnd: root.Span.End,
-            StableAnchor: new StableNodeAnchor(
-                NLCPGNodeKind.SyntaxNode, 1, root.SpanStart, root.Span.End, StableNodeRole.SyntaxNode, 1, 2)));
+        graph.AddNode(
+          new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, FilePath: tree.FilePath, SpanStart: root.SpanStart, SpanEnd: root.Span.End),
+          stableAnchor: new StableNodeAnchor(
+            NLCPGNodeKind.SyntaxNode, 1, root.SpanStart, root.Span.End, StableNodeRole.SyntaxNode, 0, 1));
+        graph.AddNode(
+          new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, FilePath: tree.FilePath, SpanStart: root.SpanStart, SpanEnd: root.Span.End),
+          stableAnchor: new StableNodeAnchor(
+            NLCPGNodeKind.SyntaxNode, 1, root.SpanStart, root.Span.End, StableNodeRole.SyntaxNode, 1, 2));
         graph.FreezeQueryIndex();
         var context = new CpgAnalysisContext(graph, compilation.GetSemanticModel(tree), root);
 
@@ -518,7 +502,7 @@ public sealed class StructureViewBuilderTests
         var filePath = syntaxNode.SyntaxTree.FilePath;
         return context.Graph.Nodes
             .Where(node =>
-                string.Equals(node.FilePath, filePath, StringComparison.Ordinal) &&
+                string.Equals(context.Graph.ResolveFilePath(node), filePath, StringComparison.Ordinal) &&
                 node.SpanStart >= syntaxNode.SpanStart &&
                 node.SpanEnd <= syntaxNode.Span.End)
             .Select(node => node.NodeId!.Value)
@@ -594,29 +578,37 @@ public sealed class StructureViewBuilderTests
         return $"{edge.SourceNodeId}|{edge.Kind}|{edge.StructuredLabel?.StableKey}|{edge.TargetNodeId}";
     }
 
-    private static NLCPGNode CreateLabeledNode(string name)
+    private static NLCPGNodeDraft CreateLabeledNode(string name)
     {
-        return new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: name);
+        return new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: name);
     }
 
-    private static string BuildNodeContractKey(NLCPGNode node)
+    private static NLCPGNode RematerializeWithoutFilePath(
+        NLCPGGraph sourceGraph,
+        NLCPGGraph targetGraph,
+        NLCPGNode node)
     {
-        return string.Join(
-            "|",
-            node.Kind,
-            node.DisplayKind,
-            node.Name,
-            node.FullName,
-            node.Signature,
-            node.FilePath,
-            node.SpanStart,
-            node.SpanEnd,
-            node.IsImplicit);
+        return targetGraph.AddNode(
+            new NLCPGNodeDraft(
+                node.Kind,
+                Name: sourceGraph.ResolveName(node),
+                FullName: sourceGraph.ResolveFullName(node),
+                Signature: sourceGraph.ResolveSignature(node),
+                DispatchKind: node.DispatchKind,
+                TypeFullName: sourceGraph.ResolveTypeFullName(node),
+                FilePath: string.Empty,
+                SpanStart: node.SpanStart,
+                SpanEnd: node.SpanEnd,
+                IsImplicit: node.IsImplicit,
+                StableIdentityText: node.Kind is NLCPGNodeKind.SyntaxNode or NLCPGNodeKind.SyntaxToken
+                    ? sourceGraph.ResolveDisplayKind(node)
+                    : null),
+            node.NodeId);
     }
 
     private static NLCPGNode FindNode(NLCPGGraph graph, string displayId)
     {
-        return Assert.Single(graph.Nodes, node => node.Name == displayId || node.FullName == displayId);
+        return Assert.Single(graph.Nodes, node => graph.ResolveName(node) == displayId || graph.ResolveFullName(node) == displayId);
     }
 
     private static NodeId RequireNodeId(NLCPGNode node)

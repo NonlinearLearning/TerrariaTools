@@ -7,9 +7,21 @@
     <LangVersion>preview</LangVersion>
   </PropertyGroup>
 
+  <!-- GC：降低内存【总量】（不是把字节在 LOH/Gen2 之间搬运）。
+       GC 配置只在进程启动时读一次，故只能放这里（runtimeconfig），
+       不能放 nlissn.yml —— 后者在宿主完成 GC 初始化之后才被解析。
+       实测（单文件 NPC.cs，n=3，工作集峰值）：默认 4,701 MB → ConserveMemory=7 时 3,799 MB
+       （−19.2%，区间不重叠）；同时 LOH 碎片 1,014 → 946 MB；分析结果逐字节不变。
+       代价是 gen2 收集 16 → ~44 次。取值 0–9，官方建议 5–7 起步。 -->
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.7" />
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+    <ProjectReference Include="..\NLCPG.Configuration\NLCPG.Configuration.csproj" />
     <ProjectReference Include="..\NLISSN.Infrastructure\Caching\NL.Caching.csproj" />
     <ProjectReference Include="..\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
   </ItemGroup>

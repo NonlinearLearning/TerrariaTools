@@ -218,8 +218,8 @@ internal sealed class AnalysisSession
     internal bool ContainsPrimaryGraphNodeInRegion(SyntaxNode syntaxNode, TextSpan regionSpan) =>
       TryResolvePrimaryGraphNode(syntaxNode, out var graphNode) &&
       graphNode is not null &&
-      graphNode.SpanStart >= regionSpan.Start &&
-      graphNode.SpanEnd <= regionSpan.End;
+      graphNode.Value.SpanStart >= regionSpan.Start &&
+      graphNode.Value.SpanEnd <= regionSpan.End;
 
     internal IReadOnlyList<NLCPGNode> GetGraphNodesByKind(NLCPGNodeKind kind) =>
       _analysisContext.Graph.GetNodes(kind);
@@ -228,4 +228,6 @@ internal sealed class AnalysisSession
       _analysisContext.Graph.GetOutgoingEdges(sourceNodeId, kind);
 
     internal NLCPGNode? FindGraphNodeById(NodeId nodeId) => _analysisContext.Graph.GetNode(nodeId);
+
+    internal NLCPGGraph Graph => _analysisContext.Graph;
 }

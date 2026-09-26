@@ -32,7 +32,7 @@ public sealed class MarkAnalysisSnapshot
     {
         _analysisContext = analysisContext;
         _evidence = evidence;
-        _graphBindings = BuildGraphBindingIndex(analysisContext.Graph.Nodes);
+        _graphBindings = BuildGraphBindingIndex(analysisContext.Graph);
         _relationQueryService = analysisContext.RelationQueryService ??
           new CpgRelationQueryService(analysisContext.Graph, analysisContext.AvailableCapabilities);
     }
@@ -131,7 +131,14 @@ public sealed class MarkAnalysisSnapshot
         }
 
         var key = new GraphBindingKey(filePath, syntaxNode.SpanStart, syntaxNode.Span.End);
-        return _graphBindings.TryGetValue(key, out graphNode);
+        if (_graphBindings.TryGetValue(key, out var resolvedNode))
+        {
+            graphNode = resolvedNode;
+            return true;
+        }
+
+        graphNode = null;
+        return false;
     }
 
     // 执行并缓存一次反向切片查询，避免同一 sink 和查询预算重复跑图查询。
@@ -173,20 +180,21 @@ public sealed class MarkAnalysisSnapshot
     }
 
     private static IReadOnlyDictionary<GraphBindingKey, NLCPGNode> BuildGraphBindingIndex(
-      IEnumerable<NLCPGNode> graphNodes)
+      NLCPGGraph graph)
     {
         var bindings = new Dictionary<GraphBindingKey, NLCPGNode>();
-        foreach (var node in graphNodes)
+        foreach (var node in graph.Nodes)
         {
+            var filePath = graph.ResolveFilePath(node);
             if (node.IsImplicit ||
-                string.IsNullOrWhiteSpace(node.FilePath) ||
+                string.IsNullOrWhiteSpace(filePath) ||
                 node.SpanStart is null ||
                 node.SpanEnd is null)
             {
                 continue;
             }
 
-            var key = new GraphBindingKey(node.FilePath, node.SpanStart.Value, node.SpanEnd.Value);
+            var key = new GraphBindingKey(filePath, node.SpanStart.Value, node.SpanEnd.Value);
             if (!bindings.TryGetValue(key, out var current) ||
                 GetBindingPriority(node) < GetBindingPriority(current))
             {

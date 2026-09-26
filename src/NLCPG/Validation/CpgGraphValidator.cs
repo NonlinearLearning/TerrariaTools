@@ -82,7 +82,7 @@ public sealed class CpgGraphValidator
         issues.Add(CreateIssue(
           "CPG001",
           CpgValidationSeverity.Error,
-          $"node:{node.DisplayKind}",
+          $"node:{node.Kind}",
           "Frozen graph nodes require a NodeId."));
         continue;
       }
@@ -205,9 +205,9 @@ public sealed class CpgGraphValidator
     }
 
     foreach (var group in graph.Nodes
-      .Where(node => !string.IsNullOrWhiteSpace(node.FilePath) &&
+      .Where(node => !string.IsNullOrWhiteSpace(graph.ResolveFilePath(node)) &&
         node.SpanStart.HasValue && node.SpanEnd.HasValue)
-      .GroupBy(node => node.FilePath!, StringComparer.Ordinal))
+      .GroupBy(node => graph.ResolveFilePath(node)!, StringComparer.Ordinal))
     {
       var start = group.Min(node => node.SpanStart!.Value);
       var end = group.Max(node => node.SpanEnd!.Value);

@@ -6,6 +6,28 @@ namespace NL.Concurrency;
 public interface IConcurrencyPool
 {
     /// <summary>
+    /// 在一次准入租约内执行长期 worker 操作。
+    /// </summary>
+    /// <typeparam name="TResult">操作结果类型。</typeparam>
+    /// <param name="request">本次操作声明的资源需求。</param>
+    /// <param name="operation">获得准入后执行的操作。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>操作结果。</returns>
+    /// <remarks>
+    /// 默认实现保持已有自定义并发池的兼容性。正式并发池应覆盖此成员以接入准入和遥测。
+    /// </remarks>
+    async Task<TResult> ExecuteWithAdmissionAsync<TResult>(
+        ConcurrencyAdmissionRequest request,
+        Func<CancellationToken, Task<TResult>> operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(operation);
+        cancellationToken.ThrowIfCancellationRequested();
+        return await operation(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// 按索引顺序并发执行工作，并按原始顺序返回结果。
     /// </summary>
     /// <typeparam name="TResult">工作结果类型。</typeparam>

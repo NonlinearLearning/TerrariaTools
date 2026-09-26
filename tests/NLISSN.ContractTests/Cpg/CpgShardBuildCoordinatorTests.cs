@@ -1220,7 +1220,7 @@ public sealed class CpgShardBuildCoordinatorTests
     return new CpgExecutionSnapshot(
       graph.GraphSnapshotVersion,
       graph.Nodes.Select(node =>
-        $"{node.NodeId}:{node.Kind}:{node.DisplayKind}:{node.FilePath}:{node.SpanStart}:{node.SpanEnd}").ToArray(),
+        $"{node.NodeId}:{node.Kind}:{graph.ResolveDisplayKind(node)}:{graph.ResolveFilePath(node)}:{node.SpanStart}:{node.SpanEnd}").ToArray(),
       graph.Edges.Select(edge =>
         $"{edge.SourceNodeId}>{edge.TargetNodeId}:{edge.Kind}:{edge.ContextId}").ToArray(),
       [],
@@ -1239,16 +1239,15 @@ public sealed class CpgShardBuildCoordinatorTests
       {
         node.NodeId?.ToString(),
         node.Kind.ToString(),
-        node.DisplayKind,
-        node.Name,
-        node.FullName,
-        node.Signature,
+        graph.ResolveDisplayKind(node),
+        graph.ResolveName(node),
+        graph.ResolveFullName(node),
+        graph.ResolveSignature(node),
         node.DispatchKind?.ToString(),
-        node.TypeFullName,
-        node.FilePath,
+        graph.ResolveTypeFullName(node),
+        graph.ResolveFilePath(node),
         node.SpanStart?.ToString(),
         node.SpanEnd?.ToString(),
-        node.Text,
         node.IsImplicit.ToString(),
         node.StableAnchor?.ToString(),
       }))

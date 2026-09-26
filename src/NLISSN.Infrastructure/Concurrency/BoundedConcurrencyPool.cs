@@ -40,6 +40,42 @@ public sealed class BoundedConcurrencyPool : IConcurrencyPool
     }
 
     /// <summary>
+    /// 在一次准入租约内执行长期 worker 操作。
+    /// </summary>
+    public async Task<TResult> ExecuteWithAdmissionAsync<TResult>(
+        ConcurrencyAdmissionRequest request,
+        Func<CancellationToken, Task<TResult>> operation,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(operation);
+
+        var telemetry = CreateTelemetry(
+          ConcurrencyOperationKind.FixedWorkers,
+          request.ReservedItemCount,
+          request.ReservedItemCount,
+          request.WorkType);
+        try
+        {
+            using var admissionLease = await AcquireAdmissionAsync(
+              request,
+              cancellationToken,
+              telemetry).ConfigureAwait(false);
+            using var admissionScope = PushAdmissionLease(admissionLease);
+            return await operation(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            telemetry.MarkCanceled();
+            throw;
+        }
+        finally
+        {
+            telemetry.Report(cancellationToken.IsCancellationRequested, TimeSpan.Zero);
+        }
+    }
+
+    /// <summary>
     /// 按索引顺序并发执行异步工作项，并按输入顺序返回结果。
     /// </summary>
     public Task<IReadOnlyList<TResult>> SelectOrderedAsync<TResult>(

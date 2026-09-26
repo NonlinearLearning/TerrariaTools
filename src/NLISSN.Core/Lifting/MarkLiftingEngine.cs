@@ -99,8 +99,8 @@ public sealed class MarkLiftingEngine
           .ToList();
         var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
           session.Runtime.ExecutionOptions.EnableGroupParallelism,
-          session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        var execution = new RuleGraphExecutor(session.Runtime.ConcurrencyPool).ExecuteAsync(
+          session.Runtime.ExecutionOptions.EffectiveGroupMaxDegreeOfParallelism);
+        var execution = new RuleGraphExecutor(session.Runtime.Scheduler).ExecuteAsync(
             graph,
             executionNodes,
             graphDegree,

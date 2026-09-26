@@ -1,7 +1,8 @@
 # NLISSN 配置 Schema
 
-本目录保存 NLISSN 配置文件的机器可读格式契约。当前唯一的配置 Schema 是
-[`nlissn.schema.2.json`](nlissn.schema.2.json)，对应运行目录中的 `nlissn.yml`。
+本目录保存统一 `nlissn.yml` 配置文件的机器可读格式契约。当前配置 Schema 是
+[`nlissn.schema.3.json`](nlissn.schema.3.json)；[`nlissn.schema.2.json`](nlissn.schema.2.json)
+保留给 NLISSN 的历史兼容配置。
 
 ## 它解决什么问题
 
@@ -19,19 +20,50 @@ JSON Schema 的编辑器和工具能够在运行前知道：
 同一份 JSON Schema 描述。因此编辑器可以用这个 JSON 文件检查 `nlissn.yml`，不
 需要把配置改写成 JSON。
 
-## 当前 Schema 2
+## Schema 3 与工具分流
 
-`nlissn.schema.2.json` 使用 JSON Schema Draft 2020-12，当前格式版本固定为
-`schemaVersion: 2`。根对象要求以下字段：
+`nlissn.schema.3.json` 使用 JSON Schema Draft 2020-12，格式版本固定为
+`schemaVersion: 3`。根字段 `tool` 必须是 `nlissn`、`nlcpg` 或
+`nlcpg-project-export` 之一：
+
+| `tool` | 主要字段 |
+| --- | --- |
+| `nlissn` | `runId`、`input`、`analysis`、`execution`、`artifacts`、`logging` |
+| `nlcpg` | 可选 `input`、`nlcpg.view`、`nlcpg.output` |
+| `nlcpg-project-export` | `input`、`projectExport` |
+
+三个可执行入口都从当前工作目录读取 `nlissn.yml` 并拒绝全部命令行参数。相对路径
+相对于配置文件所在目录解析；入口读取到不匹配的 `tool` 时会 fail closed。
+
+NLISSN loader 仍接受没有 `tool` 字段的 Schema 2 文档，以保留现有测试 fixture 和
+历史运行目录的兼容性。Schema 3 的 NLISSN 文档必须显式写 `tool: nlissn`。
+
+### `nlcpg` 分支
+
+`nlcpg.view.mode` 为 `stats` 时输出图统计；为 `local` 时必须提供一个只包含
+`nodeId`、`fullName` 或 `name` 之一的 `anchor`。局部查询还可以配置非负的
+`hops`、`direction` 和 `edgeKinds` 数组。`nlcpg.output.json` 只适用于局部视图，
+路径相对于配置文件解析。
+
+### `nlcpg-project-export` 分支
+
+`input.path` 指向待导出的 `.csproj`，`input` 还可设置 `targetFramework`、
+`configuration`、`platform`、`restore` 和 `generatedSources`。`projectExport` 提供
+`output`、`projectWorkerCount` 和 `resume`；`projectWorkerCount` 的有效上限是 12。
+
+### NLISSN 分支
+
+NLISSN 分支要求以下字段：
 
 | 字段 | 作用 |
 | --- | --- |
-| `schemaVersion` | 配置格式版本，必须是 `2`。 |
+| `schemaVersion` | 配置格式版本，必须是 `3`。 |
+| `tool` | 必须为 `nlissn`。 |
 | `runId` | 本次运行的标识，只允许字母、数字、下划线、点和连字符。 |
 | `input` | 输入文件、目录、解决方案或项目，以及 MSBuild/Workspace 选项。 |
 | `analysis` | 删除规则、目标名称和分析开关。 |
 | `execution` | 并行度、写回和 rewrite 执行选项。 |
-| `artifacts` | 运行制品、diff、证据、日志和 rewrite plan 的输出设置。 |
+| `artifacts` | 运行制品、diff、证据、日志、rewrite plan 和 CPG 项目级 JSON 导出的输出设置。 |
 | `logging` | 可选的日志 profile、级别、分类、事件和视图设置。 |
 
 根对象和各个嵌套对象都关闭未知属性。也就是说，下面的拼写错误不会被当作
@@ -72,7 +104,17 @@ analysis:
 
 ### `execution`
 
-`execution.maxDegreeOfParallelism` 是必填的正整数。其他字段控制：
+`execution` 要求以下六个彼此独立的正整数：
+
+- `directoryMaxDegreeOfParallelism`：目录文件分析的最大并发数；
+- `cpgMaxDegreeOfParallelism`：单个 CPG builder 和 CPG lease 的最大并发数；
+- `groupMaxDegreeOfParallelism`：规则 DAG、冲突域和规则组阶段的最大并发数；
+- `helperMaxDegreeOfParallelism`：helper 扫描的最大并发数；
+- `replayMaxDegreeOfParallelism`：rewrite plan replay 的最大并发数；
+- `maxConcurrentOperations`：通用 operation admission 的最大并发数。
+
+旧的 `execution.maxDegreeOfParallelism` 已删除，出现时会因未知属性被拒绝，不会
+继承或映射到任何新字段。其他字段控制：
 
 - 是否写回源码（`writeBack`）；
 - 是否跳过 rewrite（`skipRewrite`）；
@@ -81,15 +123,23 @@ analysis:
 
 ### `artifacts` 和 `logging`
 
-`artifacts` 控制运行根目录以及 diff、runtime log、evidence、analysis log 和
-rewrite plan。`logging` 控制日志输出的详细程度和视图。运行结束后生成的
+`artifacts` 控制运行根目录以及 diff、runtime log、evidence、analysis log、
+rewrite plan 和 `projectJson`。`logging` 控制日志输出的详细程度和视图。运行结束后生成的
 `resolved-configuration.json` 会记录最终生效的配置、字段来源和配置指纹，适合
 审计“实际运行的是什么设置”。
+
+`artifacts.projectJson` 在 NLISSN 分析完成后，对同一 `input` 指向的项目或解决方案
+执行 CPG 项目级 JSON 导出，复用 NLCPG.ProjectJson 组件。`.sln` 输入导出全部项目，
+每个项目一个以项目名命名的子目录、其下镜像该项目源目录；`.csproj` 输入保持扁平镜像。
+输出根目录始终有 `manifest.json`，其 `status`（`complete`/`incomplete`）与
+`failedFiles` 是判定导出是否完整的依据。它默认关闭；需要一个项目或解决方案输入
+（单文件输入无法做项目级导出）。`output` 省略时写入 `<runRoot>/ProjectJson`。
 
 ## 一个最小配置示例
 
 ```yaml
-schemaVersion: 2
+schemaVersion: 3
+tool: nlissn
 runId: first-run
 
 input:
@@ -99,7 +149,12 @@ analysis:
   targetName: TargetName
 
 execution:
-  maxDegreeOfParallelism: 1
+  directoryMaxDegreeOfParallelism: 1
+  cpgMaxDegreeOfParallelism: 1
+  groupMaxDegreeOfParallelism: 1
+  helperMaxDegreeOfParallelism: 1
+  replayMaxDegreeOfParallelism: 1
+  maxConcurrentOperations: 1
 
 artifacts:
   diff:

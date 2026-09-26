@@ -59,6 +59,15 @@ internal sealed record ResolvedConfigurationArtifact(
                   generatedSources = configuration.Workspace.GeneratedSourceMode.ToString(),
                   generators = configuration.Workspace.GeneratorMode.ToString()
               },
+            projectJson = configuration.ProjectExport is null
+              ? null
+              : new
+              {
+                  configuration.ProjectExport.Enabled,
+                  configuration.ProjectExport.OutputPath,
+                  configuration.ProjectExport.ProjectWorkerCount,
+                  configuration.ProjectExport.ResumeExistingOutput
+              },
             logging = new
             {
                 configuration.Logging.Profile,

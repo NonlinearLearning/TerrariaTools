@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using NLCPG.Builder.Concurrency;
 
 namespace NLCPG.Builder;
 
@@ -17,6 +18,11 @@ public sealed partial class NLCPGBuilder
       ISymbol? ReferencedSymbol,
       SyntaxTypeResolution TypeResolution,
       bool ShouldDeferToOperation);
+
+    private sealed record SyntaxWorkBatchResult(
+      long BatchId,
+      int StableOrder,
+      IReadOnlyList<SyntaxPartitionResult> Partitions);
 
     private void RunSyntaxPass(
       NLCPGBuildContext context,
@@ -41,6 +47,19 @@ public sealed partial class NLCPGBuilder
         var partitions = partitionRoots
           .Select(root => root.DescendantNodesAndSelf().ToArray())
           .ToArray();
+        var operationRootByBody = new Dictionary<SyntaxNode, OperationRootPlan>(
+          ReferenceEqualityComparer.Instance);
+        foreach (var operationRoot in operationRoots)
+        {
+            operationRootByBody.Add(operationRoot.BodySyntax, operationRoot);
+        }
+        var partitionsByOrder = partitionRoots
+          .Select((root, index) => new
+          {
+              Order = operationRootByBody[root].Order,
+              Nodes = (IReadOnlyList<SyntaxNode>)partitions[index],
+          })
+          .ToDictionary(item => item.Order, item => item.Nodes);
         var partitionSyntax = new HashSet<SyntaxNode>(
           partitions.SelectMany(nodes => nodes),
           ReferenceEqualityComparer.Instance);
@@ -51,44 +70,69 @@ public sealed partial class NLCPGBuilder
         }
 
         // 分区内语义事实异步采集完成后统一回填缓存，再进入真正的有序建图阶段。
-        var results = RunSyntaxPartitionsAsync(
-          partitions,
+        var results = RunSyntaxWorkBatchesAsync(
+          AssembleWorkBatches(context),
+          partitionsByOrder,
           context.SemanticModel,
           buildPlan).GetAwaiter().GetResult();
-        foreach (var result in results.OrderBy(result => result.Order))
+        foreach (var batchResult in results.OrderBy(result => result.StableOrder))
         {
-            foreach (var entry in result.Facts)
+            foreach (var result in batchResult.Partitions.OrderBy(result => result.Order))
             {
-                _partitionedSyntaxFacts[entry.Key] = entry.Value;
-            }
+                foreach (var entry in result.Facts)
+                {
+                    _partitionedSyntaxFacts[entry.Key] = entry.Value;
+                }
 
-            RecordPartitionPerformanceEvent(
-              PartitionPerformanceStageId.SyntaxCollection,
-              CreatePartitionPerformanceId(
-                "syntax",
-                result.Order,
-                result.SpanStart,
-                result.SpanEnd),
-              result.Order,
-              result.Facts.Count,
-              result.Facts.Count,
-              result.CollectionElapsedMilliseconds,
-              result.CollectionElapsedMilliseconds);
+                RecordPartitionPerformanceEvent(
+                  PartitionPerformanceStageId.SyntaxCollection,
+                  CreatePartitionPerformanceId(
+                    "syntax",
+                    result.Order,
+                    result.SpanStart,
+                    result.SpanEnd),
+                  result.Order,
+                  result.Facts.Count,
+                  result.Facts.Count,
+                  result.CollectionElapsedMilliseconds,
+                  result.CollectionElapsedMilliseconds);
+            }
         }
         RunPartitionedSyntaxPass(context, partitionRoots, partitions, buildPlan);
         _partitionedSyntaxFacts.Clear();
     }
 
-    // 并发跑每个语法分区的语义采集；返回值只包含只读事实，不直接触碰图状态。
-    private Task<IReadOnlyList<SyntaxPartitionResult>> RunSyntaxPartitionsAsync(
-      IReadOnlyList<SyntaxNode[]> partitions,
+    // 每个 worker 连续处理一个 WorkBatch；结果只包含只读事实，不直接触碰图状态。
+    private Task<IReadOnlyList<SyntaxWorkBatchResult>> RunSyntaxWorkBatchesAsync(
+      IReadOnlyList<CpgWorkBatch> workBatches,
+      IReadOnlyDictionary<int, IReadOnlyList<SyntaxNode>> partitionsByOrder,
       SemanticModel semanticModel,
       CapabilityBuildPlan buildPlan)
     {
-        return _concurrencyPool.SelectCpuBoundOrdered(
-          partitions,
-          _options.EffectiveMaxDegreeOfParallelism,
-          (partition, index, _) => AnalyzeSyntaxPartition(partition, index, semanticModel, buildPlan));
+        return _workBatchExecutor.ExecuteAsync(
+          workBatches,
+          (batch, _, _) =>
+          {
+              var partitions = batch.Items
+                .OrderBy(item => item.StableOrder)
+                .Select(item =>
+                {
+                    if (!partitionsByOrder.TryGetValue(item.StableOrder, out var syntaxNodes))
+                    {
+                        throw new InvalidOperationException(
+                          $"No syntax partition exists for WorkBatch item {item.StableOrder}.");
+                    }
+
+                    return AnalyzeSyntaxPartition(
+                      syntaxNodes,
+                      item.StableOrder,
+                      semanticModel,
+                      buildPlan);
+                })
+                .ToArray();
+              return new SyntaxWorkBatchResult(batch.BatchId, batch.StableOrder, partitions);
+          },
+          stageId: CpgWorkBatchPerformanceStageId.Syntax);
     }
 
     // 对单个语法分区逐节点采集声明、引用和类型事实，供后续提交阶段复用。
@@ -147,6 +191,6 @@ public sealed partial class NLCPGBuilder
 
     private bool ShouldUsePartitionedSyntaxPass(NLCPGBuildContext context, IReadOnlyList<OperationRootPlan> operationRoots)
     {
-        return true;
+        return operationRoots.Count > 0;
     }
 }

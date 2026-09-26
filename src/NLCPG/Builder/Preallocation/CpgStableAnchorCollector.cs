@@ -11,7 +11,6 @@ internal sealed class CpgStableAnchorCollector
 
     internal void Add(CpgNodeDescriptor descriptor)
     {
-        ArgumentNullException.ThrowIfNull(descriptor);
         Add(descriptor.Anchor);
     }
 

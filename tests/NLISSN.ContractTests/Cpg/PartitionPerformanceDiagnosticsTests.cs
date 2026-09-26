@@ -96,14 +96,13 @@ public sealed class PartitionPerformanceDiagnosticsTests
       "|",
       node.NodeId,
       node.Kind,
-      node.DisplayKind,
-      node.Name,
-      node.FullName,
-      node.Signature,
-      node.FilePath,
+      graph.ResolveDisplayKind(node),
+      graph.ResolveName(node),
+      graph.ResolveFullName(node),
+      graph.ResolveSignature(node),
+      graph.ResolveFilePath(node),
       node.SpanStart,
-      node.SpanEnd,
-      node.Text));
+      node.SpanEnd));
     var edges = graph.Edges.Select(edge => string.Join(
       "|",
       edge.SourceNodeId,

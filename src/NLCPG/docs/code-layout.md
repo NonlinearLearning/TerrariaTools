@@ -99,20 +99,20 @@ NLCPGGraph (节点、边、稳定 NodeId、冻结查询索引)
 | 文件 | 职责 |
 | --- | --- |
 | `Model/NodeId.cs` | 封装紧凑的运行期节点标识。 |
-| `Model/NLCPGNode.cs` | 不可变节点载体，保存类型、显示/符号信息及源码定位。 |
+| `Model/NLCPGNode.cs` | 不可变节点载体，保存类型、字符串表 ID、稳定身份及源码定位。展示文本由 `NLCPGGraph` resolver 提供。 |
 | `Model/NLCPGEdge.cs` | 不可变边载体，保存两端 NodeId、边类型和结构化上下文。 |
 | `Model/NLCPGEdgeLabel.cs` | 为边提供可比较的结构化标签。 |
 | `Model/NLCPGCallSiteContext.cs` | 保存调用点文件、跨度和显示信息。 |
 | `Model/NLCPGContextId.cs` | 表示边的稳定上下文标识。 |
 | `Model/NLCPGGraph.cs` | 收集节点/边、分配身份、冻结索引，并提供邻接、跨度和局部视图查询。 |
-| `Model/NLCPGGraphIndex.cs` | 按方向、节点和边类型构建排序后的不可变查询索引。 |
+| `Model/NLCPGGraphIndex.cs` | 按方向、节点和边类型构建排序后的不可变查询索引；kind/path bucket 保存节点 ordinal。 |
 | `Model/NLCPGLocalView.cs` | 局部子图查询的不可变结果。 |
 | `Model/NLCPGGraph.cs` | 负责稳定 NodeId 分配、冻结图结构和建立查询索引。 |
 | `Model/StableNodeAnchor.cs` | 表示可跨重建比较的节点锚点。 |
 | `Model/StableNodeIdentityFactory.cs` | 从节点元数据产生稳定锚点。 |
 | `Model/StableNodeRole.cs` | 区分稳定锚点的节点角色。 |
 | `Model/DeterministicNodeIdTable.cs` | 将排序后的稳定锚点确定性映射为 NodeId。 |
-| `Model/StringInterner.cs` | 压缩重复字符串，并支持按内部编号反查。 |
+| `Model/StringInterner.cs` | 为所属 graph 压缩重复字符串；`0` 表示空值，并支持按 ID 反查。 |
 
 ### Builder 核心与预分配
 
@@ -141,7 +141,7 @@ NLCPGGraph (节点、边、稳定 NodeId、冻结查询索引)
 | `Builder/Passes/MemberAccessPass.cs` | 建立字段、属性和索引器的成员访问抽象。 |
 | `Builder/Passes/ControlFlowPass.cs` | 从方法内操作和 Roslyn CFG 投影 `CfgNext`、分支和方法边界流。 |
 | `Builder/Passes/DataFlowPass.cs` | 在方法内以 CFG 为基础求解局部、参数和成员族的到达定义式数据流。 |
-| `Builder/Passes/InterproceduralDataFlowPlan.cs` | 为确定的内部调用准备跨过程桥接计划。 |
+| `Builder/Passes/InterproceduralPlanRef.cs` | 跨过程桥计划的 8 B 惰性载体（池内序号 + 实参序）；端点在排序/发布期按序号从池现取。 |
 | `Builder/Passes/InterproceduralDataFlowPass.cs` | 将已验证的计划写成有限的跨过程 DataFlow 边。 |
 | `Builder/Passes/DominancePass.cs` | 用 Roslyn CFG 建立方法内支配和后支配关系。 |
 | `Builder/Passes/ControlDependencePass.cs` | 根据后支配关系投影控制依赖边。 |

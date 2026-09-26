@@ -166,7 +166,7 @@ public sealed record EditIntent
     ArgumentNullException.ThrowIfNull(unit);
     var anchor = unit.SyntaxBindings[unit.Fragments[0].NodeId!.Value];
     var replacement = unit.Fragments
-      .FirstOrDefault(fragment => string.Equals(fragment.Name, "replacement", StringComparison.Ordinal));
+      .FirstOrDefault(fragment => string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal));
     return Create(
       DecisionFootprint.Compatibility(unit.RuleId, anchor, unit.Action).CandidateId,
       anchor,

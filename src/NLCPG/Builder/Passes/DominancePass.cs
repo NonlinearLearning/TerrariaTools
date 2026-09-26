@@ -1,6 +1,8 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.FlowAnalysis;
 using Microsoft.CodeAnalysis.Operations;
+using NLCPG.Builder.Concurrency;
+using NLCPG.Builder.Streaming;
 using NLCPG.Contracts;
 using NLCPG.Model;
 using System.Collections;
@@ -264,7 +266,62 @@ namespace NLCPG.Builder
             }
         }
 
-        private readonly List<DominanceMethodOverlay> _dominanceOverlays = new();
+        /// <summary>
+        /// **按文件**保存的支配覆盖层（D1）。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// ⚠ 原为**扁平 <c>List</c>**，而 <c>ControlDependencePass.cs:111</c> 用
+        /// <c>_dominanceOverlays[batch.StableOrder]</c> 直接**下标**它。
+        /// <c>StableOrder</c> 是**文件内局部**序号（见 <c>CpgWorkItem</c> 的
+        /// <c>StableOrder</c>/<c>ShardOrder</c> 双轨设计）⇒ 跨文件批次下该下标必然错配：
+        /// 或用错文件的覆盖层，或越界。
+        /// </para>
+        /// <para>
+        /// 改为**按文件分桶**后，下标域重新回到「单文件局部」：
+        /// 每个文件各自的 <c>List</c> 用该文件自己的 <c>StableOrder</c> 下标，
+        /// 与单文件路径**逐字同构**。这比引入一个全局序号的代价小得多，
+        /// 且不需要改动 <c>StableOrder</c> 的既有语义（那会破坏 6 处既有下标/键用法）。
+        /// </para>
+        /// <para>
+        /// 键的遍历一律走 <see cref="OverlayFilePaths"/>（登记序），不用字典枚举序。
+        /// </para>
+        /// </remarks>
+        private readonly Dictionary<string, List<DominanceMethodOverlay>> _dominanceOverlaysByFile =
+          new(StringComparer.Ordinal);
+
+        private readonly List<string> _overlayFilePaths = new();
+
+        /// <summary>有覆盖层的文件，按**首次登记序**（确定性）。</summary>
+        private IReadOnlyList<string> OverlayFilePaths => _overlayFilePaths;
+
+        private void ClearDominanceOverlays()
+        {
+            _dominanceOverlaysByFile.Clear();
+            _overlayFilePaths.Clear();
+        }
+
+        private void AddDominanceOverlay(string sourceFilePath, DominanceMethodOverlay overlay)
+        {
+            if (!_dominanceOverlaysByFile.TryGetValue(sourceFilePath, out var overlays))
+            {
+                overlays = new List<DominanceMethodOverlay>();
+                _dominanceOverlaysByFile[sourceFilePath] = overlays;
+                _overlayFilePaths.Add(sourceFilePath);
+            }
+
+            overlays.Add(overlay);
+        }
+
+        private IReadOnlyList<DominanceMethodOverlay> DominanceOverlaysFor(string sourceFilePath)
+        {
+            return _dominanceOverlaysByFile.TryGetValue(sourceFilePath, out var overlays)
+              ? overlays
+              : Array.Empty<DominanceMethodOverlay>();
+        }
+
+        /// <summary>全部覆盖层的总数（跨文件）——保持改造前「Count」的可观测语义。</summary>
+        private int DominanceOverlayCount => _dominanceOverlaysByFile.Sum(entry => entry.Value.Count);
 
         private sealed record DominanceMethodOverlay(
             ControlFlowGraph ControlFlowGraph,
@@ -274,10 +331,135 @@ namespace NLCPG.Builder
             IReadOnlyDictionary<int, IReadOnlyList<NLCPGNode>> NodesByBlockOrdinal,
             IReadOnlyDictionary<int, NLCPGNode?> ControlNodesByBlockOrdinal);
 
+        private sealed record DominanceRootResult(
+          string SourceFilePath,
+          int Order,
+          DominanceMethodOverlay Overlay,
+          LocalCpgFragment Fragment);
+
+        private sealed record DominanceWorkBatchResult(
+          long BatchId,
+          int StableOrder,
+          IReadOnlyList<DominanceRootResult> Roots);
+
         internal void RunDominancePass(NLCPGBuildContext context)
         {
+            // G0-P R-3：本阶段的规划已在【执行相位之前】完成并登记（见 PlanStagesBeforeExecution）。
+            // 这里只消费既有 plan。
+            var plan = TakeRecordedStagePlan(StageDependencyTable.Stage.Dominance);
+            if (plan is null)
+            {
+                // 规划相位【只在无操作根时】返回 null（见 PlanDominanceStage）。
+                // 若此处仍有操作根，说明规划相位没有覆盖本阶段 —— fail-closed，
+                // 而不是静默跳过整阶段的支配边（正是 G0-P 要消灭的失效形态）。
+                // ⚠ D1：必须检查**全部文档**（见 HasAnyOperationRootAcrossDocuments）。
+                if (HasAnyOperationRootAcrossDocuments(context))
+                {
+                    throw new InvalidOperationException(
+                      "Dominance 阶段被请求执行，但规划相位没有登记它的 plan（G0-P R-3）。"
+                      + "规划必须在任何 worker 启动之前完成；此处不重新规划，以免把规划时点拉回执行相位。");
+                }
+
+                // 无操作根：与拆分前一致——清空上次构建的 overlay 后返回。
+                ClearDominanceOverlays();
+                return;
+            }
+
+            CommitDominanceStage(context, plan);
+        }
+
+        /// <summary>
+        /// G0-P **R-3** 规划步：**只读**——算出批次，不触碰图。
+        /// <para>
+        /// <b>为何可静态规划（源码确证）：</b>批次来自 <c>AssembleWorkBatches(context)</c>，
+        /// 其唯一输入是 <c>GetOperationRootPlans</c> 与无状态批次构造器；
+        /// 本阶段**真正**依赖运行期状态的是 <c>AnalyzeDominanceRoot</c>（读各方法 CFG 与已物化节点），
+        /// 而那属于**计算**相位，不属于规划。故规划本身可前移。
+        /// </para>
+        /// </summary>
+        private StagePlan? PlanDominanceStage(NLCPGBuildContext context)
+        {
+            // ⚠ D1：判据必须是**全部文档**是否有操作根（见 HasAnyOperationRootAcrossDocuments）。
+            if (!HasAnyOperationRootAcrossDocuments(context))
+            {
+                return null;
+            }
+
+            return new StagePlan(
+              StageDependencyTable.Stage.Dominance,
+              // D1：跨文件聚合装箱（单文件时与 AssembleWorkBatches 逐字相同）。
+              AssembleWorkBatchesAcrossDocuments(context));
+        }
+
+        /// <summary>
+        /// G0-P **R-3** 提交步：消费 plan，执行 worker 并归并（**唯一写图者**）。
+        /// </summary>
+        private void CommitDominanceStage(NLCPGBuildContext context, StagePlan plan)
+        {
+            ClearDominanceOverlays();
+            // D1：**逐文件**建立 order→rootPlan 索引。批次可跨文件，而 Order 是文件内局部序号，
+            //   故必须按 item 自己的文件查表；单一全局表在跨文件下会把 B 的序号解析成 A 的方法。
+            var rootsByFileAndOrder = new Dictionary<string, Dictionary<int, OperationRootPlan>>(StringComparer.Ordinal);
+            foreach (var document in context.Documents)
+            {
+                rootsByFileAndOrder[document.FilePath] = GetOperationRootPlans(document.Root, document.SemanticModel)
+                  .ToDictionary(root => root.Order);
+            }
+
+            var workBatches = plan.Batches;
+            var batchResults = _workBatchExecutor.ExecuteAsync(
+              workBatches,
+              (batch, _, _) =>
+              {
+                  var roots = batch.Items
+                    .OrderBy(item => item.StableOrder)
+                    .Select(item =>
+                    {
+                        // ⚠ 用 item 自己文件的 context 与 rootPlan 索引（D1）。
+                        var document = context.ResolveDocument(item.SourceFilePath);
+                        return rootsByFileAndOrder.TryGetValue(item.SourceFilePath, out var rootsByOrder) &&
+                               rootsByOrder.TryGetValue(item.StableOrder, out var rootPlan)
+                          ? AnalyzeDominanceRoot(document, rootPlan)
+                          : null;
+                    })
+                    .Where(result => result is not null)
+                    .Select(result => result!)
+                    .ToArray();
+                  return new DominanceWorkBatchResult(batch.BatchId, batch.StableOrder, roots);
+              },
+              stageId: CpgWorkBatchPerformanceStageId.Dominance).GetAwaiter().GetResult();
+            var roots = batchResults
+              .SelectMany(result => result.Roots)
+              .OrderBy(result => result.Order)
+              .ToArray();
+            // ⚠ 覆盖层**按文件分桶**：ControlDependencePass 用 batch.StableOrder（文件内局部序号）
+            //   直接下标它，扁平列表在跨文件批次下必然错配（D1）。
+            foreach (var result in roots)
+            {
+                AddDominanceOverlay(result.SourceFilePath, result.Overlay);
+            }
+
+            // D1：按 fragment 的来源文件路由到各自的图，而非一律写 context.Graph。
+            ReduceFragments(context, roots.Select(result => result.Fragment));
+        }
+
+        /// <summary>
+        /// 无 plan 时的退化路径：与拆分前一致——清空 overlay 后直接返回。
+        /// <para>
+        /// 刻意<b>不</b>在此重新规划：重新规划会把规划时点悄悄拉回执行相位，
+        /// 正是 <see cref="StagePlan"/> 要防的形态。
+        /// </para>
+        /// </summary>
+        private void RunDominancePassWithoutPlan(NLCPGBuildContext context)
+        {
+            ClearDominanceOverlays();
+        }
+
+        // 保留逐根路径作为迁移期间的语义对照实现。
+        private void RunDominancePassOrderedCompatibility(NLCPGBuildContext context)
+        {
             // 覆盖层只服务本次构建；先清空上一次方法的 CFG 派生状态。
-            _dominanceOverlays.Clear();
+            ClearDominanceOverlays();
 
             // 每个方法独立构造 CFG，失败或非方法根节点不参与支配关系计算。
             foreach (var rootPlan in GetOperationRootPlans(context.Root, context.SemanticModel))
@@ -315,7 +497,7 @@ namespace NLCPG.Builder
                 // 图边供查询使用，overlay 保留 CFG 与立即后支配者，供后续控制依赖 pass 复用。
                 AddOverlayEdges(nodesByBlockOrdinal, dominators, NLCPGEdgeKind.Dominates, context.Graph);
                 AddPostDominanceEdges(nodesByBlockOrdinal, postDominators, context.Graph);
-                _dominanceOverlays.Add(new DominanceMethodOverlay(
+                AddDominanceOverlay(context.FilePath, new DominanceMethodOverlay(
                     controlFlowGraph,
                     dominators,
                     postDominators,
@@ -323,6 +505,95 @@ namespace NLCPG.Builder
                     nodesByBlockOrdinal,
                     controlNodesByBlockOrdinal));
             }
+        }
+
+        private DominanceRootResult? AnalyzeDominanceRoot(
+          NLCPGBuildContext context,
+          OperationRootPlan rootPlan)
+        {
+            if (GetOperationRoot(context, rootPlan.BodySyntax) is not IBlockOperation methodBlock ||
+                !IsMethodRootBlock(methodBlock) ||
+                rootPlan.OwningMethod is not IMethodSymbol methodSymbol)
+            {
+                return null;
+            }
+
+            var controlFlowGraph = CreateControlFlowGraph(methodBlock);
+            if (controlFlowGraph is null)
+            {
+                return null;
+            }
+
+            var localGraph = new NLCPGGraph(
+              identityFactory: context.Graph.IdentityFactory,
+              stringInterner: context.Graph.StringTable);
+            var nodesByBlockOrdinal = MapNodesByBlockOrdinal(controlFlowGraph, methodSymbol, localGraph);
+            var controlNodesByBlockOrdinal = MapControlNodesByBlockOrdinal(controlFlowGraph, nodesByBlockOrdinal);
+            foreach (var node in nodesByBlockOrdinal.Values.SelectMany(nodes => nodes))
+            {
+                localGraph.AddNode(node);
+            }
+            var blockBitSetCapacity = controlFlowGraph.Blocks.Max(block => block.Ordinal) + 1;
+            var successorsByBlockOrdinal = BuildSuccessorsByBlockOrdinal(controlFlowGraph, blockBitSetCapacity);
+            var predecessorsByBlockOrdinal = ReverseNeighbors(successorsByBlockOrdinal);
+            var entryOrdinal = controlFlowGraph.Blocks.Single(block => block.Kind == BasicBlockKind.Entry).Ordinal;
+            var exitOrdinal = controlFlowGraph.Blocks.Single(block => block.Kind == BasicBlockKind.Exit).Ordinal;
+            var dominators = CalculateDominators(
+              successorsByBlockOrdinal,
+              predecessorsByBlockOrdinal,
+              entryOrdinal);
+            var postDominators = CalculateDominators(
+              predecessorsByBlockOrdinal,
+              successorsByBlockOrdinal,
+              exitOrdinal);
+            var immediatePostDominators = CalculateImmediatePostDominators(postDominators);
+            AddOverlayEdges(nodesByBlockOrdinal, dominators, NLCPGEdgeKind.Dominates, localGraph);
+            AddPostDominanceEdges(nodesByBlockOrdinal, postDominators, localGraph);
+            var overlay = new DominanceMethodOverlay(
+              controlFlowGraph,
+              dominators,
+              postDominators,
+              immediatePostDominators,
+              nodesByBlockOrdinal,
+              controlNodesByBlockOrdinal);
+
+            localGraph.FreezeQueryIndex();
+            var nodesById = localGraph.Nodes
+              .Where(node => node.NodeId.HasValue)
+              .ToDictionary(node => node.NodeId!.Value);
+            var descriptors = localGraph.Nodes.Select(CpgNodeDescriptor.FromNode).ToArray();
+            var edges = localGraph.Edges
+              .Select(edge =>
+              {
+                  var source = nodesById[edge.SourceNodeId];
+                  var target = nodesById[edge.TargetNodeId];
+                  return new CpgEdgeCandidate(
+                    source.StableAnchor!.Value,
+                    target.StableAnchor!.Value,
+                    edge.Kind,
+                    edge.StructuredLabel,
+                    edge.ContextId,
+                    edge.CallSiteContext);
+              })
+              .ToArray();
+            var fragment = new LocalCpgFragment(
+              rootPlan.Order,
+              context.FilePath,
+              rootPlan.Order,
+              descriptors,
+              edges,
+              Array.Empty<CpgMethodSummary>(),
+              Array.Empty<CpgBoundaryReference>(),
+              new CpgFragmentMetrics(
+                0,
+                0,
+                descriptors.Length,
+                edges.Length,
+                descriptors.Length,
+                edges.Length,
+                checked(descriptors.Length * 64 + edges.Length * 48)),
+              Array.Empty<CpgDiagnostic>());
+            return new DominanceRootResult(context.FilePath, rootPlan.Order, overlay, fragment);
         }
 
         private Dictionary<int, IReadOnlyList<NLCPGNode>> MapNodesByBlockOrdinal(ControlFlowGraph controlFlowGraph, IMethodSymbol methodSymbol, NLCPGGraph graph)
@@ -362,7 +633,7 @@ namespace NLCPG.Builder
                 // 以稳定 NodeId 与名称排序，防止 HashSet 枚举次序影响边提交顺序。
                 nodesByBlockOrdinal[block.Ordinal] = nodes
                     .OrderBy(node => node.NodeId)
-                    .ThenBy(node => node.FullName, StringComparer.Ordinal)
+                    .ThenBy(node => graph.ResolveFullName(node), StringComparer.Ordinal)
                     .ToArray();
             }
 

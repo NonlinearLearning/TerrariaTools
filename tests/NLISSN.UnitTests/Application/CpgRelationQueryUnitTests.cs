@@ -15,9 +15,9 @@ public sealed class CpgRelationQueryUnitTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var parent = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "parent"));
-        var child = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "child"));
-        var unrelated = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "unrelated"));
+        var parent = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "parent"));
+        var child = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "child"));
+        var unrelated = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "unrelated"));
         graph.AddEdge(parent, child, NLCPGEdgeKind.SyntaxChild);
         graph.AddEdge(child, unrelated, NLCPGEdgeKind.DataFlow);
         graph.FreezeQueryIndex();
@@ -40,8 +40,8 @@ public sealed class CpgRelationQueryUnitTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var source = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "source"));
-        var sink = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "sink"));
+        var source = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "source"));
+        var sink = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "sink"));
         graph.AddEdge(source, sink, NLCPGEdgeKind.DataFlow);
         graph.FreezeQueryIndex();
         var service = new CpgRelationQueryService(graph, NLCPGCapability.SyntaxSemantic);
@@ -59,9 +59,9 @@ public sealed class CpgRelationQueryUnitTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var source = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "source"));
-        var middle = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "middle"));
-        var sink = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "sink"));
+        var source = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "source"));
+        var middle = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "middle"));
+        var sink = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "sink"));
         graph.AddEdge(source, middle, NLCPGEdgeKind.SyntaxChild);
         graph.AddEdge(middle, sink, NLCPGEdgeKind.SyntaxChild);
         graph.FreezeQueryIndex();
@@ -88,8 +88,8 @@ public sealed class CpgRelationQueryUnitTests
     {
         // Arrange
         var graph = new NLCPGGraph();
-        var source = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "source"));
-        var sink = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", "sink"));
+        var source = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "source"));
+        var sink = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "sink"));
         graph.AddEdge(source, sink, NLCPGEdgeKind.DataFlow);
         graph.FreezeQueryIndex();
         var tree = CSharpSyntaxTree.ParseText("class Sample { }");
@@ -101,7 +101,7 @@ public sealed class CpgRelationQueryUnitTests
             graph,
             compilation.GetSemanticModel(tree),
             tree.GetRoot()));
-        var sinkNodeId = graph.Nodes.Single(node => node.Name == "sink").NodeId!.Value;
+        var sinkNodeId = graph.Nodes.Single(node => graph.ResolveName(node) == "sink").NodeId!.Value;
         var baseline = new NLCPGSliceQueryOptions(
             new HashSet<NLCPGEdgeKind> { NLCPGEdgeKind.DataFlow },
             2,
@@ -134,8 +134,8 @@ public sealed class CpgRelationQueryUnitTests
         string targetName,
         CpgRelationProfile profile)
     {
-        var source = graph.Nodes.Single(node => node.Name == sourceName).NodeId!.Value;
-        var target = graph.Nodes.Single(node => node.Name == targetName).NodeId!.Value;
+        var source = graph.Nodes.Single(node => graph.ResolveName(node) == sourceName).NodeId!.Value;
+        var target = graph.Nodes.Single(node => graph.ResolveName(node) == targetName).NodeId!.Value;
         return new CpgRelationQuery(
             profile,
             CpgQueryDirection.Outgoing,

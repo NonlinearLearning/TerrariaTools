@@ -17,7 +17,6 @@ Context/progress.md
 忽略
 约束
 Context/feature_list.json
-Context/AGENTS.md
 Miscellaneous/scripts
 !Miscellaneous/scripts/
 Miscellaneous/scripts/*
@@ -29,6 +28,7 @@ Miscellaneous/scripts/*
 !Miscellaneous/scripts/Run-PerformanceSuite.ps1
 !Miscellaneous/scripts/Invoke-ProcessWithTimeout.ps1
 !Miscellaneous/scripts/Write-ExternalBenchmarkFailureEvidence.ps1
+!Miscellaneous/scripts/Run-DataFlowTailMeasurement.ps1
 Miscellaneous/FormatTool
 .VSCodeCounter
 Context/progressinfo.md
@@ -44,5 +44,11 @@ tools/*
 !tools/CpgPersistenceBenchmark/
 !tools/CpgPersistenceBenchmark/*.cs
 !tools/CpgPersistenceBenchmark/*.csproj
+!tools/DataFlowTailMeasurement/
+tools/DataFlowTailMeasurement/*
+!tools/DataFlowTailMeasurement/*.cs
+!tools/DataFlowTailMeasurement/*.csproj
+!tools/DataFlowTailMeasurement/*.py
 skills-lock.json
 Context/问题.md
+.agent-workplace/

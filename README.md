@@ -51,4 +51,4 @@ pwsh -File .\Miscellaneous\init.ps1
 
 ## 开发约束
 
-提交改动前先阅读 [Context/AGENTS.md](Context/AGENTS.md)、[Context/progress.md](Context/progress.md) 和 [Context/feature_list.json](Context/feature_list.json)。它们定义当前工作边界、验收条件及运行前置步骤。
+提交改动前先阅读 [AGENTS.md](AGENTS.md)、[Context/progress.md](Context/progress.md) 和 [Context/feature_list.json](Context/feature_list.json)。它们定义当前工作边界、验收条件及运行前置步骤。

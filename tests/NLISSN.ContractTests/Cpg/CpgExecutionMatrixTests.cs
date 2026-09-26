@@ -93,7 +93,7 @@ public sealed class CpgExecutionMatrixTests
     return new CpgExecutionSnapshot(
       graph.GraphSnapshotVersion,
       graph.Nodes.Select(node =>
-        $"{node.NodeId}:{node.Kind}:{node.DisplayKind}:{node.FilePath}:{node.SpanStart}:{node.SpanEnd}").ToArray(),
+        $"{node.NodeId}:{node.Kind}:{graph.ResolveDisplayKind(node)}:{graph.ResolveFilePath(node)}:{node.SpanStart}:{node.SpanEnd}").ToArray(),
       graph.Edges.Select(edge =>
         $"{edge.SourceNodeId}>{edge.TargetNodeId}:{edge.Kind}:{edge.ContextId}").ToArray(),
       analysis.SeedMarks.Select(mark =>

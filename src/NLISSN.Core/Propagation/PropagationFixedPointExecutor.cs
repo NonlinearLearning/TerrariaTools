@@ -94,7 +94,8 @@ internal sealed class PropagationFixedPointExecutor
       MarkRecord sourceMark,
       out PropagationSourceFact sourceFact)
     {
-        if (sourceFacts.TryGetValue(exactKey, out sourceFact!))
+        sourceFact = default;
+        if (sourceFacts.TryGetValue(exactKey, out sourceFact))
         {
             return true;
         }
@@ -106,7 +107,7 @@ internal sealed class PropagationFixedPointExecutor
         // full payload-bearing keys remain distinct in admittedFacts.
         var sourceNodeKey = FactIdentity.BuildNodeKey(sourceMark.SyntaxNode);
         var sourceFactKind = RuleFactKindDescriptor.Resolve(sourceMark.FactKind, sourceMark.SemanticTag);
-        sourceFact = sourceFacts
+        var fallbackSourceFact = sourceFacts
           .Where(entry =>
             string.Equals(entry.Key.RuleId, exactKey.RuleId, StringComparison.Ordinal) &&
             string.Equals(entry.Key.SourceTreeVersion, sourceMark.SourceTreeVersion, StringComparison.Ordinal) &&
@@ -115,9 +116,15 @@ internal sealed class PropagationFixedPointExecutor
           .OrderBy(entry => entry.Value.Depth)
           .ThenBy(entry => entry.Key.PayloadIdentity, StringComparer.Ordinal)
           .ThenBy(entry => entry.Key.ProvenanceIdentity, StringComparer.Ordinal)
-          .Select(entry => entry.Value)
-          .FirstOrDefault()!;
-        return sourceFact is not null;
+          .Select(entry => (PropagationSourceFact?)entry.Value)
+          .FirstOrDefault();
+        if (fallbackSourceFact is not { } resolvedSourceFact)
+        {
+            return false;
+        }
+
+        sourceFact = resolvedSourceFact;
+        return true;
     }
 
     private static IEnumerable<RuleDefinitionPropagate> GetCompatibleRules(
@@ -169,9 +176,9 @@ internal sealed class PropagationFixedPointExecutor
         }
     }
 
-    private sealed record PropagationSourceFact(MarkRecord Mark, int Depth);
+    private readonly record struct PropagationSourceFact(MarkRecord Mark, int Depth);
 
-    private sealed record PropagationWorkItemPriority(
+    private readonly record struct PropagationWorkItemPriority(
       string FilePath,
       int SpanStart,
       int SpanLength,
@@ -200,13 +207,8 @@ internal sealed class PropagationFixedPointExecutor
               key.ProvenanceIdentity);
         }
 
-        public int CompareTo(PropagationWorkItemPriority? other)
+        public int CompareTo(PropagationWorkItemPriority other)
         {
-            if (other is null)
-            {
-                return 1;
-            }
-
             var filePathComparison = StringComparer.Ordinal.Compare(FilePath, other.FilePath);
             if (filePathComparison != 0)
             {

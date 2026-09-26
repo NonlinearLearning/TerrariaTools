@@ -32,7 +32,6 @@ internal sealed class FragmentOwnershipIndex
 
     internal CpgFragmentOwnership? FindOwner(CpgNodeDescriptor descriptor)
     {
-        ArgumentNullException.ThrowIfNull(descriptor);
         return FindOwner(descriptor.SpanStart, descriptor.SpanEnd);
     }
 
@@ -57,7 +56,7 @@ internal sealed class FragmentOwnershipIndex
                         continue;
                     }
 
-                    if (bestOwner is null || IsPreferred(owner, bestOwner))
+                    if (bestOwner is null || IsPreferred(owner, bestOwner.Value))
                     {
                         bestOwner = owner;
                     }
@@ -124,7 +123,7 @@ internal sealed class FragmentOwnershipIndex
     }
 }
 
-internal sealed record CpgFragmentOwnership(
+internal readonly record struct CpgFragmentOwnership(
   string Kind,
   int SpanStart,
   int SpanEnd,
@@ -171,10 +170,10 @@ internal sealed class FragmentNodeOwnershipIndex
                 continue;
             }
 
-            if (!nodeIdsByOwner.TryGetValue(owner, out var nodeIds))
+            if (!nodeIdsByOwner.TryGetValue(owner.Value, out var nodeIds))
             {
                 nodeIds = new HashSet<NodeId>();
-                nodeIdsByOwner.Add(owner, nodeIds);
+                nodeIdsByOwner.Add(owner.Value, nodeIds);
             }
 
             nodeIds.Add(nodeId);
@@ -188,7 +187,6 @@ internal sealed class FragmentNodeOwnershipIndex
 
     internal IReadOnlySet<NodeId> GetNodeIds(CpgFragmentOwnership owner)
     {
-        ArgumentNullException.ThrowIfNull(owner);
         return _nodeIdsByOwner.TryGetValue(owner, out var nodeIds)
           ? nodeIds
           : new HashSet<NodeId>();

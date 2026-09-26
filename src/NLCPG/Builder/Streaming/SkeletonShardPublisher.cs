@@ -134,7 +134,8 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       lookup,
       facts,
       context.Graph.RequirePreallocatedNodeIds(),
-      ignoredBoundaryEdges);
+      ignoredBoundaryEdges,
+      context.Graph.StringTable);
     var reusableKey = CpgReusableFragmentKey.Create(shard);
     if (!await _session.TryReuseFragmentAsync(shard, reusableKey, cancellationToken))
     {
@@ -179,7 +180,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       }
       else
       {
-        descriptorBuckets[owner].Add(descriptor);
+        descriptorBuckets[owner.Value].Add(descriptor);
       }
     }
 
@@ -218,7 +219,8 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       descriptors,
       candidates,
       context.Graph.RequirePreallocatedNodeIds(),
-      ignoredBoundaryEdges);
+      ignoredBoundaryEdges,
+      context.Graph.StringTable);
     await _session.PublishFragmentAsync(shard, cancellationToken);
     RegisterPrimaryNodes(shard);
 
@@ -317,7 +319,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       var targetOwner = nodeOwnership.GetOwner(targetNodeId);
       if (sourceOwner is not null && sourceOwner == targetOwner)
       {
-        byOwner[sourceOwner].Add(candidate);
+        byOwner[sourceOwner.Value].Add(candidate);
       }
       else if (sourceOwner is null && targetOwner is null)
       {
@@ -395,7 +397,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       edge.CallSiteContext);
   }
 
-  private sealed record PendingCandidateBuckets(
+  private readonly record struct PendingCandidateBuckets(
     IReadOnlyDictionary<CpgFragmentOwnership, List<CpgEdgeCandidate>> ByOwner,
     IReadOnlyList<CpgEdgeCandidate> Skeleton);
 
@@ -407,7 +409,7 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
     else
     {
-      candidateBuckets[owner].Add(candidate);
+      candidateBuckets[owner.Value].Add(candidate);
     }
   }
 
@@ -423,5 +425,5 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
   }
 
-  private sealed record BoundaryBucket(CpgShardLookup Owner, CpgBoundaryAdjacencyDirection Direction);
+  private readonly record struct BoundaryBucket(CpgShardLookup Owner, CpgBoundaryAdjacencyDirection Direction);
 }

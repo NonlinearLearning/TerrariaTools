@@ -8,7 +8,6 @@ internal static class CrossShardEdgeCommitter
 {
   internal static CpgFrozenBoundaryEdge Create(NLCPGEdge edge)
   {
-    ArgumentNullException.ThrowIfNull(edge);
     return new CpgFrozenBoundaryEdge(
       edge.SourceNodeId.Value,
       edge.TargetNodeId.Value,

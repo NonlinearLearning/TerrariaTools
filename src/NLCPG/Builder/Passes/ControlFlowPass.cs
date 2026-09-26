@@ -1,5 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
+using NLCPG.Builder.Concurrency;
+using NLCPG.Builder.Streaming;
 using NLCPG.Contracts;
 using NLCPG.Model;
 
@@ -29,14 +31,223 @@ namespace NLCPG.Builder
     {
         internal void RunControlFlowPass(NLCPGBuildContext context)
         {
-            AddMethodLevelControlFlow(context);
+            // G0-P R-3：本阶段的规划已在【执行相位之前】完成并登记（见 PlanStagesBeforeExecution）。
+            // 这里只消费既有 plan。
+            var plan = TakeRecordedStagePlan(StageDependencyTable.Stage.ControlFlow);
+            if (plan is null)
+            {
+                // 规划相位【只在无操作根时】返回 null（见 PlanControlFlowStage）。
+                // 若此处仍有操作根，说明规划相位没有覆盖本阶段 —— fail-closed，
+                // 而不是静默跳过整阶段的 CFG（正是 G0-P 要消灭的失效形态）。
+                // ⚠ D1：必须检查**全部文档**——只查驱动文档会在「首文件无方法、其余文件有」时
+                //   把整体跳过误判为合法（静默少边）。
+                if (HasAnyOperationRootAcrossDocuments(context))
+                {
+                    throw new InvalidOperationException(
+                      "ControlFlow 阶段被请求执行，但规划相位没有登记它的 plan（G0-P R-3）。"
+                      + "规划必须在任何 worker 启动之前完成；此处不重新规划，以免把规划时点拉回执行相位。");
+                }
+
+                return;
+            }
+
+            CommitControlFlowStage(context, plan);
         }
 
-        private void AddMethodLevelControlFlow(NLCPGBuildContext context)
+        /// <summary>
+        /// G0-P **R-3** 规划步：**只读**——算出批次，不触碰图。
+        /// <para>
+        /// 由 <c>PlanStagesBeforeExecution</c> 在**执行相位之前**调用。
+        /// 返回 <c>null</c> 表示无操作根（与拆分前的提前 <c>return</c> 语义一致）。
+        /// </para>
+        /// </summary>
+        private StagePlan? PlanControlFlowStage(NLCPGBuildContext context)
         {
-            var graph = context.Graph;
+            // ⚠ D1：判据必须是**全部文档**是否有操作根。只查驱动文档时，
+            //   「首文件恰好没有方法、其余文件有」会被误判为「无操作根」⇒ 整阶段返回 null
+            //   ⇒ 规划相位不登记 plan ⇒ 其余文件的 CFG 边全部静默缺失。
+            if (!HasAnyOperationRootAcrossDocuments(context))
+            {
+                return null;
+            }
+
+            return new StagePlan(
+              StageDependencyTable.Stage.ControlFlow,
+              // D1：跨文件聚合装箱（单文件时与 AssembleWorkBatches 逐字相同）。
+              AssembleWorkBatchesAcrossDocuments(context));
+        }
+
+        /// <summary>
+        /// G0-P **R-3** 提交步：消费 plan，执行 worker 并发布（**唯一写图者**）。
+        /// </summary>
+        private void CommitControlFlowStage(NLCPGBuildContext context, StagePlan plan)
+        {
+            // ⚠ D1：worker 按文件产出**多个** fragment（一个批次可跨文件——T3），
+            //   故结果类型是 IReadOnlyList<LocalCpgFragment>，归并前先扁平化。
+            //   单文件批次下恒只有一个元素，行为与改造前逐字一致。
+            var perBatchFragments = _workBatchExecutor.ExecuteAsync<IReadOnlyList<LocalCpgFragment>>(
+              plan.Batches,
+              (batch, _, _) => CollectControlFlowFragments(context, batch),
+              cancellationToken: CancellationToken.None,
+              stageId: CpgWorkBatchPerformanceStageId.ControlFlow).GetAwaiter().GetResult();
+            var fragments = perBatchFragments.SelectMany(batchFragments => batchFragments).ToArray();
+            // G0-P R-2：回报本次实际产出（归并前），供统一记账。
+            ReportStageFragments(fragments);
+            PublishControlFlowFragments(context, fragments);
+        }
+
+        /// <summary>
+        /// 为批次的**每个来源文件**各产出一个 fragment。
+        /// </summary>
+        /// <remarks>
+        /// fragment 的 <c>SourceFilePath</c> 决定归并时写入哪张图，故必须用条目所属文件
+        /// （而非构造期 <c>context.FilePath</c>）。
+        /// </remarks>
+        private IReadOnlyList<LocalCpgFragment> CollectControlFlowFragments(
+          NLCPGBuildContext context,
+          CpgWorkBatch batch)
+        {
+            var fragments = new List<LocalCpgFragment>();
+            foreach (var group in SourceFilePartition.BySourceFile(batch.Items))
+            {
+                fragments.Add(CollectControlFlowFragment(context, batch, group));
+            }
+
+            return fragments;
+        }
+
+        private LocalCpgFragment CollectControlFlowFragment(
+          NLCPGBuildContext context,
+          CpgWorkBatch batch,
+          SourceRoutedGroup<CpgWorkItem> group)
+        {
+            var localGraph = new NLCPGGraph(
+              identityFactory: context.Graph.IdentityFactory,
+              stringInterner: context.Graph.StringTable);
+            // ⚠ D1：必须用**该分组所属文件**的 context 去解析操作根——
+            //   AddMethodLevelControlFlow 会按 selectedRootOrder 在 context 自己的操作根里查找，
+            //   用外层 context 会把 B 文件分组的序号解析成 A 文件的方法（静默错配）。
+            var document = context.ResolveDocument(group.SourceFilePath);
+            foreach (var item in group.Items.OrderBy(item => item.StableOrder))
+            {
+                AddMethodLevelControlFlow(document, localGraph, item.StableOrder);
+            }
+
+            localGraph.FreezeQueryIndex();
+            var nodeDescriptors = localGraph.Nodes
+              .Select(CpgNodeDescriptor.FromNode)
+              .ToArray();
+            var nodesById = localGraph.Nodes
+              .Where(node => node.NodeId.HasValue)
+              .ToDictionary(node => node.NodeId!.Value);
+            var edgeCandidates = localGraph.Edges
+              .Select(edge =>
+              {
+                  var source = nodesById[edge.SourceNodeId];
+                  var target = nodesById[edge.TargetNodeId];
+                  return new CpgEdgeCandidate(
+                    source.StableAnchor!.Value,
+                    target.StableAnchor!.Value,
+                    edge.Kind,
+                    edge.StructuredLabel,
+                    edge.ContextId,
+                    edge.CallSiteContext);
+              })
+              .ToArray();
+            // nodeDescriptors/edgeCandidates 是本方法刚 ToArray 出来的独占数组，
+            // 之后没有写入、缓存或对象池归还，故交给 CreateOwned 接管，省掉构造器的第二次复制。
+            return LocalCpgFragment.CreateOwned(
+              batch.BatchId,
+              group.SourceFilePath,
+              // 单文件批次（既有唯一形态）下 group.Items 就是 batch.Items，
+              // 故此处恒等于 batch.StableOrder，与改造前逐字一致。
+              group.Items.Count == batch.Items.Count ? batch.StableOrder : group.Items[0].StableOrder,
+              nodeDescriptors,
+              edgeCandidates,
+              Array.Empty<CpgMethodSummary>(),
+              Array.Empty<CpgBoundaryReference>(),
+              new CpgFragmentMetrics(
+                0,
+                0,
+                nodeDescriptors.Length,
+                edgeCandidates.Length,
+                nodeDescriptors.Length,
+                edgeCandidates.Length,
+                checked(nodeDescriptors.Length * 64 + edgeCandidates.Length * 48)),
+              Array.Empty<CpgDiagnostic>());
+        }
+
+        private void PublishControlFlowFragments(
+          NLCPGBuildContext context,
+          IReadOnlyList<LocalCpgFragment> fragments)
+        {
+            // ⚠ ControlFlow 是**唯一不走 reducer** 的发布点（手写 AddNode/AddControlFlowEdge）。
+            //   故按项路由必须在这里**单独**落实，否则只改 reducer 会静默漏掉本阶段。
+            //   按 fragment 的 SourceFilePath 分组：多文件下各写各的图。
+            //   单文件时恒只有一组，且 resolve 回 context.Graph，行为逐字不变。
+            foreach (var group in fragments
+              .GroupBy(fragment => fragment.SourceFilePath, StringComparer.Ordinal)
+              .OrderBy(group => group.Key, StringComparer.Ordinal))
+            {
+                PublishControlFlowFragmentsIntoGraph(context.ResolveGraph(group.Key), group);
+            }
+        }
+
+        private void PublishControlFlowFragmentsIntoGraph(
+          NLCPGGraph targetGraph,
+          IEnumerable<LocalCpgFragment> fragments)
+        {
+            var descriptors = fragments
+              .SelectMany(fragment => fragment.Nodes)
+              .GroupBy(descriptor => descriptor.Anchor)
+              .Select(group => group
+                .OrderBy(descriptor => descriptor.Kind)
+                .ThenBy(descriptor => descriptor.NameId)
+                .First())
+              .ToArray();
+            var allocation = targetGraph.HasPreallocatedNodeIds
+              ? targetGraph.RequirePreallocatedNodeIds()
+              : DeterministicNodeIdTable.Create(descriptors.Select(descriptor => descriptor.Anchor));
+            var nodesByAnchor = descriptors.ToDictionary(
+              descriptor => descriptor.Anchor,
+              descriptor => targetGraph.AddNode(descriptor.Materialize(allocation)));
+            var seenEdges = new HashSet<CpgEdgeCandidate>();
+            foreach (var candidate in fragments
+              .SelectMany(fragment => fragment.Edges)
+              .OrderBy(edge => edge.SourceAnchor.Kind)
+              .ThenBy(edge => edge.SourceAnchor.FilePathId)
+              .ThenBy(edge => edge.SourceAnchor.SpanStart)
+              .ThenBy(edge => edge.SourceAnchor.SpanEnd)
+              .ThenBy(edge => edge.TargetAnchor.Kind)
+              .ThenBy(edge => edge.TargetAnchor.FilePathId)
+              .ThenBy(edge => edge.TargetAnchor.SpanStart)
+              .ThenBy(edge => edge.TargetAnchor.SpanEnd)
+              .ThenBy(edge => edge.Kind))
+            {
+                if (!seenEdges.Add(candidate) ||
+                    !nodesByAnchor.TryGetValue(candidate.SourceAnchor, out var source) ||
+                    !nodesByAnchor.TryGetValue(candidate.TargetAnchor, out var target))
+                {
+                    continue;
+                }
+
+                AddControlFlowEdge(source, target, candidate.Kind, targetGraph);
+            }
+        }
+
+        private void AddMethodLevelControlFlow(
+          NLCPGBuildContext context,
+          NLCPGGraph? targetGraph = null,
+          int? selectedRootOrder = null)
+        {
+            var graph = targetGraph ?? context.Graph;
             foreach (var rootPlan in GetOperationRootPlans(context.Root, context.SemanticModel))
             {
+                if (selectedRootOrder is not null && rootPlan.Order != selectedRootOrder.Value)
+                {
+                    continue;
+                }
+
                 if (GetOperationRoot(context, rootPlan.BodySyntax) is not IBlockOperation methodBlock ||
                     !IsMethodRootBlock(methodBlock))
                 {
@@ -156,16 +367,16 @@ namespace NLCPG.Builder
         private void AddConditionalEdges(IConditionalOperation conditional, NLCPGGraph graph)
         {
             var conditionNode = GetOrCreateOperationNode(conditional.Condition, graph);
-            var trueNode = conditional.WhenTrue is null ? null : GetOrCreateOperationNode(conditional.WhenTrue, graph);
-            var falseNode = conditional.WhenFalse is null ? null : GetOrCreateOperationNode(conditional.WhenFalse, graph);
+            NLCPGNode? trueNode = conditional.WhenTrue is null ? null : GetOrCreateOperationNode(conditional.WhenTrue, graph);
+            NLCPGNode? falseNode = conditional.WhenFalse is null ? null : GetOrCreateOperationNode(conditional.WhenFalse, graph);
             if (trueNode is not null)
             {
-                AddControlFlowEdge(conditionNode, trueNode, NLCPGEdgeKind.CfgTrue, graph);
+                AddControlFlowEdge(conditionNode, trueNode.Value, NLCPGEdgeKind.CfgTrue, graph);
             }
 
             if (falseNode is not null)
             {
-                AddControlFlowEdge(conditionNode, falseNode, NLCPGEdgeKind.CfgFalse, graph);
+                AddControlFlowEdge(conditionNode, falseNode.Value, NLCPGEdgeKind.CfgFalse, graph);
             }
         }
 
@@ -177,14 +388,14 @@ namespace NLCPG.Builder
             }
 
             var conditionNode = GetOrCreateOperationNode(whileLoop.Condition, graph);
-            var bodyNode = whileLoop.Body is null ? null : GetOrCreateOperationNode(whileLoop.Body, graph);
+            NLCPGNode? bodyNode = whileLoop.Body is null ? null : GetOrCreateOperationNode(whileLoop.Body, graph);
             if (bodyNode is null)
             {
                 return;
             }
 
-            AddControlFlowEdge(conditionNode, bodyNode, NLCPGEdgeKind.CfgTrue, graph);
-            AddControlFlowEdge(bodyNode, conditionNode, NLCPGEdgeKind.CfgNext, graph);
+            AddControlFlowEdge(conditionNode, bodyNode.Value, NLCPGEdgeKind.CfgTrue, graph);
+            AddControlFlowEdge(bodyNode.Value, conditionNode, NLCPGEdgeKind.CfgNext, graph);
 
             var exitTarget = NextSiblingOperation(whileLoop);
             if (exitTarget is not null)
@@ -196,12 +407,12 @@ namespace NLCPG.Builder
         private void AddForLoopEdges(IForLoopOperation forLoop, NLCPGGraph graph)
         {
             var conditionOperation = forLoop.Condition ?? (forLoop.Before.Length > 0 ? forLoop.Before.LastOrDefault() : null);
-            var bodyNode = forLoop.Body is null ? null : GetOrCreateOperationNode(forLoop.Body, graph);
+            NLCPGNode? bodyNode = forLoop.Body is null ? null : GetOrCreateOperationNode(forLoop.Body, graph);
             if (conditionOperation is not null && bodyNode is not null)
             {
                 var conditionNode = GetOrCreateOperationNode(conditionOperation, graph);
-                AddControlFlowEdge(conditionNode, bodyNode, NLCPGEdgeKind.CfgTrue, graph);
-                AddControlFlowEdge(bodyNode, conditionNode, NLCPGEdgeKind.CfgNext, graph);
+                AddControlFlowEdge(conditionNode, bodyNode.Value, NLCPGEdgeKind.CfgTrue, graph);
+                AddControlFlowEdge(bodyNode.Value, conditionNode, NLCPGEdgeKind.CfgNext, graph);
 
                 var exitTarget = NextSiblingOperation(forLoop);
                 if (exitTarget is not null)

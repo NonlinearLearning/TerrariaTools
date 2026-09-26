@@ -228,6 +228,7 @@ public sealed class NLCPGSliceQuery
     {
         var nodes = new Dictionary<NodeId, NLCPGNode>();
         var edges = new HashSet<NLCPGEdge>();
+        var stringInterner = new StringInterner();
         var visited = new HashSet<NodeId> { sinkNodeId };
         var frontier = new[] { sinkNodeId };
         var perAnchorEdgeLimit = options.MaxVisitedEdges == int.MaxValue
@@ -250,7 +251,8 @@ public sealed class NLCPGSliceQuery
                         shard,
                         nodeId,
                         options.AllowedEdgeKinds,
-                        perAnchorEdgeLimit);
+                        perAnchorEdgeLimit,
+                        stringInterner);
                     foreach (var node in projection.Nodes.Values)
                     {
                         nodes.TryAdd(node.NodeId!.Value, node);
@@ -280,7 +282,7 @@ public sealed class NLCPGSliceQuery
         var includedEdges = edges
             .Where(edge => nodes.ContainsKey(edge.SourceNodeId) && nodes.ContainsKey(edge.TargetNodeId))
             .ToArray();
-        return NLCPGGraph.CreateFrozen(nodes.Values, includedEdges);
+        return NLCPGGraph.CreateFrozen(nodes.Values, includedEdges, stringInterner);
     }
 
     private static void AddPath(SliceState state, NodeId sinkNodeId, ICollection<NLCPGSlicePath> paths)
@@ -368,7 +370,7 @@ public sealed class NLCPGSliceQuery
         return edges;
     }
 
-    private sealed record QueryKey(
+    private readonly record struct QueryKey(
         uint SinkNodeId,
         string GraphSnapshotVersion,
         int EdgeMaskId,

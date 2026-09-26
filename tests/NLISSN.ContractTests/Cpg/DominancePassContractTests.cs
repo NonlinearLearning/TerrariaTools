@@ -110,8 +110,8 @@ public sealed class DominancePassContractTests
     return string.Join(
       ":",
       node.Kind,
-      node.Name,
-      node.FullName,
+      graph.ResolveName(node),
+      graph.ResolveFullName(node),
       displayText);
   }
 
@@ -119,6 +119,6 @@ public sealed class DominancePassContractTests
   {
     var node = graph.GetNode(nodeId);
     Assert.NotNull(node);
-    return node!;
+    return node.Value;
   }
 }

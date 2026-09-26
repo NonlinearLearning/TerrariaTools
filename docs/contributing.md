@@ -8,7 +8,7 @@
 
 依次阅读：
 
-1. [`Context/AGENTS.md`](../Context/AGENTS.md)
+1. [`AGENTS.md`](../AGENTS.md)
 2. [`Context/progress.md`](../Context/progress.md)
 3. [`Context/feature_list.json`](../Context/feature_list.json)
 4. 目标目录的局部 `AGENTS.md`

@@ -10,7 +10,8 @@ namespace NLISSN.Infrastructure.Configuration;
 internal static class YamlConfigurationLoader
 {
     internal const string ConfigurationFileName = "nlissn.yml";
-    private const int SchemaVersion = 2;
+    private const int LegacySchemaVersion = 2;
+    private const int UnifiedSchemaVersion = 3;
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
       .WithNamingConvention(CamelCaseNamingConvention.Instance)
       .WithDuplicateKeyChecking()
@@ -123,10 +124,27 @@ internal static class YamlConfigurationLoader
       IReadOnlySet<string> explicitPaths)
     {
         var diagnostics = new List<ConfigurationDiagnostic>();
-        if (document.SchemaVersion != SchemaVersion)
+        if (document.SchemaVersion is not LegacySchemaVersion and not UnifiedSchemaVersion)
         {
             diagnostics.Add(new ConfigurationDiagnostic("NLISSN100", "schemaVersion",
-              $"Unsupported NLISSN configuration schemaVersion: '{document.SchemaVersion}'. Expected {SchemaVersion}."));
+              $"Unsupported NLISSN configuration schemaVersion: '{document.SchemaVersion}'. Expected {LegacySchemaVersion} or {UnifiedSchemaVersion}."));
+        }
+
+        if (document.SchemaVersion == UnifiedSchemaVersion &&
+            !string.Equals(document.Tool, "nlissn", StringComparison.Ordinal))
+        {
+            diagnostics.Add(new ConfigurationDiagnostic(
+              "NLISSN103",
+              "tool",
+              "schemaVersion 3 requires tool: nlissn for the NLISSN executable."));
+        }
+
+        if (document.SchemaVersion == LegacySchemaVersion && document.Tool is not null)
+        {
+            diagnostics.Add(new ConfigurationDiagnostic(
+              "NLISSN103",
+              "tool",
+              "tool is only supported with schemaVersion 3."));
         }
 
         AddRequiredDiagnostic(diagnostics, document.Input, "input");
@@ -206,8 +224,12 @@ internal static class YamlConfigurationLoader
           new ExecutionSettings(
             execution.WriteBack,
             execution.SkipRewrite,
-            execution.MaxDegreeOfParallelism,
+            execution.DirectoryMaxDegreeOfParallelism,
             execution.CpgMaxDegreeOfParallelism,
+            execution.GroupMaxDegreeOfParallelism,
+            execution.HelperMaxDegreeOfParallelism,
+            execution.ReplayMaxDegreeOfParallelism,
+            execution.MaxConcurrentOperations,
             execution.DirectoryParallelism,
             execution.GroupParallelism,
             execution.HelperParallelism,
@@ -220,8 +242,37 @@ internal static class YamlConfigurationLoader
             logging.Categories!.ToArray(),
             logging.Events!.ToArray(),
             logging.View!),
-          new ConfigurationProvenance(SchemaVersion, SchemaVersion, Array.Empty<string>(), origins),
-          workspace);
+          new ConfigurationProvenance(
+            document.SchemaVersion,
+            document.SchemaVersion,
+            Array.Empty<string>(),
+            origins),
+          workspace,
+          CreateProjectExportSettings(configurationDirectory, artifacts, document.Artifacts?.ProjectJson));
+    }
+
+    // 解析 artifacts.projectJson；未配置或 enabled=false 时返回 null（默认关闭）。
+    private static ProjectExportSettings? CreateProjectExportSettings(
+      string configurationDirectory,
+      ArtifactSettings artifacts,
+      YamlProjectJson? projectJson)
+    {
+        if (projectJson is null || !projectJson.Enabled)
+        {
+            return null;
+        }
+
+        var outputPath = string.IsNullOrWhiteSpace(projectJson.Output)
+          ? Path.Combine(artifacts.RunRoot, "ProjectJson")
+          : ResolvePath(configurationDirectory, projectJson.Output);
+        var workerCount = projectJson.ProjectWorkerCount <= 0
+          ? 12
+          : projectJson.ProjectWorkerCount;
+        return new ProjectExportSettings(
+          true,
+          outputPath,
+          workerCount,
+          projectJson.Resume);
     }
 
     private static ArtifactSettings ResolveArtifacts(
@@ -286,14 +337,34 @@ internal static class YamlConfigurationLoader
         }
 
         var execution = document.Execution!;
-        if (execution.MaxDegreeOfParallelism <= 0)
+        if (execution.DirectoryMaxDegreeOfParallelism <= 0)
         {
-            diagnostics.Add(new ConfigurationDiagnostic("NLISSN110", "execution.maxDegreeOfParallelism", "must be a positive integer."));
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN110", "execution.directoryMaxDegreeOfParallelism", "must be a positive integer."));
         }
 
-        if (execution.CpgMaxDegreeOfParallelism is <= 0)
+        if (execution.CpgMaxDegreeOfParallelism <= 0)
         {
             diagnostics.Add(new ConfigurationDiagnostic("NLISSN111", "execution.cpgMaxDegreeOfParallelism", "must be a positive integer."));
+        }
+
+        if (execution.GroupMaxDegreeOfParallelism <= 0)
+        {
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN114", "execution.groupMaxDegreeOfParallelism", "must be a positive integer."));
+        }
+
+        if (execution.HelperMaxDegreeOfParallelism <= 0)
+        {
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN115", "execution.helperMaxDegreeOfParallelism", "must be a positive integer."));
+        }
+
+        if (execution.ReplayMaxDegreeOfParallelism <= 0)
+        {
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN116", "execution.replayMaxDegreeOfParallelism", "must be a positive integer."));
+        }
+
+        if (execution.MaxConcurrentOperations <= 0)
+        {
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN117", "execution.maxConcurrentOperations", "must be a positive integer."));
         }
 
         if (execution.FilterDeleteClassFilesByTargetName &&
@@ -321,7 +392,7 @@ internal static class YamlConfigurationLoader
             !document.Artifacts.RuntimeLog.Enabled &&
             !document.Artifacts.AnalysisLog.Enabled)
         {
-            diagnostics.Add(new ConfigurationDiagnostic("NLISSN114", "logging",
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN118", "logging",
               "requires artifacts.runtimeLog.enabled or artifacts.analysisLog.enabled."));
         }
 
@@ -791,6 +862,8 @@ internal sealed class YamlDocument
 {
     public int SchemaVersion { get; set; }
 
+    public string? Tool { get; set; }
+
     public string? RunId { get; set; }
 
     public YamlInput? Input { get; set; }
@@ -848,9 +921,17 @@ internal sealed class YamlExecution
 
     public bool SkipRewrite { get; set; }
 
-    public int MaxDegreeOfParallelism { get; set; }
+    public int DirectoryMaxDegreeOfParallelism { get; set; }
 
-    public int? CpgMaxDegreeOfParallelism { get; set; }
+    public int CpgMaxDegreeOfParallelism { get; set; }
+
+    public int GroupMaxDegreeOfParallelism { get; set; }
+
+    public int HelperMaxDegreeOfParallelism { get; set; }
+
+    public int ReplayMaxDegreeOfParallelism { get; set; }
+
+    public int MaxConcurrentOperations { get; set; }
 
     public bool DirectoryParallelism { get; set; } = true;
 
@@ -878,6 +959,23 @@ internal sealed class YamlArtifacts
     public YamlRewritePlan? RewritePlan { get; set; } = new();
 
     public YamlToggle? AnalysisLog { get; set; } = new();
+
+    public YamlProjectJson? ProjectJson { get; set; }
+}
+
+/// <summary>
+/// <c>artifacts.projectJson</c>：在 NLISSN 运行内联执行 CPG 项目级 JSON 导出。
+/// 未配置时为 <c>null</c>（默认关闭，保持既有行为）。
+/// </summary>
+internal sealed class YamlProjectJson
+{
+    public bool Enabled { get; set; }
+
+    public string? Output { get; set; }
+
+    public int ProjectWorkerCount { get; set; }
+
+    public bool Resume { get; set; }
 }
 
 internal sealed class YamlPerformance : YamlToggle

@@ -92,8 +92,14 @@ public sealed class WorkspaceConfigurationTests : IDisposable
           "  path: Input.cs\n" +
           "analysis: {}\n" +
           "execution:\n" +
-          "  maxDegreeOfParallelism: 1\n" +
-          "artifacts: {}\n");
+          "  directoryMaxDegreeOfParallelism: 1\n" +
+          "  cpgMaxDegreeOfParallelism: 1\n" +
+          "  groupMaxDegreeOfParallelism: 1\n" +
+          "  helperMaxDegreeOfParallelism: 1\n" +
+          "  replayMaxDegreeOfParallelism: 1\n" +
+          "  maxConcurrentOperations: 1\n" +
+          "artifacts:\n" +
+          "  root: artifacts\n");
 
         var configuration = YamlConfigurationLoader.Load(configurationPath);
 
@@ -160,7 +166,12 @@ public sealed class WorkspaceConfigurationTests : IDisposable
           additionalInput +
           "analysis: {}\n" +
           "execution:\n" +
-          "  maxDegreeOfParallelism: 1\n" +
+          "  directoryMaxDegreeOfParallelism: 1\n" +
+          "  cpgMaxDegreeOfParallelism: 1\n" +
+          "  groupMaxDegreeOfParallelism: 1\n" +
+          "  helperMaxDegreeOfParallelism: 1\n" +
+          "  replayMaxDegreeOfParallelism: 1\n" +
+          "  maxConcurrentOperations: 1\n" +
           "artifacts:\n" +
           "  root: artifacts\n";
     }

@@ -1,5 +1,29 @@
 # NLCPG Node and Edge Catalog
 
+## In-memory carrier contract
+
+`NLCPGNode` and `NLCPGEdge` are public `readonly record struct` values. They are
+immutable graph carriers: copying either value copies its scalar fields, but does not
+clone the graph-owned string table, labels, or collections. `NLCPGNode` stores
+`NameId`, `FullNameId`, `SignatureId`, `TypeFullNameId`, and `FilePathId`; ID `0` means
+no value, and an ID is meaningful only inside its owning `NLCPGGraph`. The graph owns
+identity materialization and deduplication, so callers must use the value returned by
+`NLCPGGraph.AddNode` and must treat a copied node as a snapshot value.
+
+`NLCPGNode` intentionally has no `Text`, `DisplayKind`, or string-valued name/path
+property. `NLCPGNodeDraft` carries source strings only until `NLCPGGraph.AddNode`
+interns them. Display text is derived by `NLCPGGraph.GetDisplayText`: source span text
+first, then graph-resolved `FullName`, `Name`, and a `Kind`/syntax-derived display kind.
+Decision reasons and analysis evidence remain in their decision/evidence models instead
+of being duplicated on every node. `NLCPGEdge` stores `NodeId` endpoints and optional
+structured context/labels; it does not retain node object references.
+
+After `FreezeQueryIndex`, the graph owns one canonical node array ordered by `NodeId`.
+Kind and file-path indexes contain ordinals and are exposed through an `OrdinalNodeList`
+view, so index buckets do not store repeated node values. Persistent shard formats still
+resolve IDs back to their existing text fields at the export boundary; changing that
+external schema requires a separate versioned design.
+
 ## Node Kinds
 
 | Kind | Meaning | Minimal Source |
@@ -133,27 +157,45 @@ span, callsite, target, and parameter ordinal.
 
 ## Local View
 
-The CLI now supports a first local CPG view expanded from a single anchor node.
+The NLCPG entrypoint now reads the unified `nlissn.yml` configuration and supports a
+local CPG view expanded from a single anchor node. It accepts no business command-line
+arguments.
 
 Example:
 
 ```powershell
-dotnet run --project .\src\NLCPG\NLCPG.csproj `
-  .\src\NLCPG\samples\analysis-sample.cs `
-  --view local `
-  --anchor-full-name 'Demo.App.StepNormalizer.Normalize:int(int)' `
-  --hops 1 `
-  --direction both
+Push-Location .\cpg-run
+dotnet run --project ..\src\NLCPG\NLCPG.csproj
+Pop-Location
+```
+
+The `cpg-run\nlissn.yml` file contains:
+
+```yaml
+schemaVersion: 3
+tool: nlcpg
+input:
+  path: ./Sample.cs
+nlcpg:
+  view:
+    mode: local
+    anchor:
+      fullName: Demo.Sample.Add:int(int, int)
+    hops: 1
+    direction: both
+    edgeKinds: [Call]
+  output:
+    json: ./Build/local-view.json
 ```
 
 Current local-view behavior:
 
-- exactly one anchor selector is required: `--anchor-node-id`, `--anchor-full-name`, or `--anchor-name`
+- exactly one anchor selector is required: `nlcpg.view.anchor.nodeId`, `fullName`, or `name`
 - traversal is breadth-first by hop count
 - traversal can be limited to `incoming`, `outgoing`, or `both`
-- traversal can be filtered by `--edge-kinds`
+- traversal can be filtered by the `nlcpg.view.edgeKinds` YAML array
 - the extracted view includes only nodes and edges that remain inside the visited subgraph
-- `--json-out` writes the local-view payload as a small JSON artifact for downstream inspection
+- `nlcpg.output.json` writes the local-view payload as a small JSON artifact for downstream inspection
 
 ## Fragment Structure View
 

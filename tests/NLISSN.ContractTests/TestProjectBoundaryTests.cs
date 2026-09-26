@@ -91,6 +91,18 @@ public sealed class TestProjectBoundaryTests
   }
 
   [Fact]
+  public void HistoricalMinimalRoslynCpgProject_IsNotPresent()
+  {
+    var projectPath = Path.Combine(
+      ResolveRepositoryRoot(),
+      "src",
+      "MinimalRoslynCpg",
+      "MinimalRoslynCpg.csproj");
+
+    Assert.False(File.Exists(projectPath));
+  }
+
+  [Fact]
   public void HarnessConsistencyCheck_UsesCurrentCliAndTestProjects()
   {
     var checkerPath = Path.Combine(

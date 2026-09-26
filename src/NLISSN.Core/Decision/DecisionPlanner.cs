@@ -308,7 +308,7 @@ public sealed class DecisionPlanner
   {
     var anchor = unit.Intent.Anchor;
     var replacementFragment = unit.Fragments
-      .FirstOrDefault(fragment => string.Equals(fragment.Name, "replacement", StringComparison.Ordinal));
+      .FirstOrDefault(fragment => string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal));
     var replacement = replacementFragment is { NodeId: { } nodeId } &&
       unit.SyntaxBindings.TryGetValue(nodeId, out var replacementNode)
       ? replacementNode

@@ -1,0 +1,55 @@
+{
+  "Status": "MeasurementVerifiedWithDocumentedLimitations",
+  "SourceHashesRechecked": 463,
+  "SourceMismatches": [],
+  "CopiedArtifactFilesCompared": 10,
+  "MarkdownLinksChecked": 71,
+  "MissingLinks": [],
+  "NewSourceWhitespaceFilesChecked": 12,
+  "ScopedGitDiffCheck": "Passed",
+  "HarnessCommand": "pwsh -NoProfile -File Miscellaneous/scripts/check-harness-consistency.ps1",
+  "HarnessIncludingCliSmoke": "Passed",
+  "Tests": {
+    "Focused": {
+      "Path": "Build/DataFlowTailMeasurement/dataflow-focused-final.trx",
+      "Total": 30,
+      "Passed": 30,
+      "Failed": 0,
+      "Failures": []
+    },
+    "Unit": {
+      "Path": "Build/TestResults/20260925-022703-c5ef3f3f/unit.trx",
+      "Total": 117,
+      "Passed": 117,
+      "Failed": 0,
+      "Failures": []
+    },
+    "Contract": {
+      "Path": "Build/TestResults/20260925-022703-c5ef3f3f/contract.trx",
+      "Total": 532,
+      "Passed": 531,
+      "Failed": 1,
+      "Failures": [
+        "NLISSN.Tests.Architecture.LayoutArchitectureTests.ProductionProjectReferences_MatchTheTargetDependencyGraph"
+      ]
+    },
+    "ReferenceContract": {
+      "Path": "Build/DataFlowTailMeasurement/reference-contract.trx",
+      "Total": 1,
+      "Passed": 0,
+      "Failed": 1,
+      "Failures": [
+        "NLISSN.Tests.Architecture.LayoutArchitectureTests.ProductionProjectReferences_MatchTheTargetDependencyGraph"
+      ]
+    }
+  },
+  "KnownFailure": "Architecture XML-only expected project list omits existing NLCPG.ProjectJson reference; independent reproduction fails identically; DataFlow is not executed.",
+  "Limits": [
+    "Observer overhead gate Inconclusive",
+    "Real-source full fallback chain not covered",
+    "Real NPC methods not measured",
+    "Complete Contract suite not green"
+  ],
+  "FinalReportTables": "Consistent columns",
+  "FinalFeatureStatus": "done; measurement with explicit limits"
+}

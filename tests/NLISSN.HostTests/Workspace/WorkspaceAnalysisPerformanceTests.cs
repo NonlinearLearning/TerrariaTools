@@ -26,7 +26,7 @@ public sealed class WorkspaceAnalysisPerformanceTests : IDisposable
     var configuration = new AnalysisConfiguration(
       solutionPath,
       new RulePolicySettings(null, null, new HashSet<string>(StringComparer.Ordinal), false, false, false, false, false),
-      new ExecutionSettings(false, false, 1, null, false, false, true, false, false),
+      new ExecutionSettings(false, false, 1, 1, 1, 1, 1, 1, false, false, true, false, false),
       new ArtifactSettings(
         Path.Combine(_temporaryDirectory, "run"),
         Path.Combine(_temporaryDirectory, "diff"),

@@ -38,6 +38,76 @@ public sealed class NlissnSchemaContractTests
     {
       Assert.False(analysis.GetProperty(name).GetProperty("default").GetBoolean());
     }
+
+    var execution = definitions.GetProperty("execution");
+    var requiredExecutionFields = execution.GetProperty("required")
+      .EnumerateArray()
+      .Select(element => element.GetString())
+      .ToArray();
+    Assert.Equal(
+      new[]
+      {
+        "directoryMaxDegreeOfParallelism",
+        "cpgMaxDegreeOfParallelism",
+        "groupMaxDegreeOfParallelism",
+        "helperMaxDegreeOfParallelism",
+        "replayMaxDegreeOfParallelism",
+        "maxConcurrentOperations"
+      },
+      requiredExecutionFields);
+    var executionProperties = execution.GetProperty("properties");
+    Assert.False(executionProperties.TryGetProperty("maxDegreeOfParallelism", out _));
+    foreach (var name in requiredExecutionFields)
+    {
+      Assert.Equal(1, executionProperties.GetProperty(name!).GetProperty("minimum").GetInt32());
+    }
+  }
+
+  [Fact]
+  public void Schema3_DeclaresToolBranchesAndProjectExportWorkerSetting()
+  {
+    using var document = JsonDocument.Parse(File.ReadAllText(
+      RepositoryPath("Miscellaneous", "schemas", "nlissn.schema.3.json")));
+    var root = document.RootElement;
+
+    Assert.Equal(3, root.GetProperty("properties").GetProperty("schemaVersion").GetProperty("const").GetInt32());
+    Assert.Equal(
+      new[] { "schemaVersion", "tool" },
+      root.GetProperty("required").EnumerateArray().Select(element => element.GetString()).ToArray());
+    Assert.Equal(
+      new[] { "nlissn", "nlcpg", "nlcpg-project-export" },
+      root.GetProperty("properties").GetProperty("tool").GetProperty("enum")
+        .EnumerateArray()
+        .Select(element => element.GetString())
+        .ToArray());
+    Assert.False(root.GetProperty("additionalProperties").GetBoolean());
+
+    var projectExport = root.GetProperty("$defs").GetProperty("projectExport");
+    Assert.False(projectExport.GetProperty("additionalProperties").GetBoolean());
+    Assert.Equal(
+      1,
+      projectExport.GetProperty("properties").GetProperty("projectWorkerCount")
+        .GetProperty("minimum")
+        .GetInt32());
+
+    var nlcpg = root.GetProperty("$defs").GetProperty("nlcpg");
+    Assert.False(nlcpg.GetProperty("additionalProperties").GetBoolean());
+    Assert.Equal(
+      "local",
+      root.GetProperty("$defs").GetProperty("nlcpgView").GetProperty("properties")
+        .GetProperty("mode").GetProperty("enum").EnumerateArray()
+        .Select(element => element.GetString())
+        .Single(value => value == "local"));
+
+    var branches = root.GetProperty("allOf").EnumerateArray().ToArray();
+    Assert.Contains(
+      branches,
+      branch => branch.GetProperty("then").GetProperty("required")
+        .EnumerateArray().Select(element => element.GetString()).Contains("runId"));
+    Assert.Contains(
+      branches,
+      branch => branch.GetProperty("then").GetProperty("required")
+        .EnumerateArray().Select(element => element.GetString()).Contains("projectExport"));
   }
 
   private static string RepositoryPath(params string[] parts)

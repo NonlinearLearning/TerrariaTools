@@ -57,7 +57,12 @@ public sealed class TextLogFormatter
     private static bool IsNormalField(TextLogEvent textLogEvent, string fieldName)
     {
         return IsCompactField(textLogEvent, fieldName) ||
-          fieldName is "op" or "inputKind" or "file" or "phase" or "dop" or "nodes" or "edges" or "rules" or "slowestRule" or "slowestMs" or "cacheHits" or "cacheMisses" or "heapBytes" or "privateBytes" or "committedBytes" or "fragmentedBytes" or "allocBytes" or "tpThreads" or "tpPending" or "tpCompleted" or "availableWorkers" or "maxWorkers" or "syntaxMs" or "dataFlowMs" or "freezeMs";
+          fieldName is "op" or "inputKind" or "file" or "phase" or "dop" or "directoryDop" or "cpgDop" or "groupDop" or "helperDop" or "replayDop" or "maxConcurrentOperations" or "nodes" or "edges" or "rules" or "slowestRule" or "slowestMs" or "cacheHits" or "cacheMisses" or "heapBytes" or "privateBytes" or "committedBytes" or "fragmentedBytes" or "allocBytes" or "tpThreads" or "tpPending" or "tpCompleted" or "availableWorkers" or "maxWorkers" or "syntaxMs" or "dataFlowMs" or "freezeMs" ||
+          // 风险 R4/R4b：默认 normal 视图也必须能看到内核**实际生效**的额度，
+          // 否则请求值与生效值不一致时运维无法从日志发现。
+          fieldName is "workerCount" or "ruleGroupEffective" or "helperEffective" or "directoryEffective" or "cpgEffective" or "replayEffective" or "defaultEffective" or "groupParallelism" or "directoryParallelism" or "helperParallelism" or "directoryWindowSemantics" or
+          // 逐 worker 的使用率行（op=worker）：不登记就会在默认 normal 视图下整行消失。
+          "workerIndex" or "items" or "busyMs" or "idleMs" or "lifetimeMs" or "utilization";
     }
 
     private static void AppendField(StringBuilder builder, string name, string value)

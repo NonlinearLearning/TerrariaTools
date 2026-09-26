@@ -190,11 +190,11 @@ public sealed record RuleGraphExecutionMetrics(int PeakReadyNodeCount, int PeakC
 
 public sealed class RuleGraphExecutor
 {
-    private readonly IConcurrencyPool _concurrencyPool;
+    private readonly WorkScheduler? _injectedScheduler;
 
-    public RuleGraphExecutor(IConcurrencyPool? concurrencyPool = null)
+    public RuleGraphExecutor(WorkScheduler? scheduler = null)
     {
-        _concurrencyPool = concurrencyPool ?? new BoundedConcurrencyPool();
+        _injectedScheduler = scheduler;
     }
 
     public async Task<RuleGraphExecutionResult> ExecuteAsync(
@@ -215,38 +215,87 @@ public sealed class RuleGraphExecutor
             throw new InvalidOperationException("Execution nodes must exactly match the compiled rule graph.");
         }
 
-        var workItems = graph.Nodes.Select(node => new DependencyWorkItem<RuleNodeId, NodeExecutionCompletion>(
-          node.NodeId,
-          node.Dependencies.Select(dependency => dependency.Producer).Distinct().ToList(),
-          async (dependencyResults, token) =>
-          {
-              var executor = executors[node.NodeId];
-              var inputs = BuildInputs(node, dependencyResults);
-              var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-              var result = await executor.ExecuteAsync(inputs, token);
-              stopwatch.Stop();
-              return new NodeExecutionCompletion(
-                result,
-                inputs.OutputCount,
-                stopwatch.ElapsedMilliseconds,
-                executor.Status);
-          })).ToList();
+        // 未注入内核时（独立调用方与测试）自建一个，用后即弃，
+        // 避免把长期 worker 泄漏到进程生命周期之外。
+        var scheduler = _injectedScheduler ?? new WorkScheduler(WorkSchedulerOptions.CreateDefault());
+        var ownsScheduler = _injectedScheduler is null;
 
-        var execution = await _concurrencyPool.RunDependencyGraphAsync(
-          workItems,
-          maxDegreeOfParallelism,
-          new GraphOrderComparer(graph.NodeIndexes),
+        try
+        {
+            return await ExecuteCoreAsync(
+              graph,
+              executors,
+              scheduler,
+              maxDegreeOfParallelism,
+              cancellationToken,
+              performanceEventSink,
+              runId,
+              itemId).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (ownsScheduler)
+            {
+                await scheduler.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static async Task<RuleGraphExecutionResult> ExecuteCoreAsync(
+      CompiledRuleGraph graph,
+      IReadOnlyDictionary<RuleNodeId, RuleGraphExecutionNode> executors,
+      WorkScheduler scheduler,
+      int maxDegreeOfParallelism,
+      CancellationToken cancellationToken,
+      IPerformanceEventSink? performanceEventSink,
+      string? runId,
+      string? itemId)
+    {
+        var workItems = graph.Nodes.Select(node => new WorkItem<NodeExecutionCompletion>
+        {
+            StableOrder = graph.NodeIndexes[node.NodeId],
+            Dependencies = node.Dependencies
+              .Select(dependency => (long)graph.NodeIndexes[dependency.Producer])
+              .Distinct()
+              .ToArray(),
+            Priority = WorkPriority.LatencySensitive,
+            ExecuteAsync = async (dependencyResults, token) =>
+            {
+                var executor = executors[node.NodeId];
+                var inputs = BuildInputs(node, dependencyResults, graph.NodeIndexes);
+                var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var result = await executor.ExecuteAsync(inputs, token);
+                stopwatch.Stop();
+                return new NodeExecutionCompletion(
+                  result,
+                  inputs.OutputCount,
+                  stopwatch.ElapsedMilliseconds,
+                  executor.Status);
+            },
+        }).ToList();
+
+        var execution = await scheduler.RunWithMetricsAsync(
+          new WorkSubmission<NodeExecutionCompletion>
+          {
+              Items = workItems,
+              Category = WorkCategories.RuleGroup,
+              MaxConcurrency = maxDegreeOfParallelism,
+          },
           cancellationToken);
+
+        // 内核按 StableOrder 升序归并，而 StableOrder 即 graph.NodeIndexes，
+        // 故可直接按下标还原，无需再查 RuleNodeId 字典。
+        var completionByIndex = execution.Results;
 
         return new RuleGraphExecutionResult(
           graph.Nodes.Select(node =>
             new RuleGraphExecutionNodeResult(
               node.NodeId,
-              execution.Results[node.NodeId].Result,
-              execution.Results[node.NodeId].Status)).ToList(),
+              completionByIndex[graph.NodeIndexes[node.NodeId]].Result,
+              completionByIndex[graph.NodeIndexes[node.NodeId]].Status)).ToList(),
           graph.Nodes.Select(node =>
           {
-              var completion = execution.Results[node.NodeId];
+              var completion = completionByIndex[graph.NodeIndexes[node.NodeId]];
               performanceEventSink.TryRecord(new PerformanceEvent(
                 runId ?? "unassigned",
                 PerformanceStageId.ForRule(node.NodeId.Kind),
@@ -268,52 +317,29 @@ public sealed class RuleGraphExecutor
                 completion.ElapsedMilliseconds,
                 completion.Status);
           }).ToList(),
-          new RuleGraphExecutionMetrics(execution.PeakReadyWorkItemCount, execution.PeakConcurrentWorkItemCount));
+          new RuleGraphExecutionMetrics(execution.PeakReadyCount, execution.PeakActiveCount));
     }
 
     private static RuleNodeInputs BuildInputs(
       RuleGraphNode node,
-      IReadOnlyDictionary<RuleNodeId, NodeExecutionCompletion> results)
+      IReadOnlyDictionary<long, NodeExecutionCompletion> results,
+      IReadOnlyDictionary<RuleNodeId, int> nodeIndexes)
     {
+        // 内核以 StableOrder（即 nodeIndexes）为键传回前置结果，
+        // 这里反查回 RuleNodeId 供规则消费，键空间不泄漏给规则实现。
         return new RuleNodeInputs(node.Dependencies
             .Select(dependency => dependency.Producer)
             .Distinct()
             .ToDictionary(
               producer => producer,
-              producer => new RuleGraphExecutionNodeResult(
-                producer,
-                results[producer].Result,
-                results[producer].Status)));
-    }
-
-    private sealed class GraphOrderComparer : IComparer<RuleNodeId>
-    {
-        private readonly IReadOnlyDictionary<RuleNodeId, int> _indexes;
-
-        public GraphOrderComparer(IReadOnlyDictionary<RuleNodeId, int> indexes)
-        {
-            _indexes = indexes;
-        }
-
-        public int Compare(RuleNodeId? left, RuleNodeId? right)
-        {
-            if (ReferenceEquals(left, right))
-            {
-                return 0;
-            }
-
-            if (left is null)
-            {
-                return -1;
-            }
-
-            if (right is null)
-            {
-                return 1;
-            }
-
-            return _indexes[left].CompareTo(_indexes[right]);
-        }
+              producer =>
+              {
+                  var completion = results[nodeIndexes[producer]];
+                  return new RuleGraphExecutionNodeResult(
+                    producer,
+                    completion.Result,
+                    completion.Status);
+              }));
     }
 
     private sealed record NodeExecutionCompletion(

@@ -2,12 +2,6 @@ using System.Diagnostics;
 
 namespace NLCPG.Builder;
 
-public enum CpgBuildAdmissionPolicy
-{
-    WholeBuild,
-    FairCapped
-}
-
 public sealed class CpgBuildAdmissionBudget
 {
     private readonly object _gate = new();
@@ -17,18 +11,15 @@ public sealed class CpgBuildAdmissionBudget
     private int _grantedDegreeHighWaterMark;
     private int _grantedDegreeInUse;
 
-    // 按总并行度和分配策略初始化构图准入预算。
-    public CpgBuildAdmissionBudget(int totalDegree, CpgBuildAdmissionPolicy policy = CpgBuildAdmissionPolicy.WholeBuild)
+    // 按总并行度初始化构图准入预算；单个租约不再被隐式裁剪为总预算的一半。
+    public CpgBuildAdmissionBudget(int totalDegree)
     {
         TotalDegree = Math.Max(1, totalDegree);
-        Policy = policy;
-        MaxDegreePerLease = policy == CpgBuildAdmissionPolicy.FairCapped ? Math.Max(1, TotalDegree / 2) : TotalDegree;
+        MaxDegreePerLease = TotalDegree;
         _availableDegree = TotalDegree;
     }
 
     public int TotalDegree { get; }
-
-    public CpgBuildAdmissionPolicy Policy { get; }
 
     public int MaxDegreePerLease { get; }
 
@@ -66,17 +57,16 @@ public sealed class CpgBuildAdmissionBudget
     }
 
     // 申请一份并行度租约，必要时进入队列等待可用额度。
-    public Task<CpgBuildAdmissionLease> AcquireAsync(int requestedDegree, CancellationToken cancellationToken, CpgBuildAdmissionPolicy? policy = null)
+    public Task<CpgBuildAdmissionLease> AcquireAsync(int requestedDegree, CancellationToken cancellationToken)
     {
         if (requestedDegree <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(requestedDegree));
         }
 
-        var appliedPolicy = policy ?? Policy;
-        var maxDegreePerLease = GetMaxDegreePerLease(appliedPolicy);
+        var maxDegreePerLease = MaxDegreePerLease;
         cancellationToken.ThrowIfCancellationRequested();
-        var request = new PendingRequest(requestedDegree, Math.Min(requestedDegree, maxDegreePerLease), appliedPolicy, maxDegreePerLease, cancellationToken);
+        var request = new PendingRequest(requestedDegree, Math.Min(requestedDegree, maxDegreePerLease), maxDegreePerLease, cancellationToken);
         request.CancellationRegistration = cancellationToken.Register(
           static state =>
           {
@@ -163,7 +153,6 @@ public sealed class CpgBuildAdmissionBudget
               this,
               request.RequestedDegree,
               request.GrantedDegree,
-              request.Policy,
               request.MaxDegreePerLease,
               request.Stopwatch.ElapsedMilliseconds,
               _activeLeaseCount,
@@ -188,21 +177,13 @@ public sealed class CpgBuildAdmissionBudget
         }
     }
 
-    private int GetMaxDegreePerLease(CpgBuildAdmissionPolicy policy)
-    {
-        return policy == CpgBuildAdmissionPolicy.FairCapped
-          ? Math.Max(1, TotalDegree / 2)
-          : TotalDegree;
-    }
-
     private sealed class PendingRequest
     {
         // 记录单次预算申请的目标、裁剪结果与取消句柄。
-        public PendingRequest(int requestedDegree, int grantedDegree, CpgBuildAdmissionPolicy policy, int maxDegreePerLease, CancellationToken cancellationToken)
+        public PendingRequest(int requestedDegree, int grantedDegree, int maxDegreePerLease, CancellationToken cancellationToken)
         {
             RequestedDegree = requestedDegree;
             GrantedDegree = grantedDegree;
-            Policy = policy;
             MaxDegreePerLease = maxDegreePerLease;
             CancellationToken = cancellationToken;
         }
@@ -210,8 +191,6 @@ public sealed class CpgBuildAdmissionBudget
         public int RequestedDegree { get; }
 
         public int GrantedDegree { get; }
-
-        public CpgBuildAdmissionPolicy Policy { get; }
 
         public int MaxDegreePerLease { get; }
 
@@ -234,12 +213,11 @@ public sealed class CpgBuildAdmissionBudget
         private readonly CpgBuildAdmissionBudget _owner;
         private int _disposed;
 
-        internal CpgBuildAdmissionLease(CpgBuildAdmissionBudget owner, int requestedDegree, int grantedDegree, CpgBuildAdmissionPolicy policy, int maxDegreePerLease, long waitMilliseconds, int activeLeaseCountAtGrant, int grantedDegreeHighWaterMark)
+        internal CpgBuildAdmissionLease(CpgBuildAdmissionBudget owner, int requestedDegree, int grantedDegree, int maxDegreePerLease, long waitMilliseconds, int activeLeaseCountAtGrant, int grantedDegreeHighWaterMark)
         {
             _owner = owner;
             RequestedDegree = requestedDegree;
             GrantedDegree = grantedDegree;
-            Policy = policy;
             MaxDegreePerLease = maxDegreePerLease;
             WaitMilliseconds = waitMilliseconds;
             ActiveLeaseCountAtGrant = activeLeaseCountAtGrant;
@@ -249,8 +227,6 @@ public sealed class CpgBuildAdmissionBudget
         public int RequestedDegree { get; }
 
         public int GrantedDegree { get; }
-
-        public CpgBuildAdmissionPolicy Policy { get; }
 
         public int MaxDegreePerLease { get; }
 

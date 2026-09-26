@@ -7,11 +7,67 @@ public sealed class StableNodeIdentityFactory
 {
     private readonly StringInterner _interner = new();
 
-    // 返回节点现有锚点，或按当前互斥字符串表生成一个后备锚点。
+    // 返回节点现有锚点，或按节点字符串表标识生成一个后备锚点。
     public StableNodeAnchor GetStableAnchor(NLCPGNode node)
     {
-        ArgumentNullException.ThrowIfNull(node);
-        return node.StableAnchor ?? StableNodeAnchor.CreateFallback(node, _interner, MapStableNodeRole(node.Kind));
+        return node.StableAnchor ?? StableNodeAnchor.CreateFallback(node, MapStableNodeRole(node.Kind));
+    }
+
+    // 使用稳定身份专用的字符串表，避免 graph-owned ID 的分配顺序影响 NodeId。
+    internal StableNodeAnchor GetStableAnchor(
+      NLCPGNode node,
+      StringInterner graphStringInterner,
+      string? stableIdentityText = null)
+    {
+        ArgumentNullException.ThrowIfNull(graphStringInterner);
+        if (node.StableAnchor is { } existing)
+        {
+            return existing;
+        }
+
+        var filePath = graphStringInterner.TryResolve(node.FilePathId, out var resolvedFilePath)
+          ? resolvedFilePath
+          : string.Empty;
+        var extraKey = stableIdentityText ?? ResolveExtraKey(node, graphStringInterner);
+        return new StableNodeAnchor(
+          node.Kind,
+          _interner.Intern(filePath),
+          node.SpanStart ?? -1,
+          node.SpanEnd ?? -1,
+          MapStableNodeRole(node.Kind),
+          0,
+          _interner.Intern(extraKey));
+    }
+
+    internal bool TryResolveStableIdentityText(NLCPGNode node, out string? text)
+    {
+        if (node.StableAnchor is { } anchor && _interner.TryResolve(anchor.ExtraKeyId, out text))
+        {
+            return true;
+        }
+
+        text = null;
+        return false;
+    }
+
+    private static string ResolveExtraKey(NLCPGNode node, StringInterner graphStringInterner)
+    {
+        if (node.FullNameId != 0 && graphStringInterner.TryResolve(node.FullNameId, out var fullName))
+        {
+            return fullName!;
+        }
+
+        if (node.SignatureId != 0 && graphStringInterner.TryResolve(node.SignatureId, out var signature))
+        {
+            return signature!;
+        }
+
+        if (node.NameId != 0 && graphStringInterner.TryResolve(node.NameId, out var name))
+        {
+            return name!;
+        }
+
+        return node.Kind.ToString();
     }
 
     private static StableNodeRole MapStableNodeRole(NLCPGNodeKind kind)

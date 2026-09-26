@@ -4,7 +4,7 @@ using NLCPG.Model;
 namespace NLCPG.Builder.Streaming;
 
 /// 端点仅在全局分配后解析的不可变边事实。
-internal sealed record CpgEdgeCandidate(
+public readonly record struct CpgEdgeCandidate(
   StableNodeAnchor SourceAnchor,
   StableNodeAnchor TargetAnchor,
   NLCPGEdgeKind Kind,

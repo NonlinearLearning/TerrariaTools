@@ -182,7 +182,7 @@ namespace NLCPG.Builder
             var methodSymbolKey = SymbolId(methodSymbol);
             lock (_cacheGate)
             {
-                if (_methodNodes.TryGetValue(key, out var existing))
+                if (_methodNodes.TryGetValue(graph, key, out var existing))
                 {
                     return existing;
                 }
@@ -198,7 +198,7 @@ namespace NLCPG.Builder
                   SpanStart: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start,
                   SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
                 _symbolKeysByNode[methodNode] = methodSymbolKey;
-                _methodNodes[key] = methodNode;
+                _methodNodes.Set(graph, key, methodNode);
                 return methodNode;
             }
         }
@@ -210,7 +210,7 @@ namespace NLCPG.Builder
             var methodSymbolKey = SymbolId(methodSymbol);
             lock (_cacheGate)
             {
-                if (_methodParameterNodes.TryGetValue(key, out var existing))
+                if (_methodParameterNodes.TryGetValue(graph, key, out var existing))
                 {
                     return existing;
                 }
@@ -226,7 +226,7 @@ namespace NLCPG.Builder
                   SpanEnd: parameterSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
                 _methodOwnerSymbolKeysByBoundaryNode[parameterNode] = methodSymbolKey;
                 _methodParameterOrdinalsByNode[parameterNode] = parameterSymbol.Ordinal;
-                _methodParameterNodes[key] = parameterNode;
+                _methodParameterNodes.Set(graph, key, parameterNode);
 
                 var parameterSymbolNode = GetOrCreateSymbolNode(parameterSymbol, graph);
                 graph.AddEdge(parameterNode, parameterSymbolNode, NLCPGEdgeKind.Ref);
@@ -242,7 +242,7 @@ namespace NLCPG.Builder
             var methodSymbolKey = SymbolId(methodSymbol);
             lock (_cacheGate)
             {
-                if (_methodReturnNodes.TryGetValue(key, out var existing))
+                if (_methodReturnNodes.TryGetValue(graph, key, out var existing))
                 {
                     return existing;
                 }
@@ -257,7 +257,7 @@ namespace NLCPG.Builder
                   SpanStart: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
                   SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
                 _methodOwnerSymbolKeysByBoundaryNode[returnNode] = methodSymbolKey;
-                _methodReturnNodes[key] = returnNode;
+                _methodReturnNodes.Set(graph, key, returnNode);
                 return returnNode;
             }
         }
@@ -268,7 +268,7 @@ namespace NLCPG.Builder
             var key = $"methodentry:{SymbolId(methodSymbol)}";
             lock (_cacheGate)
             {
-                if (_methodEntryNodes.TryGetValue(key, out var existing))
+                if (_methodEntryNodes.TryGetValue(graph, key, out var existing))
                 {
                     return existing;
                 }
@@ -282,7 +282,7 @@ namespace NLCPG.Builder
                   FilePath: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
                   SpanStart: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start,
                   SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.Start));
-                _methodEntryNodes[key] = entryNode;
+                _methodEntryNodes.Set(graph, key, entryNode);
                 return entryNode;
             }
         }
@@ -293,7 +293,7 @@ namespace NLCPG.Builder
             var key = $"methodexit:{SymbolId(methodSymbol)}";
             lock (_cacheGate)
             {
-                if (_methodExitNodes.TryGetValue(key, out var existing))
+                if (_methodExitNodes.TryGetValue(graph, key, out var existing))
                 {
                     return existing;
                 }
@@ -307,7 +307,7 @@ namespace NLCPG.Builder
                   FilePath: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceTree?.FilePath,
                   SpanStart: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End,
                   SpanEnd: methodSymbol.Locations.FirstOrDefault(location => location.IsInSource)?.SourceSpan.End));
-                _methodExitNodes[key] = exitNode;
+                _methodExitNodes.Set(graph, key, exitNode);
                 return exitNode;
             }
         }

@@ -6,29 +6,32 @@ namespace RoslynPrototype.Tests;
 public sealed class CpgBuildAdmissionBudgetTests
 {
     [Fact]
-    public async Task FairCappedPolicy_GrantsTwoEligibleBuildsAndEventuallyAdmitsLaterFiles()
+    public async Task WholeCpgRequest_IsNotImplicitlyCappedAtHalfBudget()
     {
-        var budget = new CpgBuildAdmissionBudget(
-          totalDegree: 12,
-          CpgBuildAdmissionPolicy.FairCapped);
+        var budget = new CpgBuildAdmissionBudget(totalDegree: 12);
         using var first = await budget.AcquireAsync(requestedDegree: 12, CancellationToken.None);
-        using var second = await budget.AcquireAsync(requestedDegree: 6, CancellationToken.None);
+        var second = budget.AcquireAsync(requestedDegree: 6, CancellationToken.None);
         var laterTwo = budget.AcquireAsync(requestedDegree: 2, CancellationToken.None);
         var laterOne = budget.AcquireAsync(requestedDegree: 1, CancellationToken.None);
 
-        Assert.Equal(6, first.GrantedDegree);
-        Assert.Equal(6, second.GrantedDegree);
+        Assert.Equal(12, first.GrantedDegree);
+        Assert.False(second.IsCompleted);
         Assert.Equal(12, budget.GrantedDegreeInUse);
         Assert.False(laterTwo.IsCompleted);
         Assert.False(laterOne.IsCompleted);
 
         first.Dispose();
+        using var admittedSecond = await second;
+        Assert.Equal(6, admittedSecond.GrantedDegree);
+        Assert.Equal(9, budget.GrantedDegreeInUse);
+
+        admittedSecond.Dispose();
         using var admittedTwo = await laterTwo;
         using var admittedOne = await laterOne;
 
         Assert.Equal(2, admittedTwo.GrantedDegree);
         Assert.Equal(1, admittedOne.GrantedDegree);
-        Assert.Equal(9, budget.GrantedDegreeInUse);
+        Assert.Equal(3, budget.GrantedDegreeInUse);
         Assert.Equal(12, budget.GrantedDegreeHighWaterMark);
     }
 

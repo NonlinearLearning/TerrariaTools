@@ -36,6 +36,11 @@ public enum ConcurrencyOperationKind
     /// 依赖图调度。
     /// </summary>
     DependencyGraph,
+
+    /// <summary>
+    /// 固定长期 worker 执行。
+    /// </summary>
+    FixedWorkers,
 }
 
 /// <summary>

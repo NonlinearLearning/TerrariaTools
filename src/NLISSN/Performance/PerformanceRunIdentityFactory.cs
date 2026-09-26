@@ -58,10 +58,10 @@ internal static class PerformanceRunIdentityFactory
       operatingSystem,
       cpu,
       environmentFingerprint,
-      Math.Max(1, configuration.Execution.MaxDegreeOfParallelism),
-      runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism,
+      Math.Max(1, configuration.Execution.DirectoryMaxDegreeOfParallelism),
+      Math.Max(1, configuration.Execution.CpgMaxDegreeOfParallelism),
       configuration.Execution.GroupParallelism
-        ? Math.Max(1, configuration.Execution.MaxDegreeOfParallelism)
+        ? Math.Max(1, configuration.Execution.GroupMaxDegreeOfParallelism)
         : 1,
       mode,
       mode is PerformanceMode.Diagnostic or PerformanceMode.Profile,

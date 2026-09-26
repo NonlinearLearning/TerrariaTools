@@ -1,4 +1,5 @@
-schemaVersion: 2
+schemaVersion: 3
+tool: nlissn
 runId: workspace-generator-cli-20260804
 input:
   path: WorkspaceFixture.sln
@@ -12,7 +13,12 @@ analysis: {}
 execution:
   writeBack: false
   skipRewrite: true
-  maxDegreeOfParallelism: 1
+  directoryMaxDegreeOfParallelism: 1
+  cpgMaxDegreeOfParallelism: 1
+  groupMaxDegreeOfParallelism: 1
+  helperMaxDegreeOfParallelism: 1
+  replayMaxDegreeOfParallelism: 1
+  maxConcurrentOperations: 1
 artifacts:
   root: artifacts
   diff:

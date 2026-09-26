@@ -50,11 +50,15 @@ public sealed class  CommandHost
         var settings = configuration.CreateAnalysisRequestSettings();
         var performanceMode = ParsePerformanceMode(configuration.Artifacts.PerformanceMode);
         var runtime = AnalysisRuntimeFactory.Create(new RoslynPrototypeExecutionOptions(
-          configuration.Execution.MaxDegreeOfParallelism,
-          configuration.Execution.DirectoryParallelism,
-          configuration.Execution.GroupParallelism,
-          configuration.Execution.HelperParallelism,
-          CpgMaxDegreeOfParallelism: configuration.Execution.CpgMaxDegreeOfParallelism));
+          DirectoryMaxDegreeOfParallelism: configuration.Execution.DirectoryMaxDegreeOfParallelism,
+          CpgMaxDegreeOfParallelism: configuration.Execution.CpgMaxDegreeOfParallelism,
+          GroupMaxDegreeOfParallelism: configuration.Execution.GroupMaxDegreeOfParallelism,
+          HelperMaxDegreeOfParallelism: configuration.Execution.HelperMaxDegreeOfParallelism,
+          ReplayMaxDegreeOfParallelism: configuration.Execution.ReplayMaxDegreeOfParallelism,
+          MaxConcurrentOperations: configuration.Execution.MaxConcurrentOperations,
+          EnableDirectoryParallelism: configuration.Execution.DirectoryParallelism,
+          EnableGroupParallelism: configuration.Execution.GroupParallelism,
+          EnableHelperParallelism: configuration.Execution.HelperParallelism));
         PerformanceDiagnosticsCollector? diagnosticsCollector = null;
         if (configuration.Artifacts.WritePerformanceSummary)
         {
@@ -256,6 +260,14 @@ public sealed class  CommandHost
             }
 
             throw;
+        }
+        finally
+        {
+            // G0-L：本 run 自建的内核必须在此收尾。成功、首次异常与外部取消都经过这里；
+            // DisposeAsync 的语义是排空已接受的工作再结束长期 worker，不是取消，
+            // 所以异常路径上调用它不会改变原有异常语义（原异常照常传播）。
+            // 注入内核与派生 runtime 的 OwnsScheduler 为 false，本调用对其是空操作。
+            await runtime.DisposeSchedulerAsync();
         }
     }
 

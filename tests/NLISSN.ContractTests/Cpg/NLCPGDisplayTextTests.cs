@@ -20,10 +20,9 @@ public sealed class NLCPGDisplayTextTests
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(source, "display-text.cs");
         var ifNode = Assert.Single(graph.Nodes, node =>
             node.Kind == NLCPG.Contracts.NLCPGNodeKind.SyntaxNode &&
-            node.DisplayKind == nameof(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IfStatement));
+            graph.ResolveDisplayKind(node) == nameof(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IfStatement));
 
-        Assert.Null(ifNode.Text);
-        Assert.Equal("if (seed > 0) return seed + 1;", graph.GetDisplayText(ifNode));
+    Assert.Equal("if (seed > 0) return seed + 1;", graph.GetDisplayText(ifNode));
     }
 
     [Fact]
@@ -33,13 +32,13 @@ public sealed class NLCPGDisplayTextTests
 
         Assert.Equal(
             "demo.full",
-            graph.GetDisplayText(new NLCPGNode(NLCPG.Contracts.NLCPGNodeKind.Operation, "Operation", FullName: "demo.full")));
+            graph.GetDisplayText(graph.AddNode(new NLCPGNodeDraft(NLCPG.Contracts.NLCPGNodeKind.Operation, FullName: "demo.full"))));
         Assert.Equal(
             "demoName",
-            graph.GetDisplayText(new NLCPGNode(NLCPG.Contracts.NLCPGNodeKind.Operation, "Operation", Name: "demoName")));
+            graph.GetDisplayText(graph.AddNode(new NLCPGNodeDraft(NLCPG.Contracts.NLCPGNodeKind.Operation, Name: "demoName"))));
         Assert.Equal(
             "Operation",
-            graph.GetDisplayText(new NLCPGNode(NLCPG.Contracts.NLCPGNodeKind.Operation, "Operation")));
+            graph.GetDisplayText(graph.AddNode(new NLCPGNodeDraft(NLCPG.Contracts.NLCPGNodeKind.Operation))));
     }
 
     [Fact]
@@ -56,26 +55,35 @@ public sealed class NLCPGDisplayTextTests
         var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(source, filePath);
         var anchorNodeId = Assert.Single(graph.Nodes, node =>
             node.Kind == NLCPG.Contracts.NLCPGNodeKind.SyntaxNode &&
-            node.DisplayKind == nameof(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IfStatement)).NodeId!.Value;
+            graph.ResolveDisplayKind(node) == nameof(Microsoft.CodeAnalysis.CSharp.SyntaxKind.IfStatement)).NodeId!.Value;
+        File.WriteAllText(
+          Path.Combine(tempDirectory, "nlissn.yml"),
+          $"""
+          schemaVersion: 3
+          tool: nlcpg
+          input:
+            path: ./display-text-cli.cs
+          nlcpg:
+            view:
+              mode: local
+              anchor:
+                nodeId: {anchorNodeId}
+              hops: 0
+              direction: both
+              edgeKinds: []
+          """);
 
         var originalOut = Console.Out;
         var originalError = Console.Error;
+        var originalDirectory = Directory.GetCurrentDirectory();
         try
         {
             var output = new StringWriter();
             Console.SetOut(output);
             Console.SetError(TextWriter.Null);
+            Directory.SetCurrentDirectory(tempDirectory);
 
-            var exitCode = new NLCPGCli().Run(new[]
-            {
-                filePath,
-                "--view",
-                "local",
-                "--anchor-node-id",
-                anchorNodeId.ToString(),
-                "--hops",
-                "0",
-            });
+            var exitCode = new NLCPGCli().Run(Array.Empty<string>());
 
             Assert.Equal(0, exitCode);
             Assert.Contains("if (seed > 0) return seed + 1;", output.ToString());
@@ -84,6 +92,86 @@ public sealed class NLCPGDisplayTextTests
         {
             Console.SetOut(originalOut);
             Console.SetError(originalError);
+            Directory.SetCurrentDirectory(originalDirectory);
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Cli_LoadsUnifiedYamlConfiguration_AndWritesConfiguredLocalView()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDirectory);
+        var sourcePath = Path.Combine(tempDirectory, "configured.cs");
+        var jsonPath = Path.Combine(tempDirectory, "Build", "local-view.json");
+        const string source = "namespace Demo; public sealed class Sample { public int Add() => 1; }";
+        File.WriteAllText(sourcePath, source);
+        var graph = new NLCPG.Builder.NLCPGBuilder().BuildFromSource(source, sourcePath);
+        var anchorNodeId = Assert.Single(graph.Nodes, node =>
+            node.Kind == NLCPG.Contracts.NLCPGNodeKind.Method &&
+            graph.ResolveName(node) == "Add").NodeId!.Value;
+        File.WriteAllText(
+          Path.Combine(tempDirectory, "nlissn.yml"),
+          $"""
+          schemaVersion: 3
+          tool: nlcpg
+          input:
+            path: ./configured.cs
+          nlcpg:
+            view:
+              mode: local
+              anchor:
+                nodeId: {anchorNodeId}
+              hops: 0
+              direction: both
+              edgeKinds: []
+            output:
+              json: ./Build/local-view.json
+          """);
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        try
+        {
+            Directory.SetCurrentDirectory(tempDirectory);
+            var exitCode = new NLCPGCli().Run(Array.Empty<string>());
+
+            Assert.Equal(0, exitCode);
+            Assert.True(File.Exists(jsonPath));
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
+            Directory.Delete(tempDirectory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Cli_RejectsCommandLineArguments_EvenHelp()
+    {
+        Assert.Throws<ArgumentException>(() => new NLCPGCli().Run(new[] { "--help" }));
+    }
+
+    [Fact]
+    public void Cli_RejectsConfigurationForAnotherTool()
+    {
+        var tempDirectory = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDirectory);
+        File.WriteAllText(
+          Path.Combine(tempDirectory, "nlissn.yml"),
+          """
+          schemaVersion: 3
+          tool: nlissn
+          """);
+
+        var originalDirectory = Directory.GetCurrentDirectory();
+        try
+        {
+            Directory.SetCurrentDirectory(tempDirectory);
+            Assert.Throws<ArgumentException>(() => new NLCPGCli().Run(Array.Empty<string>()));
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(originalDirectory);
             Directory.Delete(tempDirectory, recursive: true);
         }
     }

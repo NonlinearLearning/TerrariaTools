@@ -56,11 +56,19 @@ namespace NLCPG.Builder
 
         private IReadOnlyList<OperationRootPlan> GetOperationRootPlans(SyntaxNode root, SemanticModel semanticModel)
         {
-            if (ReferenceEquals(_operationRootPlanRoot, root) &&
-                ReferenceEquals(_operationRootPlanSemanticModel, semanticModel) &&
-                _operationRootPlans is not null)
+            // ⚠ D1：缓存**必须多槽**。原实现是单槽（root + semanticModel 各一个字段），
+            //   在本改造前完全够用——每次构建只有一个文件，且调用方总是传同一对参数。
+            //   多文件构建后，规划相位/提交步/各阶段守卫会**交替**为不同文档调用本方法，
+            //   单槽下每次调用都退化为未命中，于是每个文件的操作根被反复重新推导
+            //   （`GetDeclaredSymbol` 逐方法调用），而这不改变任何产物——纯性能损耗。
+            //   按**语法根引用**分键即恢复命中；单文件时字典恒为一个条目，行为逐字不变。
+            lock (_cacheGate)
             {
-                return _operationRootPlans;
+                if (_operationRootPlansByRoot.TryGetValue(root, out var cached) &&
+                    ReferenceEquals(cached.SemanticModel, semanticModel))
+                {
+                    return cached.Plans;
+                }
             }
 
             var operationRoots = new List<OperationRootPlan>();
@@ -116,11 +124,24 @@ namespace NLCPG.Builder
                 order += 1;
             }
 
-            _operationRootPlanRoot = root;
-            _operationRootPlanSemanticModel = semanticModel;
-            _operationRootPlans = operationRoots;
+            lock (_cacheGate)
+            {
+                _operationRootPlansByRoot[root] = new OperationRootPlanCacheEntry(semanticModel, operationRoots);
+            }
+
             return operationRoots;
         }
+
+        /// <summary>
+        /// 单个语法根的操作根计划缓存条目。
+        /// </summary>
+        /// <remarks>
+        /// 连语义模型一起存：同一语法根在不同语义模型下（例如不同 compilation）
+        /// 可能解析出不同的符号，故命中必须同时匹配两者。
+        /// </remarks>
+        private sealed record OperationRootPlanCacheEntry(
+          SemanticModel SemanticModel,
+          IReadOnlyList<OperationRootPlan> Plans);
 
         private void AddOperationTree(IOperation? operation, IOperation? parentOperation, IOperation? methodRoot, IMethodSymbol? owningMethod, NLCPGGraph graph, NLCPGBuildContext context)
         {

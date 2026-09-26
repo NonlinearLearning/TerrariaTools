@@ -1,0 +1,148 @@
+{
+  "Status": "Verified",
+  "Records": 21,
+  "IndependentByteComparisons": 18,
+  "FullMetadataAndPublicationOrderEqual": true,
+  "CountersStableAcrossRunsAndDop": true,
+  "MaximumNonOffUnattributedFraction": 0.00010124628706606047,
+  "CalibrationGate": "Inconclusive",
+  "ObservedRangeIncrease": [
+    -0.7728880364589749,
+    0.20415037844132078
+  ],
+  "MedianIncreasePercent": -6.793228022951048,
+  "Representatives": [
+    {
+      "Fixture": "Sparse",
+      "RunId": "01-Sparse-Detailed-r1-dop1",
+      "TotalMs": 3.3771,
+      "PhaseMs": {
+        "UsedFacts": 0.7051,
+        "PlanBuild": 0.987,
+        "DefinitionSetup": 0.4533,
+        "Fixpoint": 0.1626,
+        "CandidateIndexBuild": 0.0912,
+        "CandidateLoop": 0.6153,
+        "ExplicitSources": 0.2274,
+        "ReturnBoundary": 0.1121,
+        "ResultMaterialization": 0.023
+      },
+      "PhasePercent": {
+        "UsedFacts": 20.87886056083622,
+        "PlanBuild": 29.22625921648752,
+        "DefinitionSetup": 13.42275917207071,
+        "Fixpoint": 4.814781913476059,
+        "CandidateIndexBuild": 2.7005418850493026,
+        "CandidateLoop": 18.219774362618814,
+        "ExplicitSources": 6.733587989695301,
+        "ReturnBoundary": 3.319416067039768,
+        "ResultMaterialization": 0.681057712238311
+      },
+      "DetailMs": {
+        "TryGetCandidates": 0.0555,
+        "DefinitionLookup": 0.0061,
+        "FactsMatch": 0.0028,
+        "CandidateCollect": 0.0351
+      },
+      "Posting": 128,
+      "PostingPerUse": 1.0,
+      "PostingPerReturnedCandidate": 2.0,
+      "SeenRejectRate": 0.0,
+      "UnreachableRate": 0.5,
+      "MatchPassRate": 1.0,
+      "NsPerActualFactsMatch_RawUnqualified": 43.75,
+      "UnattributedMs": 0.0001,
+      "CandidateLoopResidualMs": 0.5158,
+      "QueueWaitMs": 0.0956,
+      "CommitMs": 0.1325
+    },
+    {
+      "Fixture": "Collision",
+      "RunId": "11-Collision-Detailed-r2-dop1",
+      "TotalMs": 2.6316,
+      "PhaseMs": {
+        "UsedFacts": 0.6997,
+        "PlanBuild": 0.6989,
+        "DefinitionSetup": 0.2085,
+        "Fixpoint": 0.1161,
+        "CandidateIndexBuild": 0.0227,
+        "CandidateLoop": 0.7699,
+        "ExplicitSources": 0.0498,
+        "ReturnBoundary": 0.0613,
+        "ResultMaterialization": 0.0045
+      },
+      "PhasePercent": {
+        "UsedFacts": 26.588387292901658,
+        "PlanBuild": 26.557987536099713,
+        "DefinitionSetup": 7.922936616507068,
+        "Fixpoint": 4.411764705882353,
+        "CandidateIndexBuild": 0.862593099255206,
+        "CandidateLoop": 29.255965952272383,
+        "ExplicitSources": 1.8923848609211127,
+        "ReturnBoundary": 2.3293813649490804,
+        "ResultMaterialization": 0.17099863201094392
+      },
+      "DetailMs": {
+        "TryGetCandidates": 0.3917,
+        "DefinitionLookup": 0.025,
+        "FactsMatch": 0.0096,
+        "CandidateCollect": 0.048
+      },
+      "Posting": 37764,
+      "PostingPerUse": 61.504885993485345,
+      "PostingPerReturnedCandidate": 116.55555555555556,
+      "SeenRejectRate": 0.2831858407079646,
+      "UnreachableRate": 0.9880309289270205,
+      "MatchPassRate": 1.0,
+      "NsPerActualFactsMatch_RawUnqualified": 29.62962962962963,
+      "UnattributedMs": 0.0002,
+      "CandidateLoopResidualMs": 0.2956,
+      "QueueWaitMs": 0.0874,
+      "CommitMs": 0.236
+    },
+    {
+      "Fixture": "JoinLoop",
+      "RunId": "19-JoinLoop-Detailed-r3-dop1",
+      "TotalMs": 1.0831,
+      "PhaseMs": {
+        "UsedFacts": 0.3116,
+        "PlanBuild": 0.333,
+        "DefinitionSetup": 0.1144,
+        "Fixpoint": 0.0528,
+        "CandidateIndexBuild": 0.0118,
+        "CandidateLoop": 0.2067,
+        "ExplicitSources": 0.0212,
+        "ReturnBoundary": 0.0291,
+        "ResultMaterialization": 0.0024
+      },
+      "PhasePercent": {
+        "UsedFacts": 28.76927338195919,
+        "PlanBuild": 30.745083556458315,
+        "DefinitionSetup": 10.562274951528021,
+        "Fixpoint": 4.874896131474471,
+        "CandidateIndexBuild": 1.0894654233219463,
+        "CandidateLoop": 19.084110423783585,
+        "ExplicitSources": 1.9573446588495984,
+        "ReturnBoundary": 2.6867325270058164,
+        "ResultMaterialization": 0.22158618779429415
+      },
+      "DetailMs": {
+        "TryGetCandidates": 0.0603,
+        "DefinitionLookup": 0.006,
+        "FactsMatch": 0.0026,
+        "CandidateCollect": 0.0137
+      },
+      "Posting": 4510,
+      "PostingPerUse": 20.315315315315317,
+      "PostingPerReturnedCandidate": 60.13333333333333,
+      "SeenRejectRate": 0.0,
+      "UnreachableRate": 0.983370288248337,
+      "MatchPassRate": 1.0,
+      "NsPerActualFactsMatch_RawUnqualified": 34.666666666666664,
+      "UnattributedMs": 0.0001,
+      "CandidateLoopResidualMs": 0.1241,
+      "QueueWaitMs": 0.0653,
+      "CommitMs": 0.0486
+    }
+  ]
+}

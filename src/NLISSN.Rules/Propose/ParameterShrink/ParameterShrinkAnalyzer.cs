@@ -2,6 +2,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Operations;
+using NL.Concurrency;
 using NLISSN.Core.Analysis;
 using NLISSN.Rules;
 using System.Collections.Concurrent;
@@ -1332,7 +1333,7 @@ public sealed class ParameterShrinkAnalyzer
         }
 
         if (!runtime.ExecutionOptions.EnableHelperParallelism ||
-            runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism == 1 ||
+            runtime.ExecutionOptions.EffectiveHelperMaxDegreeOfParallelism == 1 ||
             scans.Count <= 1)
         {
             foreach (var scan in scans)
@@ -1348,9 +1349,14 @@ public sealed class ParameterShrinkAnalyzer
             return;
         }
 
+        // ⚠️ 此处**不能**迁到内核（S2-4 结论，2026-09-24）：
+        // ForEachScan 由规则体（Propagate/Propose 规则）内部调用，而 S2-2 之后
+        // 规则体本身就在内核工作项里执行 ⇒ 再提交会触发内核的嵌套拒绝
+        // （设计 §10.3，WorkSchedulerNestingTests 已固定该契约）。
+        // 必须等 S3 把规则阶段内联、摊平为单一扁平 DAG（设计 §4.2 / §11）之后才能迁移。
         runtime.ConcurrencyPool.ForEachAsync(
           scans,
-          runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+          runtime.ExecutionOptions.EffectiveHelperMaxDegreeOfParallelism,
           (scan, _, cancellationToken) =>
           {
               cancellationToken.ThrowIfCancellationRequested();

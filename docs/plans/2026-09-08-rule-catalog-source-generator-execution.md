@@ -38,7 +38,7 @@ pwsh -File .\Miscellaneous\init.ps1
 开始前保存当前工作树状态，不覆盖用户已有变更。读取：
 
 ```text
-Context/AGENTS.md
+AGENTS.md
 Context/progress.md
 Context/feature_list.json
 docs/harness-runtime.md

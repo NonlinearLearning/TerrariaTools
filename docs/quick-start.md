@@ -19,35 +19,79 @@ pwsh -File .\Miscellaneous\init.ps1
 
 ## 2. 运行最小 CPG
 
-先查看支持的 CLI 选项：
+NLCPG 从当前工作目录的 `nlissn.yml` 读取配置。先创建一个只输出统计信息的
+运行目录：
 
-```powershell
-dotnet run --project .\src\NLCPG\NLCPG.csproj -- --help
+```yaml
+schemaVersion: 3
+tool: nlcpg
+nlcpg:
+  view:
+    mode: stats
 ```
 
-再构建仓库自带样例：
+将该内容保存为 `Build\nlcpg-smoke\nlissn.yml`，再构建内置样例：
 
 ```powershell
-dotnet run --project .\src\NLCPG\NLCPG.csproj -- .\src\NLCPG\samples\analysis-sample.cs
+Push-Location .\Build\nlcpg-smoke
+dotnet run --project ..\..\src\NLCPG\NLCPG.csproj
+Pop-Location
 ```
 
 成功时标准输出包含 `Nodes:` 和 `Edges:`，后续行按节点类型列出统计值。
 
 CPG 的 shard 持久化是构建器 API 配置，不是当前 CLI 参数；存储布局、恢复和查询限制见[开发者指南](developer-guide.md#streaming-cpg-shard-store)。
 
+## 2.1 按项目导出 CPG JSON
+
+项目级导出使用完整 Roslyn project compilation，并按源文件目录镜像写出 JSON。先在
+项目目录的 `nlissn.yml` 中配置输入和 worker 数：
+
+```yaml
+schemaVersion: 3
+tool: nlcpg-project-export
+input:
+  path: D:/TRbackup/Version4/TerrariaServer.csproj
+  targetFramework: net40
+  configuration: Debug
+  platform: AnyCPU
+  restore: disabled
+  generatedSources: exclude
+projectExport:
+  output: D:/TRbackup/Version4/Build/NLCPG-json
+  projectWorkerCount: 1
+  resume: false
+```
+
+然后从该配置目录运行，不附带任何参数：
+
+```powershell
+Push-Location D:\TRbackup\Version4
+dotnet run --project D:\ProjectItem\SourceCode\Net\NL\src\NLCPG.ProjectExport\NLCPG.ProjectExport.csproj
+Pop-Location
+```
+
+例如 `src\Server\Main.cs` 会生成 `src\Server\Main.cs.json`；项目根的 `manifest.json` 保存文件索引、全局节点索引、跨文件边和诊断。生成源通过 `input.generatedSources: include` 加入。
+
 ## 3. 运行删除规则宿主
 
 `src/NLISSN/NLISSN.csproj` 只读取当前工作目录的 `nlissn.yml`，不接受分析参数。将配置放在运行目录，例如：
 
 ```yaml
-schemaVersion: 2
+schemaVersion: 3
+tool: nlissn
 runId: first-run
 input:
   path: ./source
 analysis:
   targetName: TargetName
 execution:
-  maxDegreeOfParallelism: 1
+  directoryMaxDegreeOfParallelism: 1
+  cpgMaxDegreeOfParallelism: 1
+  groupMaxDegreeOfParallelism: 1
+  helperMaxDegreeOfParallelism: 1
+  replayMaxDegreeOfParallelism: 1
+  maxConcurrentOperations: 1
 artifacts:
   diff:
     enabled: true
@@ -89,7 +133,7 @@ input:
 
 对 `.sln` 输入，`input.project` 是 solution 内的项目选择器；对 `.cs` 输入，它是拥有该文件的 `.csproj`；`.csproj` 输入不再重复填写 `input.project`。`generatedSources: include` 允许已有或 MSBuild 可见的生成源参与语义分析，但生成源永远不会写回。`generators: enabled` 会执行 Workspace source-generator pipeline，并把 MSBuild 的 analyzer references、AdditionalFiles 和 analyzer config 传给 generator；对 `ProjectReference` 形式的 analyzer，所选 `Configuration`、`Platform` 和 `TargetFramework` 的 DLL 必须已经构建，缺失时以 `NLISSNWS024` fail closed，加载器不会隐式 build。默认 `disabled`，发现外部 generator reference 时只给出提示。默认不写回；只有确认 `Build\Result\<runId>\Diff` 后才将 `execution.writeBack` 设为 `true`。完整字段、全局规则开关和制品布局见 [配置参考](cli-reference.md)。
 
-编辑器可关联 [`Miscellaneous/schemas/nlissn.schema.2.json`](../Miscellaneous/schemas/nlissn.schema.2.json)。该 schema 关闭未知属性；运行时仍执行路径、制品隔离与 replay 互斥校验。
+编辑器可关联 [`Miscellaneous/schemas/nlissn.schema.3.json`](../Miscellaneous/schemas/nlissn.schema.3.json)。该 schema 关闭未知属性；运行时仍执行路径、制品隔离与 replay 互斥校验。NLISSN 仍兼容读取已有 Schema 2 fixture，但 Schema 3 必须使用 `tool: nlissn`。
 
 ## 4. 运行回归测试
 

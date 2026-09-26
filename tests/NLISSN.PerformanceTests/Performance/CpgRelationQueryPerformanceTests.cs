@@ -19,12 +19,12 @@ public sealed class CpgRelationQueryPerformanceTests
     public void Query_WarmedCache_ReportsExecutionAndPathMaterializationSeparately()
     {
         var graph = new NLCPGGraph();
-        var source = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "source"));
-        var target = graph.AddNode(new NLCPGNode(NLCPGNodeKind.SyntaxNode, "SyntaxNode", "target"));
+        var source = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "source"));
+        var target = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: "target"));
         graph.AddEdge(source, target, NLCPGEdgeKind.SyntaxChild);
         graph.FreezeQueryIndex();
-        var sourceId = graph.Nodes.Single(node => node.Name == "source").NodeId!.Value;
-        var targetId = graph.Nodes.Single(node => node.Name == "target").NodeId!.Value;
+        var sourceId = graph.Nodes.Single(node => graph.ResolveName(node) == "source").NodeId!.Value;
+        var targetId = graph.Nodes.Single(node => graph.ResolveName(node) == "target").NodeId!.Value;
         var query = new CpgRelationQuery(
             CpgRelationProfile.StructuralContainment,
             CpgQueryDirection.Outgoing,

@@ -2,19 +2,69 @@ using NLCPG.Contracts;
 
 namespace NLCPG.Model;
 
-/// 表示NLCPG 中的一个节点。
-public sealed record NLCPGNode(
-  NLCPGNodeKind Kind,      // 节点类别枚举，给程序分支判断用
-  string DisplayKind,          // 面向展示/输出的节点类别文本
-  string? Name = null,         // 简短名称，如变量名、方法名、类型名
-  string? FullName = null,     // 全限定名，如命名空间+类型+成员签名
-  string? Signature = null,    // 签名信息，常用于方法/调用节点
-  NLCPGDispatchKind? DispatchKind = null, // 结构化分派/动作标签
-  string? TypeFullName = null, // 节点对应的数据类型全名
-  string? FilePath = null,     // 所属源文件路径
-  int? SpanStart = null,       // 源码起始位置
-  int? SpanEnd = null,         // 源码结束位置
-  string? Text = null,         // 节点关联的源码文本或摘要文本
-  bool IsImplicit = false,     // 是否为 Roslyn 隐式生成的语义节点
-  NodeId? NodeId = null,       // 冻结图主身份；构图阶段可暂未分配
-  StableNodeAnchor? StableAnchor = null); // 冻结图 NodeId 分配输入
+/// 表示 NLCPG 中的一个紧凑节点值；文本字段由所属图的字符串表解析。
+public readonly record struct NLCPGNode(
+  NLCPGNodeKind Kind,
+  uint NameId = 0,
+  uint FullNameId = 0,
+  uint SignatureId = 0,
+  NLCPGDispatchKind? DispatchKind = null,
+  uint TypeFullNameId = 0,
+  uint FilePathId = 0,
+  int? SpanStart = null,
+  int? SpanEnd = null,
+  bool IsImplicit = false,
+  NodeId? NodeId = null,
+  StableNodeAnchor? StableAnchor = null)
+{
+  public bool Equals(NLCPGNode other)
+  {
+    if (StableAnchor.HasValue || other.StableAnchor.HasValue)
+    {
+      return StableAnchor.HasValue && other.StableAnchor.HasValue &&
+        StableAnchor.Value.Equals(other.StableAnchor.Value);
+    }
+
+    if (NodeId.HasValue || other.NodeId.HasValue)
+    {
+      return NodeId.HasValue && other.NodeId.HasValue && NodeId.Value.Equals(other.NodeId.Value);
+    }
+
+    return Kind == other.Kind &&
+      NameId == other.NameId &&
+      FullNameId == other.FullNameId &&
+      SignatureId == other.SignatureId &&
+      DispatchKind == other.DispatchKind &&
+      TypeFullNameId == other.TypeFullNameId &&
+      FilePathId == other.FilePathId &&
+      SpanStart == other.SpanStart &&
+      SpanEnd == other.SpanEnd &&
+      IsImplicit == other.IsImplicit;
+  }
+
+  public override int GetHashCode()
+  {
+    if (StableAnchor.HasValue)
+    {
+      return StableAnchor.Value.GetHashCode();
+    }
+
+    if (NodeId.HasValue)
+    {
+      return NodeId.Value.GetHashCode();
+    }
+
+    var hash = new HashCode();
+    hash.Add(Kind);
+    hash.Add(NameId);
+    hash.Add(FullNameId);
+    hash.Add(SignatureId);
+    hash.Add(DispatchKind);
+    hash.Add(TypeFullNameId);
+    hash.Add(FilePathId);
+    hash.Add(SpanStart);
+    hash.Add(SpanEnd);
+    hash.Add(IsImplicit);
+    return hash.ToHashCode();
+  }
+}

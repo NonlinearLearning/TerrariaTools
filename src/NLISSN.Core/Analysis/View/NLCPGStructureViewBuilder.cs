@@ -150,18 +150,18 @@ public sealed class NLCPGStructureViewBuilder
 
         var nodes = selectedNodeIds
             .Select(context.Graph.GetNode)
-            .Where(node => node is not null)
-            .Select(node => node!)
+            .Where(node => node.HasValue)
+            .Select(node => node.GetValueOrDefault())
             .OrderBy(node => node.SpanStart ?? int.MaxValue)
             .ThenBy(node => node.SpanEnd ?? int.MaxValue)
             .ThenBy(node => node.NodeId)
             .ToArray();
         var rootCandidates = nodes
             .Where(node => node.Kind == NLCPGNodeKind.SyntaxNode &&
-                string.Equals(node.FilePath ?? string.Empty, fragmentList[0].SyntaxTree.FilePath ?? string.Empty, StringComparison.Ordinal) &&
+                string.Equals(context.Graph.ResolveFilePath(node) ?? string.Empty, fragmentList[0].SyntaxTree.FilePath ?? string.Empty, StringComparison.Ordinal) &&
                 node.SpanStart == fragmentList[0].SpanStart &&
                 node.SpanEnd == fragmentList[0].Span.End &&
-                string.Equals(node.DisplayKind, fragmentList[0].Kind().ToString(), StringComparison.Ordinal))
+                string.Equals(context.Graph.ResolveDisplayKind(node), fragmentList[0].Kind().ToString(), StringComparison.Ordinal))
             .ToArray();
         if (rootCandidates.Length != 1)
         {
@@ -184,7 +184,7 @@ public sealed class NLCPGStructureViewBuilder
         var filePath = fragment.SyntaxTree.FilePath ?? string.Empty;
         return graph.Nodes
             .Where(node => node.NodeId.HasValue &&
-                string.Equals(node.FilePath ?? string.Empty, filePath, StringComparison.Ordinal) &&
+                string.Equals(graph.ResolveFilePath(node) ?? string.Empty, filePath, StringComparison.Ordinal) &&
                 node.SpanStart >= fragment.SpanStart &&
                 node.SpanEnd <= fragment.Span.End)
             .Select(node => node.NodeId!.Value)

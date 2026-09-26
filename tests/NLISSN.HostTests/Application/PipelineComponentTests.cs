@@ -104,36 +104,123 @@ public sealed class PipelineComponentTests : IDisposable
     }
 
     [Fact]
-    public void CreateFromOptions_WithCpgDopOverride_UsesExplicitCpgValue()
+    public void AnalyzeFromArgs_WithRuntimeLog_ReportsEffectiveLimitsNotRequestedValues()
     {
-        var runtime = AnalysisLegacyOptionsTestExtensions.CreateRuntime(
-          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-          {
-            ["max-degree-of-parallelism"] = "12",
-            ["cpg-max-degree-of-parallelism"] = "1"
-          });
+        // 风险 R4/R4b：YAML 请求值与内核实际生效值可能不同。
+        // groupParallelism 默认 false ⇒ 规则组实际为 1，即使请求了 2。
+        var runtimeLogPath = Path.Combine(_tempDirectory, "runtime-effective.log");
 
-        Assert.Equal(12, runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        Assert.Equal(1, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
+        CreateCommandHost().AnalyzeFromArgs(new[]
+        {
+          "--target-name",
+          "s",
+          "--skip-rewrite",
+          "--no-diff",
+          "--runtime-log",
+          runtimeLogPath,
+          "--log-profile",
+          "benchmark",
+          // 六个额度全部显式给定，使 workerCount 的期望值唯一确定（= 最大值 7）。
+          "--directory-max-degree-of-parallelism",
+          "3",
+          "--cpg-max-degree-of-parallelism",
+          "5",
+          "--group-max-degree-of-parallelism",
+          "2",
+          "--helper-max-degree-of-parallelism",
+          "4",
+          "--replay-max-degree-of-parallelism",
+          "6",
+          "--max-concurrent-operations",
+          "7"
+        });
+
+        var started = File.ReadAllLines(runtimeLogPath)
+          .Single(line => line.Contains("cat=run evt=started", StringComparison.Ordinal));
+
+        // 对照组：请求值如实打印，证明下面的断言不是恒真。
+        Assert.Contains("groupDop=2", started, StringComparison.Ordinal);
+        // 生效值：groupParallelism 默认 false ⇒ 规则组实际为 1，而非请求的 2。
+        Assert.Contains("groupParallelism=false", started, StringComparison.Ordinal);
+        Assert.Contains("ruleGroupEffective=1", started, StringComparison.Ordinal);
+        // WorkerCount 取六个额度的最大值，此处应恰为 7。
+        Assert.Contains("workerCount=7", started, StringComparison.Ordinal);
+        // directory 字段的新语义必须写在日志里
+        Assert.Contains("directoryEffective=", started, StringComparison.Ordinal);
+        Assert.Contains("directoryWindowSemantics=", started, StringComparison.Ordinal);
     }
 
     [Fact]
-    public void CreateFromOptions_WithoutCpgDopOverride_InheritsGlobalValue()
+    public void AnalyzeFromArgs_WithDefaultLogProfile_StillExposesEffectiveLimits()
+    {
+        // 默认 normal 视图是白名单过滤；若新字段不在白名单里，
+        // 请求值与生效值不一致时运维从默认日志里看不到任何线索。
+        var runtimeLogPath = Path.Combine(_tempDirectory, "runtime-effective-normal.log");
+
+        CreateCommandHost().AnalyzeFromArgs(new[]
+        {
+          "--target-name",
+          "s",
+          "--skip-rewrite",
+          "--no-diff",
+          "--runtime-log",
+          runtimeLogPath
+        });
+
+        var started = File.ReadAllLines(runtimeLogPath)
+          .Single(line => line.Contains("cat=run evt=started", StringComparison.Ordinal));
+
+        Assert.Contains("workerCount=", started, StringComparison.Ordinal);
+        Assert.Contains("ruleGroupEffective=", started, StringComparison.Ordinal);
+        Assert.Contains("groupParallelism=", started, StringComparison.Ordinal);
+        Assert.Contains("directoryWindowSemantics=", started, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CreateFromOptions_WithIndependentDopOverrides_UsesEachExplicitValue()
     {
         var runtime = AnalysisLegacyOptionsTestExtensions.CreateRuntime(
           new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
           {
-            ["max-degree-of-parallelism"] = "12"
+            ["directory-max-degree-of-parallelism"] = "12",
+            ["cpg-max-degree-of-parallelism"] = "1",
+            ["group-max-degree-of-parallelism"] = "2",
+            ["helper-max-degree-of-parallelism"] = "3",
+            ["replay-max-degree-of-parallelism"] = "4",
+            ["max-concurrent-operations"] = "5"
           });
 
-        Assert.Equal(12, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
+        Assert.Equal(12, runtime.ExecutionOptions.EffectiveDirectoryMaxDegreeOfParallelism);
+        Assert.Equal(1, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
+        Assert.Equal(2, runtime.ExecutionOptions.EffectiveGroupMaxDegreeOfParallelism);
+        Assert.Equal(3, runtime.ExecutionOptions.EffectiveHelperMaxDegreeOfParallelism);
+        Assert.Equal(4, runtime.ExecutionOptions.EffectiveReplayMaxDegreeOfParallelism);
+        Assert.Equal(5, runtime.ExecutionOptions.EffectiveMaxConcurrentOperations);
+    }
+
+    [Fact]
+    public void CreateFromOptions_WithoutNamedOverrides_UsesIndependentDefaults()
+    {
+        var runtime = AnalysisLegacyOptionsTestExtensions.CreateRuntime(
+          new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
+        var expected = Math.Max(1, Environment.ProcessorCount);
+        Assert.Equal(expected, runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism);
+        Assert.Equal(expected, runtime.ExecutionOptions.EffectiveGroupMaxDegreeOfParallelism);
+        Assert.Equal(expected, runtime.ExecutionOptions.EffectiveHelperMaxDegreeOfParallelism);
     }
 
     [Fact]
     public void RuntimeLifecycle_PreservesCpgBuildAdmissionBudget()
     {
         var runtime = new  AnalysisRuntime(
-          new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 4, CpgMaxDegreeOfParallelism: 3),
+          new RoslynPrototypeExecutionOptions(
+            DirectoryMaxDegreeOfParallelism: 4,
+            CpgMaxDegreeOfParallelism: 3,
+            GroupMaxDegreeOfParallelism: 4,
+            HelperMaxDegreeOfParallelism: 4,
+            ReplayMaxDegreeOfParallelism: 4,
+            MaxConcurrentOperations: 4),
           new  AnalysisEpoch(0, 0, 0));
 
         Assert.Same(runtime.CpgBuildAdmissionBudget, runtime.InvalidateCaches().CpgBuildAdmissionBudget);
@@ -144,7 +231,13 @@ public sealed class PipelineComponentTests : IDisposable
     public async Task RuntimeConcurrencyPool_RecordsOperationsInRuntimeOwnedTelemetry()
     {
         var runtime = new AnalysisRuntime(
-          new RoslynPrototypeExecutionOptions(MaxDegreeOfParallelism: 2),
+          new RoslynPrototypeExecutionOptions(
+            DirectoryMaxDegreeOfParallelism: 2,
+            CpgMaxDegreeOfParallelism: 2,
+            GroupMaxDegreeOfParallelism: 2,
+            HelperMaxDegreeOfParallelism: 2,
+            ReplayMaxDegreeOfParallelism: 2,
+            MaxConcurrentOperations: 2),
           new AnalysisEpoch(0, 0, 0));
 
         var results = await runtime.ConcurrencyPool.SelectCpuBoundOrdered(
@@ -181,7 +274,12 @@ public sealed class PipelineComponentTests : IDisposable
         var source = PipelineSources.ConcurrentMarkingSource;
         var runtime = new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
-            MaxDegreeOfParallelism: 2,
+            DirectoryMaxDegreeOfParallelism: 2,
+            CpgMaxDegreeOfParallelism: 2,
+            GroupMaxDegreeOfParallelism: 2,
+            HelperMaxDegreeOfParallelism: 2,
+            ReplayMaxDegreeOfParallelism: 2,
+            MaxConcurrentOperations: 2,
             EnableGroupParallelism: true),
           new  AnalysisEpoch(0, 0, 0));
         var (context, root) = CreateContext(source, runtime: runtime);
@@ -204,7 +302,12 @@ public sealed class PipelineComponentTests : IDisposable
         // Arrange
         var runtime = new AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
-            MaxDegreeOfParallelism: 2,
+            DirectoryMaxDegreeOfParallelism: 2,
+            CpgMaxDegreeOfParallelism: 2,
+            GroupMaxDegreeOfParallelism: 2,
+            HelperMaxDegreeOfParallelism: 2,
+            ReplayMaxDegreeOfParallelism: 2,
+            MaxConcurrentOperations: 2,
             EnableGroupParallelism: false),
           new AnalysisEpoch(0, 0, 0));
         var (context, root) = CreateContext(PipelineSources.ConcurrentMarkingSource, runtime: runtime);
@@ -249,7 +352,12 @@ public sealed class PipelineComponentTests : IDisposable
         var (serialContext, serialRoot) = CreateContext(source, "s");
         var parallelRuntime = new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
-            MaxDegreeOfParallelism: 4,
+            DirectoryMaxDegreeOfParallelism: 4,
+            CpgMaxDegreeOfParallelism: 4,
+            GroupMaxDegreeOfParallelism: 4,
+            HelperMaxDegreeOfParallelism: 4,
+            ReplayMaxDegreeOfParallelism: 4,
+            MaxConcurrentOperations: 4,
             EnableGroupParallelism: true),
           new  AnalysisEpoch(0, 0, 0));
         var (parallelContext, parallelRoot) = CreateContext(source, "s", parallelRuntime);
@@ -787,7 +895,7 @@ public sealed class PipelineComponentTests : IDisposable
           });
 
         var seedMark = Assert.Single(result.SeedMarks);
-        Assert.Contains("mdop=3", seedMark.Reason, StringComparison.Ordinal);
+        Assert.Contains("groupDop=3", seedMark.Reason, StringComparison.Ordinal);
         Assert.Contains("group=True", seedMark.Reason, StringComparison.Ordinal);
         Assert.Contains("helper=False", seedMark.Reason, StringComparison.Ordinal);
     }
@@ -940,9 +1048,9 @@ public sealed class PipelineComponentTests : IDisposable
     public void RuleDecisionEngine_Decide_SchedulesOnlyConflictResolution()
     {
         var source = PipelineSources.ParallelPropagationSource;
-        var scheduler = new RecordingConcurrencyPool();
-        var runtime = CreateParallelRuntime(scheduler);
-        var (context, root) = CreateContext(source, runtime: runtime);
+        // 内核迁移后冲突域解析走 Runtime.Scheduler，用遥测观测其真实提交。
+        var telemetry = new WorkTelemetryCollector();
+        var (context, root) = CreateContext(source, runtime: CreateParallelRuntime(telemetry));
         var seedMarks = new MarkingEngine().Run(
           context,
           root,
@@ -951,7 +1059,6 @@ public sealed class PipelineComponentTests : IDisposable
             new ParallelTypeMarkRule("TEST-DECIDE-SEED-A", "Alpha"),
             new ParallelTypeMarkRule("TEST-DECIDE-SEED-B", "Beta")
           });
-        scheduler.Reset();
         var engine = new RuleDecisionEngine();
 
         var decisions = engine.Decide(
@@ -966,22 +1073,46 @@ public sealed class PipelineComponentTests : IDisposable
             new DeclarationDecisionRule("TEST-DECIDE-B", "TEST-DECIDE-SEED-B")
           });
 
-        Assert.Equal(1, scheduler.InvocationCount);
-        Assert.Equal(new[] { 2 }, scheduler.ItemCounts);
+        // 冲突域解析是最后一次 rule-group 提交：A1/A2 同域、B 独立 ⇒ 恰好 2 项。
+        // （之前还有 MarkingEngine.Run 与 Decide 自身的规则图，故总数不作断言。）
+        var ruleGroupSubmissions = telemetry.Records
+          .Where(record => record.Category == WorkCategories.RuleGroup)
+          .ToList();
+        Assert.NotEmpty(ruleGroupSubmissions);
+        Assert.Equal(2, ruleGroupSubmissions[^1].InputCount);
         Assert.Equal(
           new[] { "Delete TEST-DECIDE-A1", "Delete TEST-DECIDE-B" },
           decisions.Select(decision => decision.Reason).ToArray());
+
+        // G0-N（轮次 14）：ResolveUnits 的冲突域提交（DecisionModel.cs:499）**必须**发生在
+        // 内核工作项之外——`:486` 的注释正是这么断言的（"规则图执行完成之后，非工作项内部"）。
+        // 判据：Decide 正常返回即证明该提交**未被守卫拒绝**；若它发生在工作项内部，
+        // 守卫会抛 InvalidOperationException（提交深度恒为 1 的契约），此处就会失败。
+        // 这条断言把「注释里的可行性声明」变成回归可测的事实，且不读写源码文本（hermetic）。
+        Assert.Equal(0, telemetry.Records.Count(record => record.WasCanceled));
     }
 
     [Fact]
     public void CompatibilityStageEngines_WhenGroupParallelismIsDisabled_RequestSingleDependencyGraphWorker()
     {
         var source = PipelineSources.ParallelPropagationSource;
-        var scheduler = new RecordingConcurrencyPool();
+        // 内核迁移后，阶段引擎走 Runtime.Scheduler 而非 IConcurrencyPool；
+        // 用遥测接收端观测内核实际生效的在途上限。
+        var telemetry = new WorkTelemetryCollector();
+        var options = new RoslynPrototypeExecutionOptions(
+          DirectoryMaxDegreeOfParallelism: 4,
+          CpgMaxDegreeOfParallelism: 4,
+          GroupMaxDegreeOfParallelism: 4,
+          HelperMaxDegreeOfParallelism: 4,
+          ReplayMaxDegreeOfParallelism: 4,
+          MaxConcurrentOperations: 4,
+          EnableGroupParallelism: false);
         var runtime = new AnalysisRuntime(
-          new RoslynPrototypeExecutionOptions(4, EnableGroupParallelism: false),
+          options,
           new AnalysisEpoch(0, 0, 0),
-          scheduler);
+          scheduler: new WorkScheduler(
+            AnalysisRuntime.CreateSchedulerOptions(options),
+            telemetry));
         var (context, root) = CreateContext(source, runtime: runtime);
 
         var seedMarks = new MarkingEngine().Run(
@@ -1020,8 +1151,14 @@ public sealed class PipelineComponentTests : IDisposable
             new DeclarationDecisionRule("TEST-COMPAT-DECIDE-B", "TEST-COMPAT-SEED-B")
           });
 
-        Assert.Equal(new[] { 1, 1, 1 }, scheduler.DependencyGraphMaxDegrees);
-        Assert.Equal(new[] { 1 }, scheduler.SelectOrderedMaxDegrees);
+        // 四个 rule-group 提交：Mark / Lift / Propose 三个阶段引擎各一次规则图，
+        // 外加 Decide 末尾的冲突域解析（S2-4 已迁到内核）。
+        // 因 EnableGroupParallelism=false，每次实际生效的在途上限都必须是 1。
+        var ruleGraphSubmissions = telemetry.Records
+          .Where(record => record.Category == WorkCategories.RuleGroup)
+          .ToList();
+        Assert.Equal(4, ruleGraphSubmissions.Count);
+        Assert.All(ruleGraphSubmissions, record => Assert.Equal(1, record.MaxConcurrency));
     }
 
     [Fact]
@@ -4422,7 +4559,12 @@ public sealed class PipelineComponentTests : IDisposable
           analysis:
             targetName: s
           execution:
-            maxDegreeOfParallelism: 1
+            directoryMaxDegreeOfParallelism: 1
+            cpgMaxDegreeOfParallelism: 1
+            groupMaxDegreeOfParallelism: 1
+            helperMaxDegreeOfParallelism: 1
+            replayMaxDegreeOfParallelism: 1
+            maxConcurrentOperations: 1
           artifacts:
             root: artifacts
             diff:
@@ -4654,10 +4796,34 @@ public sealed class PipelineComponentTests : IDisposable
     {
         return new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
-            4,
+            DirectoryMaxDegreeOfParallelism: 4,
+            CpgMaxDegreeOfParallelism: 4,
+            GroupMaxDegreeOfParallelism: 4,
+            HelperMaxDegreeOfParallelism: 4,
+            ReplayMaxDegreeOfParallelism: 4,
+            MaxConcurrentOperations: 4,
             EnableGroupParallelism: true),
           new  AnalysisEpoch(0, 0, 0),
           scheduler);
+    }
+
+    // 同上，但注入一个带遥测接收端的内核，用于观测走内核的路径。
+    private static  AnalysisRuntime CreateParallelRuntime(WorkTelemetryCollector telemetry)
+    {
+        var options = new RoslynPrototypeExecutionOptions(
+          DirectoryMaxDegreeOfParallelism: 4,
+          CpgMaxDegreeOfParallelism: 4,
+          GroupMaxDegreeOfParallelism: 4,
+          HelperMaxDegreeOfParallelism: 4,
+          ReplayMaxDegreeOfParallelism: 4,
+          MaxConcurrentOperations: 4,
+          EnableGroupParallelism: true);
+        return new  AnalysisRuntime(
+          options,
+          new  AnalysisEpoch(0, 0, 0),
+          scheduler: new WorkScheduler(
+            AnalysisRuntime.CreateSchedulerOptions(options),
+            telemetry));
     }
 
     private static TCache GetCompilationCache<TCache>( AnalysisRuntime runtime, Compilation compilation, Func<Compilation, TCache> factory)
@@ -4858,7 +5024,7 @@ public sealed class PipelineComponentTests : IDisposable
         public override IEnumerable<MarkRecord> Mark(IMarkRuleContext context, SyntaxNode root)
         {
             var executionOptions = context.Runtime.ExecutionOptions;
-            if (executionOptions.EffectiveMaxDegreeOfParallelism != 3 ||
+            if (executionOptions.EffectiveGroupMaxDegreeOfParallelism != 3 ||
                 executionOptions.EnableHelperParallelism ||
                 !executionOptions.EnableGroupParallelism)
             {
@@ -4871,7 +5037,7 @@ public sealed class PipelineComponentTests : IDisposable
               typeDeclaration,
               null,
               null,
-              $"mdop={executionOptions.EffectiveMaxDegreeOfParallelism};group={executionOptions.EnableGroupParallelism};helper={executionOptions.EnableHelperParallelism}");
+              $"groupDop={executionOptions.EffectiveGroupMaxDegreeOfParallelism};group={executionOptions.EnableGroupParallelism};helper={executionOptions.EnableHelperParallelism}");
         }
     }
 
@@ -5486,7 +5652,7 @@ public sealed class PipelineComponentTests : IDisposable
             Assert.All(
               seedMarks,
               mark => Assert.True(
-                mark.PrimaryGraphNode?.NodeId is not null && viewNodeIds.Contains(mark.PrimaryGraphNode.NodeId),
+                 mark.PrimaryGraphNode is { NodeId: { } nodeId } && viewNodeIds.Contains(nodeId),
                 $"Rule view does not include primary graph node for seed span {mark.SyntaxNode.Span}."));
 
             var ifStatement = context.Root.DescendantNodes().OfType<IfStatementSyntax>().Single();
@@ -5529,12 +5695,12 @@ public sealed class PipelineComponentTests : IDisposable
             Assert.All(
               seedMarks,
               mark => Assert.True(
-                mark.PrimaryGraphNode?.NodeId is not null && viewNodeIds.Contains(mark.PrimaryGraphNode.NodeId),
+                 mark.PrimaryGraphNode is { NodeId: { } nodeId } && viewNodeIds.Contains(nodeId),
                 $"Rule view does not include primary graph node for seed span {mark.SyntaxNode.Span}."));
             Assert.All(
               propagatedMarks,
               mark => Assert.True(
-                mark.Mark.PrimaryGraphNode?.NodeId is not null && viewNodeIds.Contains(mark.Mark.PrimaryGraphNode.NodeId),
+                 mark.Mark.PrimaryGraphNode is { NodeId: { } nodeId } && viewNodeIds.Contains(nodeId),
                 $"Rule view does not include primary graph node for propagated span {mark.Mark.SyntaxNode.Span}."));
 
             var returnStatement = context.Root.DescendantNodes().OfType<ReturnStatementSyntax>().First();
@@ -5777,7 +5943,7 @@ public sealed class PipelineComponentTests : IDisposable
             mark.SyntaxNode.SpanStart,
             mark.SyntaxNode.Span.Length,
             mark.Reason,
-            mark.PrimaryGraphNode!.NodeId))
+             mark.PrimaryGraphNode!.Value.NodeId))
           .ToList();
     }
 

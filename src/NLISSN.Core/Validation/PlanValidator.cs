@@ -118,7 +118,7 @@ public sealed class PlanValidator
 
     if (intent.Action == DecisionActionKind.Replace &&
         candidate.Candidate.Fragments.All(fragment =>
-          !string.Equals(fragment.Name, "replacement", StringComparison.Ordinal)))
+          !string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal)))
     {
       issues.Add(Issue(
         "PLAN006",

@@ -202,8 +202,9 @@ public sealed class DefaultDecisionPolicy : DecisionPolicy
         if (winner.Action == DecisionActionKind.Replace && winner.Fragments.Count > 1)
         {
             var replacementFragment = winner.Fragments
-              .FirstOrDefault(fragment => string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal))
-              ?? winner.Fragments.Last();
+              .FirstOrDefault(
+                fragment => string.Equals(DecisionCpgFactory.GetFragmentRole(fragment), "replacement", StringComparison.Ordinal),
+                winner.Fragments.Last());
             var replacement = ResolveBoundSyntaxNode(winner, replacementFragment);
             return CreateFinalDecision(winner, node, replacement);
         }
@@ -450,8 +451,8 @@ public sealed class RuleDecisionEngine
           .ToList();
         var graphDegree = ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
           session.Runtime.ExecutionOptions.EnableGroupParallelism,
-          session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism);
-        var execution = new RuleGraphExecutor(session.Runtime.ConcurrencyPool).ExecuteAsync(
+          session.Runtime.ExecutionOptions.EffectiveGroupMaxDegreeOfParallelism);
+        var execution = new RuleGraphExecutor(session.Runtime.Scheduler).ExecuteAsync(
             graph,
             executionNodes,
             graphDegree,
@@ -482,15 +483,24 @@ public sealed class RuleDecisionEngine
             return Array.Empty<RuleDecision>();
         }
 
-        var resolved = session.Runtime.ConcurrencyPool.SelectOrderedAsync(
-            conflictDomains.Count,
-            ConcurrencyExecutionPolicy.ResolveMaxDegreeOfParallelism(
-               session.Runtime.ExecutionOptions.EnableGroupParallelism,
-               session.Runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism),
-            (index, cancellationToken) =>
+        // conflictDomains 的解析发生在规则图执行完成之后（非工作项内部），可安全提交给内核。
+        var items = conflictDomains
+          .Select((domain, index) => new WorkItem<RuleDecision>
+          {
+              StableOrder = index,
+              ExecuteAsync = (_, cancellationToken) =>
+              {
+                  cancellationToken.ThrowIfCancellationRequested();
+                  return Task.FromResult(
+                    _policy.Resolve(FilterCompetingAncestors(domain)));
+              },
+          })
+          .ToArray();
+        var resolved = session.Runtime.Scheduler.RunAsync(
+            new WorkSubmission<RuleDecision>
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                return Task.FromResult(_policy.Resolve(FilterCompetingAncestors(conflictDomains[index])));
+                Items = items,
+                Category = WorkCategories.RuleGroup,
             },
             session.Runtime.ExecutionOptions.CancellationToken)
           .GetAwaiter()
@@ -701,21 +711,21 @@ public sealed class RuleDecisionEngine
 
 public static class DecisionCpgFactory
 {
+    private static readonly StringInterner DecisionStringTable = new();
+
     // 为真实语法节点创建决策片段 CPG 节点，并保留角色、位置和局部动作信息。
     public static NLCPGNode CreateFragment(string fragmentId, SyntaxNode node, string role, DecisionActionKind? localAction = null)
     {
         return new NLCPGNode(
           Kind: NLCPGNodeKind.DecisionFragment,
-          DisplayKind: node.Kind().ToString(),
-          Name: role,
-          FullName: BuildNodeKey(node),
+          NameId: DecisionStringTable.Intern(role),
+          FullNameId: DecisionStringTable.Intern(BuildNodeKey(node)),
           DispatchKind: localAction is null
             ? null
             : NLCPGDispatchKind.ForDecisionAction(MapDecisionActionKind(localAction.Value)),
-          FilePath: node.SyntaxTree.FilePath,
+          FilePathId: DecisionStringTable.Intern(node.SyntaxTree.FilePath),
           SpanStart: node.Span.Start,
           SpanEnd: node.Span.End,
-          Text: node.ToString(),
           NodeId: CreateDecisionNodeId(fragmentId));
     }
 
@@ -725,14 +735,12 @@ public static class DecisionCpgFactory
         var unitIdentity = $"decision-unit:{ruleId}:{anchorFragment.NodeId}:{action}";
         return new NLCPGNode(
           Kind: NLCPGNodeKind.DecisionUnit,
-          DisplayKind: nameof(NLCPGNodeKind.DecisionUnit),
-          Name: ruleId,
-          FullName: conflictKey ?? mergeKey ?? BuildNodeKey(anchorFragment),
-          Signature: action.ToString(),
-          FilePath: anchorFragment.FilePath,
+          NameId: DecisionStringTable.Intern(ruleId),
+          FullNameId: DecisionStringTable.Intern(conflictKey ?? mergeKey ?? BuildNodeKey(anchorFragment)),
+          SignatureId: DecisionStringTable.Intern(action.ToString()),
+          FilePathId: anchorFragment.FilePathId,
           SpanStart: anchorFragment.SpanStart,
           SpanEnd: anchorFragment.SpanEnd,
-          Text: reason,
           NodeId: CreateDecisionNodeId(unitIdentity));
     }
 
@@ -784,18 +792,29 @@ public static class DecisionCpgFactory
     // 为一个 CPG 节点生成稳定键，优先复用已有 FullName。
     public static string BuildNodeKey(NLCPGNode node)
     {
-        if (!string.IsNullOrWhiteSpace(node.FullName))
+        if (DecisionStringTable.TryResolve(node.FullNameId, out var fullName) &&
+            !string.IsNullOrWhiteSpace(fullName))
         {
-            return node.FullName;
+            return fullName;
         }
 
-        return $"{node.FilePath}|{node.SpanStart}|{node.SpanEnd}|{node.DisplayKind}";
+        return $"{ResolveFilePath(node)}|{node.SpanStart}|{node.SpanEnd}|{node.Kind}";
     }
 
     // 读取决策片段节点的角色名称，缺失时返回空字符串。
     public static string GetFragmentRole(NLCPGNode fragment)
     {
-        return fragment.Name ?? string.Empty;
+        return ResolveName(fragment) ?? string.Empty;
+    }
+
+    public static string? ResolveName(NLCPGNode node)
+    {
+        return DecisionStringTable.TryResolve(node.NameId, out var text) ? text : null;
+    }
+
+    public static string? ResolveFilePath(NLCPGNode node)
+    {
+        return DecisionStringTable.TryResolve(node.FilePathId, out var text) ? text : null;
     }
 
     private static NLCPGDecisionActionKind MapDecisionActionKind(DecisionActionKind action)

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using NL.Concurrency;
 using NLISSN.Infrastructure.Configuration;
 using NLISSN.Core.Pipeline;
@@ -12,7 +13,7 @@ namespace NLISSN.Telemetry;
 /// </summary>
 internal sealed class RuntimeMeasurementLog : IAsyncDisposable
 {
-    private static readonly TimeSpan SampleInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan SampleInterval = TimeSpan.FromSeconds(1);
     private readonly TextLogFileSink _sink;
     private readonly Stopwatch _stopwatch = Stopwatch.StartNew();
     private readonly CancellationTokenSource _samplingCancellation = new();
@@ -21,7 +22,7 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
     private readonly string _runId;
     private readonly string? _inputPath;
     private readonly string _inputKind;
-    private readonly int _dop;
+    private readonly IReadOnlyList<TextLogField> _executionFields;
     private int _completed;
 
     private RuntimeMeasurementLog(
@@ -38,11 +39,44 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
         _runId = string.IsNullOrWhiteSpace(runId) ? "unassigned" : runId;
         _inputPath = inputPath;
         _inputKind = inputPath is not null && Directory.Exists(inputPath) ? "directory" : "file";
-        _dop = runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism;
+        _executionFields = CreateExecutionFields(runtime);
         _allocatedBytesAtStart = GC.GetTotalAllocatedBytes(precise: false);
         Emit(TextLogEventType.Started, "Analysis started", Array.Empty<TextLogField>());
         EmitSample();
         _samplingTask = SampleUntilCompletedAsync();
+    }
+
+    /// <summary>
+    /// 打印**内核实际生效**的类别上限与 worker 数，而非 YAML 中请求的值。
+    /// 风险 R4/R4b：`groupParallelism: false`（默认）时规则组实际为 1，
+    /// 若只打印请求值会让运行日志与真实调度不符。
+    /// </summary>
+    private static IReadOnlyList<TextLogField> CreateExecutionFields(AnalysisRuntime runtime)
+    {
+        var options = runtime.ExecutionOptions;
+        var schedulerOptions = runtime.SchedulerOptions;
+        return new[]
+        {
+          new TextLogField("directoryDop", options.EffectiveDirectoryMaxDegreeOfParallelism),
+          new TextLogField("cpgDop", options.EffectiveCpgMaxDegreeOfParallelism),
+          new TextLogField("groupDop", options.EffectiveGroupMaxDegreeOfParallelism),
+          new TextLogField("helperDop", options.EffectiveHelperMaxDegreeOfParallelism),
+          new TextLogField("replayDop", options.EffectiveReplayMaxDegreeOfParallelism),
+          new TextLogField("maxConcurrentOperations", options.EffectiveMaxConcurrentOperations),
+          new TextLogField("workerCount", schedulerOptions.WorkerCount),
+          new TextLogField("ruleGroupEffective", schedulerOptions.ResolveLimit(WorkCategories.RuleGroup)),
+          new TextLogField("helperEffective", schedulerOptions.ResolveLimit(WorkCategories.Helper)),
+          new TextLogField("directoryEffective", schedulerOptions.ResolveLimit(WorkCategories.Directory)),
+          new TextLogField("cpgEffective", schedulerOptions.ResolveLimit(WorkCategories.Cpg)),
+          new TextLogField("replayEffective", schedulerOptions.ResolveLimit(WorkCategories.Replay)),
+          new TextLogField("defaultEffective", schedulerOptions.ResolveLimit(WorkCategories.Default)),
+          new TextLogField("groupParallelism", schedulerOptions.GroupParallelism),
+          new TextLogField("directoryParallelism", schedulerOptions.DirectoryParallelism),
+          new TextLogField("helperParallelism", schedulerOptions.HelperParallelism),
+          new TextLogField(
+            "directoryWindowSemantics",
+            "directoryEffective limits concurrently live files per window, not a pool DOP")
+        };
     }
 
     public static RuntimeMeasurementLog? TryCreate(
@@ -68,6 +102,7 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
         EmitSample();
         var operations = runtime.ConcurrencyTelemetry.Operations;
         EmitPoolOperations(operations);
+        EmitWorkerUtilization(runtime);
         Emit(
           TextLogEventType.Completed,
           "Analysis completed",
@@ -85,6 +120,7 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
         EmitSample();
         var operations = runtime.ConcurrencyTelemetry.Operations;
         EmitPoolOperations(operations);
+        EmitWorkerUtilization(runtime);
         var fields = CreatePoolFields(operations).ToList();
         fields.Add(new TextLogField("status", "failed"));
         fields.Add(new TextLogField("exception", exception.GetType().FullName));
@@ -224,12 +260,64 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 逐条写出**每个长期 worker** 的忙碌率，而不是只给一个汇总数。
+    /// </summary>
+    /// <remarks>
+    /// 用 <c>op=worker</c> 与 <c>pool</c> 区分，使消费者能把它们分开聚合。
+    /// worker 未启动（下标项为 null）时**显式写 skipped**，避免「没有行」被读成「0% 使用率」。
+    /// </remarks>
+    private void EmitWorkerUtilization(AnalysisRuntime runtime)
+    {
+        IReadOnlyList<WorkerUtilization?> snapshot;
+        try
+        {
+            snapshot = runtime.Scheduler.GetWorkerUtilization();
+        }
+        catch
+        {
+            // 与其它遥测一致：诊断失败不得改变运行语义。
+            return;
+        }
+
+        for (var index = 0; index < snapshot.Count; index++)
+        {
+            var worker = snapshot[index];
+            if (worker is null)
+            {
+                Emit(
+                  TextLogEventType.Summary,
+                  "Worker utilization",
+                  new[]
+                  {
+                      new TextLogField("workerIndex", index),
+                      new TextLogField("status", "never-started"),
+                  },
+                  operation: "worker");
+                continue;
+            }
+
+            Emit(
+              TextLogEventType.Summary,
+              "Worker utilization",
+              new[]
+              {
+                  new TextLogField("workerIndex", worker.WorkerIndex),
+                  new TextLogField("items", worker.ExecutedItemCount),
+                  new TextLogField("busyMs", worker.BusyTime.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture)),
+                  new TextLogField("idleMs", worker.IdleTime.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture)),
+                  new TextLogField("lifetimeMs", worker.Lifetime.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture)),
+                  new TextLogField("utilization", worker.UtilizationRatio.ToString("F4", CultureInfo.InvariantCulture)),
+              },
+              operation: "worker");
+        }
+    }
+
     private void Emit(
         TextLogEventType eventType,
         string message,
         IReadOnlyList<TextLogField> fields,
-        string operation = "analysis")
-    {
+        string operation = "analysis")    {
         try
         {
             _sink.Emit(new TextLogEvent(
@@ -242,8 +330,7 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
               Operation: operation,
               InputKind: _inputKind,
               InputPath: _inputPath,
-              Dop: _dop,
-              Fields: fields));
+              Fields: _executionFields.Concat(fields).ToArray()));
         }
         catch
         {

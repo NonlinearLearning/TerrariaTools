@@ -237,21 +237,38 @@ public sealed class DirectoryAnalysisUseCase
       AnalysisRequestSettings settings,
       AnalysisRuntime runtime)
     {
+        // ① 先**整批**构建 CPG，使工作批次跨文件装箱（D1）。
+        //    这一步必须在并行规则分析之前、且只做一次：跨文件装箱的意义就是让不同文件的方法
+        //    落进同一个批次，逐文件各自构建则永远做不到。
+        var batchFiles = sources
+          .Select(source =>
+          {
+              var tree = trees[source.FilePath];
+              return new BatchAnalysisFile(
+                source.FilePath,
+                source.Source,
+                compilation.GetSemanticModel(tree),
+                tree.GetRoot());
+          })
+          .ToArray();
+        var graphBatch = _application.BuildGraphBatch(batchFiles, runtime);
+        var batchFilesByPath = batchFiles.ToDictionary(
+          file => file.FilePath,
+          StringComparer.Ordinal);
+
         PrototypeAnalysisResult AnalyzeFile(DirectorySourceFile source)
         {
-            var tree = trees[source.FilePath];
-            var result = _application.Analyze(
-              source.Source,
-              source.FilePath,
+            var result = _application.AnalyzeWithGraph(
+              batchFilesByPath[source.FilePath],
+              graphBatch.Graphs[source.FilePath],
+              graphBatch.Metrics,
               settings,
-              runtime,
-              compilation.GetSemanticModel(tree),
-              tree.GetRoot());
+              runtime);
             return result.Edits.Count == 0 ? result with { RewrittenSource = null } : result;
         }
 
         if (!runtime.ExecutionOptions.EnableDirectoryParallelism ||
-            runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism == 1 ||
+            runtime.ExecutionOptions.EffectiveDirectoryMaxDegreeOfParallelism == 1 ||
             sources.Count <= 1)
         {
             return sources
@@ -266,14 +283,10 @@ public sealed class DirectoryAnalysisUseCase
 
         return runtime.ConcurrencyPool.SelectOrderedAsync(
           sources.Count,
-          runtime.ExecutionOptions.EffectiveMaxDegreeOfParallelism,
+          runtime.ExecutionOptions.EffectiveDirectoryMaxDegreeOfParallelism,
           async (index, cancellationToken) =>
           {
               cancellationToken.ThrowIfCancellationRequested();
-              using var lease = await runtime.CpgBuildAdmissionBudget
-            .AcquireAsync(runtime.ExecutionOptions.EffectiveCpgMaxDegreeOfParallelism, cancellationToken)
-            .ConfigureAwait(false);
-              using var scope = runtime.PushCpgBuildAdmissionLease(lease);
               var source = sources[index];
               return new DirectoryFileAnalysisResult(
                 source.Index,

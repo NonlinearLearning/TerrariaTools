@@ -58,7 +58,7 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
               RuleId,
               method,
               null,
-              CreateMethodGraphNode(methodSymbol, method),
+              CreateMethodGraphNode(context, methodSymbol, method),
               "Private method has no references from methods that remain in the project.",
               FactKind: UnreferencedMethodFactKind);
         }
@@ -82,17 +82,16 @@ public sealed class UnreferencedMethodMarkRule : RuleDefinitionMark
         return method.ReducedFrom?.OriginalDefinition ?? method.OriginalDefinition;
     }
 
-    private static NLCPGNode CreateMethodGraphNode(IMethodSymbol methodSymbol, MethodDeclarationSyntax method)
+    private static NLCPGNode CreateMethodGraphNode(IMarkRuleContext context, IMethodSymbol methodSymbol, MethodDeclarationSyntax method)
     {
+        if (context.TryResolvePrimaryGraphNode(method, out var graphNode) && graphNode is { } resolved)
+        {
+            return resolved;
+        }
+
         return new NLCPGNode(
           Kind: NLCPGNodeKind.Method,
-          DisplayKind: nameof(NLCPGNodeKind.Method),
-          Name: methodSymbol.Name,
-          FullName: methodSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
-          Signature: methodSymbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
-          FilePath: method.SyntaxTree.FilePath,
           SpanStart: method.SpanStart,
-          SpanEnd: method.Span.End,
-          Text: method.ToString());
+          SpanEnd: method.Span.End);
     }
 }

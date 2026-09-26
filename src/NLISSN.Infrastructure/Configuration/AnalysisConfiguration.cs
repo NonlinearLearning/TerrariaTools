@@ -10,7 +10,8 @@ internal sealed record AnalysisConfiguration(
   ArtifactSettings Artifacts,
   LoggingSettings Logging,
   ConfigurationProvenance Provenance,
-  WorkspaceInputOptions? Workspace = null)
+  WorkspaceInputOptions? Workspace = null,
+  ProjectExportSettings? ProjectExport = null)
 {
     internal AnalysisRequestSettings CreateAnalysisRequestSettings()
     {

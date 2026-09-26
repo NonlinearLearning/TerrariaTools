@@ -13,8 +13,20 @@ public static class CpgFrozenShardGraphReader
     /// 索引图。
     public static CpgFrozenShardIncomingProjection ReadIncomingProjection(CpgFrozenShard shard, NodeId targetNodeId, IReadOnlySet<NLCPGEdgeKind> allowedEdgeKinds, int maxEdges)
     {
+        return ReadIncomingProjection(shard, targetNodeId, allowedEdgeKinds, maxEdges, new StringInterner());
+    }
+
+    // 由调用方提供 interner，使多个局部投影可以安全合并到同一张图。
+    internal static CpgFrozenShardIncomingProjection ReadIncomingProjection(
+        CpgFrozenShard shard,
+        NodeId targetNodeId,
+        IReadOnlySet<NLCPGEdgeKind> allowedEdgeKinds,
+        int maxEdges,
+        StringInterner stringInterner)
+    {
         ArgumentNullException.ThrowIfNull(shard);
         ArgumentNullException.ThrowIfNull(allowedEdgeKinds);
+        ArgumentNullException.ThrowIfNull(stringInterner);
 
         var nodeIndex = NodeIndexes.GetValue(shard, static source => new NodeIndex(source));
         var selectedEdges = new List<NLCPGEdge>();
@@ -104,7 +116,7 @@ public static class CpgFrozenShardGraphReader
           .Where(node => node is not null)
           .Select(node => node!)
           .OrderBy(node => node.LocalIndex)
-          .Select(CreateNode)
+          .Select(node => CreateNode(node, stringInterner))
           .ToDictionary(node => node.NodeId!.Value);
         return new CpgFrozenShardIncomingProjection(nodes, selectedEdges);
     }
@@ -114,6 +126,7 @@ public static class CpgFrozenShardGraphReader
     {
         ArgumentNullException.ThrowIfNull(shards);
         var nodes = new Dictionary<NodeId, NLCPGNode>();
+        var stringInterner = new StringInterner();
         var edges = new HashSet<NLCPGEdge>();
         var orderedShards = shards
           .OrderBy(shard => shard.Lookup.Fragment.Kind, StringComparer.Ordinal)
@@ -122,7 +135,7 @@ public static class CpgFrozenShardGraphReader
           .ToArray();
         foreach (var shard in orderedShards)
         {
-            var graph = ReadGraph(shard);
+            var graph = ReadGraph(shard, stringInterner);
             foreach (var node in graph.Nodes)
             {
                 nodes.TryAdd(node.NodeId!.Value, node);
@@ -147,7 +160,7 @@ public static class CpgFrozenShardGraphReader
             edges.Add(CreateBoundaryEdge(boundaryEdge));
         }
 
-        return NLCPGGraph.CreateFrozen(nodes.Values, edges);
+        return NLCPGGraph.CreateFrozen(nodes.Values, edges, stringInterner);
     }
 
     internal static CpgFrozenShardGraphFacts ReadMutableFacts(IEnumerable<CpgFrozenShard> shards)
@@ -176,9 +189,14 @@ public static class CpgFrozenShardGraphReader
     public static NLCPGGraph ReadGraph(CpgFrozenShard shard)
     {
         ArgumentNullException.ThrowIfNull(shard);
+        return ReadGraph(shard, new StringInterner());
+    }
+
+    internal static NLCPGGraph ReadGraph(CpgFrozenShard shard, StringInterner stringInterner)
+    {
         var nodes = shard.Nodes
           .OrderBy(node => node.LocalIndex)
-          .Select(CreateNode)
+          .Select(node => CreateNode(node, stringInterner))
           .ToArray();
         var nodeIdsByLocalIndex = shard.Nodes.ToDictionary(node => node.LocalIndex, node => new NodeId(node.NodeId));
         var edges = shard.Edges.Select(edge => new NLCPGEdge(
@@ -188,7 +206,7 @@ public static class CpgFrozenShardGraphReader
           ParseLabel(edge.Label, edge.FlowSummaryLabel),
           edge.ContextId is null ? null : new NLCPGContextId(edge.ContextId),
           CreateCallSiteContext(edge))).ToArray();
-        return NLCPGGraph.CreateFrozen(nodes, edges);
+        return NLCPGGraph.CreateFrozen(nodes, edges, stringInterner);
     }
 
     // 读取单个分片记录的全部边界边。
@@ -265,16 +283,15 @@ public static class CpgFrozenShardGraphReader
         }
     }
 
-    private static NLCPGNode CreateNode(CpgFrozenNode node)
+    private static NLCPGNode CreateNode(CpgFrozenNode node, StringInterner stringInterner)
     {
         var kind = Enum.Parse<NLCPGNodeKind>(node.Kind);
         return new NLCPGNode(
           kind,
-          node.DisplayKind,
-          node.Name,
-          node.FullName,
-          node.Signature,
-          FilePath: node.FilePath,
+          NameId: stringInterner.Intern(node.Name),
+          FullNameId: stringInterner.Intern(node.FullName),
+          SignatureId: stringInterner.Intern(node.Signature),
+          FilePathId: stringInterner.Intern(node.FilePath),
           SpanStart: node.SpanStart,
           SpanEnd: node.SpanEnd,
           IsImplicit: node.IsImplicit,
@@ -320,6 +337,7 @@ public static class CpgFrozenShardGraphReader
 
     internal sealed class MutableFactsAccumulator
     {
+        private readonly StringInterner _stringInterner = new();
         private readonly Dictionary<NodeId, NLCPGNode> _nodes = new();
         private readonly HashSet<NLCPGEdge> _edges = new();
 
@@ -334,7 +352,7 @@ public static class CpgFrozenShardGraphReader
                     throw new InvalidDataException("The CPG shard contains duplicate local nodes.");
                 }
 
-                var node = CreateNode(frozenNode);
+                var node = CreateNode(frozenNode, _stringInterner);
                 if (!node.NodeId.HasValue)
                 {
                     throw new InvalidDataException("Persisted CPG nodes require NodeIds.");
@@ -367,7 +385,7 @@ public static class CpgFrozenShardGraphReader
                 }
             }
 
-            return new CpgFrozenShardGraphFacts(_nodes.Values.ToArray(), _edges.ToArray());
+            return new CpgFrozenShardGraphFacts(_nodes.Values.ToArray(), _edges.ToArray(), _stringInterner);
         }
     }
 
@@ -395,6 +413,7 @@ public sealed record CpgFrozenShardIncomingProjection(
   IReadOnlyDictionary<NodeId, NLCPGNode> Nodes,
   IReadOnlyList<NLCPGEdge> IncomingEdges);
 
-internal sealed record CpgFrozenShardGraphFacts(
+internal readonly record struct CpgFrozenShardGraphFacts(
   IReadOnlyList<NLCPGNode> Nodes,
-  IReadOnlyList<NLCPGEdge> Edges);
+  IReadOnlyList<NLCPGEdge> Edges,
+  StringInterner StringInterner);

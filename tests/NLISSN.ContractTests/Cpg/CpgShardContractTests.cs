@@ -225,8 +225,8 @@ public sealed class CpgShardContractTests
   public void Export_FrozenGraph_PreservesOrderedNodeIdsAndEdges()
   {
     var graph = new NLCPGGraph();
-    var first = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: "first"));
-    var second = graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: "second"));
+    var first = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "first"));
+    var second = graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "second"));
     graph.AddEdge(first, second, NLCPGEdgeKind.DataFlow);
     graph.FreezeQueryIndex();
 
@@ -240,7 +240,7 @@ public sealed class CpgShardContractTests
   public void Export_MutableGraph_Throws()
   {
     var graph = new NLCPGGraph();
-    graph.AddNode(new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: "node"));
+    graph.AddNode(new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "node"));
 
     Assert.Throws<InvalidOperationException>(() => CpgFrozenShardExporter.Export(graph, CreateShard("source-a", "profile-a", "fragment-a").Lookup));
   }
@@ -257,9 +257,10 @@ public sealed class CpgShardContractTests
     var candidateType = streamingAssembly.GetType("NLCPG.Builder.Streaming.CpgEdgeCandidate");
     Assert.NotNull(descriptorType);
     Assert.NotNull(candidateType);
+    var stringInterner = new StringInterner();
     var descriptors = Array.CreateInstance(descriptorType!, 2);
-    descriptors.SetValue(CreateOperationDescriptor(descriptorType, firstAnchor, "first"), 0);
-    descriptors.SetValue(CreateOperationDescriptor(descriptorType, secondAnchor, "second"), 1);
+    descriptors.SetValue(CreateOperationDescriptor(descriptorType, firstAnchor, "first", stringInterner), 0);
+    descriptors.SetValue(CreateOperationDescriptor(descriptorType, secondAnchor, "second", stringInterner), 1);
     var candidates = Array.CreateInstance(candidateType!, 2);
     candidates.SetValue(CreateCandidate(candidateType, firstAnchor, secondAnchor, NLCPGEdgeKind.DataFlow), 0);
     candidates.SetValue(CreateCandidate(candidateType, secondAnchor, externalAnchor, NLCPGEdgeKind.CallTargets), 1);
@@ -275,15 +276,16 @@ public sealed class CpgShardContractTests
       {
         CreateShard("source-a", "profile-a", "fragment-a").Lookup,
         descriptors,
-        candidates,
-        allocation,
-        boundaryEdges,
-      }));
+         candidates,
+         allocation,
+         boundaryEdges,
+         stringInterner,
+       }));
 
     var expectedAllocation = DeterministicNodeIdTable.Create(new[] { firstAnchor, secondAnchor });
     var graph = new NLCPGGraph(expectedAllocation);
-    var first = graph.AddNode(CreateOperationNode(firstAnchor, "first", expectedAllocation));
-    var second = graph.AddNode(CreateOperationNode(secondAnchor, "second", expectedAllocation));
+    var first = graph.AddNode(CreateOperationNode(firstAnchor, "first", expectedAllocation), nodeId: expectedAllocation.GetRequiredId(firstAnchor), stableAnchor: firstAnchor);
+    var second = graph.AddNode(CreateOperationNode(secondAnchor, "second", expectedAllocation), nodeId: expectedAllocation.GetRequiredId(secondAnchor), stableAnchor: secondAnchor);
     graph.AddEdge(first, second, NLCPGEdgeKind.DataFlow);
     graph.FreezeQueryIndex();
     var expected = CpgFrozenShardExporter.Export(graph, shard.Lookup);
@@ -311,9 +313,10 @@ public sealed class CpgShardContractTests
     Assert.NotNull(candidateType);
     Assert.NotNull(factsType);
     Assert.NotNull(committerType);
+    var stringInterner = new StringInterner();
     var descriptors = Array.CreateInstance(descriptorType!, 2);
-    descriptors.SetValue(CreateOperationDescriptor(descriptorType, firstAnchor, "first"), 0);
-    descriptors.SetValue(CreateOperationDescriptor(descriptorType, secondAnchor, "second"), 1);
+    descriptors.SetValue(CreateOperationDescriptor(descriptorType, firstAnchor, "first", stringInterner), 0);
+    descriptors.SetValue(CreateOperationDescriptor(descriptorType, secondAnchor, "second", stringInterner), 1);
     var candidates = Array.CreateInstance(candidateType!, 1);
     candidates.SetValue(CreateCandidate(candidateType, firstAnchor, secondAnchor, NLCPGEdgeKind.DataFlow), 0);
     var facts = factsType!.GetConstructors(
@@ -328,7 +331,7 @@ public sealed class CpgShardContractTests
 
     var shard = Assert.IsType<CpgFrozenShard>(commit!.Invoke(
       null,
-      new object[] { CreateShard("source-a", "profile-a", "fragment-a").Lookup, facts!, allocation, boundaries }));
+       new object[] { CreateShard("source-a", "profile-a", "fragment-a").Lookup, facts!, allocation, boundaries, stringInterner }));
 
     Assert.Equal(2, shard.Nodes.Count);
     var nodeDescriptors = factsType.GetProperty(
@@ -337,7 +340,7 @@ public sealed class CpgShardContractTests
     Assert.Empty(Assert.IsAssignableFrom<System.Collections.IEnumerable>(nodeDescriptors).Cast<object>());
     var retry = Assert.Throws<System.Reflection.TargetInvocationException>(() => commit.Invoke(
       null,
-      new object[] { CreateShard("source-a", "profile-a", "fragment-a").Lookup, facts, allocation, boundaries }));
+       new object[] { CreateShard("source-a", "profile-a", "fragment-a").Lookup, facts, allocation, boundaries, stringInterner }));
     Assert.IsType<InvalidOperationException>(retry.InnerException);
   }
 
@@ -469,19 +472,18 @@ public sealed class CpgShardContractTests
       ExtraKeyId: (uint)spanStart);
   }
 
-  private static object CreateOperationDescriptor(Type descriptorType, StableNodeAnchor anchor, string name)
+  private static object CreateOperationDescriptor(Type descriptorType, StableNodeAnchor anchor, string name, StringInterner stringInterner)
   {
     return Activator.CreateInstance(
       descriptorType,
       anchor,
       NLCPGNodeKind.Operation,
-      "Operation",
-      name,
+      stringInterner.Intern(name),
+      0u,
+      0u,
       null,
-      null,
-      null,
-      null,
-      "input.cs",
+      0u,
+      stringInterner.Intern("input.cs"),
       anchor.SpanStart,
       anchor.SpanEnd,
       false)!;
@@ -492,18 +494,14 @@ public sealed class CpgShardContractTests
     return Activator.CreateInstance(candidateType, sourceAnchor, targetAnchor, kind, null, null, null)!;
   }
 
-  private static NLCPGNode CreateOperationNode(StableNodeAnchor anchor, string name, DeterministicNodeIdTable allocation)
+  private static NLCPGNodeDraft CreateOperationNode(StableNodeAnchor anchor, string name, DeterministicNodeIdTable allocation)
   {
-    return new NLCPGNode(
+    return new NLCPGNodeDraft(
       NLCPGNodeKind.Operation,
-      "Operation",
       Name: name,
       FilePath: "input.cs",
       SpanStart: anchor.SpanStart,
-      SpanEnd: anchor.SpanEnd,
-      IsImplicit: false,
-      NodeId: allocation.GetRequiredId(anchor),
-      StableAnchor: anchor);
+      SpanEnd: anchor.SpanEnd);
   }
 
   private static string CreateTemporaryDirectory()

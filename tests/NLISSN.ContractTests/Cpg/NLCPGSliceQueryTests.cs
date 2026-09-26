@@ -805,14 +805,14 @@ public sealed class NLCPGSliceQueryTests
         }
     }
 
-    private static NLCPGNode CreateNode(string id)
+    private static NLCPGNodeDraft CreateNode(string id)
     {
-        return new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: id);
+        return new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: id);
     }
 
     private static NLCPGNode FreezeLookup(NLCPGGraph graph, string displayId)
     {
-        return Assert.Single(graph.Nodes, node => node.Name == displayId);
+        return Assert.Single(graph.Nodes, node => graph.ResolveName(node) == displayId);
     }
 
     private static NLCPGSliceResult QueryMethodReturnBackward(NLCPGGraph graph, NLCPGSliceQueryOptions options)

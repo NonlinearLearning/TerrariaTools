@@ -62,8 +62,12 @@ internal static class CommandHostTestConfigurationExtensions
       new ExecutionSettings(
         IsTrue(options, "write-back"),
         IsTrue(options, "skip-rewrite"),
-        GetInt(options, "max-degree-of-parallelism", Math.Max(1, Environment.ProcessorCount)),
-        GetNullableInt(options, "cpg-max-degree-of-parallelism"),
+        GetConcurrencyValue(options, "directory-max-degree-of-parallelism"),
+        GetConcurrencyValue(options, "cpg-max-degree-of-parallelism"),
+        GetConcurrencyValue(options, "group-max-degree-of-parallelism"),
+        GetConcurrencyValue(options, "helper-max-degree-of-parallelism"),
+        GetConcurrencyValue(options, "replay-max-degree-of-parallelism"),
+        GetConcurrencyValue(options, "max-concurrent-operations"),
         !IsTrue(options, "disable-directory-parallelism"),
         IsTrue(options, "enable-group-parallelism"),
         !IsTrue(options, "disable-helper-parallelism"),
@@ -156,22 +160,20 @@ internal static class CommandHostTestConfigurationExtensions
       .ToHashSet(StringComparer.OrdinalIgnoreCase);
   }
 
-  private static int GetInt(IReadOnlyDictionary<string, string> options, string key, int fallback)
+  private static int GetConcurrencyValue(
+    IReadOnlyDictionary<string, string> options,
+    string key)
   {
-    return int.TryParse(GetValue(options, key), out var value) ? value : fallback;
-  }
-
-  private static int? GetNullableInt(IReadOnlyDictionary<string, string> options, string key)
-  {
-    string? rawValue = GetValue(options, key);
+    var defaultDegree = GetValue(options, "max-degree-of-parallelism");
+    var rawValue = GetValue(options, key) ?? defaultDegree;
     if (rawValue is null)
     {
-      return null;
+      return Math.Max(1, Environment.ProcessorCount);
     }
 
     if (!int.TryParse(rawValue, out var value) || value <= 0)
     {
-      throw new ArgumentException($"Invalid --{key} value '{rawValue}'.", nameof(options));
+      throw new ArgumentException($"--{key} must be a positive integer.", key);
     }
 
     return value;

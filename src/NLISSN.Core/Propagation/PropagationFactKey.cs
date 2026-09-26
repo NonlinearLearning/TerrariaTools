@@ -7,7 +7,7 @@ namespace NLISSN.Core.Propagation;
 /// <summary>
 /// Identifies one propagated token or relation fact independently of its provenance text and depth.
 /// </summary>
-internal sealed record PropagationFactKey(
+internal readonly record struct PropagationFactKey(
   string RuleId,
   string FilePath,
   int SpanStart,

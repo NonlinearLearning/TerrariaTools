@@ -13,7 +13,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
     runId: duplicate-key
     input: { path: Input.cs }
     analysis: {}
-    execution: { maxDegreeOfParallelism: 1 }
+    execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
     artifacts: {}
     runId: duplicate-key-again
     """;
@@ -53,8 +53,12 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       execution:
         writeBack: false
         skipRewrite: false
-        maxDegreeOfParallelism: 2
+        directoryMaxDegreeOfParallelism: 2
         cpgMaxDegreeOfParallelism: 1
+        groupMaxDegreeOfParallelism: 2
+        helperMaxDegreeOfParallelism: 2
+        replayMaxDegreeOfParallelism: 2
+        maxConcurrentOperations: 2
         directoryParallelism: false
         groupParallelism: true
         helperParallelism: false
@@ -118,6 +122,152 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
   }
 
   [Fact]
+  public void Load_Schema3NlissnConfiguration_UsesUnifiedToolAndPreservesProvenance()
+  {
+    var sourcePath = Path.Combine(_tempDirectory, "Schema3Input.cs");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(sourcePath, "public sealed class Input { }");
+    File.WriteAllText(
+      configurationPath,
+      """
+      schemaVersion: 3
+      tool: nlissn
+      runId: schema-3
+      input: { path: Schema3Input.cs }
+      analysis: {}
+      execution:
+        directoryMaxDegreeOfParallelism: 1
+        cpgMaxDegreeOfParallelism: 2
+        groupMaxDegreeOfParallelism: 3
+        helperMaxDegreeOfParallelism: 4
+        replayMaxDegreeOfParallelism: 5
+        maxConcurrentOperations: 6
+      artifacts:
+        root: artifacts
+      """);
+
+    var configuration = YamlConfigurationLoader.Load(configurationPath);
+
+    Assert.Equal(Path.GetFullPath(sourcePath), configuration.InputPath);
+    Assert.Equal(1, configuration.Execution.DirectoryMaxDegreeOfParallelism);
+    Assert.Equal(2, configuration.Execution.CpgMaxDegreeOfParallelism);
+    Assert.Equal(3, configuration.Execution.GroupMaxDegreeOfParallelism);
+    Assert.Equal(4, configuration.Execution.HelperMaxDegreeOfParallelism);
+    Assert.Equal(5, configuration.Execution.ReplayMaxDegreeOfParallelism);
+    Assert.Equal(6, configuration.Execution.MaxConcurrentOperations);
+    Assert.Equal(3, configuration.Provenance.SourceSchemaVersion);
+    Assert.Equal(3, configuration.Provenance.TargetSchemaVersion);
+  }
+
+  [Fact]
+  public void TryLoad_Schema3ForAnotherTool_RejectsConfiguration()
+  {
+    var sourcePath = Path.Combine(_tempDirectory, "MismatchedToolInput.cs");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(sourcePath, "public sealed class Input { }");
+    File.WriteAllText(
+      configurationPath,
+      """
+      schemaVersion: 3
+      tool: nlcpg
+      runId: mismatched-tool
+      input: { path: MismatchedToolInput.cs }
+      analysis: {}
+      execution:
+        directoryMaxDegreeOfParallelism: 1
+        cpgMaxDegreeOfParallelism: 1
+        groupMaxDegreeOfParallelism: 1
+        helperMaxDegreeOfParallelism: 1
+        replayMaxDegreeOfParallelism: 1
+        maxConcurrentOperations: 1
+      artifacts: {}
+      """);
+
+    var result = YamlConfigurationLoader.TryLoad(configurationPath);
+
+    Assert.False(result.IsSuccess);
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "NLISSN103" && diagnostic.Path == "tool");
+  }
+
+  [Fact]
+  public void Load_IndependentConcurrencySettings_MapsEachConfiguredLimit()
+  {
+    var sourcePath = Path.Combine(_tempDirectory, "Input-independent-concurrency.cs");
+    var configurationPath = Path.Combine(_tempDirectory, "independent-concurrency.yml");
+    File.WriteAllText(sourcePath, "public sealed class Input { }");
+    File.WriteAllText(
+      configurationPath,
+      """
+      schemaVersion: 2
+      runId: independent-concurrency
+      input:
+        path: Input-independent-concurrency.cs
+      analysis: {}
+      execution:
+        directoryMaxDegreeOfParallelism: 2
+        cpgMaxDegreeOfParallelism: 3
+        groupMaxDegreeOfParallelism: 4
+        helperMaxDegreeOfParallelism: 5
+        replayMaxDegreeOfParallelism: 6
+        maxConcurrentOperations: 7
+      artifacts: { root: artifacts }
+      """);
+
+    var configuration = YamlConfigurationLoader.Load(configurationPath);
+
+    Assert.Equal(2, configuration.Execution.DirectoryMaxDegreeOfParallelism);
+    Assert.Equal(3, configuration.Execution.CpgMaxDegreeOfParallelism);
+    Assert.Equal(4, configuration.Execution.GroupMaxDegreeOfParallelism);
+    Assert.Equal(5, configuration.Execution.HelperMaxDegreeOfParallelism);
+    Assert.Equal(6, configuration.Execution.ReplayMaxDegreeOfParallelism);
+    Assert.Equal(7, configuration.Execution.MaxConcurrentOperations);
+
+    YamlConfigurationLoader.PrepareRunArtifacts(configuration);
+    using var resolvedDocument = JsonDocument.Parse(
+      File.ReadAllText(configuration.Artifacts.ResolvedConfigurationPath));
+    var resolvedExecution = resolvedDocument.RootElement.GetProperty("execution");
+    Assert.Equal(2, resolvedExecution.GetProperty("directoryMaxDegreeOfParallelism").GetInt32());
+    Assert.Equal(3, resolvedExecution.GetProperty("cpgMaxDegreeOfParallelism").GetInt32());
+    Assert.Equal(4, resolvedExecution.GetProperty("groupMaxDegreeOfParallelism").GetInt32());
+    Assert.Equal(5, resolvedExecution.GetProperty("helperMaxDegreeOfParallelism").GetInt32());
+    Assert.Equal(6, resolvedExecution.GetProperty("replayMaxDegreeOfParallelism").GetInt32());
+    Assert.Equal(7, resolvedExecution.GetProperty("maxConcurrentOperations").GetInt32());
+    Assert.False(resolvedExecution.TryGetProperty("maxDegreeOfParallelism", out _));
+  }
+
+  [Fact]
+  public void TryLoad_LegacyGlobalConcurrencyField_IsRejected()
+  {
+    var sourcePath = Path.Combine(_tempDirectory, "Input.cs");
+    var configurationPath = Path.Combine(_tempDirectory, "legacy-global-concurrency.yml");
+    File.WriteAllText(sourcePath, "public sealed class Input { }");
+    File.WriteAllText(
+      configurationPath,
+      """
+      schemaVersion: 2
+      runId: legacy-global-concurrency
+      input: { path: Input.cs }
+      analysis: {}
+      execution:
+        directoryMaxDegreeOfParallelism: 1
+        cpgMaxDegreeOfParallelism: 1
+        groupMaxDegreeOfParallelism: 1
+        helperMaxDegreeOfParallelism: 1
+        replayMaxDegreeOfParallelism: 1
+        maxConcurrentOperations: 1
+        maxDegreeOfParallelism: 1
+      artifacts: { root: artifacts }
+      """);
+
+    var result = YamlConfigurationLoader.TryLoad(configurationPath);
+
+    Assert.False(result.IsSuccess);
+    var diagnostic = Assert.Single(result.Diagnostics);
+    Assert.Equal("NLISSN002", diagnostic.Code);
+    Assert.Contains("maxDegreeOfParallelism", diagnostic.Message, StringComparison.Ordinal);
+  }
+
+  [Fact]
   public void Load_PerformanceArtifact_IsIndependentAndChangesResolvedFingerprint()
   {
     var sourcePath = Path.Combine(_tempDirectory, "Input-performance.cs");
@@ -131,7 +281,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       "runId: performance-disabled",
       $"input: {{ path: {sourceFileName} }}",
       "analysis: {}",
-      "execution: { maxDegreeOfParallelism: 1 }",
+      "execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }",
       "artifacts:",
       "  root: artifacts",
       "  runtimeLog:",
@@ -144,7 +294,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       "runId: performance-enabled",
       $"input: {{ path: {sourceFileName} }}",
       "analysis: {}",
-      "execution: { maxDegreeOfParallelism: 1 }",
+      "execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }",
       "artifacts:",
       "  root: artifacts",
       "  performance:",
@@ -180,7 +330,12 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
         path: Input.cs
       analysis: {}
       execution:
-        maxDegreeOfParallelism: 1
+        directoryMaxDegreeOfParallelism: 1
+        cpgMaxDegreeOfParallelism: 1
+        groupMaxDegreeOfParallelism: 1
+        helperMaxDegreeOfParallelism: 1
+        replayMaxDegreeOfParallelism: 1
+        maxConcurrentOperations: 1
       artifacts:
         analysisLog:
           enabled: true
@@ -206,7 +361,12 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
         path: Input.cs
       analysis: {}
       execution:
-        maxDegreeOfParallelism: 1
+        directoryMaxDegreeOfParallelism: 1
+        cpgMaxDegreeOfParallelism: 1
+        groupMaxDegreeOfParallelism: 1
+        helperMaxDegreeOfParallelism: 1
+        replayMaxDegreeOfParallelism: 1
+        maxConcurrentOperations: 1
       artifacts:
         root: artifacts
       """);
@@ -239,8 +399,12 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       input: { path: "" }
       analysis: { targetName: target }
       execution:
-        maxDegreeOfParallelism: 0
+        directoryMaxDegreeOfParallelism: 0
         cpgMaxDegreeOfParallelism: 0
+        groupMaxDegreeOfParallelism: 0
+        helperMaxDegreeOfParallelism: 0
+        replayMaxDegreeOfParallelism: 0
+        maxConcurrentOperations: 0
         skipRewrite: true
       artifacts:
         root: ../outside
@@ -257,14 +421,112 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
         .Select(diagnostic => (diagnostic.Path, diagnostic.Code)),
       result.Diagnostics.Select(diagnostic => (diagnostic.Path, diagnostic.Code)));
     Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "input.path" && diagnostic.Code == "NLISSN130");
-    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "execution.maxDegreeOfParallelism" && diagnostic.Code == "NLISSN110");
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "execution.directoryMaxDegreeOfParallelism" && diagnostic.Code == "NLISSN110");
     Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "execution.cpgMaxDegreeOfParallelism" && diagnostic.Code == "NLISSN111");
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "execution.groupMaxDegreeOfParallelism" && diagnostic.Code == "NLISSN114");
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "execution.helperMaxDegreeOfParallelism" && diagnostic.Code == "NLISSN115");
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "execution.replayMaxDegreeOfParallelism" && diagnostic.Code == "NLISSN116");
+    Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "execution.maxConcurrentOperations" && diagnostic.Code == "NLISSN117");
     Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "artifacts.diff.view" && diagnostic.Code == "NLISSN120");
     Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "artifacts.root" && diagnostic.Code == "NLISSN132");
     Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "artifacts.rewritePlan.mode" && diagnostic.Code == "NLISSN113");
     Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Path == "runId" && diagnostic.Code == "NLISSN131");
     var exception = Assert.Throws<ConfigurationLoadException>(() => result.RequireConfiguration());
     Assert.Equal(result.Diagnostics, exception.Diagnostics);
+  }
+
+  [Theory]
+  [InlineData("directoryMaxDegreeOfParallelism", "NLISSN110")]
+  [InlineData("cpgMaxDegreeOfParallelism", "NLISSN111")]
+  [InlineData("groupMaxDegreeOfParallelism", "NLISSN114")]
+  [InlineData("helperMaxDegreeOfParallelism", "NLISSN115")]
+  [InlineData("replayMaxDegreeOfParallelism", "NLISSN116")]
+  [InlineData("maxConcurrentOperations", "NLISSN117")]
+  public void TryLoad_MissingConcurrencyField_ReturnsIndependentDiagnostic(
+    string omittedField,
+    string expectedCode)
+  {
+    var sourcePath = Path.Combine(_tempDirectory, "Input.cs");
+    var configurationPath = Path.Combine(_tempDirectory, $"missing-{omittedField}.yml");
+    File.WriteAllText(sourcePath, "public sealed class Input { }");
+    var fields = new[]
+    {
+      (Name: "directoryMaxDegreeOfParallelism", Value: 1),
+      (Name: "cpgMaxDegreeOfParallelism", Value: 1),
+      (Name: "groupMaxDegreeOfParallelism", Value: 1),
+      (Name: "helperMaxDegreeOfParallelism", Value: 1),
+      (Name: "replayMaxDegreeOfParallelism", Value: 1),
+      (Name: "maxConcurrentOperations", Value: 1)
+    };
+    var executionFields = string.Join(
+      Environment.NewLine,
+      fields
+        .Where(field => !string.Equals(field.Name, omittedField, StringComparison.Ordinal))
+        .Select(field => $"  {field.Name}: {field.Value}"));
+    File.WriteAllText(
+      configurationPath,
+      $"""
+      schemaVersion: 2
+      runId: missing-{omittedField}
+      input:
+        path: Input.cs
+      analysis:
+        disabledRuleTypes: []
+      execution:
+      {executionFields}
+      artifacts:
+        root: artifacts
+      """);
+
+    var result = YamlConfigurationLoader.TryLoad(configurationPath);
+
+    Assert.Contains(
+      result.Diagnostics,
+      diagnostic => diagnostic.Path == $"execution.{omittedField}" && diagnostic.Code == expectedCode);
+  }
+
+  [Fact]
+  public void TryLoad_LoggingWithoutWriter_UsesDistinctDiagnosticCode()
+  {
+    var sourcePath = Path.Combine(_tempDirectory, "Input.cs");
+    var configurationPath = Path.Combine(_tempDirectory, "logging-without-writer.yml");
+    File.WriteAllText(sourcePath, "public sealed class Input { }");
+    File.WriteAllText(
+      configurationPath,
+      """
+      schemaVersion: 2
+      runId: logging-without-writer
+      input: { path: Input.cs }
+      analysis: {}
+      execution:
+        directoryMaxDegreeOfParallelism: 1
+        cpgMaxDegreeOfParallelism: 1
+        groupMaxDegreeOfParallelism: 1
+        helperMaxDegreeOfParallelism: 1
+        replayMaxDegreeOfParallelism: 1
+        maxConcurrentOperations: 1
+      artifacts:
+        root: artifacts
+        diff: { enabled: false }
+        runtimeLog: { enabled: false }
+        performance: { enabled: false, mode: normal }
+        evidence: { enabled: false }
+        rewritePlan: { mode: none }
+        analysisLog: { enabled: false }
+      logging:
+        profile: normal
+        level: info
+        categories: []
+        events: []
+        view: normal
+      """);
+
+    var result = YamlConfigurationLoader.TryLoad(configurationPath);
+
+    var diagnostic = Assert.Single(
+      result.Diagnostics,
+      item => item.Path == "logging");
+    Assert.Equal("NLISSN118", diagnostic.Code);
   }
 
   [Fact]
@@ -309,7 +571,12 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       analysis:
         deleteClass: PlayerInput
       execution:
-        maxDegreeOfParallelism: 1
+        directoryMaxDegreeOfParallelism: 1
+        cpgMaxDegreeOfParallelism: 1
+        groupMaxDegreeOfParallelism: 1
+        helperMaxDegreeOfParallelism: 1
+        replayMaxDegreeOfParallelism: 1
+        maxConcurrentOperations: 1
       artifacts:
         root: artifacts
         diff:
@@ -365,7 +632,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       runId: invalid-root
       input: { path: Input.cs }
       analysis: {}
-      execution: { maxDegreeOfParallelism: 1 }
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
       artifacts: { root: ../outside }
       """);
 
@@ -379,7 +646,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       runId: unknown-property
       input: { path: Input.cs }
       analysis: {}
-      execution: { maxDegreeOfParallelism: 1 }
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
       artifacts: {}
       unexpected: true
       """);
@@ -412,7 +679,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       runId: null-artifact-section
       input: { path: Input.cs }
       analysis: {}
-      execution: { maxDegreeOfParallelism: 1 }
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
       artifacts:
         {{property}}: null
       """);
@@ -436,7 +703,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       runId: null-logging-categories
       input: { path: Input.cs }
       analysis: {}
-      execution: { maxDegreeOfParallelism: 1 }
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
       artifacts: {}
       logging:
         categories: null
@@ -461,7 +728,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       runId: null-logging-section
       input: { path: Input.cs }
       analysis: {}
-      execution: { maxDegreeOfParallelism: 1 }
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
       artifacts: {}
       logging: null
       """);
@@ -485,7 +752,7 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       runId: concurrent-reservation
       input: { path: Input.cs }
       analysis: {}
-      execution: { maxDegreeOfParallelism: 1 }
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
       artifacts: { root: artifacts }
       """);
     var configuration = YamlConfigurationLoader.Load(configurationPath);
@@ -661,7 +928,12 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
       "analysis:",
       "execution:",
       $"  {writeBack}",
-      $"  maxDegreeOfParallelism: {degreeOfParallelism}",
+      $"  directoryMaxDegreeOfParallelism: {degreeOfParallelism}",
+      $"  cpgMaxDegreeOfParallelism: {degreeOfParallelism}",
+      $"  groupMaxDegreeOfParallelism: {degreeOfParallelism}",
+      $"  helperMaxDegreeOfParallelism: {degreeOfParallelism}",
+      $"  replayMaxDegreeOfParallelism: {degreeOfParallelism}",
+      $"  maxConcurrentOperations: {degreeOfParallelism}",
       "artifacts:",
       "  root: artifacts",
       "  diff:",

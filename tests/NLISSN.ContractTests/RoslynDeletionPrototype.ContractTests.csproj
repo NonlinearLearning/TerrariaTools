@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
     <ProjectReference Include="..\..\src\NLISSN\NLISSN.csproj" />
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />
+    <ProjectReference Include="..\..\src\NLCPG.ProjectExport\NLCPG.ProjectExport.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Core\NLISSN.Core.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Rule.Generator\NLISSN.Rule.Generator.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Rules\NLISSN.Rules.csproj" />

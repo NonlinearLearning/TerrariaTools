@@ -47,7 +47,7 @@ public sealed record CpgNodeSelector(
     string? SymbolKey = null,
     IReadOnlySet<NodeId>? NodeIds = null)
 {
-    public bool Matches(NLCPGNode node)
+    public bool Matches(NLCPGGraph graph, NLCPGNode node)
     {
         if (NodeKinds is not null && !NodeKinds.Contains(node.Kind))
         {
@@ -59,7 +59,7 @@ public sealed record CpgNodeSelector(
             return false;
         }
 
-        if (FilePath is not null && !string.Equals(node.FilePath, FilePath, StringComparison.Ordinal))
+        if (FilePath is not null && !string.Equals(graph.ResolveFilePath(node), FilePath, StringComparison.Ordinal))
         {
             return false;
         }
@@ -75,8 +75,8 @@ public sealed record CpgNodeSelector(
         }
 
         if (SymbolKey is not null &&
-            !string.Equals(node.FullName, SymbolKey, StringComparison.Ordinal) &&
-            !string.Equals(node.Name, SymbolKey, StringComparison.Ordinal))
+            !string.Equals(graph.ResolveFullName(node), SymbolKey, StringComparison.Ordinal) &&
+            !string.Equals(graph.ResolveName(node), SymbolKey, StringComparison.Ordinal))
         {
             return false;
         }

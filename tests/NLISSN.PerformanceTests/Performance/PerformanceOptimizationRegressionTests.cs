@@ -747,7 +747,12 @@ public sealed class PerformanceOptimizationRegressionTests : IDisposable
     {
         var runtime = new  AnalysisRuntime(
           new RoslynPrototypeExecutionOptions(
-            MaxDegreeOfParallelism: maxDegreeOfParallelism,
+            DirectoryMaxDegreeOfParallelism: maxDegreeOfParallelism,
+            CpgMaxDegreeOfParallelism: maxDegreeOfParallelism,
+            GroupMaxDegreeOfParallelism: maxDegreeOfParallelism,
+            HelperMaxDegreeOfParallelism: maxDegreeOfParallelism,
+            ReplayMaxDegreeOfParallelism: maxDegreeOfParallelism,
+            MaxConcurrentOperations: maxDegreeOfParallelism,
             EnableGroupParallelism: maxDegreeOfParallelism > 1),
           new  AnalysisEpoch(0, 0, 0));
         var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)

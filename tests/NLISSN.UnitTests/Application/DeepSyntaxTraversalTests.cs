@@ -29,7 +29,7 @@ public sealed class DeepSyntaxTraversalTests
     var parenthesizedNodes = graph.Nodes
       .Where(node =>
         node.Kind == NLCPGNodeKind.SyntaxNode &&
-        string.Equals(node.DisplayKind, nameof(SyntaxKind.ParenthesizedExpression), StringComparison.Ordinal))
+        string.Equals(graph.ResolveDisplayKind(node), nameof(SyntaxKind.ParenthesizedExpression), StringComparison.Ordinal))
       .ToList();
 
     Assert.NotEmpty(graph.Nodes);

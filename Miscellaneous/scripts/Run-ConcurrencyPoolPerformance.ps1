@@ -99,6 +99,10 @@ function Get-SnapshotKey([System.Collections.IDictionary] $metrics) {
   return "nodes=$($metrics.nodeCount)|edges=$($metrics.edgeCount)|seed=$($metrics.seedMarks)|propagated=$($metrics.propagatedMarks)|lifted=$($metrics.liftedMarks)|decisions=$($metrics.decisions)|edits=$($metrics.edits)|diagnostics=$($metrics.diagnostics)"
 }
 
+function ConvertTo-YamlScalar([string] $value) {
+  return "'" + $value.Replace("'", "''") + "'"
+}
+
 if (-not (Test-Path -LiteralPath $SourceFile -PathType Leaf)) {
   throw "SourceFile does not exist: $SourceFile"
 }
@@ -132,6 +136,7 @@ New-Item -ItemType Directory -Path $OutputRoot -Force | Out-Null
 $logsRoot = Join-Path $OutputRoot 'logs'
 New-Item -ItemType Directory -Path $logsRoot -Force | Out-Null
 $project = Join-Path $repoRoot 'src\NLISSN\NLISSN.csproj'
+$configurationPath = Join-Path $OutputRoot 'nlissn.yml'
 $allSamples = @()
 $baselineSnapshot = $null
 
@@ -139,8 +144,49 @@ foreach ($currentDop in @($dopValues | Sort-Object -Unique)) {
   for ($run = 1; $run -le ($WarmupCount + $MeasurementCount); $run++) {
     $phase = if ($run -le $WarmupCount) { 'warmup' } else { 'measurement' }
     $phaseIndex = if ($phase -eq 'warmup') { $run } else { $run - $WarmupCount }
-    $logPath = Join-Path $logsRoot ("dop-{0}-{1}-{2:D2}.log" -f $currentDop, $phase, $phaseIndex)
-    & dotnet run --no-build --project $project -- $resolvedSource --target-name $TargetName --max-degree-of-parallelism $currentDop --cpg-max-degree-of-parallelism $currentDop --skip-rewrite --no-diff --runtime-log $logPath --log-profile benchmark
+    $runId = "dop-{0}-{1}-{2:D2}-{3}" -f $currentDop, $phase, $phaseIndex, ([Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $yamlSourcePath = $resolvedSource.Replace('\', '/')
+    $yamlTargetName = ConvertTo-YamlScalar $TargetName
+    $yamlInputPath = ConvertTo-YamlScalar $yamlSourcePath
+    @"
+schemaVersion: 3
+tool: nlissn
+runId: $runId
+input:
+  path: $yamlInputPath
+analysis:
+  targetName: $yamlTargetName
+execution:
+  writeBack: false
+  skipRewrite: true
+  directoryMaxDegreeOfParallelism: $currentDop
+  cpgMaxDegreeOfParallelism: $currentDop
+  groupMaxDegreeOfParallelism: $currentDop
+  helperMaxDegreeOfParallelism: $currentDop
+  replayMaxDegreeOfParallelism: $currentDop
+  maxConcurrentOperations: $currentDop
+artifacts:
+  root: logs
+  diff: { enabled: false }
+  runtimeLog: { enabled: true }
+  evidence: { enabled: false }
+  rewritePlan: { mode: none }
+  analysisLog: { enabled: false }
+logging:
+  profile: benchmark
+  level: info
+  categories: []
+  events: []
+  view: benchmark
+"@ | Set-Content -LiteralPath $configurationPath -Encoding utf8
+    $logPath = Join-Path $logsRoot ("$runId\RuntimeLog\runtime.log")
+    Push-Location $OutputRoot
+    try {
+      & dotnet run --no-build --project $project
+    }
+    finally {
+      Pop-Location
+    }
     if ($LASTEXITCODE -ne 0) {
       throw "DOP $currentDop $phase $phaseIndex failed with exit code $LASTEXITCODE."
     }

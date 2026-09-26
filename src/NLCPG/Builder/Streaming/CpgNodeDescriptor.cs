@@ -4,33 +4,30 @@ using NLCPG.Model;
 namespace NLCPG.Builder.Streaming;
 
 /// 单个 CPG 节点的不可变且独立于图的描述。
-internal sealed record CpgNodeDescriptor(
+public readonly record struct CpgNodeDescriptor(
   StableNodeAnchor Anchor,
   NLCPGNodeKind Kind,
-  string DisplayKind,
-  string? Name,
-  string? FullName,
-  string? Signature,
+  uint NameId,
+  uint FullNameId,
+  uint SignatureId,
   NLCPGDispatchKind? DispatchKind,
-  string? TypeFullName,
-  string? FilePath,
+  uint TypeFullNameId,
+  uint FilePathId,
   int? SpanStart,
   int? SpanEnd,
   bool IsImplicit)
 {
     internal static CpgNodeDescriptor FromNode(NLCPGNode node)
     {
-        ArgumentNullException.ThrowIfNull(node);
         return new CpgNodeDescriptor(
           node.StableAnchor ?? throw new InvalidOperationException("Streaming node descriptors require stable anchors."),
           node.Kind,
-          node.DisplayKind,
-          node.Name,
-          node.FullName,
-          node.Signature,
+          node.NameId,
+          node.FullNameId,
+          node.SignatureId,
           node.DispatchKind,
-          node.TypeFullName,
-          node.FilePath,
+          node.TypeFullNameId,
+          node.FilePathId,
           node.SpanStart,
           node.SpanEnd,
           node.IsImplicit);
@@ -40,16 +37,14 @@ internal sealed record CpgNodeDescriptor(
     {
         return new NLCPGNode(
           Kind,
-          DisplayKind,
-          Name,
-          FullName,
-          Signature,
+          NameId,
+          FullNameId,
+          SignatureId,
           DispatchKind,
-          TypeFullName,
-          FilePath,
+          TypeFullNameId,
+          FilePathId,
           SpanStart,
           SpanEnd,
-          Text: null,
           IsImplicit: IsImplicit,
           NodeId: allocation.GetRequiredId(Anchor),
           StableAnchor: Anchor);

@@ -8,6 +8,15 @@ namespace RoslynPrototype.Tests;
 public sealed class NLCPGNodeIdContractTests
 {
   [Fact]
+  public void GraphNodeAndEdgeModels_AreReadonlyValueTypesWithoutTextCarrier()
+  {
+    Assert.True(typeof(NLCPGNode).IsValueType);
+    Assert.True(typeof(NLCPGEdge).IsValueType);
+    Assert.Null(typeof(NLCPGNode).GetProperty("Text"));
+    Assert.Null(typeof(NLCPGNode).GetField("Text"));
+  }
+
+  [Fact]
   public void DeterministicNodeIdTable_Create_AssignsStableIdsIndependentOfInputOrder()
   {
     var first = new StableNodeAnchor(
@@ -103,13 +112,13 @@ public sealed class NLCPGNodeIdContractTests
     var allocation = DeterministicNodeIdTable.Create(new[] { secondAnchor, firstAnchor });
     var graph = new NLCPGGraph(allocation);
 
-    var second = graph.AddNode(CreateSyntaxNode(secondAnchor, "second"));
-    var first = graph.AddNode(CreateSyntaxNode(firstAnchor, "first"));
+    var second = graph.AddNode(CreateSyntaxNode(secondAnchor, "second"), stableAnchor: secondAnchor);
+    var first = graph.AddNode(CreateSyntaxNode(firstAnchor, "first"), stableAnchor: firstAnchor);
     graph.AddEdge(first, second, NLCPGEdgeKind.SyntaxChild);
     graph.FreezeQueryIndex();
 
-    Assert.Equal(allocation.GetRequiredId(firstAnchor), Assert.Single(graph.Nodes, node => node.Name == "first").NodeId);
-    Assert.Equal(allocation.GetRequiredId(secondAnchor), Assert.Single(graph.Nodes, node => node.Name == "second").NodeId);
+    Assert.Equal(allocation.GetRequiredId(firstAnchor), Assert.Single(graph.Nodes, node => graph.ResolveName(node) == "first").NodeId);
+    Assert.Equal(allocation.GetRequiredId(secondAnchor), Assert.Single(graph.Nodes, node => graph.ResolveName(node) == "second").NodeId);
     Assert.Equal(
       allocation.GetRequiredId(firstAnchor),
       Assert.Single(graph.Edges).SourceNodeId);
@@ -120,9 +129,10 @@ public sealed class NLCPGNodeIdContractTests
   {
     var allocatedAnchor = CreateSyntaxAnchor(spanStart: 0, spanEnd: 4);
     var graph = new NLCPGGraph(DeterministicNodeIdTable.Create(new[] { allocatedAnchor }));
-    var unallocatedNode = CreateSyntaxNode(CreateSyntaxAnchor(spanStart: 5, spanEnd: 9), "unallocated");
+    var unallocatedAnchor = CreateSyntaxAnchor(spanStart: 5, spanEnd: 9);
+    var unallocatedNode = CreateSyntaxNode(unallocatedAnchor, "unallocated");
 
-    Assert.Throws<InvalidOperationException>(() => graph.AddNode(unallocatedNode));
+    Assert.Throws<InvalidOperationException>(() => graph.AddNode(unallocatedNode, stableAnchor: unallocatedAnchor));
     Assert.Empty(graph.Nodes);
   }
 
@@ -154,7 +164,7 @@ public sealed class NLCPGNodeIdContractTests
 
     Assert.Contains(nodeDescriptor!.GetProperties(), property => property.Name == "Anchor");
     Assert.Contains(nodeDescriptor.GetProperties(), property => property.Name == "DispatchKind");
-    Assert.Contains(nodeDescriptor.GetProperties(), property => property.Name == "TypeFullName");
+    Assert.Contains(nodeDescriptor.GetProperties(), property => property.Name == "TypeFullNameId");
     Assert.Contains(edgeCandidate!.GetProperties(), property => property.Name == "SourceAnchor");
     Assert.Contains(edgeCandidate.GetProperties(), property => property.Name == "TargetAnchor");
     Assert.All(
@@ -162,6 +172,58 @@ public sealed class NLCPGNodeIdContractTests
       property => Assert.False(
         property.PropertyType.Namespace?.StartsWith("Microsoft.CodeAnalysis", StringComparison.Ordinal) == true ||
         property.PropertyType == typeof(NLCPGGraph)));
+  }
+
+  [Fact]
+  public void InternalCpgDomainCarriers_AreNonPublicValueTypes()
+  {
+    var assembly = typeof(NLCPGBuilder).Assembly;
+    var typeNames = new[]
+    {
+      "NLCPG.Builder.Streaming.CpgFragmentOwnership",
+      "NLCPG.Builder.Streaming.CrossShardSummary",
+      "NLCPG.Builder.Streaming.SkeletonShardPublisher+PendingCandidateBuckets",
+      "NLCPG.Builder.Streaming.SkeletonShardPublisher+BoundaryBucket",
+      "NLCPG.Model.NLCPGGraph+PendingEdge",
+      "NLCPG.Model.NLCPGGraph+MutableGraphFacts",
+      "NLCPG.Persistence.CpgFrozenShardGraphFacts",
+      "NLCPG.Builder.Passes.InterproceduralPlanRef",
+      "NLCPG.Builder.NLCPGBuilder+DefinitionFact",
+      "NLCPG.Analysis.CpgRelationQueryService+QueryKey",
+      "NLCPG.Analysis.NLCPGSliceQuery+QueryKey",
+      "NLCPG.Persistence.Sqlite.SqliteCpgShardCatalog+RoutingIndexCacheKey",
+      "NLCPG.Builder.CpgRestoreMetrics",
+      "NLCPG.Builder.CpgBaseRestoreResult",
+      "NLCPG.Builder.CpgShardExportRequest",
+    };
+
+    foreach (var typeName in typeNames)
+    {
+      var type = assembly.GetType(typeName, throwOnError: true)!;
+      Assert.True(type.IsValueType, $"{typeName} must be a value type.");
+      Assert.False(type.IsPublic || type.IsNestedPublic, $"{typeName} must remain non-public.");
+    }
+  }
+
+  [Fact]
+  public void InternalAnalysisDomainCarriers_AreNonPublicValueTypes()
+  {
+    var assembly = typeof(NLISSN.Core.Propagation.PropagationFactKey).Assembly;
+    var typeNames = new[]
+    {
+      "NLISSN.Core.Propagation.PropagationFactKey",
+      "NLISSN.Core.Propagation.PropagationFixedPointExecutor+PropagationSourceFact",
+      "NLISSN.Core.Propagation.PropagationFixedPointExecutor+PropagationWorkItemPriority",
+      "NLISSN.Core.Decision.AnalysisEvidenceCollector+PendingNode",
+      "NLISSN.Core.Decision.AnalysisEvidenceCollector+PendingEdge",
+    };
+
+    foreach (var typeName in typeNames)
+    {
+      var type = assembly.GetType(typeName, throwOnError: true)!;
+      Assert.True(type.IsValueType, $"{typeName} must be a value type.");
+      Assert.False(type.IsPublic || type.IsNestedPublic, $"{typeName} must remain non-public.");
+    }
   }
 
   [Fact]
@@ -220,16 +282,14 @@ public sealed class NLCPGNodeIdContractTests
     var identityFactory = new StableNodeIdentityFactory();
     var first = identityFactory.GetStableAnchor(new NLCPGNode(
       NLCPGNodeKind.Method,
-      "Method",
-      Name: "Run",
-      FilePath: "input.cs",
+      NameId: 1,
+      FilePathId: 2,
       SpanStart: 0,
       SpanEnd: 10));
     var second = identityFactory.GetStableAnchor(new NLCPGNode(
       NLCPGNodeKind.Method,
-      "Method",
-      Name: "Run",
-      FilePath: "input.cs",
+      NameId: 1,
+      FilePathId: 2,
       SpanStart: 0,
       SpanEnd: 10));
 
@@ -240,8 +300,8 @@ public sealed class NLCPGNodeIdContractTests
   public void AddNodeAndEdge_BackfillsNodeIdsWithoutChangingDisplayFields()
   {
     var graph = new NLCPGGraph();
-    var source = new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: "source");
-    var sink = new NLCPGNode(NLCPGNodeKind.Operation, "Operation", Name: "sink");
+    var source = new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "source");
+    var sink = new NLCPGNodeDraft(NLCPGNodeKind.Operation, Name: "sink");
 
     var materializedSource = graph.AddNode(source);
     var materializedSink = graph.AddNode(sink);
@@ -253,12 +313,10 @@ public sealed class NLCPGNodeIdContractTests
     graph.FreezeQueryIndex();
 
     var edge = Assert.Single(graph.Edges);
-    materializedSource = Assert.Single(graph.Nodes, node => node.Name == "source");
-    materializedSink = Assert.Single(graph.Nodes, node => node.Name == "sink");
-    Assert.NotNull(materializedSource);
-    Assert.NotNull(materializedSink);
-    Assert.Equal("source", materializedSource.Name);
-    Assert.Equal("sink", materializedSink.Name);
+    materializedSource = Assert.Single(graph.Nodes, node => graph.ResolveName(node) == "source");
+    materializedSink = Assert.Single(graph.Nodes, node => graph.ResolveName(node) == "sink");
+    Assert.Equal("source", graph.ResolveName(materializedSource));
+    Assert.Equal("sink", graph.ResolveName(materializedSink));
     Assert.Equal(new NodeId(1), materializedSource.NodeId);
     Assert.Equal(new NodeId(2), materializedSink.NodeId);
     Assert.NotNull(materializedSource.StableAnchor);
@@ -266,7 +324,7 @@ public sealed class NLCPGNodeIdContractTests
     Assert.Equal(materializedSource.NodeId!.Value, edge.SourceNodeId);
     Assert.Equal(materializedSink.NodeId!.Value, edge.TargetNodeId);
     Assert.Equal(materializedSource, graph.GetNode(materializedSource.NodeId!.Value));
-    Assert.Equal("source", graph.GetNode(materializedSource.NodeId.Value)!.Name);
+    Assert.Equal("source", graph.ResolveName(graph.GetNode(materializedSource.NodeId.Value)!.Value));
   }
 
   [Fact]
@@ -320,9 +378,9 @@ public sealed class NLCPGNodeIdContractTests
       "nodeid-stability.cs");
 
     return graph.Nodes
-      .OrderBy(BuildNodeContractKey, StringComparer.Ordinal)
+      .OrderBy(node => BuildNodeContractKey(graph, node), StringComparer.Ordinal)
       .ToDictionary(
-        BuildNodeContractKey,
+        node => BuildNodeContractKey(graph, node),
         node => Assert.NotNull(node.NodeId).Value,
         StringComparer.Ordinal);
   }
@@ -350,19 +408,22 @@ public sealed class NLCPGNodeIdContractTests
       : type.IsGenericType && type.GenericTypeArguments.Any(ContainsRoslynOrGraphReference);
   }
 
-  private static string BuildNodeContractKey(NLCPGNode node)
+  private static string BuildNodeContractKey(NLCPGGraph graph, NLCPGNode node)
   {
     return string.Join(
       "|",
       node.Kind,
-      node.DisplayKind,
-      node.Name,
-      node.FullName,
-      node.Signature,
-      node.FilePath,
+      graph.ResolveDisplayKind(node),
+      graph.ResolveName(node),
+      graph.ResolveFullName(node),
+      graph.ResolveSignature(node),
+      graph.ResolveFilePath(node),
       node.SpanStart,
       node.SpanEnd,
-      node.IsImplicit);
+      node.IsImplicit,
+      node.StableAnchor?.Role,
+      node.StableAnchor?.Ordinal,
+      node.StableAnchor?.ExtraKeyId);
   }
 
   private static NLCPGBuilder CreateBuilder(int maxDegreeOfParallelism)
@@ -439,12 +500,8 @@ public sealed class NLCPGNodeIdContractTests
       ExtraKeyId: 1);
   }
 
-  private static NLCPGNode CreateSyntaxNode(StableNodeAnchor anchor, string name)
+  private static NLCPGNodeDraft CreateSyntaxNode(StableNodeAnchor anchor, string name)
   {
-    return new NLCPGNode(
-      NLCPGNodeKind.SyntaxNode,
-      "SyntaxNode",
-      Name: name,
-      StableAnchor: anchor);
+    return new NLCPGNodeDraft(NLCPGNodeKind.SyntaxNode, Name: name);
   }
 }

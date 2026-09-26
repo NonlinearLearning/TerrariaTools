@@ -63,12 +63,20 @@ public static class AnalysisLegacyOptionsTestExtensions
 
   public static AnalysisRuntime CreateRuntime(IReadOnlyDictionary<string, string> options)
   {
+    var defaultDegree = GetPositiveInt(
+      options,
+      "max-degree-of-parallelism",
+      Math.Max(1, Environment.ProcessorCount));
     return AnalysisRuntimeFactory.Create(new RoslynPrototypeExecutionOptions(
-      GetPositiveInt(options, "max-degree-of-parallelism", Math.Max(1, Environment.ProcessorCount)),
+      DirectoryMaxDegreeOfParallelism: GetPositiveInt(options, "directory-max-degree-of-parallelism", defaultDegree),
+      CpgMaxDegreeOfParallelism: GetPositiveInt(options, "cpg-max-degree-of-parallelism", defaultDegree),
+      GroupMaxDegreeOfParallelism: GetPositiveInt(options, "group-max-degree-of-parallelism", defaultDegree),
+      HelperMaxDegreeOfParallelism: GetPositiveInt(options, "helper-max-degree-of-parallelism", defaultDegree),
+      ReplayMaxDegreeOfParallelism: GetPositiveInt(options, "replay-max-degree-of-parallelism", defaultDegree),
+      MaxConcurrentOperations: GetPositiveInt(options, "max-concurrent-operations", defaultDegree),
       EnableDirectoryParallelism: !IsTrue(options, "disable-directory-parallelism"),
       EnableGroupParallelism: IsTrue(options, "enable-group-parallelism"),
-      EnableHelperParallelism: !IsTrue(options, "disable-helper-parallelism"),
-      CpgMaxDegreeOfParallelism: GetOptionalPositiveInt(options, "cpg-max-degree-of-parallelism")));
+      EnableHelperParallelism: !IsTrue(options, "disable-helper-parallelism")));
   }
 
   public static AnalysisRequestSettings CreateSettings(IReadOnlyDictionary<string, string> options)
@@ -107,27 +115,17 @@ public static class AnalysisLegacyOptionsTestExtensions
     string key,
     int fallback)
   {
-    return options.TryGetValue(key, out var value) && int.TryParse(value, out var parsed)
-      ? Math.Max(1, parsed)
-      : fallback;
-  }
-
-  private static int? GetOptionalPositiveInt(
-    IReadOnlyDictionary<string, string> options,
-    string key)
-  {
-    if (!options.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+    if (!options.TryGetValue(key, out var value))
     {
-      return null;
+      return fallback;
     }
 
     if (!int.TryParse(value, out var parsed) || parsed <= 0)
     {
-      throw new ArgumentException(
-        $"Invalid --cpg-max-degree-of-parallelism value '{value}'.",
-        nameof(options));
+      throw new ArgumentException($"--{key} must be a positive integer.", key);
     }
 
     return parsed;
   }
+
 }

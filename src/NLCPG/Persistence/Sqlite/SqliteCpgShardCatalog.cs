@@ -1234,7 +1234,7 @@ public sealed class SqliteCpgShardCatalog : ICpgShardCatalog
         return string.Join(", ", parameterNames);
     }
 
-    private sealed record RoutingIndexCacheKey(
+    private readonly record struct RoutingIndexCacheKey(
       string BuildId,
       string RelativePath,
       int FormatVersion,

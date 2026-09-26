@@ -156,7 +156,7 @@ public sealed record RuleNodeId
 | 区域 | 主要文件 | 执行目标 |
 | --- | --- | --- |
 | 声明合同 | `src/NLISSN.Rule/IRuleDefinition.cs`；四个 `RuleDefinition*` 基类 | 删除 `CapabilityId`，保留唯一 `RuleId` |
-| 目录校验 | `src/NLISSN.Application/Catalog/RuleCatalog.cs`；`src/NLISSN/Composition/RuleRegistry.cs` | 校验全局唯一 `RuleId` |
+| 目录校验 | `src/NLISSN.Application/Catalog/RuleCatalog.cs`；`src/NLISSN/Composition/RulePipelineComposer.cs` | 校验全局唯一 `RuleId` |
 | 图身份 | `src/NLISSN.Rule/RuleGraph.cs`；`src/NLISSN.Application/Analysis/RulePipeline.cs`；`RuleGraphAnalysisExecutor.cs` | 使用结构化 `(RuleKind, RuleId)`，消除字符串反解析 |
 | 阶段执行 | `MarkingEngine.cs`；`PropagationEngine.cs`；`PropagationFixedPointExecutor.cs`；`MarkLiftingEngine.cs`；`DecisionModel.cs` | 继续使用 `RuleId` 传递生产者归因 |
 | 结果与证据 | `MarkRecord.cs`；`PropagatedMarkRecord.cs`；`LiftedMarkRecord.cs`；`AnalysisEvidence.cs`；`AnalysisValidationReport.cs` | 保留 `RuleId` 字段，不增加第二身份 |
@@ -182,7 +182,7 @@ rg -l --glob '*.cs' 'CapabilityId' .\src .\tests | Sort-Object
 
 **Files:**
 
-- Read: `Context/AGENTS.md`、`Context/progress.md`、`Context/feature_list.json`、`Miscellaneous/init.ps1`、`docs/harness-runtime.md`、`src/NLISSN/AGENTS.md`、`tests/AGENTS.md`、`docs/AGENTS.md`。
+- Read: `AGENTS.md`、`Context/progress.md`、`Context/feature_list.json`、`Miscellaneous/init.ps1`、`docs/harness-runtime.md`、`src/NLISSN/AGENTS.md`、`tests/AGENTS.md`、`docs/AGENTS.md`。
 - Create: `tests/NLISSN.ContractTests/Identity/RuleIdentityContractTests.cs`。
 - Create: `tests/NLISSN.ContractTests/Identity/RuleIdentitySnapshot.json`（仅测试基线，不进入生产运行时）。
 

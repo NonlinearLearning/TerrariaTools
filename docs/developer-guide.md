@@ -6,7 +6,7 @@
 
 ## 工作入口
 
-开始前阅读 `Context/AGENTS.md`、`Context/progress.md` 与 `Context/feature_list.json`，随后运行：
+开始前阅读 [`AGENTS.md`](../AGENTS.md)、`Context/progress.md` 与 `Context/feature_list.json`，随后运行：
 
 ```powershell
 pwsh -File .\Miscellaneous\init.ps1
@@ -45,7 +45,7 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 - 目录分析适配：`src/NLISSN/Hosting/DirectoryAnalysisService.cs`
 - 工程分析适配：`src/NLISSN/Hosting/WorkspaceAnalysisService.cs`
 - 应用编排：`src/NLISSN.Application/Analysis/ApplicationService.cs`
-- 运行时：`src/NLISSN.Core/Pipeline/ExecutionRuntime.cs`
+- 运行时：`src/NLISSN.Application/ExecutionRuntime.cs`
 - 规则：`src/NLISSN.Rules/`
 
 删除规则遵循“标记 → 传播 → 提升 → 决策 → 改写”。规则图以 `Target.*`、`Flow.*`、`Lift.*` 与 `Relation.*` 端口和语法契约连接；Atomic/Declaration provenance 仅用于证据与声明安全检查，不划分独立运行链。改动此链路前读取对应局部约束和 [删除规则流水线](../设计docs/目前设计/deletion-pipeline.md)。
@@ -74,7 +74,12 @@ dotnet test .\tests\NLISSN.HostTests\RoslynDeletionPrototype.HostTests.csproj --
 `.cs` 文件，默认对 DOP
 1、8、12、16 各执行一次预热和三次测量，写入每次的 runtime log 以及中位数报告：
 
-当需要区分目录 DOP 与每文件 CPG DOP 时，使用 `--cpg-max-degree-of-parallelism` 覆盖 builder 值，并比较 `(12,1)`、`(1,12)`、`(12,12)`。每组保持输入、规则、日志配置和 SDK 相同；阶段累计是逐文件 elapsed 总和，端到端裁决使用墙钟中位数。该诊断不会改变默认 DOP。
+该脚本每次运行都会生成临时的统一 `nlissn.yml`，把目录和 CPG 并发值写入
+`execution.directoryMaxDegreeOfParallelism` 与
+`execution.cpgMaxDegreeOfParallelism`，不再向 NLISSN 可执行入口传递参数。需要
+区分目录 DOP 与每文件 CPG DOP 时，比较配置中的 `(12,1)`、`(1,12)`、`(12,12)`。
+每组保持输入、规则、日志配置和 SDK 相同；阶段累计是逐文件 elapsed 总和，端到端
+裁决使用墙钟中位数。该诊断不会改变默认 DOP。
 
 ```powershell
 pwsh -File .\Miscellaneous\scripts\Run-ConcurrencyPoolPerformance.ps1 `
@@ -145,7 +150,11 @@ rewrite 流程，且没有找到现有持久化、写入锁和取消覆盖之外
 
 绑定校验只在 `nlissn.yml` 显式设置 `analysis.validateBindings: true` 时运行。它在规则图输出归并和 rewrite 前检查 CPG、规则和决策关系；Error 会保留诊断报告并跳过写入，默认分析路径不承担全图校验成本。
 
-Schema 2 配置按 `parse -> diagnostics -> resolve -> map -> execute` 处理。语法、重复键和未知属性错误终止解析；对可解析文档，字段值、路径和制品约束会聚合为稳定排序的诊断。`resolved-configuration.json` 与 evidence 配置投影记录有效值、`explicit`/`schema-default` 来源和稳定指纹，指纹排除每次运行的制品路径。
+Schema 3 配置按 `parse -> diagnostics -> resolve -> map -> execute` 处理。NLISSN
+loader 仍兼容 Schema 2 fixture；Schema 3 必须声明 `tool: nlissn`。语法、重复键和
+未知属性错误终止解析；对可解析文档，字段值、路径和制品约束会聚合为稳定排序的
+诊断。`resolved-configuration.json` 与 evidence 配置投影记录有效值、
+`explicit`/`schema-default` 来源和稳定指纹，指纹排除每次运行的制品路径。
 
 ## 文档与状态同步
 

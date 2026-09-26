@@ -189,8 +189,8 @@ public sealed class CpgRelationQueryService : ICpgRelationQueryService
 
         var nodes = selectedNodeIds
             .Select(nodeId => _graph.GetNode(nodeId))
-            .Where(node => node is not null)
-            .Select(node => node!)
+            .Where(node => node.HasValue)
+            .Select(node => node.GetValueOrDefault())
             .OrderBy(node => node.NodeId)
             .ToArray();
         var edges = selectedEdges
@@ -230,7 +230,7 @@ public sealed class CpgRelationQueryService : ICpgRelationQueryService
     private IReadOnlyList<NLCPGNode> ResolveNodes(CpgNodeSelector selector)
     {
         return _graph.Nodes
-            .Where(node => node.NodeId.HasValue && selector.Matches(node))
+            .Where(node => node.NodeId.HasValue && selector.Matches(_graph, node))
             .OrderBy(node => node.NodeId)
             .ToArray();
     }
@@ -276,9 +276,9 @@ public sealed class CpgRelationQueryService : ICpgRelationQueryService
         for (var current = state; current is not null; current = current.Parent)
         {
             nodeIds.Add(current.NodeId);
-            if (current.Edge is not null)
+            if (current.Edge.HasValue)
             {
-                edges.Add(current.Edge);
+                edges.Add(current.Edge.Value);
             }
         }
 
@@ -348,7 +348,7 @@ public sealed class CpgRelationQueryService : ICpgRelationQueryService
             .Contains(frame, StringComparer.Ordinal);
     }
 
-    private sealed record QueryKey(
+    private readonly record struct QueryKey(
         string GraphSnapshotVersion,
         CpgRelationProfile Profile,
         CpgQueryDirection Direction,
