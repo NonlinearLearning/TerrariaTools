@@ -65,6 +65,7 @@ NLCPGGraph (节点、边、稳定 NodeId、冻结查询索引)
 | --- | --- |
 | 根目录 | 项目配置和极薄的可执行入口。 |
 | `Cli/` | 命令行参数、默认图统计和局部视图 JSON 输出。 |
+| `Configuration/` | `nlissn.yml` 的加载与 YAML 节点访问辅助。 |
 | `Contracts/` | 跨层共享的节点、边、能力、调用分派与视图枚举。 |
 | `Model/` | 内存图、稳定身份、不可变节点/边和冻结查询索引。 |
 | `Builder/` | Roslyn 上下文、构图调度、分区、流式发布与持久化编排。 |
@@ -86,6 +87,8 @@ NLCPGGraph (节点、边、稳定 NodeId、冻结查询索引)
 | `NLCPG.csproj` | .NET 10 可执行项目；引用 Roslyn C# 与 Microsoft.Data.Sqlite。 |
 | `Program.cs` | 顶级入口，只把参数交给 `NLCPGCli`。 |
 | `Cli/NLCPGCli.cs` | 解析输入、局部视图参数和 JSON 输出；驱动构建并打印节点/边统计。 |
+| `Cli/NLCPGYamlConfiguration.cs` | 把 `nlissn.yml` 解析为 NLCPG 的输入、局部视图和输出设置。 |
+| `Configuration/UnifiedYamlDocument.cs` | 加载 `nlissn.yml`，并提供映射、序列、标量读取与路径、整数解析辅助。 |
 | `Contracts/NLCPGCapability.cs` | 定义可请求的图能力及其按位组合。 |
 | `Contracts/NLCPGDecisionRelationKind.cs` | 描述决策相关的关系种类。 |
 | `Contracts/NLCPGDispatchKind.cs` | 定义调用分派类别、标志和决策动作种类。 |

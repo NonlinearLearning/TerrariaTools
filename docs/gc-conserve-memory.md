@@ -1,14 +1,14 @@
 # GC 内存总量配置（`System.GC.ConserveMemory=7`）
 
 **状态：** 现行配置（2026-09-26 启用）。
-**回答的问题：** 为什么三个 Exe 入口都固化了这条 GC 配置？它降的是什么、不降什么、怎么关掉？
+**回答的问题：** 为什么两个 Exe 入口都固化了这条 GC 配置？它降的是什么、不降什么、怎么关掉？
 **适用对象：** 在本仓跑全语料分析、遇到进程内存偏高的人。
 
 ---
 
 ## 0. 结论先行
 
-1. **三个可执行入口均已固化** `System.GC.ConserveMemory = 7`（见 §1）。
+1. **两个可执行入口均已固化** `System.GC.ConserveMemory = 7`（见 §1）。
 2. **它降低的是「内存总量」**，不是把字节从一个区域搬到另一个区域。
    实测（单文件 `NPC.cs`，每侧 3 次）：工作集峰值 **4,701 → 3,799 MB（−19.2%）**，
    committed 峰值 **4,890 → 3,961 MB（−19.0%）**，LOH 碎片 **1,014 → 946 MB（−6.7%）**。
@@ -22,13 +22,12 @@
 
 ## 1. 配置在哪、长什么样
 
-三个入口项目各有一个独立 `<ItemGroup>`：
+两个入口项目各有一个独立 `<ItemGroup>`：
 
 | 文件 | 作用 |
 | --- | --- |
-| `src/NLISSN/NLISSN.csproj` | 主分析入口 |
+| `src/NLISSN/NLISSN.csproj` | 主分析入口；项目级 JSON 导出作为后置步骤在同进程内运行，因此也受此配置覆盖 |
 | `src/NLCPG/NLCPG.csproj` | CPG 入口 |
-| `src/NLCPG.ProjectExport/NLCPG.ProjectExport.csproj` | 项目级导出入口 |
 
 ```xml
 <ItemGroup>
@@ -244,8 +243,11 @@ GC.GetConfigurationVariables()   # 查 GCConserveMem
    `BASELINE.md §5.4` 记载同二进制两次运行可差 16%–71%。
 4. **未测 ConserveMemory=9**，也未测它与 `GCHeapHardLimitPercent` 的组合。
 5. **未做 gcdump 复核** `live` 是否不变（按定义不应变，且 nodes/edges 相同，但未直接验）。
-6. **未经验证是否应扩到测试宿主**：本次只固化三个**可执行入口**；
+6. **未经验证是否应扩到测试宿主**：本次只固化**可执行入口**；
    `Directory.Build.props` 未动，测试进程 GC 行为不变。
+   （原为两个入口 `NLISSN` + `NLCPG`；项目级 JSON 导出曾由独立的
+   `NLCPG.ProjectExport` 承担，该工程已删除，导出改为 `NLISSN` 内联后置步骤，
+   因此该配置对导出路径的覆盖**未被削弱**。）
 7. **`HeapHardLimitPercent` 未启用。** 它把"换页"转成"GC"，
    但本仓已验证 `GCHeapHardLimit` 曾致进程死亡（`0x80131506`，
    见 `docs/loh-large-object-optimization-guide.md` §4）。**不要在没有测量前启用。**

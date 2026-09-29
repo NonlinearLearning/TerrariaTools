@@ -75,20 +75,56 @@ public sealed class NlissnSchemaContractTests
       new[] { "schemaVersion", "tool" },
       root.GetProperty("required").EnumerateArray().Select(element => element.GetString()).ToArray());
     Assert.Equal(
-      new[] { "nlissn", "nlcpg", "nlcpg-project-export" },
+      new[] { "nlissn", "nlcpg" },
       root.GetProperty("properties").GetProperty("tool").GetProperty("enum")
         .EnumerateArray()
         .Select(element => element.GetString())
         .ToArray());
     Assert.False(root.GetProperty("additionalProperties").GetBoolean());
+    Assert.False(root.GetProperty("properties").TryGetProperty("projectExport", out _));
 
-    var projectExport = root.GetProperty("$defs").GetProperty("projectExport");
-    Assert.False(projectExport.GetProperty("additionalProperties").GetBoolean());
+    // projectJson 是 artifacts 下的内联开关（已无独立 nlcpg-project-export 入口）。
+    var artifacts = root.GetProperty("$defs").GetProperty("artifacts").GetProperty("properties");
+    Assert.True(artifacts.TryGetProperty("projectJson", out _));
+    var projectJsonDefinition = root.GetProperty("$defs").GetProperty("projectJson");
+    var projectJson = projectJsonDefinition.GetProperty("properties");
+    // 开关的全部字段必须恰好是这六个：多一个都说明契约漂移（如残留的 resume）。
+    // documentShardCount 于单文档分片导出引入，默认 1（不分片），故既有配置行为不变。
+    // documentShardParallelism 是分片写盘并行度，默认 1（逐片串行），只改变时序、不改输出。
+    // performanceDiagnostics 是导出阶段计时开关，默认 false，只影响度量、不影响任何输出。
+    // requestedCapabilities 是导出侧额外请求的 CPG 能力位名称，默认空（沿用 NLCPGCapability.Default）。
     Assert.Equal(
-      1,
-      projectExport.GetProperty("properties").GetProperty("projectWorkerCount")
-        .GetProperty("minimum")
-        .GetInt32());
+      new[]
+      {
+        "documentShardCount",
+        "documentShardParallelism",
+        "enabled",
+        "output",
+        "performanceDiagnostics",
+        "projectWorkerCount",
+        "requestedCapabilities",
+      },
+      projectJson.EnumerateObject().Select(property => property.Name).OrderBy(name => name, StringComparer.Ordinal).ToArray());
+    Assert.False(projectJsonDefinition.GetProperty("additionalProperties").GetBoolean());
+    Assert.False(projectJson.GetProperty("enabled").GetProperty("default").GetBoolean());
+    Assert.Equal(1, projectJson.GetProperty("projectWorkerCount").GetProperty("minimum").GetInt32());
+    Assert.Equal(12, projectJson.GetProperty("projectWorkerCount").GetProperty("default").GetInt32());
+    Assert.Equal(1, projectJson.GetProperty("output").GetProperty("minLength").GetInt32());
+    // 分片数下限 1、默认 1：默认配置下输出与分片改造前完全一致。
+    Assert.Equal(1, projectJson.GetProperty("documentShardCount").GetProperty("minimum").GetInt32());
+    Assert.Equal(1, projectJson.GetProperty("documentShardCount").GetProperty("default").GetInt32());
+    // 分片并行度下限 1、默认 1：默认逐片串行，峰值与串行路径一致。
+    Assert.Equal(1, projectJson.GetProperty("documentShardParallelism").GetProperty("minimum").GetInt32());
+    Assert.Equal(1, projectJson.GetProperty("documentShardParallelism").GetProperty("default").GetInt32());
+    // 计时开关默认关闭：不收集时不读时钟、不建列表，保持既有开销。
+    Assert.False(projectJson.GetProperty("performanceDiagnostics").GetProperty("default").GetBoolean());
+    // 能力位默认为空数组 ⇒ 导出沿用 NLCPGCapability.Default，既有配置的产物不变。
+    Assert.Empty(
+      projectJson.GetProperty("requestedCapabilities").GetProperty("default").EnumerateArray());
+    Assert.Equal(
+      "string",
+      projectJson.GetProperty("requestedCapabilities").GetProperty("items").GetProperty("type").GetString());
+    Assert.False(projectJson.TryGetProperty("resume", out _));
 
     var nlcpg = root.GetProperty("$defs").GetProperty("nlcpg");
     Assert.False(nlcpg.GetProperty("additionalProperties").GetBoolean());
@@ -107,7 +143,7 @@ public sealed class NlissnSchemaContractTests
     Assert.Contains(
       branches,
       branch => branch.GetProperty("then").GetProperty("required")
-        .EnumerateArray().Select(element => element.GetString()).Contains("projectExport"));
+        .EnumerateArray().Select(element => element.GetString()).Contains("nlcpg"));
   }
 
   private static string RepositoryPath(params string[] parts)

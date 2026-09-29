@@ -92,23 +92,27 @@ internal sealed class CanonicalEdgeStore
     // permutation[canonicalIndex] = 原始 edgeArray 下标；
     // 键数组（source/target/kind）均以原始下标为索引。
     //
-    // 【第 14 轮】metadataValueClassOfEdge / metadataValueClassKeys 由 BuildMetadataRanks 传入，
-    // 是它已经算好的值去重结果（每条边的值类下标 + 每个值类的代表键）。
+    // 【第 14 轮】metadataIdOfEdge / metadataPoolKeys 由 BuildMetadataRanks 传入，
+    // 是它已经算好的值去重结果（每条边的元数据 id + 每个值类的代表键）。
     // 本方法原先自带一份同形的值去重（Dictionary<EdgeMetadataKey,int> 走 record 自动值相等），
     // 实测 7,756,984 次探测中 7,752,743 次命中 ⇒ 99.95% 是冗余计算。
-    // 现直接复用上游划分：池 = 代表性键去重后的实例表，canonicalMetadataIds = 值类下标 + 1。
+    // 现直接复用上游划分：池 = 代表性键去重后按秩排布的实例表，canonicalMetadataIds = 元数据 id。
     //
     // 等价性（同二进制交替 A/B 实测）：切换"复用值类"与"自带 record 去重"两方案，
     // GraphSnapshotVersion 三轮均为 9B59A35A…E896，逐字节相同。
+    //
+    // 【本轮 C2】编号约定改由上游直接给出：metadataId = 0 表示无元数据，r >= 1 表示
+    // metadataPoolKeys[r - 1]。上游已把秩与池下标合并，故这里【不再做 +1】，
+    // 且池就是按秩排布的 metadataPoolKeys 本身。
     internal static CanonicalEdgeStore Create(
       NLCPGNode[] orderedNodes,
       int[] permutation,
       int[] sourceOrdinals,
       int[] targetOrdinals,
-      int[] kindKeys,
+      byte[] kindKeys,
       int kindWidth,
-      int[]? metadataValueClassOfEdge,
-      NLCPGGraphIndex.EdgeMetadataKey[]? metadataValueClassKeys)
+      int[]? metadataIdOfEdge,
+      NLCPGGraphIndex.EdgeMetadataKey[]? metadataPoolKeys)
     {
         if (kindWidth > byte.MaxValue + 1)
         {
@@ -124,18 +128,18 @@ internal sealed class CanonicalEdgeStore
         var canonicalKinds = new byte[count];
         var canonicalMetadataIds = new int[count];
 
-        // 元数据池：每个值类一条代表条目，下标 = 值类下标 + 1（0 保留表示"无元数据"）。
+        // 元数据池：按秩排布的代表条目，下标 = 秩 = metadataId - 1（0 保留表示"无元数据"）。
         // 只有上游确实产出值类时才分配（全部边无元数据时上游返回 null，此处同样不分配）。
         int[]? metadataIds = null;
         EdgeMetadataEntry[]? metadataPool = null;
-        var hasMetadata = metadataValueClassKeys is not null && metadataValueClassOfEdge is not null;
+        var hasMetadata = metadataPoolKeys is not null && metadataIdOfEdge is not null;
         if (hasMetadata)
         {
-            metadataPool = new EdgeMetadataEntry[metadataValueClassKeys!.Length];
-            for (var valueClass = 0; valueClass < metadataValueClassKeys.Length; valueClass += 1)
+            metadataPool = new EdgeMetadataEntry[metadataPoolKeys!.Length];
+            for (var rank = 0; rank < metadataPoolKeys.Length; rank += 1)
             {
-                var key = metadataValueClassKeys[valueClass];
-                metadataPool[valueClass] = new EdgeMetadataEntry(
+                var key = metadataPoolKeys[rank];
+                metadataPool[rank] = new EdgeMetadataEntry(
                   key.Label,
                   key.ContextId,
                   key.CallSiteContext);
@@ -151,16 +155,14 @@ internal sealed class CanonicalEdgeStore
             var sourceIndex = permutation[canonicalIndex];
             canonicalSourceOrdinals[canonicalIndex] = sourceOrdinals[sourceIndex];
             canonicalTargetOrdinals[canonicalIndex] = targetOrdinals[sourceIndex];
-            canonicalKinds[canonicalIndex] = (byte)kindKeys[sourceIndex];
+            canonicalKinds[canonicalIndex] = kindKeys[sourceIndex];
             if (metadataIds is null)
             {
                 continue;
             }
 
-            // 值类下标 + 1：上游的 0 号值类是"全 null 元数据"，其代表的条目也应可被索引，
-            // 故统一 +1 让 0 号值类映射到池下标 1，池下标 0 保持未用（与旧实现"id 从 1 起"一致）。
-            canonicalMetadataIds[canonicalIndex] =
-              metadataValueClassOfEdge![sourceIndex] + 1;
+            // 上游的 id 已是"秩 + 1"，即池下标 + 1，故直接搬运，不能再 +1。
+            canonicalMetadataIds[canonicalIndex] = metadataIdOfEdge![sourceIndex];
         }
 
         return new CanonicalEdgeStore(

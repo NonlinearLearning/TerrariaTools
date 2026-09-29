@@ -62,7 +62,7 @@ public sealed class  LayoutArchitectureTests
       new[]
       {
         "..\\NLISSN.Infrastructure\\Concurrency\\NL.Concurrency.csproj",
-        "..\\NLISSN.Rule.Generator\\NLISSN.Rule.Generator.csproj",
+        "..\\NLISSN.Rule\\Checker\\NLISSN.Rule.Checker.csproj",
         "..\\NLISSN.Core\\NLISSN.Core.csproj",
         "..\\NLCPG\\NLCPG.csproj"
       },

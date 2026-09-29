@@ -3,17 +3,38 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);$(MSBuildProjectDirectory)\bin\**;$(MSBuildProjectDirectory)\obj\**;$(MSBuildProjectDirectory)\Build\**</DefaultItemExcludes>
   </PropertyGroup>
 
-  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/src/'))">
-    <BaseOutputPath>$(MSBuildThisFileDirectory)Build\src\</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Build\src\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  <!--
+    Every project in this repository compiles into the repository-root Build/ directory.
+    The area directly below Build/ mirrors the top-level source tree: src/, tests/ and tools/.
+    Any project living elsewhere - the transient probes under Miscellaneous/tmp, for example -
+    falls back to Build/misc/, so no project writes bin/ or obj/ next to its sources.
+  -->
+  <PropertyGroup>
+    <_NlRepositoryRoot>$([System.String]::Copy('$(MSBuildThisFileDirectory)').Replace('\', '/'))</_NlRepositoryRoot>
+    <_NlProjectDirectory>$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/'))</_NlProjectDirectory>
+    <_NlTreePath>$(_NlProjectDirectory.Substring($(_NlRepositoryRoot.Length)))</_NlTreePath>
   </PropertyGroup>
 
-  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/tests/'))">
-    <BaseOutputPath>$(MSBuildThisFileDirectory)Build\test\</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Build\test\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  <PropertyGroup>
+    <NlBuildArea>misc</NlBuildArea>
+    <NlBuildArea Condition="$(_NlTreePath.StartsWith('src/'))">src</NlBuildArea>
+    <NlBuildArea Condition="$(_NlTreePath.StartsWith('tests/'))">test</NlBuildArea>
+    <NlBuildArea Condition="$(_NlTreePath.StartsWith('tools/'))">tools</NlBuildArea>
   </PropertyGroup>
-  <PropertyGroup Condition="$([System.String]::Copy('$(MSBuildProjectDirectory)').Replace('\', '/').Contains('/tools/'))">
-    <BaseOutputPath>$(MSBuildThisFileDirectory)Build\tools\</BaseOutputPath>
-    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Build\tools\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+
+  <PropertyGroup>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)Build\$(NlBuildArea)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)Build\$(NlBuildArea)\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+  </PropertyGroup>
+
+  <!--
+    `dotnet test` defaults its TRX output to <project>/TestResults/, which drops generated
+    files next to the test sources. Point it at the shared Build/ area instead, the same way
+    bin/ and obj/ are already routed there. The condition leaves the explicit results
+    directory passed by the tier runner authoritative: a command-line value is not empty,
+    so this default never overwrites it.
+  -->
+  <PropertyGroup>
+    <VSTestResultsDirectory Condition="'$(VSTestResultsDirectory)' == ''">$(MSBuildThisFileDirectory)Build\TestResults\</VSTestResultsDirectory>
   </PropertyGroup>
 </Project>

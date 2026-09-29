@@ -43,7 +43,7 @@ internal static class YamlConfigurationLoader
             var explicitPaths = GetExplicitPaths(yamlText);
             var diagnostics = ValidateDocument(document, explicitPaths);
             var configurationDirectory = Path.GetDirectoryName(fullConfigurationPath)!;
-            diagnostics.AddRange(ValidateValues(document));
+            diagnostics.AddRange(ValidateValues(document, explicitPaths));
             diagnostics.AddRange(ValidateResolutionInputs(configurationDirectory, document));
             if (diagnostics.Count > 0)
             {
@@ -268,11 +268,25 @@ internal static class YamlConfigurationLoader
         var workerCount = projectJson.ProjectWorkerCount <= 0
           ? 12
           : projectJson.ProjectWorkerCount;
+        // 0 与负数按未配置处理（默认 1 = 不分片）；显式非法值由 Validate 报 NLISSN119。
+        var documentShardCount = projectJson.DocumentShardCount <= 0
+          ? 1
+          : projectJson.DocumentShardCount;
+        // 同上：0 与负数按未配置处理（默认 1 = 逐片串行）。
+        var documentShardParallelism = projectJson.DocumentShardParallelism <= 0
+          ? 1
+          : projectJson.DocumentShardParallelism;
         return new ProjectExportSettings(
           true,
           outputPath,
           workerCount,
-          projectJson.Resume);
+          documentShardCount,
+          projectJson.PerformanceDiagnostics,
+          documentShardParallelism,
+          // null / 空数组一律按「不额外请求能力」处理 ⇒ 默认导出产物与引入本字段前逐字节相同。
+          projectJson.RequestedCapabilities is { Count: > 0 }
+            ? projectJson.RequestedCapabilities.ToArray()
+            : null);
     }
 
     private static ArtifactSettings ResolveArtifacts(
@@ -318,7 +332,9 @@ internal static class YamlConfigurationLoader
           Path.Combine(runRoot, "Performance", "summary.json"));
     }
 
-    private static List<ConfigurationDiagnostic> ValidateValues(YamlDocument document)
+    private static List<ConfigurationDiagnostic> ValidateValues(
+      YamlDocument document,
+      IReadOnlySet<string> explicitPaths)
     {
         var diagnostics = new List<ConfigurationDiagnostic>();
         if (document.Input is null ||
@@ -396,6 +412,37 @@ internal static class YamlConfigurationLoader
               "requires artifacts.runtimeLog.enabled or artifacts.analysisLog.enabled."));
         }
 
+        // 显式写 0（或负数）必须报错，不能被静默改写成默认 12：
+        // 少了这条，yml 里写 projectWorkerCount: 0 会安静地按 12 并行跑，
+        // 与 schema 声明的 minimum: 1 直接矛盾。未写则仍按默认值处理。
+        if (document.Artifacts.ProjectJson is { Enabled: true } projectJson &&
+            explicitPaths.Contains("artifacts.projectJson.projectWorkerCount") &&
+            projectJson.ProjectWorkerCount <= 0)
+        {
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN119", "artifacts.projectJson.projectWorkerCount",
+              "must be a positive integer."));
+        }
+
+        // 同上：documentShardCount 显式写 0/负数必须报错，避免安静退化成「不分片」，
+        // 与 schema 声明的 minimum: 1 矛盾。
+        if (document.Artifacts.ProjectJson is { Enabled: true } shardProjectJson &&
+            explicitPaths.Contains("artifacts.projectJson.documentShardCount") &&
+            shardProjectJson.DocumentShardCount <= 0)
+        {
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN119", "artifacts.projectJson.documentShardCount",
+              "must be a positive integer."));
+        }
+
+        // 同上：documentShardParallelism 显式写 0/负数必须报错，避免安静退化成「串行」，
+        // 与 schema 声明的 minimum: 1 矛盾。
+        if (document.Artifacts.ProjectJson is { Enabled: true } parallelProjectJson &&
+            explicitPaths.Contains("artifacts.projectJson.documentShardParallelism") &&
+            parallelProjectJson.DocumentShardParallelism <= 0)
+        {
+            diagnostics.Add(new ConfigurationDiagnostic("NLISSN119", "artifacts.projectJson.documentShardParallelism",
+              "must be a positive integer."));
+        }
+
         AddEnumDiagnostic(diagnostics, document.Artifacts.Diff.View, "artifacts.diff.view", "legacy", "readable");
         AddEnumDiagnostic(diagnostics, document.Artifacts.RewritePlan.Mode, "artifacts.rewritePlan.mode", "none", "capture", "replay");
         AddEnumDiagnostic(diagnostics, document.Artifacts.Performance.Mode, "artifacts.performance.mode", "normal", "diagnostic", "profile", "benchmark");
@@ -462,6 +509,25 @@ internal static class YamlConfigurationLoader
                   "NLISSN133",
                   "input",
                   "Workspace options require input.path to be a .sln, .csproj, or a .cs file with input.project."));
+            }
+
+            // artifacts.projectJson 需要项目级编译输入，而项目级导出是分析之后的步骤。
+            // 若只等到那时才失败，整轮分析（全语料可达数十分钟）就白跑了，故在此 fail fast。
+            // 判据与运行时严格一致：CreateWorkspaceOptions 返回 null 即 Workspace 为 null。
+            // 只对"本来就可能合法"的输入归因：目录必然无项目级导出；文件仅在扩展名受支持时
+            // 才归因于此，否则 NLISSN130 已报了扩展名不受支持，再报一次只是噪声。
+            var projectJsonInputCanBeAttributed =
+              Directory.Exists(inputPath) ||
+              File.Exists(inputPath) && IsSupportedInputExtension(Path.GetExtension(inputPath));
+            if (document.Artifacts.ProjectJson is { Enabled: true } &&
+                projectJsonInputCanBeAttributed &&
+                CreateWorkspaceOptions(configurationDirectory, inputPath, document.Input) is null)
+            {
+                diagnostics.Add(new ConfigurationDiagnostic(
+                  "NLISSN139",
+                  "artifacts.projectJson.enabled",
+                  "requires a project or solution input (.sln, .csproj, or a .cs file with input.project); " +
+                  "a directory or standalone source file has no project-level export."));
             }
         }
 
@@ -975,7 +1041,33 @@ internal sealed class YamlProjectJson
 
     public int ProjectWorkerCount { get; set; }
 
-    public bool Resume { get; set; }
+    /// <summary>单文档 payload 分片数。未配置或 &lt;= 0 时按 1（不分片）处理。</summary>
+    public int DocumentShardCount { get; set; }
+
+    /// <summary>
+    /// 单文档各分片的并行度（投影 + 落盘）。未配置或 &lt;= 0 时按 1（逐片串行）处理。
+    /// </summary>
+    /// <remarks>
+    /// 只在 <see cref="DocumentShardCount"/> &gt; 1 时有实际作用（单片无需并行）。
+    /// 不改变任何输出内容或文件布局，只改变各片写入的时序；代价是多片同时在途。
+    /// </remarks>
+    public int DocumentShardParallelism { get; set; }
+
+    /// <summary>
+    /// 是否收集导出阶段计时。默认 <c>false</c>。
+    /// 只影响度量输出，不改变 payload 内容或文件布局。
+    /// </summary>
+    public bool PerformanceDiagnostics { get; set; }
+
+    /// <summary>
+    /// 导出侧 CPG 构图额外请求的能力位名称（<c>NLCPGCapability</c>，如
+    /// <c>InterproceduralDataFlow</c>）。未配置或空数组时沿用 <c>NLCPGCapability.Default</c>。
+    /// </summary>
+    /// <remarks>
+    /// 名称→枚举的解析发生在 <c>NLISSN.Hosting.ProjectJsonExportService</c>（本工程不引用 NLCPG）。
+    /// 与 <c>nlcpg.view.edgeKinds</c> 同为先例：配置里写枚举名，非法名硬报错而非静默忽略。
+    /// </remarks>
+    public List<string>? RequestedCapabilities { get; set; }
 }
 
 internal sealed class YamlPerformance : YamlToggle

@@ -66,7 +66,11 @@ internal sealed record ResolvedConfigurationArtifact(
                   configuration.ProjectExport.Enabled,
                   configuration.ProjectExport.OutputPath,
                   configuration.ProjectExport.ProjectWorkerCount,
-                  configuration.ProjectExport.ResumeExistingOutput
+                  configuration.ProjectExport.DocumentShardCount,
+                  configuration.ProjectExport.PerformanceDiagnostics,
+                  requestedCapabilities = configuration.ProjectExport.EffectiveRequestedCapabilities
+                    .OrderBy(value => value, StringComparer.Ordinal)
+                    .ToArray()
               },
             logging = new
             {

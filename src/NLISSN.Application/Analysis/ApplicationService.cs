@@ -498,6 +498,7 @@ public sealed class ApplicationService
               : NLCPGPerformanceDiagnosticsMode.Diagnostic,
             PartitionPerformanceEventSink = runtime.PartitionPerformanceEventSink,
             PerformanceRunId = runtime.PerformanceRunId,
+            WorkerUtilizationCollector = runtime.CpgWorkerUtilizationCollector,
         };
         var requestedCapabilities = builderOptions.RequestedCapabilities ?? new[] { NLCPGCapability.Default };
         var availableCapabilities = requestedCapabilities.Aggregate(

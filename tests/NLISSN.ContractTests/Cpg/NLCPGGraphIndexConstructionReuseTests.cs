@@ -168,6 +168,34 @@ public sealed class NLCPGGraphIndexConstructionReuseTests
     Assert.NotEqual(first, noMetadata);
   }
 
+  // 惰性化（执行方案 §3.3/§7）：GraphSnapshotVersion 只在首次读取时计算，
+  // 且并发首读必须只算一次并返回同一个值（ExecutionAndPublication 语义）。
+  // 这条锁定的是锁语义回归：若退化成"每个线程各算一次"，返回值仍相同，
+  // 但会重复付出 NPC.cs 级别的 SHA-256 开销——故判据是"只算一次 + 值一致"。
+  [Fact]
+  public void SnapshotVersion_ConcurrentFirstRead_ComputesOnceAndStaysStable()
+  {
+    // 期望值取自另一张同参构造的图：被测图的**首次**读取必须留给并发循环，
+    // 否则本用例退化成"读已缓存值"，不再覆盖竞态窗口。
+    var expected = BuildVariedGraph(240, 10, 5, withMetadata: true).GraphSnapshotVersion;
+    var graph = BuildVariedGraph(240, 10, 5, withMetadata: true);
+
+    var lazy = GetSnapshotVersionLazy(graph);
+    Assert.False(lazy.IsValueCreated, "构造后不得已经计算快照版本。");
+
+    var results = new string[32];
+    using var barrier = new Barrier(results.Length);
+    Parallel.For(0, results.Length, index =>
+    {
+      barrier.SignalAndWait();
+      results[index] = graph.GraphSnapshotVersion;
+    });
+
+    Assert.All(results, value => Assert.Equal(expected, value));
+    // 并发首读只应触发一次计算。
+    Assert.True(lazy.IsValueCreated);
+  }
+
   // counting sort 边界：空图、单边、最大 enum kind。
   [Fact]
   public void CountingSortBoundaries_EmptySingleEdgeAndMaximumKind_StayInRange()
@@ -353,6 +381,12 @@ public sealed class NLCPGGraphIndexConstructionReuseTests
       .GetField("_queryIndex", BindingFlags.Instance | BindingFlags.NonPublic)!
       .GetValue(graph)
       ?? throw new InvalidOperationException("Graph is not frozen.");
+  }
+
+  // 取冻结索引里承载快照版本的 Lazy<string>，用于断言"尚未求值 / 已求值"。
+  private static Lazy<string> GetSnapshotVersionLazy(NLCPGGraph graph)
+  {
+    return (Lazy<string>)GetField(ReadQueryIndex(graph), "_snapshotVersion")!;
   }
 
   private static IReadOnlyList<NLCPGEdge> ReadOrderedEdges(NLCPGGraph graph)

@@ -345,24 +345,79 @@ public sealed class CpgShardContractTests
   }
 
   [Fact]
-  public void Create_CrossShardEdge_PreservesGlobalNodeIdsAndCallSiteContext()
+  public void FromEdge_CrossShardEdge_PreservesGlobalNodeIdsAndCallSiteContext()
   {
-    var assembly = typeof(CpgFrozenShardExporter).Assembly;
-    var committerType = assembly.GetType("NLCPG.Builder.Streaming.CrossShardEdgeCommitter");
-    Assert.NotNull(committerType);
-    var create = committerType!.GetMethod(
-      "Create",
-      System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
-    Assert.NotNull(create);
     var context = new NLCPGCallSiteContext("input.cs", 3, 9, "Run");
     var edge = new NLCPGEdge(new NodeId(2), new NodeId(7), NLCPGEdgeKind.CallTargets, callSiteContext: context);
 
-    var boundary = Assert.IsType<CpgFrozenBoundaryEdge>(create!.Invoke(null, new object[] { edge }));
+    var boundary = CpgFrozenBoundaryEdge.FromEdge(edge);
 
     Assert.Equal((uint)2, boundary.SourceNodeId);
     Assert.Equal((uint)7, boundary.TargetNodeId);
     Assert.Equal("input.cs", boundary.CallSiteFilePath);
     Assert.Equal(3, boundary.CallSiteSpanStart);
+  }
+
+  [Fact]
+  public void FromEdge_CrossShardEdge_MapsEveryPersistedField()
+  {
+    var callSite = new NLCPGCallSiteContext("input.cs", 3, 9, "Run");
+    var contextId = callSite.ToContextId();
+    var label = NLCPGEdgeLabel.ForDecisionRelation(NLCPGDecisionRelationKind.ClearedTo);
+    var edge = new NLCPGEdge(
+      new NodeId(2),
+      new NodeId(7),
+      NLCPGEdgeKind.CallTargets,
+      structuredLabel: label,
+      contextId: contextId,
+      callSiteContext: callSite);
+
+    var boundary = CpgFrozenBoundaryEdge.FromEdge(edge);
+
+    Assert.Equal((uint)2, boundary.SourceNodeId);
+    Assert.Equal((uint)7, boundary.TargetNodeId);
+    Assert.Equal("CallTargets", boundary.Kind);
+    Assert.Equal(label.StableKey, boundary.Label);
+    Assert.Equal(contextId.Value, boundary.ContextId);
+    Assert.Equal("input.cs", boundary.CallSiteFilePath);
+    Assert.Equal(3, boundary.CallSiteSpanStart);
+    Assert.Equal(9, boundary.CallSiteSpanEnd);
+    Assert.Equal("Run", boundary.CallSiteDisplayName);
+    Assert.Null(boundary.FlowSummaryLabel);
+  }
+
+  [Fact]
+  public void FromEdge_UnlocatedEdge_LeavesOptionalFieldsNull()
+  {
+    var edge = new NLCPGEdge(new NodeId(1), new NodeId(2), NLCPGEdgeKind.DataFlow);
+
+    var boundary = CpgFrozenBoundaryEdge.FromEdge(edge);
+
+    Assert.Null(boundary.Label);
+    Assert.Null(boundary.ContextId);
+    Assert.Null(boundary.CallSiteFilePath);
+    Assert.Null(boundary.CallSiteSpanStart);
+    Assert.Null(boundary.CallSiteSpanEnd);
+    Assert.Null(boundary.CallSiteDisplayName);
+  }
+
+  [Fact]
+  public void FromEdge_FlowSummaryBridge_PreservesTypedSummaryLabel()
+  {
+    var label = NLCPGEdgeLabel.ForFlowSummaryBridge(
+      NLCPGInterproceduralBridgeKind.SummaryMapping,
+      FlowSummaryResolution.Project,
+      "method-key",
+      new FlowSummaryEndpoint(FlowSummaryEndpointKind.Parameter, 0),
+      new FlowSummaryEndpoint(FlowSummaryEndpointKind.Return));
+    var edge = new NLCPGEdge(new NodeId(4), new NodeId(9), NLCPGEdgeKind.InterproceduralDataFlow, structuredLabel: label);
+
+    var boundary = CpgFrozenBoundaryEdge.FromEdge(edge);
+
+    Assert.NotNull(boundary.FlowSummaryLabel);
+    Assert.Equal(NLCPGInterproceduralBridgeKind.SummaryMapping, boundary.FlowSummaryLabel!.BridgeKind);
+    Assert.Equal(FlowSummaryResolution.Project, boundary.FlowSummaryLabel.Resolution);
+    Assert.Equal("method-key", boundary.FlowSummaryLabel.MethodKey);
   }
 
   [Theory]

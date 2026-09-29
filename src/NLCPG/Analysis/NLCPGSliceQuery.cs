@@ -253,15 +253,15 @@ public sealed class NLCPGSliceQuery
                         options.AllowedEdgeKinds,
                         perAnchorEdgeLimit,
                         stringInterner);
-                    foreach (var node in projection.Nodes.Values)
-                    {
-                        nodes.TryAdd(node.NodeId!.Value, node);
-                    }
 
-                    foreach (var edge in projection.IncomingEdges)
-                    {
-                        edges.Add(edge);
-                    }
+                    // 与 (i)/(ii) 共用同一份归并核。注意此处**不能**换成 ReadGraph(shards)：
+                    // 本方法按访问预算只投影可达子图（见下方 frontier/visited 与 MaxVisitedNodes），
+                    // 整图恢复会破坏该预算并加载全图。
+                    CpgFrozenShardGraphReader.MergeInto(
+                        nodes,
+                        edges,
+                        projection.Nodes.Values,
+                        projection.IncomingEdges);
                 }
             }
 

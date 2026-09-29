@@ -92,7 +92,7 @@ public sealed class RuleCatalogBuildContractTests
         var assembly = typeof(GeneratedRuleCatalog).Assembly;
         Assert.DoesNotContain(
           assembly.GetReferencedAssemblies(),
-          reference => string.Equals(reference.Name, "NLISSN.Rule.Generator", StringComparison.Ordinal));
+          reference => string.Equals(reference.Name, "NLISSN.Rule.Checker", StringComparison.Ordinal));
 
         var buildRoot = FindBuildRoot(assembly.Location);
         var generatedPath = Path.Combine(
@@ -101,8 +101,8 @@ public sealed class RuleCatalogBuildContractTests
           "obj",
           "NLISSN.Rules",
           "generated",
-          "NLISSN.Rule.Generator",
-          "NLISSN.Rule.Generator.RuleCatalogGenerator",
+          "NLISSN.Rule.Checker",
+          "NLISSN.Rule.Checker.RuleCatalogGenerator",
           "NLISSN.Rules.GeneratedRuleCatalog.g.cs");
 
         Assert.True(File.Exists(generatedPath), $"Expected generated source at '{generatedPath}'.");
@@ -117,8 +117,9 @@ public sealed class RuleCatalogBuildContractTests
     {
         var generatorProject = XDocument.Load(ProjectPath(
           "src",
-          "NLISSN.Rule.Generator",
-          "NLISSN.Rule.Generator.csproj"));
+          "NLISSN.Rule",
+          "Checker",
+          "NLISSN.Rule.Checker.csproj"));
         var rulesProject = XDocument.Load(ProjectPath(
           "src",
           "NLISSN.Rules",
@@ -136,7 +137,7 @@ public sealed class RuleCatalogBuildContractTests
 
         var generatorReference = rulesProject.Descendants("ProjectReference")
           .Single(element => element.Attribute("Include")?.Value.Contains(
-            "NLISSN.Rule.Generator",
+            "NLISSN.Rule.Checker",
             StringComparison.Ordinal) == true);
         Assert.Equal("Analyzer", generatorReference.Attribute("OutputItemType")?.Value);
         Assert.Equal("false", generatorReference.Attribute("ReferenceOutputAssembly")?.Value);

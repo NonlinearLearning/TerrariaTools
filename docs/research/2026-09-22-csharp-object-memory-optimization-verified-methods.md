@@ -202,7 +202,7 @@ NLCPGBuilderOptions.CreateDefault().EffectiveDataFlowOptions = <同上 Unbounded
 | 生产入口 | 位置 | 是否设置 `DataFlowOptions` |
 | --- | --- | --- |
 | NLISSN CPG 构图主路径 | [ApplicationService.cs:295](../../src/NLISSN.Application/Analysis/ApplicationService.cs) | **否** |
-| ProjectExport 构图 | [ProjectJsonExporter.cs:194](../../src/NLCPG.ProjectExport/ProjectJsonExporter.cs)、[:319](../../src/NLCPG.ProjectExport/ProjectJsonExporter.cs) | **否** |
+| ProjectExport 构图 | [ProjectJsonExporter.cs:194](../../src/NLISSN.Infrastructure/ProjectJson/ProjectJsonExporter.cs)、[:319](../../src/NLISSN.Infrastructure/ProjectJson/ProjectJsonExporter.cs) | **否** |
 | ProjectExport 项目池 | [ProjectJsonExporter.ProjectPool.cs:385](../../src/NLCPG.ProjectExport/ProjectJsonExporter.ProjectPool.cs) | **否** |
 
 `NLCPGBuilder.cs:130` 的回退也是 `options ?? NLCPGBuilderOptions.CreateDefault()`。
@@ -405,7 +405,7 @@ pool, extra returned objects will be dropped.”*
 
 | 位置 | 用法 |
 | --- | --- |
-| [ProjectJsonExporter.cs:14,413,429,442,563,849](../../src/NLCPG.ProjectExport/ProjectJsonExporter.cs) | `JsonSerializer.Serialize/DeserializeAsync` |
+| [ProjectJsonExporter.cs:14,413,429,442,563,849](../../src/NLISSN.Infrastructure/ProjectJson/ProjectJsonExporter.cs) | `JsonSerializer.Serialize/DeserializeAsync` |
 | [PerformanceSummaryDocument.cs:58](../../src/NLISSN/Performance/PerformanceSummaryDocument.cs) | `JsonSerializerOptions` |
 | [PerformanceDiagnosticsCollector.cs:68](../../src/NLISSN.Application/Performance/PerformanceDiagnosticsCollector.cs) | `JsonSerializer.Serialize` |
 | `AnalysisEvidence.cs`、`Resolve*dConfigurationArtifact.cs`、`RewritePlanArtifactService.cs` 等 | 同上 |
@@ -430,7 +430,7 @@ getter/属性访问路径。**这条热点属于“JSON 产物写出”，不属
   3. **多态只在 metadata 模式支持**，fast-path 不支持；且需要显式 `[JsonDerivedType]`。
   **加固手段**：设 `<JsonSerializerIsReflectionEnabledByDefault>false</JsonSerializerIsReflectionEnabledByDefault>`，
   让任何遗漏的反射路径**快速失败**而不是静默走慢路径。
-  **本项目需先审计**：[ProjectJsonExporter.cs:16-17](../../src/NLCPG.ProjectExport/ProjectJsonExporter.cs)
+  **本项目需先审计**：[ProjectJsonExporter.cs:16-17](../../src/NLISSN.Infrastructure/ProjectJson/ProjectJsonExporter.cs)
   与 [PerformanceSummaryDocument.cs:58-63](../../src/NLISSN/Performance/PerformanceSummaryDocument.cs)
   使用了 `PropertyNamingPolicy = JsonNamingPolicy.CamelCase`（metadata 模式支持），
   而 `PerformanceDiagnosticsCollector.cs:71` 还用了 `DictionaryKeyPolicy`——后者在 fast-path 不被支持，
@@ -459,7 +459,7 @@ JsonSerializer.Serialize(stream, document, new JsonSerializerOptions
 是同一写法。
 
 **最小修复**：把 `JsonSerializerOptions` 提升为 `static readonly` 字段
-（项目里 [ProjectJsonExporter.cs:14](../../src/NLCPG.ProjectExport/ProjectJsonExporter.cs) 与
+（项目里 [ProjectJsonExporter.cs:14](../../src/NLISSN.Infrastructure/ProjectJson/ProjectJsonExporter.cs) 与
 [PerformanceSummaryDocument.cs:58](../../src/NLISSN/Performance/PerformanceSummaryDocument.cs)
 已经是这个正确模式）。这是**一行级、零语义风险**的改动，
 与 Loop 4 的 source-generator 方案相互独立、可分别验证。

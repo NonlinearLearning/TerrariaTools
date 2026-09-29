@@ -199,6 +199,60 @@ public sealed class CpgRelationQueryTests
         Assert.Equal(256, frozen.LoadedShardBytes);
     }
 
+    // ── ② 三份分片合并实现收敛为一处归并核心 ─────────────────────────────────────
+    //
+    // (ii) CpgShardRelationQueryService.BuildGraph 的归并段现与 (i) 共用
+    // CpgFrozenShardGraphReader.AccumulateShardGraphs（原为逐字重复的循环）。
+    // 本用例是"收敛"这个动作本身的 oracle：同一组分片经两条入口归并后，
+    // 节点集、边集与快照字段必须逐项相等。
+    //
+    // 判别力：让共用的归并核少并入一条边（或在 (ii) 里退回一份不同的实现），
+    // 边集/快照断言即红。
+    [Fact]
+    public void BuildGraph_DelegatesToSharedMergeCore()
+    {
+        // Arrange：两个分片 + 一条跨分片边界边，使归并段与边界边段都被走到。
+        var sourceShard = new CpgFrozenShard(
+            CreateLookup("source"),
+            new[]
+            {
+                new CpgFrozenNode(0, 1, "SyntaxNode", "input.cs", 0, 1, "SyntaxNode", "source", null, null, false),
+                new CpgFrozenNode(1, 3, "SyntaxNode", "input.cs", 2, 3, "SyntaxNode", "middle", null, null, false),
+            },
+            new[] { new CpgFrozenEdge(0, 1, "SyntaxChild", null, null) },
+            Array.Empty<CpgSymbolLocation>(),
+            new[] { new CpgFrozenBoundaryEdge(1, 2, "SyntaxChild", null, null) });
+        var targetShard = new CpgFrozenShard(
+            CreateLookup("target"),
+            new[] { new CpgFrozenNode(0, 2, "SyntaxNode", "input.cs", 1, 2, "SyntaxNode", "target", null, null, false) },
+            Array.Empty<CpgFrozenEdge>(),
+            Array.Empty<CpgSymbolLocation>());
+        var shards = new[] { sourceShard, targetShard };
+
+        // Act：(i) 走共用归并核的便利入口；(ii) 走 CpgShardRelationQueryService.BuildGraph。
+        var viaReader = CpgFrozenShardGraphReader.ReadGraph(shards);
+        var buildGraph = typeof(CpgShardRelationQueryService).GetMethod(
+            "BuildGraph",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(buildGraph);
+        var viaService = Assert.IsType<NLCPGGraph>(buildGraph!.Invoke(null, new object[] { shards }));
+
+        // Assert：节点集 / 边集 / 快照字段逐项相等。
+        Assert.Equal(
+            viaReader.Nodes.Select(node => node.NodeId!.Value.Value).OrderBy(value => value),
+            viaService.Nodes.Select(node => node.NodeId!.Value.Value).OrderBy(value => value));
+        Assert.Equal(
+            viaReader.Edges.Select(FormatEdge).OrderBy(value => value, StringComparer.Ordinal),
+            viaService.Edges.Select(FormatEdge).OrderBy(value => value, StringComparer.Ordinal));
+        Assert.Equal(viaReader.GraphSnapshotVersion, viaService.GraphSnapshotVersion);
+
+        // 边界边并未并入两份实现各自的容器之外：3 个节点 + 2 条边（分片内 1 + 边界 1）。
+        Assert.Equal(3, viaReader.Nodes.Count);
+        Assert.Equal(2, viaReader.Edges.Count);
+        Assert.Equal(3, viaService.Nodes.Count);
+        Assert.Equal(2, viaService.Edges.Count);
+    }
+
     [Fact]
     public async Task QueryAsync_ShardsDoNotContainAnchor_ReturnsUnavailable()
     {

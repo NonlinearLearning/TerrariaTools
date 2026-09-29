@@ -180,6 +180,15 @@ public sealed class AnalysisRuntime
 
     public string? PerformanceRunId { get; set; }
 
+    /// <summary>
+    /// 跨全部 CPG 构建汇总 per-worker 使用率的接收端；为 <c>null</c> 时不产生记账开销。
+    /// </summary>
+    /// <remarks>
+    /// 放在 runtime 上而非 builder 上：NLISSN 对每个源文件新建 builder，
+    /// 只有 run 级对象才能把 967 个池的记账累加到同一份报告里。
+    /// </remarks>
+    public CpgWorkerUtilizationCollector? CpgWorkerUtilizationCollector { get; set; }
+
     public string CacheScopeKey => $"epoch:{Epoch.EpochId}|cache:{Epoch.CacheVersion}";
 
     // 创建一份默认运行时，适合单次分析或未显式传参的调用路径。
@@ -211,6 +220,8 @@ public sealed class AnalysisRuntime
         runtime.PartitionPerformanceEventSink = PartitionPerformanceEventSink;
         runtime.PerformanceStageCollector = PerformanceStageCollector;
         runtime.PerformanceRunId = PerformanceRunId;
+        // 刻意共享同一汇总端：派生 runtime 的构建也要计入同一份 run 级报告。
+        runtime.CpgWorkerUtilizationCollector = CpgWorkerUtilizationCollector;
         return runtime;
     }
 
@@ -237,6 +248,7 @@ public sealed class AnalysisRuntime
         runtime.PartitionPerformanceEventSink = PartitionPerformanceEventSink;
         runtime.PerformanceStageCollector = PerformanceStageCollector;
         runtime.PerformanceRunId = PerformanceRunId;
+        runtime.CpgWorkerUtilizationCollector = CpgWorkerUtilizationCollector;
         return runtime;
     }
 

@@ -557,24 +557,18 @@ namespace NLCPG.Builder
               nodesByBlockOrdinal,
               controlNodesByBlockOrdinal);
 
-            localGraph.FreezeQueryIndex();
-            var nodesById = localGraph.Nodes
-              .Where(node => node.NodeId.HasValue)
-              .ToDictionary(node => node.NodeId!.Value);
+            // scratch 取数：不再 FreezeQueryIndex（见 ControlFlowPass 同处说明）。
+            // 片段的出口只要 StableAnchor，而它在 AddNode 时已确定；NodeId 是纯往返。
+            // ⚠ 取数必须在任何冻结之前：冻结会 Release pending 缓冲。
             var descriptors = localGraph.Nodes.Select(CpgNodeDescriptor.FromNode).ToArray();
-            var edges = localGraph.Edges
-              .Select(edge =>
-              {
-                  var source = nodesById[edge.SourceNodeId];
-                  var target = nodesById[edge.TargetNodeId];
-                  return new CpgEdgeCandidate(
-                    source.StableAnchor!.Value,
-                    target.StableAnchor!.Value,
-                    edge.Kind,
-                    edge.StructuredLabel,
-                    edge.ContextId,
-                    edge.CallSiteContext);
-              })
+            var edges = localGraph.EnumerateScratchEdges()
+              .Select(edge => new CpgEdgeCandidate(
+                edge.SourceNode.StableAnchor!.Value,
+                edge.TargetNode.StableAnchor!.Value,
+                edge.Kind,
+                edge.StructuredLabel,
+                edge.ContextId,
+                edge.CallSiteContext))
               .ToArray();
             var fragment = new LocalCpgFragment(
               rootPlan.Order,

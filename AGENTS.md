@@ -15,16 +15,16 @@
 | src/ | NLCPG 与 NLISSN 源码 | 受影响项目及当前设计索引 |
 | tests/ | Unit、Contract、Host、Performance 测试 | [测试目录入口](tests/AGENTS.md) |
 | docs/ | 门户、计划、研究和流程文档 | [文档目录入口](docs/AGENTS.md) |
-| 设计docs/ | 当前设计与历史设计 | [设计文档索引](设计docs/README.md) |
+| 设计docs/ | 当前设计与历史设计 | [设计文档索引](docs/CodeDesign/README.md) |
 | Context/ | 当前工作状态与待研究问题 | 本目录的状态文件 |
 | Miscellaneous/ | 初始化与 harness 脚本 | [Harness Runtime](docs/harness-runtime.md) |
 | 约束/ | C# 与测试编写规范 | 对应主题约束 |
 
 ## 任务路由
 
-- 新增、修改或重构 C# 时，阅读[C# 风格约束](约束/Google-CSharp-Style-Guide-约束.md)。
-- 编写、修改或评审测试时，阅读[测试代码编写教程](约束/测试代码编写教程.md)和[测试目录入口](tests/AGENTS.md)。
-- 修改 CPG、分析管线、删除规则、授权、计划或改写语义时，阅读[领域术语与不变量](CONTEXT.md)及[当前设计索引](设计docs/README.md)中对应主题。
+- 新增、修改或重构 C# 时，阅读[C# 风格约束](Context/约束/Google-CSharp-Style-Guide-约束.md)。
+- 编写、修改或评审测试时，阅读[测试代码编写教程](Context/约束/测试代码编写教程.md)和[测试目录入口](tests/AGENTS.md)。
+- 修改 CPG、分析管线、删除规则、授权、计划或改写语义时，阅读[领域术语与不变量](Context/CONTEXT.md)及[当前设计索引](docs/CodeDesign/README.md)中对应主题。
 - 修改 NLISSN CLI、配置运行或改写链路时，阅读[NLISSN 局部入口](src/NLISSN/AGENTS.md)和[CLI 参考](docs/cli-reference.md)。
 - 执行构建、测试、运行、发布或修改 harness 时，阅读[Harness Runtime](docs/harness-runtime.md)及适用的[验证矩阵](docs/harness-verification-matrix.md)。
 - 修改门户文档、计划、研究或贡献流程时，阅读[文档目录入口](docs/AGENTS.md)和[文档门户](docs/README.md)。

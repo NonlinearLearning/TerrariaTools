@@ -44,12 +44,14 @@ CPG 的 shard 持久化是构建器 API 配置，不是当前 CLI 参数；存�
 
 ## 2.1 按项目导出 CPG JSON
 
-项目级导出使用完整 Roslyn project compilation，并按源文件目录镜像写出 JSON。先在
-项目目录的 `nlissn.yml` 中配置输入和 worker 数：
+项目级导出使用完整 Roslyn project compilation，并按源文件目录镜像写出 JSON。
+它是 NLISSN 运行的后置步骤，由 `artifacts.projectJson` 开关控制，没有独立入口。
+在项目目录的 `nlissn.yml` 中打开它：
 
 ```yaml
 schemaVersion: 3
-tool: nlcpg-project-export
+tool: nlissn
+runId: version4-cpg-export
 input:
   path: D:/TRbackup/Version4/TerrariaServer.csproj
   targetFramework: net40
@@ -57,21 +59,33 @@ input:
   platform: AnyCPU
   restore: disabled
   generatedSources: exclude
-projectExport:
-  output: D:/TRbackup/Version4/Build/NLCPG-json
-  projectWorkerCount: 1
-  resume: false
+analysis:
+  targetName: TargetName
+execution:
+  directoryMaxDegreeOfParallelism: 8
+  cpgMaxDegreeOfParallelism: 8
+  groupMaxDegreeOfParallelism: 8
+  helperMaxDegreeOfParallelism: 8
+  replayMaxDegreeOfParallelism: 8
+  maxConcurrentOperations: 8
+artifacts:
+  root: ./Build/Result
+  projectJson:
+    enabled: true
+    output: D:/TRbackup/Version4/Build/NLCPG-json
+    projectWorkerCount: 8
 ```
 
-然后从该配置目录运行，不附带任何参数：
+然后从该配置目录运行 NLISSN，不附带任何参数：
 
 ```powershell
 Push-Location D:\TRbackup\Version4
-dotnet run --project D:\ProjectItem\SourceCode\Net\NL\src\NLCPG.ProjectExport\NLCPG.ProjectExport.csproj
+dotnet run --project D:\ProjectItem\SourceCode\Net\NL\src\NLISSN\NLISSN.csproj
 Pop-Location
 ```
 
-例如 `src\Server\Main.cs` 会生成 `src\Server\Main.cs.json`；项目根的 `manifest.json` 保存文件索引、全局节点索引、跨文件边和诊断。生成源通过 `input.generatedSources: include` 加入。
+分析完成后同一进程内联执行导出并打印 `ProjectJson: ... file(s) written`。
+例如 `src\Server\Main.cs` 会生成 `src\Server\Main.cs.json`；该 payload 自带本文件的 `nodes`/`edges`，输出根的 `manifest.json` 保存文件索引、项目汇总和诊断。生成源通过 `input.generatedSources: include` 加入。项目级导出需要 `.csproj` 或 `.sln` 输入。
 
 ## 3. 运行删除规则宿主
 

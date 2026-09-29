@@ -340,7 +340,7 @@ public sealed class RuleCatalogGeneratorTests
           },
           references: TrustedPlatformReferences,
           options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
-        var generator = new NLISSN.Rule.Generator.RuleCatalogGenerator();
+        var generator = new NLISSN.Rule.Checker.RuleCatalogGenerator();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
           generators: new[] { generator.AsSourceGenerator() },
           parseOptions: parseOptions);

@@ -992,7 +992,7 @@ D1/D2 将失去实现基础。⇒ **正确表述**：函数级**并行**（每�
 ## 14. 相关入口
 
 - 执行计划：[统一调度内核执行计划](2026-09-24-unified-work-scheduler-execution.md)
-- 现状并发页面：[日志与并发](../../设计docs/目前设计/日志与并发.md)
-- 运行时并发配置：[运行时并发配置](../../设计docs/目前设计/运行时并发配置.md)
-- CPG WorkBatch（将被本设计取代）：[CPG WorkBatch 并发](../../设计docs/目前设计/cpg-workbatch-concurrency.md)
+- 现状并发页面：[日志与并发](../CodeDesign/目前设计/日志与并发.md)
+- 运行时并发配置：[运行时并发配置](../CodeDesign/目前设计/运行时并发配置.md)
+- CPG WorkBatch（将被本设计取代）：[CPG WorkBatch 并发](../CodeDesign/目前设计/cpg-workbatch-concurrency.md)
 - 内存机理实测：[Version4 DOP-12 诊断报告](../benchmarks/nlissn-version4-dop12-diagnostics.md)

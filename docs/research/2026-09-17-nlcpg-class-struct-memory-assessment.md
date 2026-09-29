@@ -73,7 +73,7 @@ Builder 还刻意在若干缓存中使用节点实例身份：syntax-to-node、o
 | 当前 stage metrics 与 partition diagnostics | 可分开 pass 耗时、图规模、cache fact 和 collection/materialization 工作（[PartitionPerformanceEvent.cs](../../src/NLCPG/Builder/PartitionPerformanceEvent.cs:20)）。 | 按类型的 allocation attribution；partition event 不含 allocation 或 retained-byte 字段。 |
 | 已有 persistence restore metrics | restore-fact 与 graph-import allocation 已在该窄路径上测量（[CpgShardBuildCoordinator.cs](../../src/NLCPG/Builder/CpgShardBuildCoordinator.cs:231)）。 | 普通 syntax、operation、freeze、index 和 query 路径的 allocation。 |
 
-仓库保留的优化规则与本结论一致：先拆分遥测，再改变图模型或并发默认值（[2026-07-19至29-实施与性能归档.md](../../设计docs/优化历史/2026-07-19至29-实施与性能归档.md#早期优化的保留结论)）。
+仓库保留的优化规则与本结论一致：先拆分遥测，再改变图模型或并发默认值（[2026-07-19至29-实施与性能归档.md](../CodeDesign/优化历史/2026-07-19至29-实施与性能归档.md#早期优化的保留结论)）。
 
 ## 推荐顺序
 

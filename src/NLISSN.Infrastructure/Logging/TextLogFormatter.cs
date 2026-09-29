@@ -61,8 +61,8 @@ public sealed class TextLogFormatter
           // 风险 R4/R4b：默认 normal 视图也必须能看到内核**实际生效**的额度，
           // 否则请求值与生效值不一致时运维无法从日志发现。
           fieldName is "workerCount" or "ruleGroupEffective" or "helperEffective" or "directoryEffective" or "cpgEffective" or "replayEffective" or "defaultEffective" or "groupParallelism" or "directoryParallelism" or "helperParallelism" or "directoryWindowSemantics" or
-          // 逐 worker 的使用率行（op=worker）：不登记就会在默认 normal 视图下整行消失。
-          "workerIndex" or "items" or "busyMs" or "idleMs" or "lifetimeMs" or "utilization";
+          // 逐 worker 的使用率行（op=worker / op=cpg-worker）：不登记就会在默认 normal 视图下整行消失。
+          "workerIndex" or "items" or "busyMs" or "idleMs" or "lifetimeMs" or "utilization" or "poolExecutions";
     }
 
     private static void AppendField(StringBuilder builder, string name, string value)

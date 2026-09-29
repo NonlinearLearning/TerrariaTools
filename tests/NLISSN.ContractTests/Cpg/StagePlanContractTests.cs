@@ -650,6 +650,42 @@ public sealed class StagePlanContractTests
         Assert.Equal(0, builder.DataFlowPlanAssemblyCount);
     }
 
+    /// <summary>
+    /// **CallGraph 的方法索引必须在 worker 启动前冻结**（方案 1 + 2 的留证）。
+    /// <para>
+    /// <b>为什么必须用计数、而不能用行为断言：</b>冻结只消除候选集的**读取时刻依赖**，
+    /// 不改变候选集内容——"冻结了"与"整个改动都不存在"产出的图**逐字等价**
+    /// （同 <see cref="BuildFromSource_WhenDataFlowRequested_AssemblesBatchesExactlyOnce"/>
+    /// 的 X.5 变异问题）。故只能以"预注册次数"为判据。
+    /// </para>
+    /// <para>
+    /// 这里用含调用**与**属性访问的 <see cref="CallSiteSource"/>：两条路径各自都要预注册，
+    /// 只覆盖其一会让计数偏小却仍然非零，故下面同时断言它确实覆盖了访问器路径。
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void BuildFromSource_WhenCallTargetsRequested_FreezesMethodIndexWithNonEmptyCount()
+    {
+        var builder = Build(new[] { NLCPGCapability.CallTargets }, CallSiteSource);
+
+        // 调用路径与访问器路径都会贡献，故必然远大于 1。
+        Assert.True(
+          builder.CallGraphFrozenMethodIndexCount > 1,
+          $"预期冻结次数 > 1（调用 + 访问器两条路径），实际 {builder.CallGraphFrozenMethodIndexCount}。");
+    }
+
+    /// <summary>
+    /// 未请求 `CallTargets` 时**不该冻结**——计数必须真的跟随请求，
+    /// 否则上一条的"非零"可能只是常量吻合。
+    /// </summary>
+    [Fact]
+    public void BuildFromSource_WhenCallTargetsNotRequested_DoesNotFreezeMethodIndex()
+    {
+        var builder = Build(new[] { NLCPGCapability.Cfg }, CallSiteSource);
+
+        Assert.Equal(0, builder.CallGraphFrozenMethodIndexCount);
+    }
+
     private static NLCPGBuilder Build(NLCPGCapability[] capabilities, string? source = null)
     {
         var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with

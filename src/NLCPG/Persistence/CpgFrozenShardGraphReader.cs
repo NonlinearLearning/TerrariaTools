@@ -133,16 +133,7 @@ public static class CpgFrozenShardGraphReader
           .ThenBy(shard => shard.Lookup.Fragment.SpanStart)
           .ThenBy(shard => shard.Lookup.Fragment.SpanLength)
           .ToArray();
-        foreach (var shard in orderedShards)
-        {
-            var graph = ReadGraph(shard, stringInterner);
-            foreach (var node in graph.Nodes)
-            {
-                nodes.TryAdd(node.NodeId!.Value, node);
-            }
-
-            edges.UnionWith(graph.Edges);
-        }
+        AccumulateShardGraphs(orderedShards, nodes, edges, stringInterner);
 
         foreach (var boundaryEdge in orderedShards
           .SelectMany(shard => shard.BoundaryEdges ?? Array.Empty<CpgFrozenBoundaryEdge>())
@@ -161,6 +152,58 @@ public static class CpgFrozenShardGraphReader
         }
 
         return NLCPGGraph.CreateFrozen(nodes.Values, edges, stringInterner);
+    }
+
+    // (i)/(ii) 共用的归并核心：按调用方给定的分片序，把每个分片的节点与边并入调用方提供的容器。
+    // 容器由调用方持有，故它可自行决定何时物化数组、何时解除引用——这正是本项要收敛的重复段。
+    //
+    // 语义与原先两处各自展开的循环逐条一致：
+    //   · 节点用 TryAdd：先到者胜，重复 NodeId 不视为冲突；
+    //   · 边用 UnionWith：HashSet 值相等去重，同一条边跨分片重复只算一次；
+    //   · 跨分片共用一个 stringInterner，不得每分片新建。
+    // 节点插入序不影响最终 OrderedNodes（CreateFrozen 内会按 NodeId 重排，
+    // NLCPGGraphIndex.cs:436），但会影响 ImportMutableFacts 的 AddNode 顺序
+    // （NLCPGGraph.cs:429-477），故这里必须原样保持调用方传入的分片序，不得另行排序。
+    //
+    // 边界边不在此处：三处调用方的"边界边缺失端点"策略不同（(i) 抛 InvalidDataException、
+    // (ii) 静默跳过），故边界边仍由各自处理。
+    internal static void AccumulateShardGraphs(
+      IEnumerable<CpgFrozenShard> orderedShards,
+      Dictionary<NodeId, NLCPGNode> nodes,
+      HashSet<NLCPGEdge> edges,
+      StringInterner stringInterner)
+    {
+        ArgumentNullException.ThrowIfNull(orderedShards);
+        ArgumentNullException.ThrowIfNull(nodes);
+        ArgumentNullException.ThrowIfNull(edges);
+        ArgumentNullException.ThrowIfNull(stringInterner);
+        foreach (var shard in orderedShards)
+        {
+            var graph = ReadGraph(shard, stringInterner);
+            MergeInto(nodes, edges, graph.Nodes, graph.Edges);
+        }
+    }
+
+    // 归并语义的最小核：(i)/(ii)/(iii) 三处都以"节点 TryAdd、边 Add"的同一规则并入同一对容器。
+    // 单独抽出是因为 (iii)（NLCPGSliceQuery.LoadFrontierGraphAsync）的归并**交错在逐跳遍历与
+    // 访问预算之中**，且并入的是逐锚点的 incoming 投影而非整分片图，无法整体套用上面的按分片循环；
+    // 但它每次并入的那两行规则与本核逐字相同，故直接复用本核，避免第三份同义实现。
+    internal static void MergeInto(
+      Dictionary<NodeId, NLCPGNode> nodes,
+      HashSet<NLCPGEdge> edges,
+      IEnumerable<NLCPGNode> shardNodes,
+      IEnumerable<NLCPGEdge> shardEdges)
+    {
+        ArgumentNullException.ThrowIfNull(nodes);
+        ArgumentNullException.ThrowIfNull(edges);
+        ArgumentNullException.ThrowIfNull(shardNodes);
+        ArgumentNullException.ThrowIfNull(shardEdges);
+        foreach (var node in shardNodes)
+        {
+            nodes.TryAdd(node.NodeId!.Value, node);
+        }
+
+        edges.UnionWith(shardEdges);
     }
 
     internal static CpgFrozenShardGraphFacts ReadMutableFacts(IEnumerable<CpgFrozenShard> shards)

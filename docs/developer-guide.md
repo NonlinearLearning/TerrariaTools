@@ -2,7 +2,7 @@
 
 ## 这篇解决什么问题
 
-本页说明如何定位实现、选择验证和保持当前架构边界。运行配置见 [配置参考](cli-reference.md)，设计推导见 [`设计docs/`](../设计docs/README.md)。
+本页说明如何定位实现、选择验证和保持当前架构边界。运行配置见 [配置参考](cli-reference.md)，设计推导见 [`设计docs/`](CodeDesign/README.md)。
 
 ## 工作入口
 
@@ -48,7 +48,7 @@ store 根目录包含 `catalog.db`、`shards/` 与单 writer 锁文件。打开 
 - 运行时：`src/NLISSN.Application/ExecutionRuntime.cs`
 - 规则：`src/NLISSN.Rules/`
 
-删除规则遵循“标记 → 传播 → 提升 → 决策 → 改写”。规则图以 `Target.*`、`Flow.*`、`Lift.*` 与 `Relation.*` 端口和语法契约连接；Atomic/Declaration provenance 仅用于证据与声明安全检查，不划分独立运行链。改动此链路前读取对应局部约束和 [删除规则流水线](../设计docs/目前设计/deletion-pipeline.md)。
+删除规则遵循“标记 → 传播 → 提升 → 决策 → 改写”。规则图以 `Target.*`、`Flow.*`、`Lift.*` 与 `Relation.*` 端口和语法契约连接；Atomic/Declaration provenance 仅用于证据与声明安全检查，不划分独立运行链。改动此链路前读取对应局部约束和 [删除规则流水线](CodeDesign/目前设计/deletion-pipeline.md)。
 
 ### Workspace / MSBuild 输入
 

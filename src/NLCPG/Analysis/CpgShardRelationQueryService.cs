@@ -158,16 +158,10 @@ public sealed class CpgShardRelationQueryService : ICpgRelationQueryService
         var edges = new HashSet<NLCPGEdge>();
         var stringInterner = new StringInterner();
         var shardList = shards.ToArray();
-        foreach (var shard in shardList)
-        {
-            var graph = CpgFrozenShardGraphReader.ReadGraph(shard, stringInterner);
-            foreach (var node in graph.Nodes)
-            {
-                nodes.TryAdd(node.NodeId!.Value, node);
-            }
 
-            edges.UnionWith(graph.Edges);
-        }
+        // 归并段与 ReadGraph(IEnumerable<CpgFrozenShard>) 共用同一份实现（原为逐字重复的循环）。
+        // 分片序仍由本方法传入，故节点的插入序与改前逐位一致。
+        CpgFrozenShardGraphReader.AccumulateShardGraphs(shardList, nodes, edges, stringInterner);
 
         foreach (var boundary in shardList.SelectMany(CpgFrozenShardGraphReader.ReadBoundaryEdges))
         {

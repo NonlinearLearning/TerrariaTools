@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using NLCPG.Model;
 
 namespace NLCPG.Builder.Passes;
@@ -35,6 +36,11 @@ internal sealed class InterproceduralPlanBuffer
     internal int Count { get; private set; }
 
     internal int Capacity => _array.Length;
+
+    /// 共享的空载体。两段式组头里「没有共享段」是常态（未共享的组、非正预算分支），
+    /// 用共享实例可避免每组各分配一个空包装对象。
+    internal static InterproceduralPlanBuffer Empty { get; } =
+      new(Array.Empty<InterproceduralPlanRef>(), 0);
 
     /// 构造时的请求容量（= min(原上界, 预算)）。精确分配下它恒等于 <see cref="Capacity"/>，
     /// 但仍在此刻固化而不事后反推：账本断言的判别量必须来自请求时刻，不能依赖分配策略。
@@ -119,15 +125,28 @@ internal sealed class InterproceduralPlanBuffer
 /// 三者在本发布路径上没有任何字段读取方，却让每条计划各背一个 104 B 的额外 NLCPGNode。
 /// 提到组头后，每条计划只余下引导 AddEdge 所需的那一个池内序号。
 ///
+/// 【两段式：跨调用点复用 ArgumentToParameter 段】
+///   · <see cref="SharedArgumentPlans"/> —— ArgumentToParameter 前缀。它的内容只由
+///     「目标方法 + 全局预算」决定，与调用点无关 ⇒ 同一目标方法的全部调用点共享同一份数组，
+///     把累计载体分配从 c·(c·p) 降到 c·p。按引用持有，故共享本身不产生任何复制。
+///   · <see cref="GroupTailPlans"/> —— 本组私有尾段
+///     （MethodReturnToCallResult + 仅在首个调用点出现的 ReturnToMethodReturn）。
+///   两段按「共享段在前、尾段在后」拼接后与改造前【逐位相同】，这是边序冻结 oracle 的前提。
+///
+/// 【PlanIndex 是两段共用的统一编号空间】<see cref="PlanAt"/> 负责这一映射。
+/// 若让两段各自从 0 编号，同一组内就会出现重复下标，而 PlanIndex 同时是组内排序的
+/// 【末键】（List&lt;T&gt;.Sort 不稳定）⇒ 边序失去确定性，冻结 oracle 会红。
+///
 /// 所有权与生命周期：
 ///   · 组头在计划构造上界确定后建立，因此构造期就能给出精确容量；
-///   · 计划数组只在【构造该组的同一次循环迭代内】追加；进入发布窗口后不得再追加、
-///     重排或跨组复用（PlanIndex 绑定组内原始插入序，重排即失效）；
-///   · 发布器只读组头与计划数组。
+///   · 两段在【进入发布窗口后】均不得再追加、重排或跨组改写（PlanIndex 绑定原始插入序）；
+///   · 共享段的生命周期是【整个文档】（由记忆化容器持有），尾段的生命周期才是【本组】；
+///   · 发布器只读组头与两段数组。
 internal readonly struct InterproceduralDataFlowPlanGroup(
   NLCPGNode callSiteNode,
   int stableCallSiteOrder,
-  InterproceduralPlanBuffer plans)
+  InterproceduralPlanBuffer sharedArgumentPlans,
+  InterproceduralPlanBuffer groupTailPlans)
 {
     /// 该组所属调用点的完整节点快照。发布器由它构造一次调用点上下文。
     internal NLCPGNode CallSiteNode { get; } = callSiteNode;
@@ -136,10 +155,25 @@ internal readonly struct InterproceduralDataFlowPlanGroup(
     /// 所有权事实（窗口 slot 次序与它相同，但那是窗口实现细节，不是可依赖的来源）。
     internal int StableCallSiteOrder { get; } = stableCallSiteOrder;
 
-    /// 计划数组载体。按引用持有，故组头按值复制时不会复制数组本身（这正是它必须是 class 的原因）。
-    internal InterproceduralPlanBuffer Plans { get; } = plans;
+    /// 共享的 ArgumentToParameter 前缀：同一目标方法的全部调用点共用同一实例。
+    internal InterproceduralPlanBuffer SharedArgumentPlans { get; } = sharedArgumentPlans;
 
-    internal int Count => Plans.Count;
+    /// 本组私有的尾段计划（MethodReturnToCallResult + ReturnToMethodReturn）。
+    internal InterproceduralPlanBuffer GroupTailPlans { get; } = groupTailPlans;
+
+    /// 两段之和。窗口行数、窗口组数上界与派生的 PeakWindowRows 都读它，
+    /// 故复用【不改变】任何与窗口规模相关的读数。
+    internal int Count => SharedArgumentPlans.Count + GroupTailPlans.Count;
+
+    /// 组内统一下标 → 惰性载体。下标空间为「共享段在前、尾段在后」，
+    /// 与改造前单缓冲的插入序逐位相同。
+    internal InterproceduralPlanRef PlanAt(int planIndex)
+    {
+        var sharedCount = SharedArgumentPlans.Count;
+        return planIndex < sharedCount
+          ? SharedArgumentPlans[planIndex]
+          : GroupTailPlans[planIndex - sharedCount];
+    }
 }
 
 /// 跨过程计划发布窗口的容量账本（执行文档第 3 节）。
@@ -177,10 +211,14 @@ internal readonly record struct InterproceduralPlanCapacityLedger(
   int MaxPlanCountPerGroup,
   int MaxPlanCapacityPerGroup,
   long PlanInitialCapacityTotal,
-  int MaxPlanInitialCapacityPerGroup)
+  int MaxPlanInitialCapacityPerGroup,
+  long SharedArgumentPlanCountTotal,
+  long SharedArgumentPlanCapacityTotal,
+  long SharedArgumentInitialCapacityTotal,
+  int SharedArgumentMethodCount)
 {
     internal static InterproceduralPlanCapacityLedger Empty { get; } =
-      new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+      new(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
 /// 上述账本的累加器，只在本 pass 的单次串行构造/发布路径上写入。
@@ -234,28 +272,93 @@ internal sealed class InterproceduralPlanCapacityLedgerBuilder
     /// 旧实现在截断后同样调用 TrimExcess，故【最终】Capacity 也会回到 B —— 只看最终容量
     /// 或最终条数，新旧代码给出相同的账，那样的断言没有判别力。
     /// 真正被消除的是**生成期曾按上界分配过的那份数组**，它体现在初始容量上。
+    ///
+    /// 【两段式后只统计私有尾段】共享段的初始容量是【每方法一次】，若并入本字段，
+    /// 「前缀收集」的判别力会被共享段的份额稀释。共享段另行记入
+    /// <see cref="SharedArgumentInitialCapacityTotal"/>（这也是它必须独立成字段的理由之一）。
     internal long PlanInitialCapacityTotal { get; set; }
 
     internal int MaxPlanInitialCapacityPerGroup { get; set; }
 
-    internal void ObserveGroup(int count, int capacity, int initialCapacity)
+    /// 共享 ArgumentToParameter 段：条数 / 容量 / 初始容量三项合计。
+    ///
+    /// 【为什么不并入上面三个字段 —— 重复计数陷阱】共享段【只有一份】。
+    /// 若让同一目标方法的 c 个组各把同一份共享 buffer 累加一次，
+    /// 就会把它虚增 c 倍（本该 c·p，账上却记成 c²·p），
+    /// 于是本项的收益在账本上与改造前【无差别】，完全不可观测。
+    /// ⇒ 共享段必须按「每方法一份」单独累加，且必须能由 N1/N3 断言钉死。
+    internal long SharedArgumentPlanCountTotal { get; set; }
+
+    internal long SharedArgumentPlanCapacityTotal { get; set; }
+
+    internal long SharedArgumentInitialCapacityTotal { get; set; }
+
+    /// 真正建过共享段的目标方法数。它是「按方法计一次」这件事的直接读数：
+    /// 若有人把构造挪进逐调用点路径，本计数会退化成调用点数（或 0，若从不记账）。
+    internal int SharedArgumentMethodCount { get; set; }
+
+    /// 记一个组的账。
+    ///
+    /// 【两种口径，不得混用】<paramref name="retainedCount"/>/<paramref name="retainedCapacity"/>
+    /// 是【整组】（共享段 + 尾段）的读数，只用于每组最大值；<paramref name="tailCount"/> 等三项
+    /// 是【尾段】读数，按组累加。共享段不进这里 —— 它按方法记一次（见
+    /// <see cref="ObserveSharedArgumentSegment"/>）。
+    ///
+    /// 为什么合计口径取「尾段 + 每方法一份共享段」：既有冻结断言
+    /// `PlanCapacityTotal >= PlanCountTotal` 与 `capacityOverCount >= 1.0` 要求两者【同口径】；
+    /// 若条数按「每组消耗整桶」（c²·p）而容量按「实际保留」（c·p），该不等式必红。
+    /// 统一为「实际保留的载体份数」后不等式成立（每份都满足 容量 ≥ 条数），
+    /// 且 `PlanCountTotal` 本身成为本项收益的判别量。
+    internal void ObserveGroup(
+      int retainedCount,
+      int retainedCapacity,
+      int tailCount,
+      int tailCapacity,
+      int tailInitialCapacity)
     {
+        PlanCountTotal += tailCount;
+        PlanCapacityTotal += tailCapacity;
+        PlanInitialCapacityTotal += tailInitialCapacity;
+        if (retainedCount > MaxPlanCountPerGroup)
+        {
+            MaxPlanCountPerGroup = retainedCount;
+        }
+
+        if (retainedCapacity > MaxPlanCapacityPerGroup)
+        {
+            MaxPlanCapacityPerGroup = retainedCapacity;
+        }
+
+        if (tailInitialCapacity > MaxPlanInitialCapacityPerGroup)
+        {
+            MaxPlanInitialCapacityPerGroup = tailInitialCapacity;
+        }
+    }
+
+    /// 记一个【新建】共享段的账。调用点必须与「缓存未命中 ⇒ 真的构造了一份」一一对应
+    /// （每方法至多一次），否则「按方法计一次」就只是注释里的说法。
+    internal void ObserveSharedArgumentSegment(int count, int capacity, int initialCapacity)
+    {
+        SharedArgumentPlanCountTotal += count;
+        SharedArgumentPlanCapacityTotal += capacity;
+        SharedArgumentInitialCapacityTotal += initialCapacity;
+        SharedArgumentMethodCount += 1;
+
+        // 【口径②】共享段也必须进合计 —— 否则「按方法计一次」这件事就只体现在四个专用字段里，
+        // 而既有冻结断言读的是 PlanCountTotal：在「共享段非空 + 尾段为空」的语料（正预算下
+        // 完全可能，如单调用点、无返回边的方法）上它会读到 0，`PlanCountTotal > 0` 直接红。
+        // 更重要的是：只有把共享段按【每方法一份】计入，PlanCountTotal 才等于"实际保留的载体
+        // 份数"，与 PlanCapacityTotal 同口径，`容量 ≥ 条数` 才逐组成立而不是碰巧成立。
         PlanCountTotal += count;
         PlanCapacityTotal += capacity;
-        PlanInitialCapacityTotal += initialCapacity;
-        if (count > MaxPlanCountPerGroup)
-        {
-            MaxPlanCountPerGroup = count;
-        }
 
-        if (capacity > MaxPlanCapacityPerGroup)
+        // 共享段的 slack 也按「每方法一次」入账。若改到逐组累加，同一份共享段的 slack
+        // 会被虚增 c 倍，与条数/容量的重复计数陷阱同型。
+        PlanCapacitySlackBytes +=
+          (long)(capacity - count) * Unsafe.SizeOf<InterproceduralPlanRef>();
+        if (capacity > count)
         {
-            MaxPlanCapacityPerGroup = capacity;
-        }
-
-        if (initialCapacity > MaxPlanInitialCapacityPerGroup)
-        {
-            MaxPlanInitialCapacityPerGroup = initialCapacity;
+            PlanCapacitySlackGroups += 1;
         }
     }
 
@@ -289,5 +392,9 @@ internal sealed class InterproceduralPlanCapacityLedgerBuilder
       MaxPlanCountPerGroup,
       MaxPlanCapacityPerGroup,
       PlanInitialCapacityTotal,
-      MaxPlanInitialCapacityPerGroup);
+      MaxPlanInitialCapacityPerGroup,
+      SharedArgumentPlanCountTotal,
+      SharedArgumentPlanCapacityTotal,
+      SharedArgumentInitialCapacityTotal,
+      SharedArgumentMethodCount);
 }

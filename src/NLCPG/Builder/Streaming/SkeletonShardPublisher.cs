@@ -19,8 +19,6 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
   private readonly FragmentOwnershipIndex _ownership;
   private readonly IReadOnlyList<CpgFragmentOwnership> _fragments;
   private readonly HashSet<NodeId> _publishedNodeIds = new();
-  private readonly List<int> _publishedOrders = new();
-  private readonly List<string> _publishedKinds = new();
   private readonly Dictionary<NodeId, CpgShardLookup> _primaryLookupByNodeId = new();
   private readonly Dictionary<BoundaryBucket, List<CpgFrozenBoundaryEdge>> _boundaryBatches = new();
   private readonly Dictionary<BoundaryBucket, int> _boundaryShardOrdinals = new();
@@ -143,8 +141,6 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
     }
 
     RegisterPrimaryNodes(shard);
-
-    _publishedKinds.Add("operation-fragment");
   }
 
   // 在发布未完成时关闭底层会话并清理暂存状态。
@@ -206,7 +202,6 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
         descriptorBuckets[fragment],
         candidateBuckets[fragment],
         cancellationToken);
-      _publishedOrders.Add(fragment.SourceOrder);
     }
   }
 
@@ -223,8 +218,6 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       context.Graph.StringTable);
     await _session.PublishFragmentAsync(shard, cancellationToken);
     RegisterPrimaryNodes(shard);
-
-    _publishedKinds.Add(kind);
   }
 
   private CpgShardLookup CreateLookup(string kind, TextSpan span, string source)
@@ -383,7 +376,6 @@ internal sealed class SkeletonShardPublisher : IAsyncDisposable
       ordered,
       CpgShardRole.BoundaryAdjacency,
       new CpgBoundaryAdjacency(CpgFragmentOwnerIdentity.Create(bucket.Owner), bucket.Direction)), cancellationToken);
-    _publishedKinds.Add("boundary-adjacency");
   }
 
   private static CpgEdgeCandidate CreateCandidate(NLCPGGraph.PendingEdge edge)

@@ -133,17 +133,7 @@ internal sealed class CpgShardBuildCoordinator
           .OrderBy(edge => edge.SourceNodeId)
           .ThenBy(edge => edge.Kind)
           .ThenBy(edge => edge.TargetNodeId)
-          .Select(edge => new CpgFrozenBoundaryEdge(
-            edge.SourceNodeId.Value,
-            edge.TargetNodeId.Value,
-            edge.Kind.ToString(),
-            edge.StructuredLabel?.StableKey,
-            edge.ContextId?.Value,
-            edge.CallSiteContext?.FilePath,
-            edge.CallSiteContext?.SpanStart,
-            edge.CallSiteContext?.SpanEnd,
-            edge.CallSiteContext?.DisplayName,
-            CpgFrozenFlowSummaryLabel.From(edge.StructuredLabel)))
+          .Select(CpgFrozenBoundaryEdge.FromEdge)
           .ToArray();
         if (boundaryEdges.Length > 0)
         {
@@ -387,12 +377,6 @@ internal sealed class CpgShardBuildCoordinator
           nameof(AccessorDeclarationSyntax) or
           nameof(LocalFunctionStatementSyntax) or
           nameof(GlobalStatementSyntax);
-    }
-
-    private static bool IsInside(Model.NLCPGNode node, TextSpan span)
-    {
-        return node.SpanStart.HasValue && node.SpanEnd.HasValue &&
-          node.SpanStart.Value >= span.Start && node.SpanEnd.Value <= span.End;
     }
 
     private static string Hash(string value)

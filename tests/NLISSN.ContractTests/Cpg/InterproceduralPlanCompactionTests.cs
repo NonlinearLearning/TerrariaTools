@@ -126,8 +126,14 @@ public sealed class InterproceduralPlanCompactionTests
           .OrderBy(name => name, StringComparer.Ordinal)
           .ToArray();
 
+        // 两段式组头（跨调用点复用）：共享 ArgumentToParameter 前缀 + 私有尾段。
+        // 单一 `Plans` 属性已被这两个属性取代 —— 组内下标改由 PlanAt 派发。
         Assert.Equal(
-          new[] { "CallSiteNode", "Count", "Plans", "StableCallSiteOrder" },
+          new[]
+          {
+            "CallSiteNode", "Count", "GroupTailPlans", "SharedArgumentPlans",
+            "StableCallSiteOrder",
+          },
           properties);
     }
 
@@ -328,6 +334,158 @@ public sealed class InterproceduralPlanCompactionTests
           () => zeroBuilder.BuildFromSource(Source, "m1-budget-distinct.cs"));
     }
 
+    // ── ⑤ 跨调用点复用（c²·p → c·p）的定向护栏（执行文档 §5.3，N1–N5）────────────────
+    //
+    // 共同前提（§2.5 的边界，必须先讲清，否则会写出没有判别力的断言）：
+    // 复用【只】收缩同时驻留的载体份数 —— 计划条数、窗口行数、边数与 List.Sort 比较次数
+    // 全部【不变】。故收益的唯一判别量是账本里的载体【份数】，
+    // 绝不能用 PeakWindowRows 或边数当判据（它们按设计不动）。
+
+    // N1：共享前缀把 c²·p 的载体份数降到 c·p 量级。
+    // 夹具：单个 int 形参的 Leaf 被 c 个调用点各调一次 ⇒ 桶大小 = c（p = 1）。
+    // 改造前每个调用点都重放整桶 ⇒ 段 1 载体合计 = c·c；改造后共享一份 ⇒ ≈ c + O(c)。
+    [Theory]
+    [InlineData(70)]
+    [InlineData(90)]
+    public void SharedArgumentSegment_RetainsFarFewerCarriersThanPerGroupReplay(int callCount)
+    {
+        var ledger = BuildLedger(callCount, dop: 1);
+
+        // p == 1 ⇒ 每方法实参桶 = 调用点数。
+        var perGroupReplayCarriers = (long)callCount * callCount;
+
+        Assert.True(
+          ledger.PlanCountTotal >= callCount,
+          $"保留载体仅 {ledger.PlanCountTotal} 份，少于共享段本身应有的 {callCount} 份，"
+            + "共享前缀根本没建起来。");
+        Assert.True(
+          ledger.PlanCountTotal < perGroupReplayCarriers,
+          $"保留载体 {ledger.PlanCountTotal} 份未低于逐调用点重放的 {perGroupReplayCarriers} 份；"
+            + "共享前缀未生效——每个调用点仍在重放整桶。");
+    }
+
+    // N2：共享前缀必须【懒惰】——只为真正被调用的目标方法构造，而不是循环前为所有方法预建。
+    //
+    // 判别力来自夹具里【有方法从未被调用】：OrderSample 声明 5 个方法
+    // （Leaf/Middle/Top/Wide/ReturnHeavy），但只有 Leaf 与 Middle 被调用。
+    // 若实现改成"循环前无条件为所有方法键预建"，本计数会是 5；懒惰实现必须是 2。
+    // 这条同时护住 §3.3 的另一半：c == 1 的方法占多数，为它们预建是纯亏。
+    [Fact]
+    public void SharedArgumentSegment_IsBuiltLazilyOnlyForDemandedMethods()
+    {
+        var ledger = BuildLedgerForSource(Source, 10000, "m1-lazy-construction.cs");
+
+        // 夹具中真正被调用的目标方法：Leaf、Middle。
+        Assert.Equal(2, ledger.SharedArgumentMethodCount);
+        Assert.True(
+          ledger.SharedArgumentMethodCount < 5,
+          $"共享段方法数为 {ledger.SharedArgumentMethodCount}，等于夹具声明的 5 个方法，"
+            + "说明前缀是为所有方法预建的，而不是按需构造的。");
+    }
+
+    // N3：共享段必须【按方法计一次】——这是 §4.4.2 重复计数陷阱的守门断言。
+    // 若把同一份共享 buffer 逐组各累加一次，本值会变成 c²（= 8100）而不是 c（= 90），
+    // 于是本项的收益在账本上与改造前【无差别】，完全不可观测。
+    [Fact]
+    public void SharedArgumentSegmentLedger_CountsEachMethodExactlyOnce()
+    {
+        const int callCount = 90;
+        var ledger = BuildLedger(callCount, dop: 1);
+
+        Assert.Equal(callCount, ledger.SharedArgumentPlanCountTotal);
+        Assert.Equal(1, ledger.SharedArgumentMethodCount);
+        Assert.True(
+          ledger.SharedArgumentPlanCountTotal < (long)callCount * callCount,
+          "共享段条数达到 c²，说明它被逐组重复累加了。");
+    }
+
+    // N4：共享前缀缓存必须【逐文档】。它保存的是本图【池内序号】；若跨文档泄漏，
+    // 序号在另一张图里依然"合法"却指向别的边 ⇒ 静默错边，且不抛任何异常
+    // （这是本项最严重的错误类型）。判别方式：同一份源码分别用 BuildMany（两文件同批次）
+    // 与 BuildFromSource（各自单独）构建，逐文件比较跨过程桥描述串。
+    //
+    // 两个文件必须是【不同类型名】：D1 多文件走的是同一份 compilation，
+    // 同名类型会构成重复定义而让语义模型出错——那是夹具的问题，不是本项要测的行为。
+    // 类型名不同也正好让"两份内容真正不同"，从而任何跨文档串号都会改变描述串。
+    [Fact]
+    public void SharedArgumentPrefixCache_DoesNotLeakAcrossDocuments()
+    {
+        var sourceA = CpgBuilderSources.InterproceduralPlanCapacityPressure(9)
+          .Replace("CapacityPressure", "DocAlpha", StringComparison.Ordinal)
+          .Replace("Leaf", "LeafAlpha", StringComparison.Ordinal);
+        var sourceB = CpgBuilderSources.InterproceduralPlanCapacityPressure(9)
+          .Replace("CapacityPressure", "DocBeta", StringComparison.Ordinal)
+          .Replace("Leaf", "LeafBeta", StringComparison.Ordinal);
+        const string firstPath = "m1-doc-scope-a.cs";
+        const string secondPath = "m1-doc-scope-b.cs";
+
+        var batched = new NLCPGBuilder(CreateOptions(10000))
+          .BuildMany(new[] { (firstPath, sourceA), (secondPath, sourceB) });
+
+        // 单文件对照组必须与批次内的同名图逐边一致。
+        var singleA = new NLCPGBuilder(CreateOptions(10000))
+          .BuildFromSource(sourceA, firstPath);
+        var singleB = new NLCPGBuilder(CreateOptions(10000))
+          .BuildFromSource(sourceB, secondPath);
+
+        var batchedA = DescribeBridges(batched[firstPath]);
+        var batchedB = DescribeBridges(batched[secondPath]);
+        Assert.NotEmpty(batchedA);
+        Assert.NotEmpty(batchedB);
+
+        Assert.Equal(DescribeBridges(singleA), batchedA);
+        Assert.Equal(DescribeBridges(singleB), batchedB);
+    }
+
+    // N5：组的条数/派发必须按【两段之和】成立，而不是只看尾段。
+    //
+    // 这是两段式引入的、唯一会【静默丢边】的缺陷：某个组完全可能"共享段非空、尾段为空"
+    // （被调方没有返回类桥，而实参桶非空）。若构造段把判空写成
+    // `groupTailPlans.Count == 0`，这些组会被当成空组 `continue` 跳过，于是一条边都不发，
+    // 且【不抛任何异常】—— 边数、冻结哈希与 NodeId 分配都会静默改变。
+    //
+    // 判别方式：直接构造"共享段非空 / 尾段为空"的组头，断言
+    //   · Count 反映两段之和（不是尾段的 0）；
+    //   · PlanAt 在统一编号空间里把 [0, sharedCount) 派发给共享段、其余派发给尾段。
+    // 直接测组头是因为构造段的判空读的就是 Count —— 这样断言与缺陷模式一一对应，
+    // 不依赖某个源码语料恰好产出空尾段的组（实测 void 被调方仍会产出返回类桥）。
+    [Fact]
+    public void GroupWithNonEmptySharedSegmentAndEmptyTail_CountsAndDispatchesBothSegments()
+    {
+        var shared = InterproceduralPlanBuffer.Create(2);
+        shared.Add(new InterproceduralPlanRef(PoolOrdinal: 11));
+        shared.Add(new InterproceduralPlanRef(PoolOrdinal: 22, ArgumentOrdinal: 1));
+        var emptyTail = InterproceduralPlanBuffer.Create(0);
+
+        var group = new InterproceduralDataFlowPlanGroup(
+          default,
+          stableCallSiteOrder: 0,
+          shared,
+          emptyTail);
+
+        // 尾段为空【不】意味着组为空 —— 判空必须看两段之和。
+        Assert.Equal(0, group.GroupTailPlans.Count);
+        Assert.Equal(2, group.Count);
+
+        // 统一编号空间：共享段在前，尾段随后。
+        Assert.Equal(11, group.PlanAt(0).PoolOrdinal);
+        Assert.Equal(22, group.PlanAt(1).PoolOrdinal);
+        Assert.Equal(1, group.PlanAt(1).ArgumentOrdinal);
+
+        // 反向形态：共享段为空 / 尾段非空。两段的编号必须连续，否则 List.Sort 的
+        // 末键（PlanIndex）就不再是全序，边序会随排序实现漂移（§8 第 5 条）。
+        var tail = InterproceduralPlanBuffer.Create(1);
+        tail.Add(new InterproceduralPlanRef(PoolOrdinal: 33));
+        var tailOnlyGroup = new InterproceduralDataFlowPlanGroup(
+          default,
+          stableCallSiteOrder: 0,
+          InterproceduralPlanBuffer.Empty,
+          tail);
+
+        Assert.Equal(1, tailOnlyGroup.Count);
+        Assert.Equal(33, tailOnlyGroup.PlanAt(0).PoolOrdinal);
+    }
+
     // ── ④ 窗口边界与空闲槽容量治理 ────────────────────────────────────────────────
 
     // 夹具必须真的跨窗口：90 个调用点 > 64 组上界 ⇒ 至少两次 flush。
@@ -516,8 +674,7 @@ public sealed class InterproceduralPlanCompactionTests
           $"淘汰后仍保留 {remaining} B > 预算 {budget} B。");
     }
 
-    // 已发布槽的 key 引用必须被清空（否则 SourceKey/TargetKey 字符串一直被扣住），
-    // 且回收必然以清空为前提。
+    // 已发布槽的行载荷必须被清空，且回收必然以清空为前提。
     //
     // ✅ 判别力已修复（2026-09-25 第四会话）：本条原先只断言账本计数器
     // `SortBufferClearedSlots`，而产品代码里该计数器紧跟在 `rows.Clear();` 之后递增
@@ -529,6 +686,15 @@ public sealed class InterproceduralPlanCompactionTests
     // 删掉 `rows.Clear();` 会让该值 > 0 并当场失败。
     // 之所以必须在产品侧记账：窗口槽 `windowRows` 是 `FlushParallelPublishWindow` 的形参，
     // 构建结束后测试无法从任何 API 观察槽内容（这是原复验者无法在测试侧补断言的原因）。
+    //
+    // ⚠️ 【C 排序键排名化】改变了本条的立论轴，但【没有】使它失效：
+    // 改前行持 `SourceKey`/`TargetKey` 两个字符串引用，清空释放的是这两个强引用；
+    // 改后行只含 int（无字符串字段，见 CpgInterproceduralEdgeOrderTests 的字段类型断言）
+    // ⇒ 「字符串强引用可达性」这根轴已【不存在】，不再由本条承担。
+    // 本条保留断言并继续有效的理由是另一根轴：`List<PlanSortRow>` 的**容量数组**仍会存活
+    // （Clear() 不缩容），残留行数 > 0 意味着"已发布槽仍持有行数据"，语义上依旧是错的。
+    // ⇒ 断言保持不变，但其含义从"释放字符串引用"变为"槽确实被清空"。
+    // 这是本测试前提的第二次收窄，如实记录以免后续读者以为判据没变。
     [Fact]
     public void PublishedSlots_ReleaseSortRowKeyReferences()
     {
@@ -536,7 +702,7 @@ public sealed class InterproceduralPlanCompactionTests
 
         Assert.True(
           ledger.SortBufferClearedSlots > 0,
-          "没有任何槽被清空 ⇒ 排序行的 SourceKey/TargetKey 引用仍被扣住。");
+          "没有任何槽被清空 ⇒ 已发布槽仍持有排序行数据。");
         Assert.True(ledger.SortBufferClearedSlots >= ledger.FlushCount);
         Assert.True(
           ledger.SortBufferReclaimedSlots <= ledger.SortBufferClearedSlots,
@@ -869,6 +1035,22 @@ public sealed class InterproceduralPlanCompactionTests
         var builder = new NLCPGBuilder(options);
         builder.BuildFromSource(source, filePath);
         return builder;
+    }
+
+    // 跨过程桥的规范化描述（源/目标节点 + 桥种类 + 上下文），用于比较两张图是否逐边相同。
+    // 不做任何排序：若顺序变化，本描述串也会变化 —— 这正是 N4 想抓住的静默错边形态。
+    private static string DescribeBridges(NLCPGGraph graph)
+    {
+        return string.Join(
+          "\n",
+          graph.Edges
+            .Where(edge => edge.Kind == NLCPGEdgeKind.InterproceduralDataFlow)
+            .Select(edge => string.Join(
+              "|",
+              edge.SourceNodeId,
+              edge.TargetNodeId,
+              edge.StructuredLabel?.StableKey ?? string.Empty,
+              edge.ContextId?.Value ?? string.Empty)));
     }
 
     // record struct 的实例字段名形如 <SourceNode>k__BackingField。

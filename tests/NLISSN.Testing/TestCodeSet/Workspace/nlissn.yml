@@ -20,7 +20,8 @@ execution:
   replayMaxDegreeOfParallelism: 1
   maxConcurrentOperations: 1
 artifacts:
-  root: artifacts
+  # 不声明 root：留空即由加载器默认到仓库根 Build/Result，产物不再落在夹具目录里的 artifacts/。
+  # artifacts.root 只接受不含 '..' 的仓库内相对路径，所以这里无法直接写 ../../../../Build。
   diff:
     enabled: false
   runtimeLog:

@@ -37,29 +37,7 @@ public sealed partial class NLCPGBuilder
             return;
         }
 
-        // 分区根只保留最外层 body，避免嵌套方法体在不同分区里重复分析。
-        var partitionRoots = operationRoots
-          .Select(root => root.BodySyntax)
-          .Where(root => !operationRoots.Any(other =>
-            !ReferenceEquals(root, other.BodySyntax) && root.Ancestors().Contains(other.BodySyntax)))
-          .ToArray();
-        // 每个分区直接展开成完整语法节点数组，后续 worker 只读这些节点并采集事实。
-        var partitions = partitionRoots
-          .Select(root => root.DescendantNodesAndSelf().ToArray())
-          .ToArray();
-        var operationRootByBody = new Dictionary<SyntaxNode, OperationRootPlan>(
-          ReferenceEqualityComparer.Instance);
-        foreach (var operationRoot in operationRoots)
-        {
-            operationRootByBody.Add(operationRoot.BodySyntax, operationRoot);
-        }
-        var partitionsByOrder = partitionRoots
-          .Select((root, index) => new
-          {
-              Order = operationRootByBody[root].Order,
-              Nodes = (IReadOnlyList<SyntaxNode>)partitions[index],
-          })
-          .ToDictionary(item => item.Order, item => item.Nodes);
+        var (partitionRoots, partitions, partitionsByOrder) = BuildSyntaxPartitions(operationRoots);
         var partitionSyntax = new HashSet<SyntaxNode>(
           partitions.SelectMany(nodes => nodes),
           ReferenceEqualityComparer.Instance);
@@ -100,6 +78,39 @@ public sealed partial class NLCPGBuilder
         }
         RunPartitionedSyntaxPass(context, partitionRoots, partitions, buildPlan);
         _partitionedSyntaxFacts.Clear();
+    }
+
+    // 把方法体展开为语法分区：分区根只保留最外层 body，避免嵌套方法体在不同分区里重复分析。
+    private static (
+      SyntaxNode[] PartitionRoots,
+      SyntaxNode[][] Partitions,
+      Dictionary<int, IReadOnlyList<SyntaxNode>> PartitionsByOrder)
+      BuildSyntaxPartitions(IReadOnlyList<OperationRootPlan> operationRoots)
+    {
+        var partitionRoots = operationRoots
+          .Select(root => root.BodySyntax)
+          .Where(root => !operationRoots.Any(other =>
+            !ReferenceEquals(root, other.BodySyntax) && root.Ancestors().Contains(other.BodySyntax)))
+          .ToArray();
+        // 每个分区直接展开成完整语法节点数组，后续 worker 只读这些节点并采集事实。
+        var partitions = partitionRoots
+          .Select(root => root.DescendantNodesAndSelf().ToArray())
+          .ToArray();
+        var operationRootByBody = new Dictionary<SyntaxNode, OperationRootPlan>(
+          ReferenceEqualityComparer.Instance);
+        foreach (var operationRoot in operationRoots)
+        {
+            operationRootByBody.Add(operationRoot.BodySyntax, operationRoot);
+        }
+
+        var partitionsByOrder = partitionRoots
+          .Select((root, index) => new
+          {
+              Order = operationRootByBody[root].Order,
+              Nodes = (IReadOnlyList<SyntaxNode>)partitions[index],
+          })
+          .ToDictionary(item => item.Order, item => item.Nodes);
+        return (partitionRoots, partitions, partitionsByOrder);
     }
 
     // 每个 worker 连续处理一个 WorkBatch；结果只包含只读事实，不直接触碰图状态。

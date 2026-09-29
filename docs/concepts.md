@@ -2,7 +2,7 @@
 
 ## 这篇解释什么
 
-本页说明 NL 当前两个可运行原型的职责、它们之间的关系和明确边界。它不替代算法设计、规则细节或性能记录；这些内容以 [`设计docs/`](../设计docs/README.md) 和当前 feature 记录为准。
+本页说明 NL 当前两个可运行原型的职责、它们之间的关系和明确边界。它不替代算法设计、规则细节或性能记录；这些内容以 [`设计docs/`](CodeDesign/README.md) 和当前 feature 记录为准。
 
 ## 两条主线
 
@@ -36,5 +36,5 @@
 ## 进一步阅读
 
 - 要运行代码：看 [快速开始](quick-start.md)。
-- 要理解删除规则设计：看 [删除规则流水线](../设计docs/目前设计/deletion-pipeline.md)。
+- 要理解删除规则设计：看 [删除规则流水线](CodeDesign/目前设计/deletion-pipeline.md)。
 - 要修改实现：看 [开发者指南](developer-guide.md)。

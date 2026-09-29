@@ -567,4 +567,4 @@ BCL 实测（.NET 10.0.11）：`n=0` → 选择器 **0** 次、`n=1` → 选择�
 - [DataFlow 位集稀疏化设计](2026-09-23-dataflow-sparse-bitset-design.md)
   —— 同为"语义保持型表示层重构"，其 §4.3 无 `InternalsVisibleTo` 裁定被本设计沿用。
 - [执行计划](2026-09-23-zero-allocation-key-execution.md)
-- [C# 风格约束](../../约束/Google-CSharp-Style-Guide-约束.md)
+- [C# 风格约束](../../Context/约束/Google-CSharp-Style-Guide-约束.md)

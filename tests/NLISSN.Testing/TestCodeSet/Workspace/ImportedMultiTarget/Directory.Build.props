@@ -1,4 +1,12 @@
 <Project>
+  <!--
+    This fixture declares its target frameworks locally, so it owns the Directory.Build.props
+    that MSBuild discovers first and the repository-root file is not imported implicitly.
+    Import it explicitly to keep the shared build-output routing: without this the fixture
+    would compile into its own bin/ and obj/ directories.
+  -->
+  <Import Project="$([MSBuild]::NormalizePath('$(MSBuildThisFileDirectory)..\..\..\..\..\Directory.Build.props'))" />
+
   <PropertyGroup>
     <TargetFrameworks>net10.0;netstandard2.0</TargetFrameworks>
   </PropertyGroup>

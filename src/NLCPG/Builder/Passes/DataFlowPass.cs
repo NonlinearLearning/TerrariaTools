@@ -632,7 +632,7 @@ namespace NLCPG.Builder
             return partitions;
         }
 
-        private static UsedFactPartition AnalyzeUsedFactPartition(
+        private UsedFactPartition AnalyzeUsedFactPartition(
             DataFlowMethodPartition methodPartition, int order, DataFlowMethodProbe? detail)
         {
             var orderedOperations = methodPartition.OrderedOperations;
@@ -1017,7 +1017,7 @@ namespace NLCPG.Builder
             }
         }
 
-        private static CfgSensitivePartition AnalyzeCfgSensitivePartition(
+        private CfgSensitivePartition AnalyzeCfgSensitivePartition(
             MethodDataFlowPlan plan, NLCPGDataFlowOptions options,
             DataFlowMethodProbe? probe, DataFlowMethodProbe? detail)
         {
@@ -2352,7 +2352,7 @@ namespace NLCPG.Builder
                 : null;
         }
 
-        private static DefinitionFact? DefinedFact(IOperation operation)
+        private DefinitionFact? DefinedFact(IOperation operation)
         {
             return operation switch
             {
@@ -2396,7 +2396,7 @@ namespace NLCPG.Builder
             }
         }
 
-        private static IEnumerable<DefinitionFact> DirectUsedFacts(IOperation operation)
+        private IEnumerable<DefinitionFact> DirectUsedFacts(IOperation operation)
         {
             switch (operation)
             {
@@ -2415,7 +2415,7 @@ namespace NLCPG.Builder
             }
         }
 
-        private static DefinitionFact DefinitionFactForAssignmentTarget(IOperation target)
+        private DefinitionFact DefinitionFactForAssignmentTarget(IOperation target)
         {
             return target switch
             {
@@ -2427,7 +2427,7 @@ namespace NLCPG.Builder
             };
         }
 
-        private static DefinitionFact DefinitionFactForInvocation(IInvocationOperation invocation)
+        private DefinitionFact DefinitionFactForInvocation(IInvocationOperation invocation)
         {
             var targetMethod = invocation.TargetMethod;
             var locationKey = targetMethod is null
@@ -2450,7 +2450,7 @@ namespace NLCPG.Builder
             return new DefinitionFact(parameterId, null, "parameter", parameterId);
         }
 
-        private static DefinitionFact DefinitionFactForField(IFieldSymbol field, IOperation? instance)
+        private DefinitionFact DefinitionFactForField(IFieldSymbol field, IOperation? instance)
         {
             var baseKey = ReceiverKey(instance);
             var locationKey = baseKey is null
@@ -2459,7 +2459,7 @@ namespace NLCPG.Builder
             return new DefinitionFact(locationKey, baseKey, "field", field.Name);
         }
 
-        private static DefinitionFact DefinitionFactForProperty(IPropertySymbol property, IOperation? instance)
+        private DefinitionFact DefinitionFactForProperty(IPropertySymbol property, IOperation? instance)
         {
             var baseKey = ReceiverKey(instance);
             var propertyKey = property.Parameters.Length == 0
@@ -2471,12 +2471,16 @@ namespace NLCPG.Builder
             return new DefinitionFact(locationKey, baseKey, "property", propertyKey);
         }
 
-        private static string ComposeInvocationPathKey(IInvocationOperation invocation)
+        private string ComposeInvocationPathKey(IInvocationOperation invocation)
         {
             var targetMethod = invocation.TargetMethod;
             if (targetMethod is not null)
             {
-                return ComposeMethodLookupKey(targetMethod);
+                // ⚠ 刻意**不**复用 ComposeMethodFullName（含声明类型）：本处 PathKey 是数据流的
+                //   既有键，并入类型会收紧 IsAliasMatch（call 类事实的 alias 命中面变小），
+                //   从而改变 DataFlow 产物。本 pass 不在本次修复范围内，
+                //   故保持并键前形态（名字:签名），行为逐字不变。
+                return $"{ComposeMethodName(targetMethod)}:{ComposeMethodSignature(targetMethod)}";
             }
 
             return $"invoke:{invocation.Syntax.SpanStart}:{invocation.Syntax.Span.End}";
@@ -2494,7 +2498,7 @@ namespace NLCPG.Builder
                    ReferenceEquals(assignment.Target, propertyReference);
         }
 
-        private static string? ReceiverKey(IOperation? instance)
+        private string? ReceiverKey(IOperation? instance)
         {
             if (instance is null)
             {

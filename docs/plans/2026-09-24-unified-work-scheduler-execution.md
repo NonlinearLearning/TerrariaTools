@@ -553,7 +553,7 @@ G4a 调整的仍是 NLCPG 既有方法分批和 streaming 选项；它没有调�
 
 - `Context/feature_list.json` 中对应现有 feature 的状态、完成条件和同版本证据；不创建重复“已完成”条目掩盖原 blocked 项。
 - `Context/progress.md` 中仍影响下一步的事实、已验证与未验证边界；替换过期内容，不追加互相矛盾的完成记录。
-- [统一工作调度设计](2026-09-24-unified-work-scheduler-design.md)、[运行时基础设施](../../设计docs/目前设计/运行时基础设施.md)、[日志与并发](../../设计docs/目前设计/日志与并发.md)及[运行时并发配置](../../设计docs/目前设计/运行时并发配置.md)的实际契约；旧 WorkBatch 设计按实际替代范围标注。
+- [统一工作调度设计](2026-09-24-unified-work-scheduler-design.md)、[运行时基础设施](../CodeDesign/目前设计/运行时基础设施.md)、[日志与并发](../CodeDesign/目前设计/日志与并发.md)及[运行时并发配置](../CodeDesign/目前设计/运行时并发配置.md)的实际契约；旧 WorkBatch 设计按实际替代范围标注。
 
 本次不执行这些状态更新、实现、测试、基准或提交操作。报告完成检查仅运行文档一致性（跳过 CLI smoke）及 Markdown/链接/空白静态检查；检查结果不计作 G0/G2/G3/G4 的通过证据。
 

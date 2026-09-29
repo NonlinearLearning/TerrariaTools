@@ -644,7 +644,7 @@ LLVM Test Suite 的 PGO、PIE/ASLR 和 native code size 不能直接移植到 Ro
 | CodeQL | `61bdd3cfdebd4a8f0e00a47dd45ed2cdf3dc6354` | `ql/ql/src/queries/performance` |
 | Joern | `f117701adfd1e2e8c41d93c0760d115931df9ed6` | `frontends/x2cpg`、`console/cpgcreation` |
 
-对应的初版设计见 [性能分析组件](../../设计docs/目前设计/性能分析组件.md)。
+对应的初版设计见 [性能分析组件](../CodeDesign/目前设计/性能分析组件.md)。
 
 ### 网络一手材料
 

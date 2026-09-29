@@ -9,8 +9,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\RulePipelineTestFactory.cs"
-             Link="Shared\RulePipelineTestFactory.cs" />
+    <!-- 测试并行配置来自 tests/xunit.runner.json，必须复制到输出目录才会被 xUnit 读取。 -->
+    <None Include="..\xunit.runner.json" Link="xunit.runner.json"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1">

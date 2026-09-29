@@ -332,7 +332,7 @@ internal sealed class NLCPGGraphIndex
       int[] edgesByKindOffsets,
       Dictionary<NLCPGNodeKind, int[]> nodesByKind,
       Dictionary<uint, int[]> nodesByFilePath,
-      string snapshotVersion)
+      Func<string> snapshotVersionFactory)
     {
         OrderedNodes = orderedNodes;
         CanonicalNodes = orderedNodes;
@@ -347,7 +347,10 @@ internal sealed class NLCPGGraphIndex
         EdgesByKindOffsets = edgesByKindOffsets;
         NodesByKind = nodesByKind;
         NodesByFilePath = nodesByFilePath;
-        SnapshotVersion = snapshotVersion;
+        // 只登记工厂，不在此处求值：求值被推迟到首次访问 SnapshotVersion。
+        // 工厂闭包捕获的 orderedNodes/store 都是构造后不再改写的实例，
+        // 故延迟求值与就地求值逐字节等价。
+        _snapshotVersion = new Lazy<string>(snapshotVersionFactory, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     internal IReadOnlyList<NLCPGNode> OrderedNodes { get; }
@@ -399,9 +402,22 @@ internal sealed class NLCPGGraphIndex
 
     internal IReadOnlyDictionary<uint, int[]> NodesByFilePath { get; }
 
-    internal string SnapshotVersion { get; }
+    // 惰性记忆化：快照版本只依赖 OrderedNodes 与 EdgeStore，二者都是本索引的常驻不可变字段
+    // （CanonicalEdgeStore 全字段 private readonly，冻结后不再改写），故首次访问时再算
+    // 与在 Create 内算**结果必然相同**。
+    //
+    // 动机：并非所有调用方都读快照版本。项目级 JSON 导出对每个文件建图后只读 Nodes/Edges，
+    // 从不访问 GraphSnapshotVersion；而该函数对每个节点写 8 个字段、每条边写 9 个字段，
+    // 实测 NPC.cs 单文件即使经过缓冲化改造仍耗约 7.2 s CPU（见下方 SnapshotHasher 注释）。
+    // 惰性化使「不读它的调用方」永不付出该成本，且不改变任何既有返回值。
+    //
+    // ExecutionAndPublication：首次访问可能发生在锁内，需保证多线程下只算一次且各线程
+    // 看到同一个实例。选最保守的模式，不以「调用方单线程」为前提。
+    private readonly Lazy<string> _snapshotVersion;
 
-    // 按确定性顺序冻结节点和边，并生成连续数组查询索引与快照版本。
+    internal string SnapshotVersion => _snapshotVersion.Value;
+
+    // 按确定性顺序冻结节点和边，并生成连续数组查询索引；快照版本登记为惰性工厂（见 SnapshotVersion）。
     //
     // 【单份节点载荷】requirement：冻结后完整节点只存一份。本方法取得一份【独占】的
     // NLCPGNode[]（就地按 NodeId 排序），并在 Create 返回后由索引持有；调用方不得再
@@ -421,19 +437,105 @@ internal sealed class NLCPGGraphIndex
         // 供本索引独占（此后就地排序，故绝不能别名调用方的数组）。
         var orderedNodes = nodes as NLCPGNode[] ?? nodes.ToArray();
 
-        // inputOrdinals 先充当"输入序下标"（此时其值即数组当前位置），随 orderedNodes
-        // 一起被 Array.Sort 置换；排序后 inputOrdinals[canonical] = 该 canonical 位置节点的输入下标。
+        // inputOrdinals 先充当"输入序下标"（此时其值即数组当前位置），随后与 orderedNodes
+        // 同步被置换；置换完成后 inputOrdinals[canonical] = 该 canonical 位置节点的输入下标。
         // 只额外需要一个 4 B/节点的临时 int[]，不复制节点值本身。
-        //
-        // Array.Sort 不稳定，但 NodeId 唯一（重复 ID 会在下面的 nodeOrdinals.Add 处抛错），
-        // 故并列元素之间无论取何相对次序都不会进入最终结果。
         var inputOrdinals = new int[orderedNodes.Length];
         for (var index = 0; index < inputOrdinals.Length; index += 1)
         {
             inputOrdinals[index] = index;
         }
 
-        Array.Sort(orderedNodes, inputOrdinals, NodeIdOrderComparer.Instance);
+        // 节点 canonical 化：NodeId 稠密时走就地环置换，否则回退比较排序。
+        //
+        // 稠密判据：NodeId 全部非空、且取值全部落在 [1, N]、最大值恰为 N。满足时"按 NodeId
+        // 排序"就退化成一次置换，可原地完成、无需任何比较。确定性 NodeId 由
+        // DeterministicNodeIdTable 按 index + 1 连续指派，生产图上恒稠密。
+        //
+        // ⚠ 该判据【不能】证明两两不同：N 个值都落在 [1, N] 并不能排除重复（如 N=3 的 {1,1,3}）。
+        // 故唯一性不靠扫描判断，而由下面的交换预算兜底（见其说明）。
+        //
+        // 为什么必须就地：Create_TakesOwnershipOfAnArrayInputAndSortsItInPlace 断言
+        // Assert.Same(传入数组, canonical) 且入参数组自身变为 NodeId 升序；
+        // Create_WithArrayInput_DoesNotAllocateASecondNodePayloadOnTheFreezePath 断言本次
+        // Create 的分配小于一份完整节点载荷（N × 104 B）。散射到新数组会同时打挂这两条。
+        //
+        // 为什么用交换预算而不是 seen[] 去重表：合法置换下每次交换都会把【当前位置的元素】
+        // 永久落到最终位置，且目标下标必 > 当前位置（前序位置已固定），故交换次数上界为 N−1，
+        // 预算 N 不会误触发。一旦出现重复 ID，环置换不可能收敛（数组永远无法变成 1..N），
+        // 预算即截断它并回退 Array.Sort；这既保证终止，又零额外分配（seen[] 需要 N 个布尔量）。
+        // 回退时两数组已被同步置换过，而 inputOrdinals 的不变式（记录当前位置元素的输入下标）
+        // 仍然成立，故 Array.Sort 接着做完即正确。重复 ID 的报错时机也因此与改前一致：
+        // 仍由随后的 nodeOrdinals.Add 抛出 ArgumentException，而不是在排序阶段。
+        var denseNodeIds = false;
+        if (orderedNodes.Length > 0)
+        {
+            var maxNodeId = 0u;
+            var minNodeId = uint.MaxValue;
+            var allPresent = true;
+            for (var index = 0; index < orderedNodes.Length; index += 1)
+            {
+                var nodeId = orderedNodes[index].NodeId;
+                if (nodeId is null)
+                {
+                    allPresent = false;
+                    break;
+                }
+
+                var value = nodeId.Value.Value;
+                if (value > maxNodeId)
+                {
+                    maxNodeId = value;
+                }
+
+                if (value < minNodeId)
+                {
+                    minNodeId = value;
+                }
+            }
+
+            denseNodeIds = allPresent &&
+              minNodeId >= 1 &&
+              maxNodeId == (uint)orderedNodes.Length;
+        }
+
+        if (denseNodeIds)
+        {
+            var budget = orderedNodes.Length;
+            var swaps = 0;
+            for (var position = 0; position < orderedNodes.Length; position += 1)
+            {
+                while (orderedNodes[position].NodeId!.Value.Value != (uint)(position + 1))
+                {
+                    var target = (int)orderedNodes[position].NodeId!.Value.Value - 1;
+                    (orderedNodes[position], orderedNodes[target]) =
+                      (orderedNodes[target], orderedNodes[position]);
+                    (inputOrdinals[position], inputOrdinals[target]) =
+                      (inputOrdinals[target], inputOrdinals[position]);
+                    swaps += 1;
+                    if (swaps > budget)
+                    {
+                        // 出现重复 NodeId：环置换不收敛，判定非稠密并回退比较排序。
+                        denseNodeIds = false;
+                        break;
+                    }
+                }
+
+                if (!denseNodeIds)
+                {
+                    break;
+                }
+            }
+
+            if (!denseNodeIds)
+            {
+                Array.Sort(orderedNodes, inputOrdinals, NodeIdOrderComparer.Instance);
+            }
+        }
+        else
+        {
+            Array.Sort(orderedNodes, inputOrdinals, NodeIdOrderComparer.Instance);
+        }
 
         // graph.Nodes 的枚举序 = 输入序：nodeInsertionOrder[输入下标] = canonical 位置。
         // 该数组常驻（4 B/节点），是唯一新增的常驻结构，用于取代原先的节点字典。
@@ -459,23 +561,48 @@ internal sealed class NLCPGGraphIndex
             .DefaultIfEmpty(0)
             .Max() + 1;
 
+        // 【本轮 C3】kind 键列已收窄为 byte[]，故 (byte)edge.Kind 的强制转换发生在【本方法内】。
+        // 这里必须显式守卫，否则枚举超过 256 个取值时会在源头静默截断，而 CanonicalEdgeStore
+        // 的同类守卫在更晚处才执行（届时截断已污染了计数排序的键序）。
+        // 与 CanonicalEdgeStore.Create 的守卫保持同一措辞，任一处触发都给出同样的异常。
+        if (kindWidth > byte.MaxValue + 1)
+        {
+            throw new InvalidOperationException(
+              $"NLCPGEdgeKind has {kindWidth} distinct ordinals, which no longer fits a byte-wide canonical kind column.");
+        }
+
         // 原文用 9 键 LINQ 排序。其中第 4..9 键完全由边元数据决定，而元数据实例数远小于边数，
         // 因此先把元数据按值去重并求秩，把排序降为 4 个整数键的稳定基数排序：
         // 字符串比较次数从 O(n·log n·6) 降到 0。
+        //
+        // 【本轮 C2】排序键与池下标列在有元数据时是同一个数组（见 BuildMetadataRanks 注释），
+        // 故这里用 metadataRanks 承载排序键、metadataIds 承载池下标列，二者通常指向同一实例；
+        // 全部边无元数据时 metadataIds 为 null（不分配池），而排序键仍是合法的全 0 数组。
         var metadataRanks = BuildMetadataRanks(
           edgeArray,
           out var metadataWidth,
-          out var metadataValueClassOfEdge,
-          out var metadataValueClassKeys);
+          out var metadataIds,
+          out var metadataPoolKeys);
         var sourceOrdinals = new int[edgeArray.Length];
         var targetOrdinals = new int[edgeArray.Length];
-        var kindKeys = new int[edgeArray.Length];
+        var kindKeys = new byte[edgeArray.Length];
         for (var index = 0; index < edgeArray.Length; index += 1)
         {
             var edge = edgeArray[index];
-            sourceOrdinals[index] = nodeOrdinals[edge.SourceNodeId];
-            targetOrdinals[index] = nodeOrdinals[edge.TargetNodeId];
-            kindKeys[index] = (int)edge.Kind;
+            if (denseNodeIds)
+            {
+                sourceOrdinals[index] = ResolveDenseOrdinal(
+                  edge.SourceNodeId, nodeOrdinals, orderedNodes.Length);
+                targetOrdinals[index] = ResolveDenseOrdinal(
+                  edge.TargetNodeId, nodeOrdinals, orderedNodes.Length);
+            }
+            else
+            {
+                sourceOrdinals[index] = nodeOrdinals[edge.SourceNodeId];
+                targetOrdinals[index] = nodeOrdinals[edge.TargetNodeId];
+            }
+
+            kindKeys[index] = (byte)edge.Kind;
         }
 
 
@@ -492,7 +619,9 @@ internal sealed class NLCPGGraphIndex
         (current, buffer) = (buffer, current);
         CountingSortPass(current, buffer, targetOrdinals, nodeOrdinals.Count, countingScratch);
         (current, buffer) = (buffer, current);
-        CountingSortPass(current, buffer, kindKeys, kindWidth, countingScratch);
+
+        // kind 键列已收窄为 byte[]（见 kindKeys 声明处），故走 byte 版计数排序。
+        CountingSortPassByte(current, buffer, kindKeys, kindWidth, countingScratch);
         (current, buffer) = (buffer, current);
         CountingSortPass(current, buffer, sourceOrdinals, nodeOrdinals.Count, countingScratch);
         (current, buffer) = (buffer, current);
@@ -508,9 +637,9 @@ internal sealed class NLCPGGraphIndex
         }
 
         // 按 canonical 序重排 target/kind 键，供后面的分桶复用，避免再对每条边做一次字典查找。
-        // 只重排两个 int 数组（8 B/边），不再重排边值（原为 72 B/边）。
+        // 只重排 target（int，4 B/边）与 kind（byte，1 B/边）两列，不再重排边值（原为 72 B/边）。
         var orderedTargetOrdinals = new int[edgeArray.Length];
-        var orderedKindKeys = new int[edgeArray.Length];
+        var orderedKindKeys = new byte[edgeArray.Length];
         for (var index = 0; index < current.Length; index += 1)
         {
             var sourceIndex = current[index];
@@ -528,10 +657,12 @@ internal sealed class NLCPGGraphIndex
           targetOrdinals,
           kindKeys,
           kindWidth,
-          metadataValueClassOfEdge,
-          metadataValueClassKeys);
+          metadataIds,
+          metadataPoolKeys);
 
-        var snapshotVersion = CreateSnapshotVersion(orderedNodes, store);
+        // 快照版本改为惰性：这里只传工厂，真正计算推迟到首次访问 SnapshotVersion。
+        // 与原先「在 Create 内立即计算」相比，返回值逐字节相同（见 SnapshotVersion 注释）。
+        Func<string> snapshotVersionFactory = () => CreateSnapshotVersion(orderedNodes, store);
 
 
         // outgoing：canonical 序以 source 序数（即 SourceNodeId 的规范序）为首关键字，
@@ -598,7 +729,29 @@ internal sealed class NLCPGGraphIndex
             edgesByKindOffsets,
             nodesByKind,
             nodesByFilePath,
-            snapshotVersion);
+            snapshotVersionFactory);
+    }
+
+    // 稠密 NodeId 下的端点 -> canonical 序数解析：canonical 位置 = NodeId − 1，零哈希。
+    //
+    // 异常语义必须与改前的 nodeOrdinals[edge.SourceNodeId] 一致。NLCPGEdge.SourceNodeId /
+    // TargetNodeId 是非空 NodeId，故不存在 null 键分支。稠密判据已保证 1..N 恰好各出现一次
+    // （N 个两两不同的 NodeId 全落在 [1,N] 且最大值 = N），因此落在 [1,N] 内的 ID 必定存在，
+    // 可直接相减；落在域外的 ID 才是"未知 ID"，此时交回字典抛出与改前完全相同的
+    // KeyNotFoundException，而不是让数组越界给出 IndexOutOfRangeException。
+    private static int ResolveDenseOrdinal(
+        NodeId nodeId,
+        Dictionary<NodeId, int> nodeOrdinals,
+        int nodeCount)
+    {
+        var value = nodeId.Value;
+        if (value >= 1 && value <= (uint)nodeCount)
+        {
+            return (int)value - 1;
+        }
+
+        // 域外 ID：与改前一样由字典抛出 KeyNotFoundException。
+        return nodeOrdinals[nodeId];
     }
 
     // 按 NodeId 读取 canonical 节点；未知 ID 返回 false（供 NLCPGGraph.GetNode 保留 null 语义）。
@@ -691,11 +844,35 @@ internal sealed class NLCPGGraphIndex
     // 等价性：值类由 EdgeMetadataValueComparer 按【值】判定（StableKey / ContextId.Value /
     // 调用点三字段的 ordinal 比较），同类内任意代表投影出的字段值都相同，故 Project() 逐字段不变。
     // 池的下标编号方式改变不影响结果——池只被 canonicalMetadataIds 间接索引，对外不可见。
+    //
+    // 【本轮 C2】两处合并，收益落在"元数据覆盖率远小于 1"这一实测事实上（真实语料 71.0% 的边
+    // 三元组全 null、无元数据）：
+    //
+    //   1) 跳过探测：三元组全 null 的边直接得到 metadataId = 0，不进入引用身份字典。
+    //      原先每条边都要做一次 Dictionary<EdgeMetadataKey,int> 探测，其中 71% 是为"已知答案"付费。
+    //   2) 秩即池下标：候选值类按 CompareMetadata 排序后【重新编号】，使
+    //      "该边的排序键（秩）"与"该边在池中的下标"合为同一个数。原先 ranks 与
+    //      valueClassOfEdge 是两份 int[edgeCount]，而 ranks 只是 valueClassOfEdge 经 rankOfValue
+    //      的置换 ⇒ 现在塌缩为一份 metadataIdOfEdge，省一份 4 B/边。
+    //
+    // 返回值同时充当基数排序的元数据键与池下标，故 metadataIdOfEdge[edge] 的语义是：
+    //   0                        => 无元数据（投影为三个 null）
+    //   r ∈ [1, pool.Length]     => 池下标 r - 1 处的那条代表键
+    // 这与改前"valueClass + 1"的编号【逐值相同】：改前的 0 号值类恰是全 null 类，其秩必为 0
+    // （CompareMetadata 把 null StableKey 排在任意非 null 之前），故改前非 null 类的秩
+    // 就是 1..K；本实现跳过全 null 边后候选表为 K 个非 null 类，按序编号 +1 亦为 1..K。
+    // 因为排序键逐值相同，基数排序的稳定性保证 canonical 边序也逐条不变。
+    // 返回值与 out metadataIds 的关系（这正是 C2 省下一份 4 B/边的地方）：
+    //   - 有元数据时：二者是【同一个数组实例】——排序键就是池下标 + 1，故只需一份 int[edgeCount]，
+    //     而改前是 ranks 与 valueClassOfEdge 两份。
+    //   - 全部边无元数据时：返回值是"全 0 的排序键"（宽度 1），而 metadataIds 为 null，
+    //     与改前一致地让 CanonicalEdgeStore 完全不分配元数据池。
+    // 故调用方必须分别接收：前者作基数排序的键，后者作池下标列。
     private static int[] BuildMetadataRanks(
       NLCPGEdge[] edges,
       out int metadataWidth,
-      out int[]? valueClassOfEdge,
-      out EdgeMetadataKey[]? valueClassKeys)
+      out int[]? metadataIds,
+      out EdgeMetadataKey[]? metadataPoolKeys)
     {
         // 快速路径：全部边在第 4..9 键上完全并列，秩必然相同，
         // 可直接跳过下面 20M 级的引用身份字典查找。该判断只在首次遇到非空元数据时跳出，
@@ -720,20 +897,32 @@ internal sealed class NLCPGGraphIndex
         if (!hasMetadata)
         {
             metadataWidth = 1;
-            valueClassOfEdge = null;
-            valueClassKeys = null;
+            metadataIds = null;
+            metadataPoolKeys = null;
             return new int[edges.Length];
         }
 
         var stableKeys = new Dictionary<NLCPGEdgeLabel, string>(
           ReferenceComparer<NLCPGEdgeLabel>.Instance);
+
+        // metadataIdOfEdge 先临时承载"引用身份 + 1"（0 保留给无元数据），
+        // 待值类秩求出后就地改写为最终 metadataId。这样不需要第二个 int[edgeCount]，
+        // 也不需要在边维度上再做一次"身份 -> 值类"的中间列。
+        var metadataIdOfEdge = new int[edges.Length];
         var identityIds = new Dictionary<EdgeMetadataKey, int>(
           EdgeMetadataIdentityComparer.Instance);
         var identityKeys = new List<EdgeMetadataKey>();
-        var identityOfEdge = new int[edges.Length];
         for (var index = 0; index < edges.Length; index += 1)
         {
             var edge = edges[index];
+            if (edge.StructuredLabel is null &&
+                edge.ContextId is null &&
+                edge.CallSiteContext is null)
+            {
+                // 无元数据：排序键即 0，且无需进入身份探测。
+                continue;
+            }
+
             var key = new EdgeMetadataKey(
               edge.StructuredLabel,
               edge.ContextId,
@@ -745,7 +934,7 @@ internal sealed class NLCPGGraphIndex
                 identityKeys.Add(key);
             }
 
-            identityOfEdge[index] = identity;
+            metadataIdOfEdge[index] = identity + 1;
         }
 
         var valueIds = new Dictionary<EdgeMetadataKey, int>(
@@ -789,24 +978,34 @@ internal sealed class NLCPGGraphIndex
             return comparison != 0 ? comparison : left.CompareTo(right);
         });
 
-        var rankOfValue = new int[valueKeys.Count];
+        // 秩 = 排序位置 + 1：即"重编号"，令排序键与池下标成为同一个数。
+        // 池按秩落位，故 pool[metadataId - 1] 直接取到该秩的代表键。
+        var rankPlusOneOfValue = new int[valueKeys.Count];
+        metadataPoolKeys = new EdgeMetadataKey[valueKeys.Count];
         for (var position = 0; position < order.Length; position += 1)
         {
-            rankOfValue[order[position]] = position;
+            var value = order[position];
+            rankPlusOneOfValue[value] = position + 1;
+            metadataPoolKeys[position] = valueKeys[value];
         }
 
-        var ranks = new int[edges.Length];
-        valueClassOfEdge = new int[edges.Length];
         for (var index = 0; index < edges.Length; index += 1)
         {
-            var valueClass = valueOfIdentity[identityOfEdge[index]];
-            ranks[index] = rankOfValue[valueClass];
-            valueClassOfEdge[index] = valueClass;
+            var identityPlusOne = metadataIdOfEdge[index];
+            if (identityPlusOne == 0)
+            {
+                continue;
+            }
+
+            metadataIdOfEdge[index] =
+              rankPlusOneOfValue[valueOfIdentity[identityPlusOne - 1]];
         }
 
-        valueClassKeys = valueKeys.ToArray();
-        metadataWidth = valueKeys.Count;
-        return ranks;
+        // 键域 = [0, K]，K 为非 null 值类数 ⇒ 宽度 K + 1。
+        metadataWidth = valueKeys.Count + 1;
+        // 有元数据时排序键与池下标列是同一个数组：这是 C2 省下的那份 4 B/边。
+        metadataIds = metadataIdOfEdge;
+        return metadataIdOfEdge;
     }
 
     // 按原文第 4..9 键的顺序比较两个去重后的元数据。null 排在任意非 null 之前，
@@ -882,6 +1081,56 @@ internal sealed class NLCPGGraphIndex
         CountingScratch scratch)
     {
         CountingSortPass(source, destination, keyOf, keyWidth, scratch, offsetsOut: null);
+    }
+
+    // byte 键列版的单趟稳定计数排序。
+    //
+    // 【本轮 C3】单独起一个方法名，而不是给 CountingSortPass 再加一个 5 参重载：
+    // FrozenNodeStorageEquivalenceTests.FindCountingSortPass 用
+    // GetMethods(...).SingleOrDefault(名 == "CountingSortPass" && 形参个数 == 5) 定位既有重载，
+    // 并断言 parameters[2] 是 int[]。新增同名 5 参方法会让 SingleOrDefault 因多匹配抛异常，
+    // 从而打挂该测试。
+    //
+    // 语义与 CountingSortPass 逐行相同，只是 keyOf 的元素宽度为 1 B（kind 列）。
+    // offsetsOut 非空时同样在 scatter 之前把桶边界复制出去。
+    private static void CountingSortPassByte(
+        int[] source,
+        int[] destination,
+        byte[] keyOf,
+        int keyWidth,
+        CountingScratch scratch,
+        int[]? offsetsOut)
+    {
+        var positions = scratch.Rent(keyWidth);
+        for (var index = 0; index < source.Length; index += 1)
+        {
+            positions[keyOf[source[index]] + 1] += 1;
+        }
+
+        PrefixSum(positions, keyWidth + 1);
+        if (offsetsOut is not null)
+        {
+            // 只复制活动区间：scratch 的脏尾部不得进入只读 offsets。
+            Array.Copy(positions, offsetsOut, keyWidth + 1);
+        }
+
+        for (var index = 0; index < source.Length; index += 1)
+        {
+            var value = source[index];
+            var key = keyOf[value];
+            destination[positions[key]] = value;
+            positions[key] += 1;
+        }
+    }
+
+    private static void CountingSortPassByte(
+        int[] source,
+        int[] destination,
+        byte[] keyOf,
+        int keyWidth,
+        CountingScratch scratch)
+    {
+        CountingSortPassByte(source, destination, keyOf, keyWidth, scratch, offsetsOut: null);
     }
 
     // offsetsOut 非空时，额外把"前缀和之后、scatter 之前"的计数表复制进去
@@ -997,9 +1246,10 @@ internal sealed class NLCPGGraphIndex
     // 所在的缓冲、写入另一个缓冲，故第一趟结果天然可复用，不需要第三块数组。
     // 常驻总量与原实现相同：原先也常驻 incomingOrdinals + incomingByKindOrdinals +
     // edgesByKindOrdinals 三份 int[n]；现在同样三份，只是其中两份恰好就是这两块缓冲。
+    // secondaryKeys 是 kind 列，已随 C3 收窄为 byte[]；primaryKeys 仍是 target 序数列（int）。
     private static TwoKeyOrdinalBuildResult BuildOrdinalsByTwoKeys(
         int[] primaryKeys,
-        int[] secondaryKeys,
+        byte[] secondaryKeys,
         int primaryWidth,
         int secondaryWidth,
         CountingScratch scratch)
@@ -1013,7 +1263,8 @@ internal sealed class NLCPGGraphIndex
 
         // 第一趟：identity --secondary--> buffer（kind-only 稳定排列），并顺带取 secondary offsets。
         var secondaryOffsets = new int[secondaryWidth + 1];
-        CountingSortPass(current, buffer, secondaryKeys, secondaryWidth, scratch, secondaryOffsets);
+        CountingSortPassByte(
+          current, buffer, secondaryKeys, secondaryWidth, scratch, secondaryOffsets);
 
         // 第二趟：把 kind-only 排列作为输入按 primary 稳定分桶写回 current。
         // buffer 只被读取，故它仍然完整保留第一趟结果。

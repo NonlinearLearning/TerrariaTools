@@ -2,7 +2,7 @@
 
 > 状态：已收口；当前 generated catalog 无 feature 维度，四阶段完整。
 >
-> 目标设计：[规则目录：编译期生成](../../设计docs/目前设计/规则目录-编译期生成.md)。
+> 目标设计：[规则目录：编译期生成](../CodeDesign/目前设计/规则目录-编译期生成.md)。
 >
 > 研究依据：[编译期规则目录研究报告](../research/2026-09-08-rule-catalog-source-generator-study.md)。
 

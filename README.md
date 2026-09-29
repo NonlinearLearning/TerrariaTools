@@ -28,7 +28,7 @@ pwsh -File .\Miscellaneous\init.ps1
 | 查删除规则 CLI 的输入、输出和常用选项 | [CLI 参考](docs/cli-reference.md) |
 | 修改代码或测试 | [开发者指南](docs/developer-guide.md) |
 | 提交可验证的改动 | [贡献指南](docs/contributing.md) |
-| 查看当前设计记录 | [设计文档索引](设计docs/README.md) |
+| 查看当前设计记录 | [设计文档索引](docs/CodeDesign/README.md) |
 | 查看当前 feature 状态 | [Context/feature_list.json](Context/feature_list.json) |
 
 ## 可执行项目

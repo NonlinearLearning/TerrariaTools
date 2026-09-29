@@ -163,7 +163,24 @@ public sealed record CpgFrozenBoundaryEdge(
   int? CallSiteSpanStart = null,
   int? CallSiteSpanEnd = null,
   string? CallSiteDisplayName = null,
-  CpgFrozenFlowSummaryLabel? FlowSummaryLabel = null);
+  CpgFrozenFlowSummaryLabel? FlowSummaryLabel = null)
+{
+    /// 从一条冻结图边抽取边界记录：端点保留全局 NodeId 而非分片局部序号。
+    internal static CpgFrozenBoundaryEdge FromEdge(NLCPGEdge edge)
+    {
+        return new CpgFrozenBoundaryEdge(
+          edge.SourceNodeId.Value,
+          edge.TargetNodeId.Value,
+          edge.Kind.ToString(),
+          edge.StructuredLabel?.StableKey,
+          edge.ContextId?.Value,
+          edge.CallSiteContext?.FilePath,
+          edge.CallSiteContext?.SpanStart,
+          edge.CallSiteContext?.SpanEnd,
+          edge.CallSiteContext?.DisplayName,
+          CpgFrozenFlowSummaryLabel.From(edge.StructuredLabel));
+    }
+}
 
 /// <summary>
 /// Persists the typed portion of a summary bridge label without requiring stable-key parsing on recovery.

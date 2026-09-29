@@ -958,6 +958,340 @@ public sealed class YamlConfigurationLoaderTests : IDisposable
     return YamlConfigurationLoader.Load(configurationPath);
   }
 
+  [Fact]
+  public void TryLoad_ProjectJsonEnabledWithDirectoryInput_FailsBeforeAnalysis()
+  {
+    var inputDirectory = CreatePlayerInputDirectory("projectjson-directory");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-directory
+      input: { path: {{Path.GetFileName(inputDirectory)}} }
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+      """);
+
+    var result = YamlConfigurationLoader.TryLoad(configurationPath);
+
+    Assert.False(result.IsSuccess);
+    var diagnostic = Assert.Single(
+      result.Diagnostics,
+      item => item.Path == "artifacts.projectJson.enabled");
+    Assert.Equal("NLISSN139", diagnostic.Code);
+  }
+
+  [Fact]
+  public void TryLoad_ProjectJsonEnabledWithStandaloneSourceFile_FailsBeforeAnalysis()
+  {
+    var sourcePath = Path.Combine(_tempDirectory, "Standalone.cs");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(sourcePath, "public sealed class Standalone { }");
+    File.WriteAllText(
+      configurationPath,
+      """
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-standalone
+      input: { path: Standalone.cs }
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+      """);
+
+    var result = YamlConfigurationLoader.TryLoad(configurationPath);
+
+    Assert.False(result.IsSuccess);
+    Assert.Contains(
+      result.Diagnostics,
+      item => item.Code == "NLISSN139" && item.Path == "artifacts.projectJson.enabled");
+  }
+
+  [Fact]
+  public void TryLoad_ProjectJsonDisabledWithDirectoryInput_IsAccepted()
+  {
+    // 反向护栏：开关关闭时，目录输入必须照旧可跑，不能被上面的 fail-fast 误伤。
+    var inputDirectory = CreatePlayerInputDirectory("projectjson-disabled");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-disabled
+      input: { path: {{Path.GetFileName(inputDirectory)}} }
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: false
+      """);
+
+    var configuration = YamlConfigurationLoader.Load(configurationPath);
+
+    Assert.Null(configuration.ProjectExport);
+    Assert.Null(configuration.Workspace);
+  }
+
+  [Fact]
+  public void TryLoad_RemovedProjectJsonResumeKey_IsRejectedNotIgnored()
+  {
+    // resume 已删除；旧配置里的 resume: false 必须硬报错，不能被静默忽略——
+    // 否则用户会以为"每次全量重算"这句话被遵守了，而实际上旧键根本没被解析。
+    var fixtureProject = FixturePath("App", "App.csproj");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-stale-resume
+      input:
+        path: '{{fixtureProject}}'
+        targetFramework: net10.0
+        configuration: Debug
+        platform: AnyCPU
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+          resume: false
+      """);
+
+    var result = YamlConfigurationLoader.TryLoad(configurationPath);
+
+    Assert.False(result.IsSuccess);
+  }
+
+  [Fact]
+  public void Load_ProjectJsonEnabledWithProjectInput_MapsWorkerCountAndOutput()
+  {
+    var fixtureProject = FixturePath("App", "App.csproj");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-project
+      input:
+        path: '{{fixtureProject}}'
+        targetFramework: net10.0
+        configuration: Debug
+        platform: AnyCPU
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+          output: custom-out
+          projectWorkerCount: 3
+      """);
+
+    var configuration = YamlConfigurationLoader.Load(configurationPath);
+
+    var settings = Assert.IsType<ProjectExportSettings>(configuration.ProjectExport);
+    Assert.True(settings.Enabled);
+    Assert.Equal(3, settings.ProjectWorkerCount);
+    Assert.Equal(
+      Path.GetFullPath(Path.Combine(_tempDirectory, "custom-out")),
+      settings.OutputPath);
+  }
+
+  [Fact]
+  public void TryLoad_ProjectJsonExplicitNonPositiveWorkerCount_IsRejected()
+  {
+    // 显式写 0 不能被静默改写成默认 12（schema 声明 minimum: 1）。
+    var fixtureProject = FixturePath("App", "App.csproj");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-zero-workers
+      input:
+        path: '{{fixtureProject}}'
+        targetFramework: net10.0
+        configuration: Debug
+        platform: AnyCPU
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+          projectWorkerCount: 0
+      """);
+
+    var result = YamlConfigurationLoader.TryLoad(configurationPath);
+
+    Assert.False(result.IsSuccess);
+    var diagnostic = Assert.Single(
+      result.Diagnostics,
+      item => item.Path == "artifacts.projectJson.projectWorkerCount");
+    Assert.Equal("NLISSN119", diagnostic.Code);
+  }
+
+  [Fact]
+  public void Load_ProjectJsonOmittedWorkerCount_DefaultsWithoutDiagnostic()
+  {
+    // 未写该字段时必须仍走默认值，不能被 NLISSN119 误伤。
+    var fixtureProject = FixturePath("App", "App.csproj");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-default-workers
+      input:
+        path: '{{fixtureProject}}'
+        targetFramework: net10.0
+        configuration: Debug
+        platform: AnyCPU
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+      """);
+
+    var configuration = YamlConfigurationLoader.Load(configurationPath);
+
+    var settings = Assert.IsType<ProjectExportSettings>(configuration.ProjectExport);
+    Assert.Equal(12, settings.ProjectWorkerCount);
+  }
+
+  [Fact]
+  public void Load_ProjectJsonRequestedCapabilities_ArePreservedInOrder()
+  {
+    var fixtureProject = FixturePath("App", "App.csproj");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-capabilities
+      input:
+        path: '{{fixtureProject}}'
+        targetFramework: net10.0
+        configuration: Debug
+        platform: AnyCPU
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+          requestedCapabilities: ["InterproceduralDataFlow"]
+      """);
+
+    var configuration = YamlConfigurationLoader.Load(configurationPath);
+
+    var settings = Assert.IsType<ProjectExportSettings>(configuration.ProjectExport);
+    Assert.Equal(new[] { "InterproceduralDataFlow" }, settings.EffectiveRequestedCapabilities);
+  }
+
+  [Fact]
+  public void Load_ProjectJsonWithoutRequestedCapabilities_YieldsEmptySet()
+  {
+    // 未配置时必须为空集合（而不是 null 元素或默认能力名）：
+    // 空集合才会让导出沿用 NLCPGCapability.Default，既有配置的产物因此不变。
+    var fixtureProject = FixturePath("App", "App.csproj");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-no-capabilities
+      input:
+        path: '{{fixtureProject}}'
+        targetFramework: net10.0
+        configuration: Debug
+        platform: AnyCPU
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+      """);
+
+    var configuration = YamlConfigurationLoader.Load(configurationPath);
+
+    var settings = Assert.IsType<ProjectExportSettings>(configuration.ProjectExport);
+    Assert.Empty(settings.EffectiveRequestedCapabilities);
+  }
+
+  [Fact]
+  public void Load_ProjectJsonEmptyRequestedCapabilities_DiffersFromUnconfiguredFingerprint()
+  {
+    // 显式写空数组与完全不写，在 ProjectExportSettings 上**都是**空集合（行为等价）；
+    // 但 resolved-configuration 的 fingerprint 把能力名列表纳入投影，
+    // 故这里只锁定行为等价这一条，不锁定指纹相同。
+    var fixtureProject = FixturePath("App", "App.csproj");
+    var configurationPath = Path.Combine(_tempDirectory, "nlissn.yml");
+    File.WriteAllText(
+      configurationPath,
+      $$"""
+      schemaVersion: 3
+      tool: nlissn
+      runId: projectjson-empty-capabilities
+      input:
+        path: '{{fixtureProject}}'
+        targetFramework: net10.0
+        configuration: Debug
+        platform: AnyCPU
+      analysis: {}
+      execution: { directoryMaxDegreeOfParallelism: 1, cpgMaxDegreeOfParallelism: 1, groupMaxDegreeOfParallelism: 1, helperMaxDegreeOfParallelism: 1, replayMaxDegreeOfParallelism: 1, maxConcurrentOperations: 1 }
+      artifacts:
+        root: artifacts
+        projectJson:
+          enabled: true
+          requestedCapabilities: []
+      """);
+
+    var configuration = YamlConfigurationLoader.Load(configurationPath);
+
+    var settings = Assert.IsType<ProjectExportSettings>(configuration.ProjectExport);
+    Assert.Empty(settings.EffectiveRequestedCapabilities);
+  }
+
+  private static string FixturePath(params string[] parts)
+  {
+    var current = new DirectoryInfo(AppContext.BaseDirectory);
+    while (current is not null && !File.Exists(Path.Combine(current.FullName, "global.json")))
+    {
+      current = current.Parent;
+    }
+
+    Assert.NotNull(current);
+    return Path.Combine(
+      current!.FullName,
+      "tests",
+      "NLISSN.Testing",
+      "TestCodeSet",
+      "Workspace",
+      Path.Combine(parts));
+  }
+
   private static string CreateDecisionKey(RuleDecision decision)
   {
     return string.Join(

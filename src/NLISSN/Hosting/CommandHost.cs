@@ -2,6 +2,7 @@ using NLISSN.Application;
 using NLISSN.Artifacts;
 using NLISSN.Composition;
 using NLISSN.Infrastructure.Configuration;
+using NLISSN.Infrastructure.Workspace;
 using NLISSN.Core.Pipeline;
 using NLISSN.Telemetry;
 using System.Text;
@@ -9,6 +10,7 @@ using NLISSN.Core.Rewrite;
 using NLISSN.Core.Performance;
 using NLISSN.Performance;
 using NLISSN.Application.Performance;
+using NL.Concurrency;
 
 namespace NLISSN.Hosting;
 
@@ -26,6 +28,16 @@ public sealed class  CommandHost
     {
         _pipeline = pipeline;
     }
+
+    /// <summary>
+    /// 最近一次工作区分析实际使用的工作区快照；未走工作区路径时为 <c>null</c>。
+    /// </summary>
+    /// <remarks>
+    /// 供 <c>ConfigurationRunHost</c> 把同一份快照交给同进程内的项目级 JSON 导出，
+    /// 省掉导出的第二次 MSBuild 加载。复用是否等价的判据在导出侧重载上，
+    /// 这里不做判断——只如实转交分析真正用过的实例。
+    /// </remarks>
+    internal WorkspaceSolutionSnapshot? LastWorkspaceSnapshot { get; private set; }
 
     internal PrototypeAnalysisResult Analyze(AnalysisConfiguration configuration)
     {
@@ -71,6 +83,14 @@ public sealed class  CommandHost
             }
             runtime.PerformanceRunId = ResolveRunId(configuration.Artifacts.RunId);
         }
+
+        // per-worker 记账只在**要写 runtime.log** 时才挂：它是诊断产物，
+        // 没有消费者时不该给每次 batch 调用加两次时间戳读取。
+        if (configuration.Artifacts.WriteRuntimeLog)
+        {
+            runtime.CpgWorkerUtilizationCollector = new CpgWorkerUtilizationCollector();
+        }
+
         await using var runtimeLog = RuntimeMeasurementLog.TryCreate(
           configuration.Artifacts.WriteRuntimeLog ? configuration.Artifacts.RuntimeLogPath : null,
           configuration.Logging,
@@ -123,12 +143,16 @@ public sealed class  CommandHost
 
             if (configuration.Workspace is not null)
             {
-                var workspaceOutcome = await new WorkspaceAnalysisService(rules).AnalyzeAsync(
+                var workspaceService = new WorkspaceAnalysisService(rules);
+                var workspaceOutcome = await workspaceService.AnalyzeAsync(
                   configuration.Workspace,
                   settings,
                   runtime,
                   configuration.Execution,
                   configuration.Artifacts);
+                // 留证本次分析实际用过的快照，供同进程内的项目级导出复用（省掉第二次 MSBuild 加载）。
+                // 是否**真的**可复用由消费方判定（需加载选项等价），这里只如实转交。
+                LastWorkspaceSnapshot = workspaceService.LoadedSnapshot;
                 workspaceOutcome = workspaceOutcome.WithMode(performanceMode);
                 if (configuration.Artifacts.RewritePlanMode == RewritePlanMode.Capture)
                 {

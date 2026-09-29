@@ -4,7 +4,7 @@
 
 **Goal:** Remove `execution.maxDegreeOfParallelism`, expose independent configuration limits for every NLISSN concurrency boundary, and eliminate the implicit CPG half-budget cap.
 
-**Architecture:** Keep local CPG WorkBatch and project-pool DOP APIs intact, but replace the global NLISSN execution option with six named limits: directory, CPG, rule group, helper, replay, and admission operations. Wire each consumer directly to its matching limit, remove `FairCapped`, and make Schema 2 require positive values for all six limits. The authoritative design is [运行时并发配置](../../设计docs/目前设计/运行时并发配置.md).
+**Architecture:** Keep local CPG WorkBatch and project-pool DOP APIs intact, but replace the global NLISSN execution option with six named limits: directory, CPG, rule group, helper, replay, and admission operations. Wire each consumer directly to its matching limit, remove `FairCapped`, and make Schema 2 require positive values for all six limits. The authoritative design is [运行时并发配置](../CodeDesign/目前设计/运行时并发配置.md).
 
 **Tech Stack:** .NET 10, C# preview, YamlDotNet, JSON Schema 2020-12, existing `AnalysisRuntime`, `BoundedConcurrencyPool`, CPG admission budget, xUnit Host/Contract/Performance tests, and repository serial build/test harness.
 

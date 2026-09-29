@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using NLCPG.Contracts;
 using NLCPG.Model;
+using NLCPG.Persistence;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -310,6 +311,168 @@ public sealed class FrozenNodeStorageEquivalenceTests
 
         // 接管语义：索引持有的就是调用方那个数组实例。
         Assert.Same(source, (NLCPGNode[])ReadProperty(index, "OrderedNodes"));
+    }
+
+    // ── ① CpgFrozenGraphProjection 收敛为"一份节点数组 + 索引引用" ──────────────────
+    //
+    // 原投影额外物化了 Dictionary<NodeId, NLCPGNode>（完整节点载荷的第二份）与
+    // 每节点一个 NLCPGEdge[]（发出边数组）。两者的内容都被图索引逐元素覆盖，
+    // 故属重复持有。收敛后投影只持有 graph + stringInterner 两项引用。
+    //
+    // 判别力：把 `Prepare` 改回物化 `nodesByNodeId` 后，下面第一条断言的计数会从 1 变 2；
+    // 把 `Export` 改回 `OutgoingEdgesByNodeId[...]` 则需要先恢复该属性，第二条断言会因
+    // 属性缺失而失败。两条都不是恒真。
+    [Fact]
+    public void Prepare_DoesNotMaterializeASecondCompleteNodePayload()
+    {
+        const int NodeCount = 8192;
+        var graph = BuildMutableGraph(nodeCount: NodeCount, edgeCount: 4096);
+        graph.FreezeQueryIndex();
+
+        var projection = CpgFrozenShardExporter.Prepare(graph);
+
+        // 投影 + 图 + 索引三个根共用同一份 visited/payload 集合，故共享的 canonical
+        // 数组只计一次。收敛后唯一那份即索引持有的 canonical 数组。
+        var payloadArrays = CountNodePayloadArrays(
+          (typeof(NLCPGGraph), graph),
+          (typeof(CpgFrozenGraphProjection), projection));
+        Assert.Equal(1, payloadArrays);
+
+        // 投影的节点序必须仍是 canonical（NodeId 升序）序，且与图索引共用同一实例——
+        // "不复制"正是本项要锁的行为，仅有元素相等不足以判别。
+        var index = ReadQueryIndex(graph);
+        var canonical = (NLCPGNode[])ReadProperty(index, "OrderedNodes");
+        Assert.Same(canonical, ((NLCPGNode[])ReadProperty(projection, "Nodes")));
+
+        // 投影只持有两项引用：Graph 与 StringInterner（各自一个自动属性后备字段）。
+        // 任何新增的常驻字段——例如又长出 nodesByNodeId / outgoingEdgesByNodeId——
+        // 都会让这条失败。Nodes 是计算属性，故不产生后备字段。
+        var declaredFields = typeof(CpgFrozenGraphProjection)
+          .GetFields(InstanceNonPublic | BindingFlags.Public)
+          .Select(field => field.Name)
+          .Where(name => !name.StartsWith('<'))
+          .ToArray();
+        Assert.Empty(declaredFields);
+
+        var backingFields = typeof(CpgFrozenGraphProjection)
+          .GetFields(InstanceNonPublic | BindingFlags.Public)
+          .Select(field => field.Name)
+          .OrderBy(name => name, StringComparer.Ordinal)
+          .ToArray();
+        Assert.Equal(
+          new[] { "<Graph>k__BackingField", "<StringInterner>k__BackingField" },
+          backingFields);
+
+        var declaredProperties = typeof(CpgFrozenGraphProjection)
+          .GetProperties(InstanceNonPublic | BindingFlags.Public)
+          .Select(property => property.Name)
+          .OrderBy(name => name, StringComparer.Ordinal)
+          .ToArray();
+        Assert.Equal(new[] { "Graph", "Nodes", "StringInterner" }, declaredProperties);
+
+        _output.WriteLine(
+          $"nodes={canonical.Length}; payload-arrays={payloadArrays}; projection-properties={string.Join(",", declaredProperties)}");
+    }
+
+    [Fact]
+    public void Prepare_DoesNotMaterializeEdgeArrays()
+    {
+        var graph = BuildMutableGraph(nodeCount: 512, edgeCount: 2048);
+        graph.FreezeQueryIndex();
+
+        var projection = CpgFrozenShardExporter.Prepare(graph);
+
+        // 原实现为每个节点物化一个 NLCPGEdge[] 并常驻在 outgoingEdgesByNodeId 里。
+        // 收敛后投影对象图内不应再有任何 NLCPGEdge[]（索引以 CSR 列存边，不存边值数组）。
+        Assert.Equal(0, CountEdgeArrays(
+          (typeof(NLCPGGraph), graph),
+          (typeof(CpgFrozenGraphProjection), projection)));
+    }
+
+    // 递归统计对象图内非空 NLCPGEdge[] 的实例数（多根共用 visited，避免重复计数）。
+    private static int CountEdgeArrays(params (Type Type, object Instance)[] roots)
+    {
+        var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        var arrays = new HashSet<object>(ReferenceEqualityComparer.Instance);
+        foreach (var (_, instance) in roots)
+        {
+            WalkEdgeArrays(instance, visited, arrays, depth: 0);
+        }
+
+        return arrays.Count;
+    }
+
+    private static void WalkEdgeArrays(
+      object? instance,
+      HashSet<object> visited,
+      HashSet<object> arrays,
+      int depth)
+    {
+        if (instance is null || depth > 4 || !visited.Add(instance))
+        {
+            return;
+        }
+
+        if (instance is NLCPGEdge[] edges)
+        {
+            if (edges.Length > 0)
+            {
+                arrays.Add(edges);
+            }
+
+            return;
+        }
+
+        // BCL 字典/集合要在程序集过滤**之前**下钻：NLCPGEdge[] 若被装在
+        // Dictionary<…, IReadOnlyList<NLCPGEdge>> 里，其容器类型属于 BCL，
+        // 若先做程序集过滤就会整棵树漏掉——那正是"每节点一个发出边数组"的原形态。
+        if (instance is System.Collections.IDictionary dictionary)
+        {
+            foreach (var value in dictionary.Values)
+            {
+                if (value is not null)
+                {
+                    WalkEdgeArrays(value, visited, arrays, depth + 1);
+                }
+            }
+
+            return;
+        }
+
+        if (instance.GetType().Assembly != typeof(NLCPGGraph).Assembly &&
+            instance.GetType().Assembly != typeof(FrozenNodeStorageEquivalenceTests).Assembly)
+        {
+            return;
+        }
+
+        if (instance is Array array)
+        {
+            if (array.Rank != 1)
+            {
+                return;
+            }
+
+            foreach (var item in array)
+            {
+                if (item is not null)
+                {
+                    WalkEdgeArrays(item, visited, arrays, depth + 1);
+                }
+            }
+
+            return;
+        }
+
+        foreach (var field in instance.GetType().GetFields(InstanceNonPublic))
+        {
+            var fieldType = field.FieldType;
+            if (fieldType.IsPrimitive || fieldType == typeof(string) || fieldType.IsEnum)
+            {
+                continue;
+            }
+
+            WalkEdgeArrays(field.GetValue(instance), visited, arrays, depth + 1);
+        }
     }
 
     // 常驻节点存储账本：只数数组/容器本体（载荷与受控容器存活字节），

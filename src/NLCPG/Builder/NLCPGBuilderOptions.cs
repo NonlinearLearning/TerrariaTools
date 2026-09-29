@@ -1,6 +1,7 @@
 using NLCPG.Contracts;
 using NLCPG.Analysis.FlowSummaries;
 using NLCPG.Builder.Concurrency;
+using NL.Concurrency;
 
 namespace NLCPG.Builder;
 
@@ -40,11 +41,31 @@ public sealed record NLCPGBuilderOptions(
   int WorkBatchMaxMethodsPerBatch = 64,
   int WorkBatchMaxEstimatedBytesPerBatch = 1024 * 1024,
   ICpgWorkBatchPerformanceEventSink? WorkBatchPerformanceEventSink = null,
-  INLCPGWorkShardPlanner? WorkShardPlanner = null)
+  INLCPGWorkShardPlanner? WorkShardPlanner = null,
+  // 是否在冻结期统计 BuildInventoryAudit（事实计数 + 全部 anchor 物化 + SHA-256 指纹）。
+  // 默认 true，与引入本开关前的行为完全一致。置 false 只对**明确不读**
+  // LastBuildMetrics.BuildInventoryMetrics 的调用方有意义——典型例子：项目级 JSON 导出，
+  // 它建图后只读 Nodes/Edges，从不读该指标。
+  //
+  // ⚠ 与预分配 NodeId 路径互斥：BuildFromSource/BuildFromSemanticModel 的预分配分支会解引用
+  // LastBuildMetrics.BuildInventoryMetrics! 来挂 PreallocatedAnchorDiff。故该路径必须照常统计，
+  // 判据见 NLCPGBuilder.RequiresBuildInventory（保守：开关为 false 且非预分配才跳过）。
+  bool ComputeBuildInventory = true)
 {
     public const int ProjectWorkerLocalDegreeOfParallelism = 1;
 
     public bool UseSynchronousLocalWorkBatchExecution { get; init; }
+
+    /// <summary>
+    /// 可选的 per-worker 使用率汇总端。设置后 <c>CpgWorkBatchExecutor</c> 会为每个
+    /// worker 记录忙碌/空闲时间；为 <c>null</c>（默认）时完全不记账，保持既有开销。
+    /// </summary>
+    /// <remarks>
+    /// 之所以由调用方注入而非 builder 自建：NLISSN 每个源文件都新建一个 builder，
+    /// 单次构建的 worker 存活期只覆盖"一个文件的 CPG 构建"，无法回答整体 8 并行数
+    /// 用满没有；只有跨构建共用一个汇总端才能得到 run 级结论。
+    /// </remarks>
+    public CpgWorkerUtilizationCollector? WorkerUtilizationCollector { get; init; }
 
     public int EffectiveMaxDegreeOfParallelism => Math.Max(1, MaxDegreeOfParallelism);
 

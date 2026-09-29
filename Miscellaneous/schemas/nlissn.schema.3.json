@@ -7,15 +7,14 @@
   "required": ["schemaVersion", "tool"],
   "properties": {
     "schemaVersion": { "const": 3 },
-    "tool": { "enum": ["nlissn", "nlcpg", "nlcpg-project-export"] },
+    "tool": { "enum": ["nlissn", "nlcpg"] },
     "runId": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
     "input": { "$ref": "#/$defs/input" },
     "analysis": { "$ref": "#/$defs/analysis" },
     "execution": { "$ref": "#/$defs/execution" },
     "artifacts": { "$ref": "#/$defs/artifacts" },
     "logging": { "$ref": "#/$defs/logging" },
-    "nlcpg": { "$ref": "#/$defs/nlcpg" },
-    "projectExport": { "$ref": "#/$defs/projectExport" }
+    "nlcpg": { "$ref": "#/$defs/nlcpg" }
   },
   "allOf": [
     {
@@ -25,8 +24,7 @@
         "properties": { "input": { "$ref": "#/$defs/nlissnInput" } },
         "not": {
           "anyOf": [
-            { "required": ["nlcpg"] },
-            { "required": ["projectExport"] }
+            { "required": ["nlcpg"] }
           ]
         }
       }
@@ -42,25 +40,7 @@
             { "required": ["analysis"] },
             { "required": ["execution"] },
             { "required": ["artifacts"] },
-            { "required": ["logging"] },
-            { "required": ["projectExport"] }
-          ]
-        }
-      }
-    },
-    {
-      "if": { "properties": { "tool": { "const": "nlcpg-project-export" } } },
-      "then": {
-        "required": ["input", "projectExport"],
-        "properties": { "input": { "$ref": "#/$defs/projectExportInput" } },
-        "not": {
-          "anyOf": [
-            { "required": ["runId"] },
-            { "required": ["analysis"] },
-            { "required": ["execution"] },
-            { "required": ["artifacts"] },
-            { "required": ["logging"] },
-            { "required": ["nlcpg"] }
+            { "required": ["logging"] }
           ]
         }
       }
@@ -93,19 +73,6 @@
       "properties": {
         "path": { "type": "string", "minLength": 1 }
       }
-    },
-    "projectExportInput": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "path": { "type": "string", "minLength": 1 },
-        "targetFramework": { "type": "string", "minLength": 1 },
-        "configuration": { "type": "string", "minLength": 1, "default": "Debug" },
-        "platform": { "type": "string", "minLength": 1, "default": "AnyCPU" },
-        "restore": { "enum": ["disabled", "enabled"], "default": "disabled" },
-        "generatedSources": { "enum": ["include", "exclude"], "default": "exclude" }
-      },
-      "required": ["path"]
     },
     "analysis": {
       "type": "object",
@@ -181,7 +148,14 @@
         "enabled": { "type": "boolean", "default": false },
         "output": { "type": "string", "minLength": 1 },
         "projectWorkerCount": { "type": "integer", "minimum": 1, "default": 12 },
-        "resume": { "type": "boolean", "default": false }
+        "documentShardCount": { "type": "integer", "minimum": 1, "default": 1 },
+        "documentShardParallelism": { "type": "integer", "minimum": 1, "default": 1 },
+        "performanceDiagnostics": { "type": "boolean", "default": false },
+        "requestedCapabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "default": []
+        }
       }
     },
     "performance": {
@@ -234,15 +208,6 @@
         { "required": ["fullName"], "properties": { "fullName": { "type": "string", "minLength": 1 } } },
         { "required": ["name"], "properties": { "name": { "type": "string", "minLength": 1 } } }
       ]
-    },
-    "projectExport": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "output": { "type": "string", "minLength": 1 },
-        "projectWorkerCount": { "type": "integer", "minimum": 1, "default": 12 },
-        "resume": { "type": "boolean", "default": false }
-      }
     }
   }
 }

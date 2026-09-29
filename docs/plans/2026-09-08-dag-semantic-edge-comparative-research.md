@@ -31,7 +31,7 @@ Evidence/Derivation 不是上述任一 identity 的替身；它是一个 fact �
 
 ## 本仓库的对照边界
 
-当前设计已正确地区分了外层 DAG 和 Propagate 内部的递归闭包：[`规则DAG.md`](../../设计docs/目前设计/规则DAG.md) 规定外层只由 `Consumes` / `Produces` 端口形成无环图，而 [`deletion-pipeline.md`](../../设计docs/目前设计/deletion-pipeline.md) 规定表达式或关系传播在 `PropagationFixedPointExecutor` 内收敛。这条边界应保留。
+当前设计已正确地区分了外层 DAG 和 Propagate 内部的递归闭包：[`规则DAG.md`](../CodeDesign/目前设计/规则DAG.md) 规定外层只由 `Consumes` / `Produces` 端口形成无环图，而 [`deletion-pipeline.md`](../CodeDesign/目前设计/deletion-pipeline.md) 规定表达式或关系传播在 `PropagationFixedPointExecutor` 内收敛。这条边界应保留。
 
 本轮此前已验证或复现的风险集中在 identity 不完整，而不是 scheduler 缺少拓扑排序：
 

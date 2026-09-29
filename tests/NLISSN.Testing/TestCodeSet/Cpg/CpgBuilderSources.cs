@@ -448,6 +448,66 @@ public static class CpgBuilderSources
       """;
 
   /// <summary>
+  /// 同名同签名方法跨**无关类型**的桶污染构造。
+  ///
+  /// <para>
+  /// <b>为什么要这样构造：</b>CallGraph 的方法查找索引曾只用「名字:签名」作键，
+  /// 于是 <c>Count</c>、<c>get_Count:int()</c>、<c>Length</c> 这类**到处都是**的成员
+  /// 会把全编译期同名同签名的方法塞进**同一个桶**。配合候选准入只看
+  /// <c>IsInternalMethod</c>（源码内方法无条件 +1000 压过外部回退），
+  /// 一个指向 <c>IReadOnlyCollection&lt;T&gt;.get_Count</c>（外部）的调用点
+  /// 会被无关内部类型的 <c>get_Count:int()</c> 抢走，并经
+  /// <c>resolvedCandidates[0]</c> 写进 <c>DispatchKind</c> 而改变节点 id。
+  /// </para>
+  /// <para>
+  /// 本 fixture 刻意让**两个互不继承、互不实现**的类型各自声明
+  /// <c>int Count =&gt; ...</c>，再对 <c>IReadOnlyCollection&lt;T&gt;</c> 形态的接收者取
+  /// <c>Count</c>：修复后该调用点**不得**解析到任一内部 <c>get_Count</c>。
+  /// </para>
+  /// </summary>
+  public const string CallTargetUnrelatedSameSignatureGetters = """
+      namespace Demo;
+
+      using System.Collections.Generic;
+
+      public sealed class UnrelatedCounterA
+      {
+        private readonly int _value;
+
+        public UnrelatedCounterA(int value) => _value = value;
+
+        public int Count => _value;
+      }
+
+      public sealed class UnrelatedCounterB
+      {
+        private readonly int _value;
+
+        public UnrelatedCounterB(int value) => _value = value;
+
+        public int Count => _value;
+      }
+
+      public static class UnrelatedGetterConsumer
+      {
+        public static int ReadExternal(IReadOnlyCollection<int> items)
+        {
+          return items.Count;
+        }
+
+        public static int ReadInternalA(UnrelatedCounterA counter)
+        {
+          return counter.Count;
+        }
+
+        public static int ReadInternalB(UnrelatedCounterB counter)
+        {
+          return counter.Count;
+        }
+      }
+      """;
+
+  /// <summary>
   /// 稀疏位集溢出临界构造：4 个参数定义（含 <c>ref</c>/<c>out</c>）在同一使用点同时活跃。
   ///
   /// **为什么要多参数**：实测（1692 个真实方法）确认 <c>cardMax ≤ 参数个数</c> 恒成立，

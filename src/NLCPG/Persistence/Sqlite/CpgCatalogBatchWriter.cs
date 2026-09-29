@@ -11,7 +11,6 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
     private readonly string _buildId;
     private readonly int _maxRows;
     private readonly int _maxBytes;
-    private readonly int _maxQueueDepth;
     private readonly bool _writeLegacyRoutingRows;
     private readonly Channel<CpgCatalogPublication> _queue;
     private readonly Task<Microsoft.Data.Sqlite.SqliteConnection> _connection;
@@ -27,7 +26,6 @@ internal sealed class CpgCatalogBatchWriter : IAsyncDisposable
         _buildId = buildId;
         _maxRows = options.MaxCatalogBatchRows;
         _maxBytes = options.MaxCatalogBatchBytes;
-        _maxQueueDepth = options.MaxPendingShardPublications;
         _writeLegacyRoutingRows = !options.UseMinimalRoutingCatalog;
         _queue = Channel.CreateBounded<CpgCatalogPublication>(new BoundedChannelOptions(options.MaxPendingShardPublications)
         {

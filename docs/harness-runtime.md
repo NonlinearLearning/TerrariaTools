@@ -23,6 +23,26 @@ NoBuild 只用于已有匹配 Release 产物。原始 JSONL、完整有序图及
 该入口是内部诊断宿主，不改变业务 CLI。计数口径、命令示例、实际结果与限制见
 [同次测量报告](benchmarks/2026-09-25-dataflow-tail-small-batch-measurement-report.md)。
 
+## 测试并行
+
+测试并行配置的唯一权威来源是 `tests/xunit.runner.json`（受版本控制）。
+它通过四个测试 csproj 里的 `None` + `CopyToOutputDirectory="PreserveNewest"` 项
+复制到输出目录 `Build/test/<Configuration>/<TFM>/`——xUnit **只**读输出目录这一份。
+
+当前值：`parallelizeTestCollections: true`、`maxParallelThreads: 4`。
+
+- **`maxParallelThreads` 是必要的质量旋钮，不是可选优化。** 实测（Contract 976 项，
+  `maxParallelThreads` 分别取 4/8/12）：12 时 `CpgWorkBatchExecutorWorkerUtilizationTests`
+  在 11 次运行中**失败 6 次**（该用例断言 8 个 worker 都 `BusyTime > 0`，
+  高并发下线程池给不出 8 个 worker 各自的活）；8 与 4 均为 **0 次**。
+  4 与 8 的墙钟与 12 相当（约 105–170 s），故取 4。
+- **不要**把配置只放在源目录：csproj 未声明复制项时源目录的 json 不会被复制，
+  极易被误判为"该开关无效"。
+- 进程级状态（`Directory.SetCurrentDirectory`、`Console.SetOut`）会污染并行中的其他集合。
+  改写 CWD 的用例必须归入 `DisableParallelization = true` 的集合
+  （见 `ProcessCurrentDirectoryCollection`），否则相对路径会经
+  `Path.GetFullPath` 解析到别人的临时目录。
+
 ## Verification Order
 
 1. 先运行 `pwsh -File .\Miscellaneous\init.ps1`。

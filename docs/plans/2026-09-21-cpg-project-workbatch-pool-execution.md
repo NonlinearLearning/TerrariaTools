@@ -13,11 +13,11 @@
 ## 适用范围和前置条件
 
 - 工作目录：`D:\ProjectItem\SourceCode\Net\NL`。
-- 先阅读 [项目级 WorkBatch 池设计](../../设计docs/目前设计/cpg-project-workbatch-pool.md)、[单文档 WorkBatch 设计](../../设计docs/目前设计/cpg-workbatch-concurrency.md) 和 [Version4 基线](../benchmarks/cpg-workbatch-version4.md)。
+- 先阅读 [项目级 WorkBatch 池设计](../CodeDesign/目前设计/cpg-project-workbatch-pool.md)、[单文档 WorkBatch 设计](../CodeDesign/目前设计/cpg-workbatch-concurrency.md) 和 [Version4 基线](../benchmarks/cpg-workbatch-version4.md)。
 - 现有单文档 WorkBatch Task 1-13 已有实现和 focused 证据；本计划不重新实现其成本模型、fragment 合同、局部 pass 或 reducer。
 - 当前 `ProjectJsonExporter` 的内存释放和 manifest/catalog 修复是工作树中的已有变更，必须在其基础上接入，不得回滚。
 - 保留工作树中的其他用户改动。每次改动前检查目标文件的当前内容；只修改本任务相关文件。
-- 修改 C# 或测试前，继续遵守根级 `AGENTS.md`、[C# 约束](../../约束/Google-CSharp-Style-Guide-约束.md)、[测试教程](../../约束/测试代码编写教程.md)、[测试目录入口](../../tests/AGENTS.md) 和 [Harness Runtime](../harness-runtime.md)。
+- 修改 C# 或测试前，继续遵守根级 `AGENTS.md`、[C# 约束](../../Context/约束/Google-CSharp-Style-Guide-约束.md)、[测试教程](../../Context/约束/测试代码编写教程.md)、[测试目录入口](../../tests/AGENTS.md) 和 [Harness Runtime](../harness-runtime.md)。
 - 编译或测试前检查活动的 `dotnet.exe`、`csc.exe`；不要结束 Version4 导出或不明归属的进程。
 - 所有 compile-capable 命令必须通过串行 wrapper；不得并行启动 build/test。
 

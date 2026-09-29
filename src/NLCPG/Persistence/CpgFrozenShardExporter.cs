@@ -101,16 +101,11 @@ public static class CpgFrozenShardExporter
             throw new InvalidOperationException("A CPG graph must be frozen before it can be projected for shard export.");
         }
 
-        var nodes = graph.Nodes
-          .OrderBy(node => node.NodeId)
-          .ToArray();
-        var nodesByNodeId = nodes.ToDictionary(node => node.NodeId!.Value);
-        var outgoingEdgesByNodeId = new Dictionary<NodeId, IReadOnlyList<NLCPGEdge>>(nodes.Length);
-        foreach (var node in nodes)
-        {
-            outgoingEdgesByNodeId[node.NodeId!.Value] = graph.GetOutgoingEdges(node.NodeId!.Value).ToArray();
-        }
-        return new CpgFrozenGraphProjection(graph.StringTable, nodes, nodesByNodeId, outgoingEdgesByNodeId);
+        // 只持有图与字符串表两项引用：节点序直接复用索引的 canonical 数组（NodeId 升序），
+        // 逐节点查找与发出边查找分别回落到索引的 NodeOrdinals 与 outgoing CSR 表。
+        // 原实现另外物化了 Dictionary<NodeId, NLCPGNode> 与每节点一个 NLCPGEdge[]，
+        // 两者的内容都被索引逐元素覆盖，属重复持有。
+        return new CpgFrozenGraphProjection(graph, graph.StringTable);
     }
 
     internal static CpgFrozenShard Export(CpgFrozenGraphProjection projection, CpgShardLookup lookup, IReadOnlySet<NodeId>? includedNodeIds = null)
@@ -118,11 +113,13 @@ public static class CpgFrozenShardExporter
         ArgumentNullException.ThrowIfNull(projection);
         ArgumentNullException.ThrowIfNull(lookup);
 
+        var graph = projection.Graph;
         var nodes = includedNodeIds is null
           ? projection.Nodes
           : includedNodeIds
-            .Where(projection.NodesByNodeId.ContainsKey)
-            .Select(nodeId => projection.NodesByNodeId[nodeId])
+            .Select(nodeId => graph.GetNode(nodeId))
+            .Where(node => node.HasValue)
+            .Select(node => node!.Value)
             .OrderBy(node => node.NodeId)
             .ToArray();
         var localIndexes = nodes
@@ -132,7 +129,7 @@ public static class CpgFrozenShardExporter
         var frozenEdges = new List<CpgFrozenEdge>();
         foreach (var sourceNode in nodes)
         {
-            foreach (var edge in projection.OutgoingEdgesByNodeId[sourceNode.NodeId!.Value])
+            foreach (var edge in graph.GetOutgoingEdges(sourceNode.NodeId!.Value))
             {
                 if (!localIndexes.TryGetValue(edge.TargetNodeId, out var targetLocalIndex))
                 {
@@ -217,23 +214,16 @@ public static class CpgFrozenShardExporter
 
 internal sealed class CpgFrozenGraphProjection
 {
-    internal CpgFrozenGraphProjection(
-      StringInterner stringInterner,
-      IReadOnlyList<NLCPGNode> nodes,
-      IReadOnlyDictionary<NodeId, NLCPGNode> nodesByNodeId,
-      IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> outgoingEdgesByNodeId)
+    internal CpgFrozenGraphProjection(NLCPGGraph graph, StringInterner stringInterner)
     {
+        Graph = graph;
         StringInterner = stringInterner;
-        Nodes = nodes;
-        NodesByNodeId = nodesByNodeId;
-        OutgoingEdgesByNodeId = outgoingEdgesByNodeId;
     }
 
-    internal IReadOnlyList<NLCPGNode> Nodes { get; }
+    internal NLCPGGraph Graph { get; }
+
+    // canonical（NodeId 升序）节点序：与图索引共用同一份节点载荷数组，不复制。
+    internal IReadOnlyList<NLCPGNode> Nodes => Graph.CanonicalNodes;
 
     internal StringInterner StringInterner { get; }
-
-    internal IReadOnlyDictionary<NodeId, NLCPGNode> NodesByNodeId { get; }
-
-    internal IReadOnlyDictionary<NodeId, IReadOnlyList<NLCPGEdge>> OutgoingEdgesByNodeId { get; }
 }

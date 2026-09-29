@@ -350,7 +350,7 @@ namespace NLCPG.Builder
                    InheritsFrom(memberSymbol.ContainingType, instanceType);
         }
 
-        private static bool DeclaresCompatibleMember(INamedTypeSymbol declaredType, ISymbol memberSymbol, string memberName)
+        private bool DeclaresCompatibleMember(INamedTypeSymbol declaredType, ISymbol memberSymbol, string memberName)
         {
             foreach (var candidateMember in declaredType.GetMembers(memberName))
             {
@@ -368,7 +368,7 @@ namespace NLCPG.Builder
             return false;
         }
 
-        private static bool MembersMatch(ISymbol candidateMember, ISymbol memberSymbol)
+        private bool MembersMatch(ISymbol candidateMember, ISymbol memberSymbol)
         {
             if (SymbolEqualityComparer.Default.Equals(candidateMember, memberSymbol))
             {

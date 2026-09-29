@@ -260,6 +260,64 @@ public sealed class NLCPGPartitionedBuilderTests
   }
 
   [Fact]
+  public void BuildFromSource_BuildInventoryDisabled_SkipsAuditWithoutChangingGraph()
+  {
+    // 执行方案 §3.1/§7：ComputeBuildInventory = false 时必须既不产出审计、也不改变图本身。
+    // 导出路径正是靠这一点摘掉"算了但没人读"的冻结期开销。
+    const string source = "namespace Demo; public sealed class Sample { public int Run(int value) { var copy = value; return copy + 1; } }";
+    var enabledBuilder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+    {
+      MaxDegreeOfParallelism = 1,
+    });
+    var disabledBuilder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+    {
+      MaxDegreeOfParallelism = 1,
+      ComputeBuildInventory = false,
+    });
+
+    var enabled = enabledBuilder.BuildFromSource(source, "inventory-off.cs");
+    var disabled = disabledBuilder.BuildFromSource(source, "inventory-off.cs");
+
+    // 关闭后不再产出审计产物。
+    Assert.Null(disabledBuilder.LastBuildMetrics.BuildInventoryMetrics);
+    Assert.DoesNotContain(
+      "BuildInventoryAudit",
+      disabledBuilder.LastBuildMetrics.PassElapsedMilliseconds?.Keys ?? Array.Empty<string>());
+
+    // 但图必须逐字段等价：审计只读，不参与任何节点/边取值。
+    Assert.Equal(enabled.Nodes.Count, disabled.Nodes.Count);
+    Assert.Equal(enabled.Edges.Count, disabled.Edges.Count);
+    Assert.Equal(
+      enabled.Nodes.Select(RequireNodeId),
+      disabled.Nodes.Select(RequireNodeId));
+    Assert.Equal(
+      enabled.Edges.Select(edge => (edge.SourceNodeId, edge.TargetNodeId, edge.Kind)),
+      disabled.Edges.Select(edge => (edge.SourceNodeId, edge.TargetNodeId, edge.Kind)));
+  }
+
+  [Fact]
+  public void BuildFromSource_BuildInventoryDisabledWithPreallocatedIds_StillAuditsForAnchorDiscovery()
+  {
+    // 执行方案 §3.2：关闭开关**不足以**跳过审计——预分配走 anchor discovery 路径，
+    // 其阶段计时以 "BuildInventoryAudit" 为键，若一并跳过会让度量口径与其它路径不一致。
+    // 故 RequiresBuildInventory 对「关闭 + 预分配」这一组合必须仍返回 true。
+    const string source = "namespace Demo; public sealed class Sample { public int Run(int value) { var copy = value; return copy + 1; } }";
+    var builder = new NLCPGBuilder(NLCPGBuilderOptions.CreateDefault() with
+    {
+      MaxDegreeOfParallelism = 2,
+      UsePreallocatedNodeIds = true,
+      ComputeBuildInventory = false,
+    });
+
+    _ = builder.BuildFromSource(source, "inventory-off-preallocated.cs");
+
+    Assert.NotNull(builder.LastBuildMetrics.BuildInventoryMetrics);
+    Assert.Contains(
+      "BuildInventoryAudit",
+      builder.LastBuildMetrics.PassElapsedMilliseconds!.Keys);
+  }
+
+  [Fact]
   public void BuildFromSource_DataFlowMetrics_ExposeMethodWorkAndCandidateCounts()
   {
     const string source = "namespace Demo; public sealed class Sample { public int Run(int value) { var copy = value; return copy + 1; } }";
@@ -905,6 +963,65 @@ public sealed class NLCPGPartitionedBuilderTests
         "value.Extend()|internal-extension-static-exact|Extend",
       },
       DescribeCallTargets(graph));
+  }
+
+  /// <summary>
+  /// 回归：同名同签名但**声明类型无关**的方法不得互相充当分派候选。
+  /// </summary>
+  /// <remarks>
+  /// <para>
+  /// <b>缺陷形态：</b>CallGraph 的方法查找索引曾以「名字:签名」为键，
+  /// 于是所有 <c>get_Count:int()</c>（<c>IReadOnlyCollection&lt;T&gt;.Count</c> 与
+  /// 本文件两个无关类型的 <c>Count</c>）落进同一桶。候选准入只看 <c>IsInternalMethod</c>、
+  /// 不校验全名，且 internal 无条件压过 external，于是 <c>items.Count</c> 这个**外部**调用点
+  /// 被无关内部类型的 getter 抢走，并经 <c>resolvedCandidates[0]</c> 写进
+  /// <c>DispatchKind</c>。
+  /// </para>
+  /// <para>
+  /// <b>判据为何用 DispatchKind 而非目标全名：</b>实测（本用例加探针）确认
+  /// 内部 getter 的节点全名渲染为 <c>Count.get</c>，**不含声明类型**——
+  /// 故按全名匹配 <c>UnrelatedCounter</c> 恒不命中，那样的断言是空断言。
+  /// <c>DispatchKind</c> 的类别字符串则直接区分
+  /// <c>internal-static-property-get-fallback</c>（错误：选中了内部无关类型）
+  /// 与 <c>external-interface-dispatch-property-get-external-fallback</c>（正确：外部回退）。
+  /// </para>
+  /// <para>
+  /// <b>本用例在 <c>dop=1</c> 下断言</b>：缺陷是"候选集错了"，不是"时序不定"，
+  /// 并行只是放大器。故它稳定可判，不依赖并行重现。
+  /// </para>
+  /// <para>
+  /// <b>防线的独立性（实测，勿高估本用例的判别力）：</b>候选准入还与
+  /// <c>IsRelatedToTarget</c> 过滤构成**冗余双防线**。实测三种组合：
+  /// 旧键 + 停用过滤 ⇒ **失败**（<c>internal-static-property-get-fallback</c>）；
+  /// 旧键 + 启用过滤 ⇒ 通过；新键 + 停用过滤 ⇒ 通过。
+  /// 故本用例守住的是"两道防线不得同时失效"这一**合取不变式**：
+  /// 只把查找键改回旧形态（不含声明类型）而不动过滤，它**不会**变红。
+  /// </para>
+  /// <para>
+  /// <b>不依赖具体键实现：</b>查找键现由 <c>ComposeMethodFullName</c>（声明类型 + 名字 + 签名）
+  /// 提供，原先独立的「名字:签名」桶已作为冗余表删除。本用例断言的是**产物**
+  /// （<c>items.Count</c> 必须回退到外部目标），不绑定任何内部键函数名，
+  /// 故键的进一步重构不会使它失效。
+  /// </para>
+  /// </remarks>
+  [Fact]
+  public void BuildFromSource_UnrelatedTypesWithSameSignatureGetter_DoNotCrossContaminateCallTargets()
+  {
+    const string source = CpgBuilderSources.CallTargetUnrelatedSameSignatureGetters;
+    var graph = new NLCPGBuilder(CreateDataFlowPartitionOptions(1))
+      .BuildFromSource(source, "unrelated-same-signature-getters.cs");
+
+    var described = DescribeCallTargets(graph);
+    Assert.Equal(
+      new[]
+      {
+        // 外部接收者：必须回退到外部目标，**不得**选中任一无关内部类型的 getter。
+        "items.Count|external-interface-dispatch-property-get-external-fallback|Count.get",
+        // 接收者本身就是内部类型：精确命中该类型自己的 getter。
+        "counter.Count|internal-static-property-get-exact|Count.get",
+        "counter.Count|internal-static-property-get-exact|Count.get",
+      },
+      described);
   }
 
   [Fact]

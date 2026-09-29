@@ -56,9 +56,35 @@ public sealed partial class NLCPGBuilder
     private readonly Dictionary<NLCPGNode, string> _methodOwnerSymbolKeysByBoundaryNode = new();
     private readonly Dictionary<NLCPGNode, int> _methodParameterOrdinalsByNode = new();
     private readonly Dictionary<string, List<IMethodSymbol>> _methodSymbolsByFullName = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<IMethodSymbol>> _methodSymbolsByNameAndSignature = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, IReadOnlyList<INamedTypeSymbol>> _baseTypeCache =
       new(StringComparer.Ordinal);
+    // 符号名组合原语的记忆化（见 docs/plans/2026-09-27-symbol-name-composition-memoization-execution.md）。
+    //
+    // 为什么值得缓存：这四个原语最终都汇聚到 ComposeTypeFullName 里唯一的一次 ToDisplayString，
+    // 而 ComposeMethodFullName 每次调用都要重算 ContainingType + Name + Signature。
+    // 按调用点计：ComposeTypeFullName 38 处、ComposeMethodFullName 15 处、
+    // ComposeMethodSignature 8 处、ComposeMethodName 7 处，且后三者内部又反复调第一个。
+    //
+    // 为什么按【符号语义】而不是引用分键：同一语义符号在不同位置可能由 Roslyn 给出不同实例
+    // （跨 SemanticModel、元数据与源码混合）。按引用分键会漏掉这些重复，损失大半收益。
+    //
+    // 生命周期与 _baseTypeCache 严格一致：构建开始时清空（Build），冻结后由
+    // ReleaseTransientBuilderState 清空。故不跨构建存活，不会用旧 compilation 的名字。
+    //
+    // ⚠ 并发语义（勿"优化"成加锁的 GetOrAdd）：这些原语可从 worker 线程到达
+    //   （CallGraphPass 的 CollectCallGraphWorkBatch → ResolveEffectiveCallTargets →
+    //   ResolvePreferredCallTargets → RankCallTargets → CallTargetScore）。ConcurrentDictionary
+    //   只保证字典不被撕裂，**不保证同一 key 只计算一次**：竞争下同一符号可能被算两次并互相覆盖。
+    //   原语是纯函数，两次结果逐字节相同，故这是无害的重复计算而非正确性问题。
+    //   改成 GetOrAdd(factory) 既会因 factory 重复调用而没变好，又会引入闭包分配。
+    private readonly ConcurrentDictionary<ITypeSymbol, string> _typeFullNameCache =
+      new(SymbolEqualityComparer.Default);
+    private readonly ConcurrentDictionary<IMethodSymbol, string> _methodFullNameCache =
+      new(SymbolEqualityComparer.Default);
+    private readonly ConcurrentDictionary<IMethodSymbol, string> _methodSignatureCache =
+      new(SymbolEqualityComparer.Default);
+    private readonly ConcurrentDictionary<IMethodSymbol, string> _methodNameCache =
+      new(SymbolEqualityComparer.Default);
     private readonly Dictionary<NLCPGNode, HashSet<NLCPGNode>> _cfgPredecessorsByNode = new();
     private readonly Dictionary<NLCPGNode, HashSet<NLCPGNode>> _cfgSuccessorsByNode = new();
     // ⚠ 原为单个 `NLCPGGraph?`。多文件构建下每文件一张独立图，用单数会**静默**让
@@ -94,6 +120,12 @@ public sealed partial class NLCPGBuilder
     private int _dataFlowPlanAssemblyCount;
     private int _dataFlowWorkerCount;
     private int _callGraphBatchCount;
+    /// <summary>
+    /// CallGraph 阶段在 worker 启动前预注册进方法索引的符号次数（见
+    /// <c>FreezeCallGraphMethodIndex</c>）。仅供契约测试判定"索引冻结确实执行过"：
+    /// 冻结与否在产物上等价，无法用行为断言区分。
+    /// </summary>
+    private int _callGraphFrozenMethodIndexCount;
     private bool _interproceduralBarrierCompleted;
     private readonly List<CpgWorkBatchPerformanceEvent> _workBatchPerformanceEvents = new();
     private readonly Dictionary<SyntaxNode, OperationRootPlanCacheEntry> _operationRootPlansByRoot =
@@ -752,7 +784,8 @@ public sealed partial class NLCPGBuilder
             _options.EffectiveMaxDegreeOfParallelism,
             telemetrySink: RecordWorkBatchPerformanceEvent,
             performanceRunId: _options.PerformanceRunId,
-            useSynchronousExecution: _options.UseSynchronousLocalWorkBatchExecution),
+            useSynchronousExecution: _options.UseSynchronousLocalWorkBatchExecution,
+            workerUtilizationCollector: _options.WorkerUtilizationCollector),
           _concurrencyPool,
           // G0-P 附录 R.3「分层」L1：worker 只算 fragment，不写共享图。
           // 钩子读【当前构建】的图（_activeBuildGraph 在 Build() 入口赋值），
@@ -1121,8 +1154,11 @@ public sealed partial class NLCPGBuilder
         _methodOwnerSymbolKeysByBoundaryNode.Clear();
         _methodParameterOrdinalsByNode.Clear();
         _methodSymbolsByFullName.Clear();
-        _methodSymbolsByNameAndSignature.Clear();
         _baseTypeCache.Clear();
+        _typeFullNameCache.Clear();
+        _methodFullNameCache.Clear();
+        _methodSignatureCache.Clear();
+        _methodNameCache.Clear();
         _cfgPredecessorsByNode.Clear();
         _cfgSuccessorsByNode.Clear();
         _callSiteNodesByInvocation.Clear();
@@ -1139,6 +1175,7 @@ public sealed partial class NLCPGBuilder
         _dataFlowPlanAssemblyCount = 0;
         _dataFlowWorkerCount = 0;
         _callGraphBatchCount = 0;
+        _callGraphFrozenMethodIndexCount = 0;
         _interproceduralBarrierCompleted = false;
         _workBatchPerformanceEvents.Clear();
         _operationRootPlansByRoot.Clear();
@@ -1465,9 +1502,16 @@ public sealed partial class NLCPGBuilder
             }
 
             CpgBuildInventoryMetrics? buildInventoryMetrics = null;
-            MeasureStage(
-              "BuildInventoryAudit",
-              () => buildInventoryMetrics = CpgBuildInventory.Create(context).Metrics);
+            // 审计产物（事实计数 + 全部 anchor 物化 + SHA-256 指纹）只有读 LastBuildMetrics 的
+            // 调用方需要。项目级 JSON 导出建图后只读 Nodes/Edges，故可整体跳过。
+            // ⚠ 判据必须保守：预分配路径要解引用该指标挂 PreallocatedAnchorDiff，绝不能跳过。
+            if (RequiresBuildInventory())
+            {
+                MeasureStage(
+                  "BuildInventoryAudit",
+                  () => buildInventoryMetrics = CpgBuildInventory.Create(context).Metrics);
+            }
+
             buildStopwatch.Stop();
             LastBuildMetrics = new NLCPGBuildMetrics(
               _operationNodeCacheHitCount,
@@ -1505,6 +1549,17 @@ public sealed partial class NLCPGBuilder
         return _options.UsePreallocatedNodeIds || _options.Persistence?.StreamingMode == true;
     }
 
+    // 是否必须统计 BuildInventoryAudit。
+    //
+    // 保守判据：只要预分配 NodeId 路径可能被走到，就必须统计——该路径在
+    // BuildFromSource/BuildFromSemanticModel 里解引用 LastBuildMetrics.BuildInventoryMetrics!
+    // 来挂 PreallocatedAnchorDiff，跳过会让解引用抛 NullReferenceException。
+    // 只有在「调用方显式关闭」且「本 builder 不满足预分配前提」时才真正跳过。
+    private bool RequiresBuildInventory()
+    {
+        return _options.ComputeBuildInventory || RequiresPreallocatedNodeIds();
+    }
+
     private NLCPGBuilderOptions CreateAnchorDiscoveryOptions()
     {
         var buildPlan = ResolveCapabilityBuildPlan();
@@ -1513,6 +1568,12 @@ public sealed partial class NLCPGBuilder
             Persistence = null,
             UsePreallocatedNodeIds = false,
             RequestedCapabilities = new[] { buildPlan.ResolvedCapabilities },
+            // 预检 builder 只服务于预分配路径，而该路径必然需要审计产物
+            // （外层要解引用 BuildInventoryMetrics! 挂 PreallocatedAnchorDiff）。
+            // 这里清掉了 UsePreallocatedNodeIds，RequiresPreallocatedNodeIds() 会变 false，
+            // 故必须显式保持统计，否则 AnchorDiscoveryPassElapsedMilliseconds 会丢掉
+            // "BuildInventoryAudit" 键，与外层构建的度量口径不一致。
+            ComputeBuildInventory = true,
         };
     }
 
@@ -1531,8 +1592,11 @@ public sealed partial class NLCPGBuilder
         _methodOwnerSymbolKeysByBoundaryNode.Clear();
         _methodParameterOrdinalsByNode.Clear();
         _methodSymbolsByFullName.Clear();
-        _methodSymbolsByNameAndSignature.Clear();
         _baseTypeCache.Clear();
+        _typeFullNameCache.Clear();
+        _methodFullNameCache.Clear();
+        _methodSignatureCache.Clear();
+        _methodNameCache.Clear();
         _cfgPredecessorsByNode.Clear();
         _cfgSuccessorsByNode.Clear();
         _callSiteNodesByInvocation.Clear();
@@ -1740,6 +1804,23 @@ public sealed partial class NLCPGBuilder
     /// </para>
     /// </summary>
     internal int DataFlowPlanAssemblyCount => _dataFlowPlanAssemblyCount;
+
+    /// <summary>
+    /// CallGraph 阶段在 worker 启动前预注册进方法索引的符号次数
+    /// （见 <c>CallGraphPass.FreezeCallGraphMethodIndex</c>）。
+    /// <para>
+    /// <b>为什么必须可观测：</b>"冻结索引"与"不冻结"在**产物上完全等价**
+    /// ——冻结只改变候选集的**读取时刻**，不改变候选集本身；两者都产出同一批候选。
+    /// 故行为断言无从区分"冻结了"与"整个改动都不存在"（同 <see cref="DataFlowPlanAssemblyCount"/>
+    /// 的 X.5 变异问题）。契约测试以这个计数判别改动**确实存在且非空**。
+    /// </para>
+    /// <para>
+    /// 正常值恒为 <c>&gt; 0</c>（只要本阶段有可解析的操作）；<c>0</c> 表示未请求
+    /// <c>CallGraph</c>，或本阶段无可分析的调用/属性访问操作。
+    /// 它是**只读结果**，不参与任何生产决策。
+    /// </para>
+    /// </summary>
+    internal int CallGraphFrozenMethodIndexCount => _callGraphFrozenMethodIndexCount;
 
     /// <summary>
     /// G0-P **R-1** 留证：本构建中**实际被记录到的**阶段执行序列（按真实调用先后）。
@@ -2574,6 +2655,9 @@ public sealed partial class NLCPGBuilder
         var summaryBudget = new FlowSummaryBudget(_options.EffectiveFlowSummaryOptions);
         var recordedReturnMethods = new HashSet<string>(StringComparer.Ordinal);
         var options = _options.EffectiveInterproceduralDataFlowOptions;
+        // 提及循环外：共享前缀的记忆化容器需要它（段 1 的截断长度 = min(桶大小, 本值)）。
+        // 它是本次构建内的恒定配置，故缓存的键只需目标方法——见下方 GetSharedArgumentPlans。
+        var boundaryEdgeBudget = options.MaxBoundaryEdgesPerMethod;
         var methodBoundaryNodes = graph.Nodes
           .Where(node => node.Kind is NLCPGNodeKind.MethodParameter or NLCPGNodeKind.MethodReturn)
           .ToArray();
@@ -2641,6 +2725,33 @@ public sealed partial class NLCPGBuilder
             computedKeys = null!;
         }
 
+        // ── 阶段 ①-b：把唯一键值【稠密排名】 ─────────────────────────────────────
+        // ②③ 的比较器原先每比较一对行就要做两次 string.CompareOrdinal（键含 FullName，
+        // 通常数十字符）。排名化后只剩 int 比较。
+        //
+        // 等价性的全部依据是【稠密】二字：
+        //   · 名次按唯一键值的 Ordinal 升序从 0 起连续编号；
+        //   ⇒ rank(a) 与 rank(b) 的大小关系与 string.CompareOrdinal(key(a), key(b)) 的符号逐位相同；
+        //   ⇒ key(a) == key(b) 时 rank(a) == rank(b)。
+        // 后半句是本项【唯一必要的】论证：比较器末键是 PlanIndex（List.Sort 不稳定，末键必须
+        // 构成严格全序）。只有"等键 ⇒ 等名次"，末键才会在原先会触达的每一处照旧被触达，
+        // 组内次序才逐位不变 ⇒ AddEdge 调用序列不变 ⇒ 快照指纹不变。
+        // ⚠️ 该论证【不依赖】"键在池端点集上是否真的碰撞"这一未验证事实，故无需先证明无碰撞。
+        // ⚠️ 反过来，若改成"按节点各给唯一名次"，本论证失效，必须另行证明键无碰撞。
+        var rankOfKey = BuildDenseOrdinalRanks(nodeSortKeys.Values);
+        var nodeSortRanks = new Dictionary<NLCPGNode, int>(nodeSortKeys.Count);
+        foreach (var pair in nodeSortKeys)
+        {
+            nodeSortRanks[pair.Key] = rankOfKey[pair.Value];
+        }
+
+        // 排名表建成后，字符串键缓存不再被任何后续阶段读取（②③ 只比 int，④ 只回读载体）。
+        // 显式释放其桶数组与全部引用槽。
+        // ⚠️ 释放的是【引用槽】，不是字符串本体——字符串由图内 StringInterner 持有，
+        // 且 NodeSortKey 每次插值都产生新实例，本就不受本表生命周期约束。
+        nodeSortKeys.Clear();
+        nodeSortKeys.TrimExcess();
+
         var orderedCallSites = graph.Nodes
           .Where(node => node.Kind == NLCPGNodeKind.CallSite)
           .OrderBy(node => graph.ResolveFullName(node), StringComparer.Ordinal)
@@ -2681,6 +2792,71 @@ public sealed partial class NLCPGBuilder
         var publishDop = Math.Max(1, _options.EffectiveMaxDegreeOfParallelism);
         var capacityLedger = new InterproceduralPlanCapacityLedgerBuilder();
 
+        // 【跨调用点复用】共享 ArgumentToParameter 前缀的记忆化容器。
+        //
+        // 为什么可以共享：段 1 只读 `argumentsByMethod[目标方法]`（该桶是【指向同一方法的全部
+        // 调用点】的实参边并集），其内容与当前是哪个调用点无关；载体
+        // `InterproceduralPlanRef` 里也没有任何调用点字段——调用点身份只在发布时经
+        // `callSiteContext` 注入。故同一目标方法的 c 个调用点共享同一份前缀即可，
+        // 累计载体分配由 `c·(c·p)` 降为 `c·p`。
+        //
+        // 【懒惰构造：首次被某调用点需要时才构造】（§3.3）
+        // 共享前缀只在【第一个】需要它的调用点处构造一次，随后由同目标方法的其余调用点复用。
+        // 构造时机与"谁先来"无关地推迟到真正需要，故从不被调用的方法绝不会付出构造成本；
+        // 实测 c == 1 占 51.8%–69.7%，而这些方法的共享段也只建一次、只被自己用一次，
+        // 相比改造前既不多一次构造、也不多一份载体（c == 1 时 c²p == c·p，收益恒为零）。
+        //
+        // 【逐文档作用域】本字典必须与 `edgeSnapshot` 同生命周期：它保存的是【本图池】的池内
+        // 序号。若提升为 builder 字段，跨文档复用时序号在池内依然合法、却指向【另一张图】的边
+        // ⇒ 静默错边，且不抛任何异常。故它只能是本方法的局部变量。
+        //
+        // 【键为什么只需目标方法】段 1 的截断长度取 `min(桶大小, MaxBoundaryEdgesPerMethod)`，
+        // 而该预算取自 `options.MaxBoundaryEdgesPerMethod`——本次构建内恒定的全局配置。
+        // 这一依赖是【显式】的：若将来预算变为逐组可变，本缓存的键必须扩展为
+        // `(targetMethodSymbolKey, effectiveBudget)`。
+        var sharedArgumentPlansByMethod =
+          new Dictionary<string, InterproceduralPlanBuffer>(StringComparer.Ordinal);
+
+        // 【懒惰构造】只在某个调用点【首次需要】时才构造该方法的共享前缀（§3.3）。
+        // 循环前无条件为所有方法键预建，会让从不被调用的方法也白付一次构造与一次查找；
+        // 若进一步改成每调用点各建一份，就退回了改造前的 c·(c·p)，本项收益归零。
+        InterproceduralPlanBuffer GetSharedArgumentPlans(
+          string methodSymbolKey,
+          int[] methodArgumentOrdinals)
+        {
+            if (sharedArgumentPlansByMethod.TryGetValue(methodSymbolKey, out var cached))
+            {
+                return cached;
+            }
+
+            return BuildSharedArgumentPlans(methodSymbolKey, methodArgumentOrdinals);
+        }
+
+        InterproceduralPlanBuffer BuildSharedArgumentPlans(
+          string methodSymbolKey,
+          int[] methodArgumentOrdinals)
+        {
+            var sharedLength = Math.Min(methodArgumentOrdinals.Length, boundaryEdgeBudget);
+            var shared = InterproceduralPlanBuffer.Create(sharedLength);
+            for (var index = 0; index < sharedLength; index += 1)
+            {
+                var sharedOrdinal = methodArgumentOrdinals[index];
+                var sharedEdge = edgeSnapshot.Edge(sharedOrdinal);
+                shared.Add(new InterproceduralPlanRef(
+                  sharedOrdinal,
+                  ParseArgumentOrdinal(sharedEdge.TargetNode)));
+            }
+
+            sharedArgumentPlansByMethod[methodSymbolKey] = shared;
+            // 共享段按【目标方法】记账一次。绝不能挪到逐组路径：同一份 buffer 会被
+            // 虚增 c 倍，本项收益在账本上就完全不可观测（§4.4.2）。
+            capacityLedger.ObserveSharedArgumentSegment(
+              shared.Count,
+              shared.Capacity,
+              shared.InitialCapacity);
+            return shared;
+        }
+
         for (var callSiteOrder = 0; callSiteOrder < orderedCallSites.Length; callSiteOrder += 1)
         {
             var callSite = orderedCallSites[callSiteOrder];
@@ -2692,7 +2868,7 @@ public sealed partial class NLCPGBuilder
               .Select(ordinal => edgeSnapshot.Edge(ordinal).TargetNode)
               .Distinct()
               .OrderBy(target => graph.ResolveFullName(target), StringComparer.Ordinal)
-              .ThenBy(target => nodeSortKeys[target], StringComparer.Ordinal)
+              .ThenBy(target => nodeSortRanks[target])
               .ToArray();
             if (targets.Length == 0)
             {
@@ -2745,35 +2921,58 @@ public sealed partial class NLCPGBuilder
             var hasReturnDataFlowEdges = edgeSnapshot.TryGetReturnsForMethod(
               targetMethodSymbolKey,
               out var indexedReturnOrdinals);
-            var boundaryEdgeBudget = options.MaxBoundaryEdgesPerMethod;
-            var planUpperBound = argumentOrdinals.Length
-              + returnToCallOrdinals.Length
+            // 两段式的私有尾段上界：段 2（经 Where 过滤只减不增）+ 段 3。
+            var tailUpperBound = returnToCallOrdinals.Length
               + (hasReturnDataFlowEdges ? indexedReturnOrdinals!.Length : 0);
-            // 【M1 第 3 节第 1 点】正预算走【前缀收集】：容量直接取 min(原上界, B)，
-            // 逐条生成时只把前 B 条加入列表，故从不需要"先全建再截断"的那份超额载荷。
-            // 非正预算是【兼容分支】，保留原「按上界全建 + RemoveRange 截断」边界，
-            // 以免把既有 ArgumentOutOfRangeException（实测：负值在 RemoveRange、0 在 plans[0]）
-            // 静默变成"跳过"。这里不维护两套正常输入算法，只区分合法/非法输入。
-            var callSitePlans = InterproceduralPlanBuffer.Create(
-              boundaryEdgeBudget > 0 ? Math.Min(planUpperBound, boundaryEdgeBudget) : planUpperBound);
+            var planUpperBound = argumentOrdinals.Length + tailUpperBound;
+
+            // ── 段 1：共享的 ArgumentToParameter 前缀 ───────────────────────────────
+            // 正预算才取共享前缀：非正预算是兼容分支，必须保留原「单缓冲全建」的边界，
+            // 而 `Create(min(len, B))` 在 B ≤ 0 时会是负容量 ⇒ 连构造都不能发生。
+            var planOverflowed = false;
+            var sharedArgumentPlans = InterproceduralPlanBuffer.Empty;
+            var sharedArgumentCount = 0;
+            if (boundaryEdgeBudget > 0)
+            {
+                sharedArgumentPlans = GetSharedArgumentPlans(
+                  targetMethodSymbolKey,
+                  argumentOrdinals);
+                sharedArgumentCount = sharedArgumentPlans.Count;
+                // 段 1 是否因预算丢条：原实现里第 (B+1) 次迭代会看到 Count == B。
+                planOverflowed = argumentOrdinals.Length > boundaryEdgeBudget;
+            }
+
+            // ── 段 2/3：本组私有的尾段 ─────────────────────────────────────────────
+            // 容量取剩余额度，使「共享段容量 + 尾段容量」恒等于原单缓冲的 min(总上界, B)：
+            // 桶 ≤ B 时 = 桶 + min(尾上界, B − 桶) = min(总上界, B)；桶 > B 时 = B + 0。
+            // 这正是 §4.3 要求的「先给段 1 截断，剩余额度再交给尾段」。
+            var groupTailPlans = InterproceduralPlanBuffer.Create(
+              boundaryEdgeBudget > 0
+                ? Math.Min(tailUpperBound, Math.Max(0, boundaryEdgeBudget - sharedArgumentCount))
+                : planUpperBound);
             // 初始容量必须在此刻读取：它就是"前缀收集 vs 先全建再截断"的判别量
             // （旧实现截断后也 TrimExcess，最终容量同样回到 B，看不出差别）。
-            // 注意它取自 buffer 固化的请求值，不是 Capacity —— 池化的桶对齐会放大 Capacity。
-            var planInitialCapacity = callSitePlans.InitialCapacity;
-            var planOverflowed = false;
-            foreach (var ordinal in argumentOrdinals)
-            {
-                if (boundaryEdgeBudget > 0 && callSitePlans.Count >= boundaryEdgeBudget)
-                {
-                    planOverflowed = true;
-                    continue;
-                }
+            var tailInitialCapacity = groupTailPlans.InitialCapacity;
 
-                var edge = edgeSnapshot.Edge(ordinal);
-                callSitePlans.Add(new InterproceduralPlanRef(
-                  ordinal,
-                  ParseArgumentOrdinal(edge.TargetNode)));
+            if (boundaryEdgeBudget <= 0)
+            {
+                // 兼容分支：段 1 逐条全建进本组私有缓冲，且【不做】预算检查 ——
+                // 原实现的预算检查写作 `boundaryEdgeBudget > 0 && ...`，在此恒为假。
+                // 保留这一形态是为了让 RemoveRange 仍是唯一的截断点（§3.2 的冻结异常契约）。
+                foreach (var ordinal in argumentOrdinals)
+                {
+                    var edge = edgeSnapshot.Edge(ordinal);
+                    groupTailPlans.Add(new InterproceduralPlanRef(
+                      ordinal,
+                      ParseArgumentOrdinal(edge.TargetNode)));
+                }
             }
+
+            // 三段共用同一个截断判据（§3.4）；两段式下它跨两段计数，故必须把共享段条数计入。
+            // 兼容分支下 `boundaryEdgeBudget > 0` 恒为假 ⇒ 本判据恒为假，与原文逐位一致。
+            bool TailBudgetExhausted() =>
+              boundaryEdgeBudget > 0
+                && sharedArgumentCount + groupTailPlans.Count >= boundaryEdgeBudget;
 
             foreach (var ordinal in returnToCallOrdinals)
             {
@@ -2785,13 +2984,13 @@ public sealed partial class NLCPGBuilder
                     continue;
                 }
 
-                if (boundaryEdgeBudget > 0 && callSitePlans.Count >= boundaryEdgeBudget)
+                if (TailBudgetExhausted())
                 {
                     planOverflowed = true;
                     continue;
                 }
 
-                callSitePlans.Add(new InterproceduralPlanRef(ordinal));
+                groupTailPlans.Add(new InterproceduralPlanRef(ordinal));
             }
 
             // return-method 门控【不受预算影响】：即使本组已溢出，recordedReturnMethods
@@ -2802,18 +3001,21 @@ public sealed partial class NLCPGBuilder
                 {
                     foreach (var ordinal in indexedReturnOrdinals!)
                     {
-                        if (boundaryEdgeBudget > 0 && callSitePlans.Count >= boundaryEdgeBudget)
+                        if (TailBudgetExhausted())
                         {
                             planOverflowed = true;
                             continue;
                         }
 
-                        callSitePlans.Add(new InterproceduralPlanRef(ordinal));
+                        groupTailPlans.Add(new InterproceduralPlanRef(ordinal));
                     }
                 }
             }
 
-            if (callSitePlans.Count == 0)
+            // 判空必须对【两段之和】判定（§3.2）：若只判尾段，"段 1 非空 / 尾段为空"的组会被
+            // 误当成空组跳过，预算 0 那条「空组进窗口后由发布器抛出」的路径就会静默消失。
+            var retainedPlanCount = sharedArgumentCount + groupTailPlans.Count;
+            if (retainedPlanCount == 0)
             {
                 // 【⑥】本组不进入窗口。⑤ 的池化已退役，此处不再需要配对的 RecordRent/Return：
                 // 精确分配的数组没有"漏归还"这个失败模式，交给 GC 即可。
@@ -2823,10 +3025,15 @@ public sealed partial class NLCPGBuilder
 
             if (boundaryEdgeBudget > 0)
             {
+                // 口径②（§4.4.1）：条数与容量都按【实际保留的载体份数】记 —— 共享段由
+                // ObserveSharedArgumentSegment 按方法记一次，这里只累加私有尾段。
+                // 两者同口径，`PlanCapacityTotal >= PlanCountTotal` 才成立。
                 capacityLedger.ObserveGroup(
-                  callSitePlans.Count,
-                  callSitePlans.Capacity,
-                  planInitialCapacity);
+                  retainedPlanCount,
+                  sharedArgumentPlans.Capacity + groupTailPlans.Capacity,
+                  groupTailPlans.Count,
+                  groupTailPlans.Capacity,
+                  tailInitialCapacity);
 
                 // 超额在生成时即已省略，这里只补记一次原有的截断事件（名称与口径不变）。
                 if (planOverflowed)
@@ -2837,34 +3044,39 @@ public sealed partial class NLCPGBuilder
                 // 未溢出但上界严重偏大的组：保留 min(上界, B) 的 slack 而不复制整组去省它。
                 // 但 slack 必须可观测，否则"取消了 TrimExcess"就变成没有账的空承诺。
                 // ⑥ 起元素宽为 8 B（精确分配，无桶对齐浪费），故这份 slack 现在是精确值。
+                // 只记尾段：共享段的 slack 由 ObserveSharedArgumentSegment 按方法记一次，
+                // 若在此逐组累加会把同一份共享 buffer 虚增 c 倍（§4.4.2）。
                 capacityLedger.PlanCapacitySlackBytes +=
-                  (callSitePlans.Capacity - callSitePlans.Count) *
+                  (groupTailPlans.Capacity - groupTailPlans.Count) *
                   System.Runtime.CompilerServices.Unsafe.SizeOf<InterproceduralPlanRef>();
-                if (callSitePlans.Capacity > callSitePlans.Count)
+                if (groupTailPlans.Capacity > groupTailPlans.Count)
                 {
                     capacityLedger.PlanCapacitySlackGroups += 1;
                 }
             }
-            else if (callSitePlans.Count > boundaryEdgeBudget)
+            else if (groupTailPlans.Count > boundaryEdgeBudget)
             {
                 // 非正预算兼容分支：逐位保留原「全建 → RemoveRange」边界。
                 // 此处【不】改成前缀收集，也不改 TrimExcess 之外的任何顺序，
                 // 以免把既有异常变成静默跳过。
+                // 可达性：本分支下共享段恒为空，故整组就是这一份缓冲。
                 summaryBudget.RecordCut("BoundaryEdgeBudget");
-                callSitePlans.RemoveRange(
+                groupTailPlans.RemoveRange(
                   boundaryEdgeBudget,
-                  callSitePlans.Count - boundaryEdgeBudget);
-                callSitePlans.TrimExcess();
+                  groupTailPlans.Count - boundaryEdgeBudget);
+                groupTailPlans.TrimExcess();
                 capacityLedger.PlanTrimCount += 1;
             }
 
-            // 计划数组在构造后即不再被本迭代修改（上面只有本迭代自己的追加/截断），
+            // 两段在构造后即不再被本迭代修改（上面只有本迭代自己的追加/截断），
             // 故可安全交给窗口并行消费；窗口满则先冲刷。组头在此密封，之后不得追加。
+            // 共享段在整份文档内只读（其余调用点也持有同一实例），任何写入都会污染他组。
             windowGroups[windowCount] = new InterproceduralDataFlowPlanGroup(
               callSite,
               callSiteOrder,
-              callSitePlans);
-            windowRowCount += callSitePlans.Count;
+              sharedArgumentPlans,
+              groupTailPlans);
+            windowRowCount += retainedPlanCount;
             windowCount += 1;
 
             if (windowCount == ParallelPublishMaxGroupsPerWindow ||
@@ -2876,7 +3088,7 @@ public sealed partial class NLCPGBuilder
                   windowGroups,
                   windowRows,
                   windowCount,
-                  nodeSortKeys,
+                  nodeSortRanks,
                   publishDop,
                   capacityLedger);
                 windowCount = 0;
@@ -2892,7 +3104,7 @@ public sealed partial class NLCPGBuilder
               windowGroups,
               windowRows,
               windowCount,
-              nodeSortKeys,
+              nodeSortRanks,
               publishDop,
               capacityLedger);
         }
@@ -2933,7 +3145,7 @@ public sealed partial class NLCPGBuilder
       InterproceduralDataFlowPlanGroup[] windowGroups,
       List<PlanSortRow>[] windowRows,
       int windowCount,
-      Dictionary<NLCPGNode, string> nodeSortKeys,
+      Dictionary<NLCPGNode, int> nodeSortRanks,
       int dop,
       InterproceduralPlanCapacityLedgerBuilder capacityLedger)
     {
@@ -2950,11 +3162,10 @@ public sealed partial class NLCPGBuilder
             for (var slot = 0; slot < windowCount; slot += 1)
             {
                 BuildAndSortPlanRows(
-                  graph,
                   edgeSnapshot,
-                  windowGroups[slot].Plans,
+                  windowGroups[slot],
                   windowRows[slot],
-                  nodeSortKeys);
+                  nodeSortRanks);
             }
         }
         else
@@ -2965,11 +3176,10 @@ public sealed partial class NLCPGBuilder
               windowCount,
               new ParallelOptions { MaxDegreeOfParallelism = dop },
               slot => BuildAndSortPlanRows(
-                graph,
                 edgeSnapshot,
-                windowGroups[slot].Plans,
+                windowGroups[slot],
                 windowRows[slot],
-                nodeSortKeys));
+                nodeSortRanks));
         }
 
         // ④ 串行写图：严格按 slot 升序（= callSiteOrder 升序），槽内按已排定的次序。
@@ -2979,9 +3189,10 @@ public sealed partial class NLCPGBuilder
             var group = windowGroups[slot];
             windowGroups[slot] = default;
 
-            // 【方案 B】调用点元数据在组头，一组算一次即可（原先是逐行读取计划里的 CallSiteNode，
-            // 再对 3,954,144 行各算一次上下文；每行含 2 次 Resolve 与 1 次 record 构造）。
-            var plans = group.Plans;
+            // 【跨调用点复用】计划分两段（共享前缀 + 私有尾段），此处不再取单一缓冲。
+            // 下面凡需"第 i 条计划"处一律走 group.PlanAt(i)，由组头按统一的 PlanIndex
+            // 空间派发到对应段；不要在此处自行拆分，否则下标语义会与排序行脱钩。
+            var planCount = group.Count;
 
             // 【非正预算兼容分支】复刻方案 B 移除掉的那次读取。
             // 原发布器在这里用 `plans[0].CallSiteNode` 取调用点上下文，因此当某组被
@@ -2990,9 +3201,11 @@ public sealed partial class NLCPGBuilder
             // 方案 B 把调用点移到组头后这次读取不复存在 ⇒ 若不显式复刻，预算 0 会从
             // "抛异常"静默变成"成功且少发边"，那是一处无人察觉的契约变更。
             // 冻结读数见 Build/MemoryOptimization/M1/run-20260925-01/BASELINE.md。
-            // 可达性：构造段 `Count == 0 ⇒ continue` 已挡住空组，故只有非正预算截断
-            // 才会让空组进入窗口——这正是要复刻的那条路径。
-            if (plans.Count == 0)
+            // 可达性：构造段 `retainedPlanCount == 0 ⇒ continue` 已挡住空组，故只有非正预算
+            // 截断才会让空组进入窗口——这正是要复刻的那条路径。
+            // 注意判据必须是【两段之和】：非正预算下共享段恒为空，故此处与旧读数的等价性成立；
+            // 若将来共享段可能在非正预算下非空，本分支必须重新审查。
+            if (planCount == 0)
             {
                 throw new ArgumentOutOfRangeException(
                   "index",
@@ -3004,8 +3217,8 @@ public sealed partial class NLCPGBuilder
             {
                 // 方案 A + ⑥：排序行只保存组内计划下标，发布时按下标回读【惰性载体】，
                 // 再由载体里的池内序号向池现取端点与桥种类。
-                // 下标绑定 callSitePlans 的原始插入序；该列表在整组发布结束前不重排、不追加、不跨组复用。
-                var edge = edgeSnapshot.Edge(plans[row.PlanIndex].PoolOrdinal);
+                // 下标绑定 PlanAt 的原始插入序；两段在整组发布结束前不重排、不追加、不跨组复用。
+                var edge = edgeSnapshot.Edge(group.PlanAt(row.PlanIndex).PoolOrdinal);
                 graph.AddEdge(
                   edge.SourceNode,
                   edge.TargetNode,
@@ -3014,10 +3227,16 @@ public sealed partial class NLCPGBuilder
                   callSiteContext: callSiteContext);
             }
 
-            // 【M1 第 3 节第 2 点】该组已发布完毕 ⇒ 清空排序行以释放 SourceKey/TargetKey
-            // 两个字符串引用。必须在此处（串行发布段内）做，不能在 worker 里做：
+            // 【M1 第 3 节第 2 点】该组已发布完毕 ⇒ 清空排序行，使已发布槽不再持有行数据。
+            // 必须在此处（串行发布段内）做，不能在 worker 里做：
             // 此刻所有 worker 已结束，不会再有人读这个槽。
             // 不在此处 TrimExcess —— 容量留着复用，是否保留由下方"全部 64 槽合计预算"统一裁决。
+            //
+            // ⚠️ 【C 排序键排名化】收窄了本段的立论：改前行持 SourceKey/TargetKey 两个字符串引用，
+            // 清空释放的是这两个【强引用】；改后行只含 int，已无字符串字段
+            // （由 CpgInterproceduralEdgeOrderTests 的字段类型断言锁住）。
+            // 故"释放字符串引用"这根轴【已不存在】；本行保留的理由变为"槽确实被清空"
+            // ——`List<T>.Clear()` 不缩容，残留行 > 0 仍意味着已发布槽持有行数据，语义上依旧是错的。
             rows.Clear();
             capacityLedger.SortBufferClearedSlots += 1;
             // 【可观测性】紧随 Clear() 之后实测残留行数并累加。
@@ -3142,21 +3361,25 @@ public sealed partial class NLCPGBuilder
     // 排序键（端点排序键与桥种类）。它仍是 static：池与键缓存都是只读的，加一个形参
     // 就是本项唯一的跨方法接线。
     private static void BuildAndSortPlanRows(
-      NLCPGGraph graph,
       InterproceduralEdgeSnapshot edgeSnapshot,
-      InterproceduralPlanBuffer callSitePlans,
+      InterproceduralDataFlowPlanGroup group,
       List<PlanSortRow> sortRows,
-      Dictionary<NLCPGNode, string> nodeSortKeys)
+      Dictionary<NLCPGNode, int> nodeSortRanks)
     {
         sortRows.Clear();
-        if (sortRows.Capacity < callSitePlans.Count)
+        if (sortRows.Capacity < group.Count)
         {
-            sortRows.Capacity = callSitePlans.Count;
+            sortRows.Capacity = group.Count;
         }
 
-        for (var planIndex = 0; planIndex < callSitePlans.Count; planIndex += 1)
+        // 【跨调用点复用】两段共用【一个】PlanIndex 空间：先共享段（0 .. sharedCount-1），
+        // 再本组尾段（sharedCount .. Count-1）。这是本项最容易出错的地方——`List.Sort` 是
+        // 【不稳定】排序，PlanIndex 是唯一的末键；若两段各自从 0 编号，末键就不再是全序，
+        // 排序结果的组内次序会随排序实现漂移 ⇒ 边序漂移 ⇒ 74 条冻结序的预言机失败。
+        // 故这里只按 group.Count 递增，由 group.PlanAt 负责分段派发。
+        for (var planIndex = 0; planIndex < group.Count; planIndex += 1)
         {
-            var plan = callSitePlans[planIndex];
+            var plan = group.PlanAt(planIndex);
             // ⑥ 延迟物化：端点是现取的（旧表示在这里读的是计划内嵌的节点副本）。
             // 原先这里先经 `seenPlans`（HashSet<...>）做一次组内去重。
             // 实测 3,954,144 次尝试中丢弃恒为 0，该去重是冗余的，已删除。
@@ -3178,8 +3401,8 @@ public sealed partial class NLCPGBuilder
               planIndex,
               BridgeKindOf(edge),
               plan.ArgumentOrdinal,
-              CachedNodeSortKey(graph, nodeSortKeys, edge.SourceNode),
-              CachedNodeSortKey(graph, nodeSortKeys, edge.TargetNode)));
+              NodeSortRank(nodeSortRanks, edge.SourceNode),
+              NodeSortRank(nodeSortRanks, edge.TargetNode)));
         }
 
         if (sortRows.Count > 1)
@@ -3188,20 +3411,54 @@ public sealed partial class NLCPGBuilder
         }
     }
 
-    // 取节点的排序键：优先用阶段 ① 建的全局缓存（去重 + 并行插值的结果）。
-    // 缓存未命中时按需插值——键是纯函数，值与缓存里的完全相同，故这里只是
-    // 防止"覆盖集推理有误"导致崩溃的兜底，不会改变任何比较结果。
-    private static string CachedNodeSortKey(
-      NLCPGGraph graph,
-      Dictionary<NLCPGNode, string> nodeSortKeys,
-      NLCPGNode node)
+    // 把一组排序键映射为【稠密序号】：键按 Ordinal 升序编号，值相等的键共享同一序号，
+    // 序号从 0 起连续（故"稠密"）。
+    //
+    // 这正是②③排序键排名化的等价性内核，故抽成纯函数以便直接测试
+    // （见 CpgInterproceduralEdgeOrderTests 的排名同序性用例）：
+    //   ∀a,b：rank(a).CompareTo(rank(b)) == Math.Sign(string.CompareOrdinal(key(a), key(b)))
+    //   且 key(a) == key(b) ⇒ rank(a) == rank(b)
+    // 第一条保证"用名次比较"与"用键比较"逐位同序；第二条保证等键仍落回末键 PlanIndex。
+    // 两条缺一不可：缺第一条会改变组内次序，缺第二条会在等键处提前返回
+    // ⇒ List.Sort 不稳定导致组内次序随实现漂移 ⇒ 边序漂移。
+    // internal（而非 private）仅为让该纯函数可被直接驱动；仍然是非公开成员。
+    internal static Dictionary<string, int> BuildDenseOrdinalRanks(IEnumerable<string> keys)
     {
-        if (nodeSortKeys.TryGetValue(node, out var cached))
+        var rankedKeys = keys.ToArray();
+        Array.Sort(rankedKeys, StringComparer.Ordinal);
+
+        var rankOfKey = new Dictionary<string, int>(rankedKeys.Length, StringComparer.Ordinal);
+        var nextRank = 0;
+        foreach (var key in rankedKeys)
         {
-            return cached;
+            // TryAdd 使等值键共享同一个名次（稠密）——这是上面第二条不变量的实现。
+            if (rankOfKey.TryAdd(key, nextRank))
+            {
+                nextRank += 1;
+            }
         }
 
-        return NodeSortKey(graph, node);
+        return rankOfKey;
+    }
+
+    // 取节点的排序名次：由阶段 ①-b 为池端点全集（与排序键缓存【同一个】覆盖集）建好。
+    //
+    // 这里【不能】像旧的 CachedNodeSortKey 那样"未命中就按需插值兜底"：名次是全局稠密的，
+    // 单点插值给不出与全表一致的名次。若硬给一个哨兵名次，它会落在真实名次区间内并破坏
+    // 严格全序——比较器末键 PlanIndex 不再被触达，组内次序随排序实现漂移 ⇒ 边序漂移。
+    // 故未命中即 fail-hard：把"覆盖集推理有误"从静默劣化变成立刻失败。
+    // ⚠️ 这与本段 targets 排序处的索引器访问（nodeSortRanks[target]）是同一假设，不是新增假设。
+    private static int NodeSortRank(
+      Dictionary<NLCPGNode, int> nodeSortRanks,
+      NLCPGNode node)
+    {
+        if (nodeSortRanks.TryGetValue(node, out var rank))
+        {
+            return rank;
+        }
+
+        throw new InvalidOperationException(
+          "An interprocedural plan sort row referenced a node that the stage-1 node sort rank table does not cover.");
     }
 
     // 排序行：预算组内有效的 4 个键，避免在比较器里反复插值 NodeSortKey。
@@ -3209,17 +3466,19 @@ public sealed partial class NLCPGBuilder
     // 与比较所需的 4 个键；发布时经载体里的池内序号回读端点。
     // PlanIndex 同时承担原 InsertionOrder 的角色：List<T>.Sort 不稳定，末键必须构成严格全序，
     // 而当前没有行过滤/前置去重，故组内下标与首次出现序恒等。
-    // 行宽随之从「计划宽度 + 5 个键」降为「int + int + int + 2 引用」= 32 B。
-    // ⑥ 后计划载体只有 8 B，故「排序行必须窄于计划」这条旧前提已【反转】——
-    // 行比载体宽是正常的：行要持两个字符串引用，载体只需两个 int。
+    // 【C 排序键排名化】第 4、5 键由两个 string 引用改为两个 int 名次（阶段 ①-b 的稠密排名），
+    // 故行载荷只含 int。此前的 32 B 与"行比载体宽是正常的"这条论断都随之作废：
+    // 行宽现由 Unsafe.SizeOf 实测决定（见 ReclaimIdleSortBufferCapacity 与
+    // InterproceduralPlanCompactionTests.PlanSortRowWidth），【不得】在此写死字面量。
+    // 名次与原字符串键逐位同序的论证在阶段 ①-b 处，此处不重复。
     // internal（而非 private）仅为让容量治理的【接线】可被直接测试，见
     // ReclaimIdleSortBufferCapacity 的注释；仍然是非公开嵌套类型。
     internal readonly record struct PlanSortRow(
       int PlanIndex,
       NLCPGInterproceduralBridgeKind BridgeKind,
       int ArgumentOrdinal,
-      string SourceKey,
-      string TargetKey);
+      int SourceRank,
+      int TargetRank);
 
     private sealed class PlanSortRowComparer : IComparer<PlanSortRow>
     {
@@ -3242,13 +3501,13 @@ public sealed partial class NLCPGBuilder
                 return result;
             }
 
-            result = string.CompareOrdinal(x.SourceKey, y.SourceKey);
+            result = x.SourceRank.CompareTo(y.SourceRank);
             if (result != 0)
             {
                 return result;
             }
 
-            result = string.CompareOrdinal(x.TargetKey, y.TargetKey);
+            result = x.TargetRank.CompareTo(y.TargetRank);
             if (result != 0)
             {
                 return result;
@@ -3650,7 +3909,7 @@ public sealed partial class NLCPGBuilder
         neighbors.Add(neighborNode);
     }
 
-    private static string PropertyAccessorCallSiteKey(IPropertyReferenceOperation propertyReference, IMethodSymbol accessorMethod)
+    private string PropertyAccessorCallSiteKey(IPropertyReferenceOperation propertyReference, IMethodSymbol accessorMethod)
     {
         return $"{PropertyAccessorCallSitePrefix}:{BuildStableFilePath(propertyReference.Syntax.SyntaxTree.FilePath)}:{propertyReference.Syntax.SpanStart}:{propertyReference.Syntax.Span.End}:{ComposeInvocationMethodFullName(accessorMethod)}";
     }
@@ -4114,11 +4373,22 @@ public sealed partial class NLCPGBuilder
           .Replace("global::", string.Empty, StringComparison.Ordinal);
     }
 
-    private static string ComposeTypeFullName(ITypeSymbol? typeSymbol)
+    private string ComposeTypeFullName(ITypeSymbol? typeSymbol)
     {
-        return typeSymbol?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-          .Replace("global::", string.Empty, StringComparison.Ordinal)
-          ?? string.Empty;
+        if (typeSymbol is null)
+        {
+            return string.Empty;
+        }
+
+        if (_typeFullNameCache.TryGetValue(typeSymbol, out var cached))
+        {
+            return cached;
+        }
+
+        var composed = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+          .Replace("global::", string.Empty, StringComparison.Ordinal);
+        _typeFullNameCache[typeSymbol] = composed;
+        return composed;
     }
 
     private static string ResolveOperationName(IOperation operation)
@@ -4139,7 +4409,7 @@ public sealed partial class NLCPGBuilder
         return ResolveOperationSymbol(operation) is { } symbol ? ComposeFullName(symbol) : null;
     }
 
-    private static string? ResolveOperationSignature(IOperation operation)
+    private string? ResolveOperationSignature(IOperation operation)
     {
         return ResolveOperationSymbol(operation) is { } symbol ? ComposeSignature(symbol) : null;
     }
@@ -4155,62 +4425,81 @@ public sealed partial class NLCPGBuilder
         return methodSymbol.ReducedFrom;
     }
 
-    private static string ComposeMethodFullName(IMethodSymbol methodSymbol)
+    private string ComposeMethodFullName(IMethodSymbol methodSymbol)
     {
         methodSymbol = CanonicalMethodSymbol(methodSymbol);
+        if (_methodFullNameCache.TryGetValue(methodSymbol, out var cached))
+        {
+            return cached;
+        }
+
         var containingType = methodSymbol.ContainingType is null ? string.Empty : ComposeTypeFullName(methodSymbol.ContainingType) + ".";
-        return $"{containingType}{ComposeMethodName(methodSymbol)}:{ComposeMethodSignature(methodSymbol)}";
+        var composed = $"{containingType}{ComposeMethodName(methodSymbol)}:{ComposeMethodSignature(methodSymbol)}";
+        _methodFullNameCache[methodSymbol] = composed;
+        return composed;
     }
 
-    private static string ComposeInvocationMethodFullName(IMethodSymbol methodSymbol)
+    private string ComposeInvocationMethodFullName(IMethodSymbol methodSymbol)
     {
         var containingType = methodSymbol.ContainingType is null ? string.Empty : ComposeTypeFullName(methodSymbol.ContainingType) + ".";
         return $"{containingType}{ComposeInvocationMethodName(methodSymbol)}:{ComposeInvocationSignature(methodSymbol)}";
     }
 
-    private static string ComposeMethodSignature(IMethodSymbol methodSymbol)
+    private string ComposeMethodSignature(IMethodSymbol methodSymbol)
     {
         methodSymbol = CanonicalMethodSymbol(methodSymbol);
+        if (_methodSignatureCache.TryGetValue(methodSymbol, out var cached))
+        {
+            return cached;
+        }
+
+        var parameterTypes = string.Join(",", methodSymbol.Parameters.Select(parameter => ComposeTypeFullName(parameter.Type)));
+        var returnType = ComposeTypeFullName(methodSymbol.ReturnType);
+        var genericSuffix = ComposeMethodInstantiationKey(methodSymbol);
+        var composed = $"{returnType}{genericSuffix}({parameterTypes})";
+        _methodSignatureCache[methodSymbol] = composed;
+        return composed;
+    }
+
+    private string ComposeInvocationSignature(IMethodSymbol methodSymbol)
+    {
         var parameterTypes = string.Join(",", methodSymbol.Parameters.Select(parameter => ComposeTypeFullName(parameter.Type)));
         var returnType = ComposeTypeFullName(methodSymbol.ReturnType);
         var genericSuffix = ComposeMethodInstantiationKey(methodSymbol);
         return $"{returnType}{genericSuffix}({parameterTypes})";
     }
 
-    private static string ComposeInvocationSignature(IMethodSymbol methodSymbol)
-    {
-        var parameterTypes = string.Join(",", methodSymbol.Parameters.Select(parameter => ComposeTypeFullName(parameter.Type)));
-        var returnType = ComposeTypeFullName(methodSymbol.ReturnType);
-        var genericSuffix = ComposeMethodInstantiationKey(methodSymbol);
-        return $"{returnType}{genericSuffix}({parameterTypes})";
-    }
 
-    private static string ComposeMethodLookupKey(IMethodSymbol methodSymbol)
-    {
-        return $"{ComposeMethodName(methodSymbol)}:{ComposeMethodSignature(methodSymbol)}";
-    }
-
-    private static string ComposeMethodName(IMethodSymbol methodSymbol)
+    private string ComposeMethodName(IMethodSymbol methodSymbol)
     {
         methodSymbol = CanonicalMethodSymbol(methodSymbol);
+        if (_methodNameCache.TryGetValue(methodSymbol, out var cached))
+        {
+            return cached;
+        }
+
+        string composed;
         if (methodSymbol.MethodKind == MethodKind.Constructor)
         {
-            return ".ctor";
+            composed = ".ctor";
         }
-
-        if (methodSymbol.MethodKind == MethodKind.StaticConstructor)
+        else if (methodSymbol.MethodKind == MethodKind.StaticConstructor)
         {
-            return ".cctor";
+            composed = ".cctor";
         }
-
-        if (methodSymbol.MethodKind == MethodKind.ExplicitInterfaceImplementation &&
+        else if (methodSymbol.MethodKind == MethodKind.ExplicitInterfaceImplementation &&
             methodSymbol.ExplicitInterfaceImplementations.Length > 0)
         {
             var implementedMethod = methodSymbol.ExplicitInterfaceImplementations[0];
-            return $"{ComposeTypeFullName(implementedMethod.ContainingType)}.{implementedMethod.Name}";
+            composed = $"{ComposeTypeFullName(implementedMethod.ContainingType)}.{implementedMethod.Name}";
+        }
+        else
+        {
+            composed = methodSymbol.Name;
         }
 
-        return methodSymbol.Name;
+        _methodNameCache[methodSymbol] = composed;
+        return composed;
     }
 
     private static string ComposeInvocationMethodName(IMethodSymbol methodSymbol)
@@ -4228,7 +4517,7 @@ public sealed partial class NLCPGBuilder
         return methodSymbol.Name;
     }
 
-    private static string ComposeMethodInstantiationKey(IMethodSymbol methodSymbol)
+    private string ComposeMethodInstantiationKey(IMethodSymbol methodSymbol)
     {
         methodSymbol = CanonicalMethodSymbol(methodSymbol);
         if (methodSymbol.TypeArguments.Length == 0 && methodSymbol.TypeParameters.Length == 0)
@@ -4242,7 +4531,7 @@ public sealed partial class NLCPGBuilder
         return $"<{string.Join(",", typeParameters)}>";
     }
 
-    private static string ComposeGenericTypeIdentity(ITypeSymbol typeSymbol)
+    private string ComposeGenericTypeIdentity(ITypeSymbol typeSymbol)
     {
         return typeSymbol switch
         {
@@ -4251,7 +4540,7 @@ public sealed partial class NLCPGBuilder
         };
     }
 
-    private static string ComposeSignature(ISymbol symbol)
+    private string ComposeSignature(ISymbol symbol)
     {
         return symbol switch
         {
@@ -4350,7 +4639,7 @@ public sealed partial class NLCPGBuilder
           : baseDispatch;
     }
 
-    private static NLCPGDispatchKind ComposeResolvedDispatchKind(IMethodSymbol resolvedMethod, IMethodSymbol requestedMethod, ITypeSymbol? receiverType, NLCPGDispatchKind baseDispatchKind)
+    private NLCPGDispatchKind ComposeResolvedDispatchKind(IMethodSymbol resolvedMethod, IMethodSymbol requestedMethod, ITypeSymbol? receiverType, NLCPGDispatchKind baseDispatchKind)
     {
         if (!IsInternalMethod(resolvedMethod))
         {
@@ -4453,7 +4742,7 @@ public sealed partial class NLCPGBuilder
         return methodSymbol.Locations.Any(location => location.IsInSource);
     }
 
-    private static string ComposeTypeParameterSignature(INamedTypeSymbol typeSymbol)
+    private string ComposeTypeParameterSignature(INamedTypeSymbol typeSymbol)
     {
         if (typeSymbol.TypeArguments.Length == 0 && typeSymbol.TypeParameters.Length == 0)
         {
@@ -4466,7 +4755,7 @@ public sealed partial class NLCPGBuilder
         return $"<{string.Join(",", typeParameters)}>";
     }
 
-    private static string ComposePropertySignature(IPropertySymbol propertySymbol)
+    private string ComposePropertySignature(IPropertySymbol propertySymbol)
     {
         if (propertySymbol.Parameters.Length == 0)
         {

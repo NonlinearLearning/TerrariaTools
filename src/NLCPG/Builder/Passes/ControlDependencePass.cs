@@ -207,24 +207,17 @@ namespace NLCPG.Builder
                 }
             }
 
-            localGraph.FreezeQueryIndex();
-            var nodesById = localGraph.Nodes
-              .Where(node => node.NodeId.HasValue)
-              .ToDictionary(node => node.NodeId!.Value);
+            // scratch 取数：不再 FreezeQueryIndex（见 ControlFlowPass 同处说明）。
+            // ⚠ 取数必须在任何冻结之前：冻结会 Release pending 缓冲。
             var descriptors = localGraph.Nodes.Select(CpgNodeDescriptor.FromNode).ToArray();
-            var edges = localGraph.Edges
-              .Select(edge =>
-              {
-                  var source = nodesById[edge.SourceNodeId];
-                  var target = nodesById[edge.TargetNodeId];
-                  return new CpgEdgeCandidate(
-                    source.StableAnchor!.Value,
-                    target.StableAnchor!.Value,
-                    edge.Kind,
-                    edge.StructuredLabel,
-                    edge.ContextId,
-                    edge.CallSiteContext);
-              })
+            var edges = localGraph.EnumerateScratchEdges()
+              .Select(edge => new CpgEdgeCandidate(
+                edge.SourceNode.StableAnchor!.Value,
+                edge.TargetNode.StableAnchor!.Value,
+                edge.Kind,
+                edge.StructuredLabel,
+                edge.ContextId,
+                edge.CallSiteContext))
               .ToArray();
             // descriptors/edges 是本方法刚 ToArray 出来的独占数组，之后没有写入或复用，
             // 故交给 CreateOwned 接管，省掉构造器的第二次载荷复制。

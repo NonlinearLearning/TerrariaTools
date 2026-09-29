@@ -121,6 +121,13 @@ namespace NLCPG.Builder
         /// </summary>
         private void CommitCallGraphStage(NLCPGBuildContext context, StagePlan plan)
         {
+            // ⚠ 必须在任何 worker 启动之前：把方法索引预建到**闭包**再冻结。
+            //   否则 reducer 会在 worker 运行期间继续向索引注册（它注册的正是自己为
+            //   别的操作选中的候选），使 worker 读到的 name:signature 桶内容取决于
+            //   "读到的那一刻归并到哪一批"——这不是数据竞争（读写都在 _cacheGate 内），
+            //   而是**读取时刻依赖**：两条路径都合法，答案却不同。
+            FreezeCallGraphMethodIndex(context);
+
             // D1：**逐文件**建立 order→work 索引。StableOrder 是文件内局部序号，
             //   且批次可跨文件，故单一扁平表在跨文件下会取到别的文件的操作（静默错配）。
             var operationWorkByFile = new Dictionary<string, Dictionary<int, CallGraphOperationWork>>(
@@ -142,6 +149,91 @@ namespace NLCPG.Builder
               result => PublishCallGraphWorkBatch(result, context),
               CancellationToken.None,
               CpgWorkBatchPerformanceStageId.CallGraph).GetAwaiter().GetResult();
+        }
+
+        /// <summary>
+        /// 在**任何 worker 启动之前**，把本阶段要用到的方法符号全部注册进查找索引，
+        /// 使索引对候选扩展**闭合**、从而在本阶段内不再增长（即"冻结"）。
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>为什么必须冻结（读取时刻依赖，非数据竞争）：</b>
+        /// 归并回调 <c>PublishCallGraphWorkBatch</c> → <c>AddCallSite</c> →
+        /// <c>GetOrCreateSymbolNode(candidate)</c> → <c>RegisterMethodSymbol</c> 会在
+        /// **worker 仍在运行期间**向 <c>_methodSymbolsByFullName</c> 追加条目，
+        /// 而 worker 的 <c>ResolveExactMethodFallbackCandidates</c> 正在读同一个桶来选候选。
+        /// 读写都在 <c>_cacheGate</c> 内，故**不会**字典损坏、**不会**抛异常——
+        /// 但桶内容取决于"读到的那一刻已经归并了多少批"，于是同一个操作在不同时序下得到
+        /// 合法的不同候选集。桶按**声明类型 + 名字 + 签名**分键后，
+        /// 无关类型的同名方法（如所有 <c>get_Count:int()</c>）不再落进同一桶，
+        /// 该"时刻"差异不再放大成可见的产物差异；但**冻结仍然必要**：
+        /// 同一类型内后续批注册的实现候选若不预先注册，仍会因归并进度不同而时有时无。
+        /// </para>
+        /// <para>
+        /// <b>为什么一遍就够（闭合论证）：</b>某操作的候选集 = <c>f(I) ∪ S</c>，其中
+        /// <c>f(I)</c> 是从索引桶里取出的子集（必 ⊆ I，注册它们不产生新键），
+        /// <c>S</c> 来自**源码**（<c>_declaredTypes</c>、接收者基类/接口链的成员），
+        /// 与 I 无关。故把每个操作的 <c>S</c> 全部注册后，I 对候选扩展即闭合；
+        /// 再迭代不会产生新条目。
+        /// </para>
+        /// <para>
+        /// <b>为何不走 <c>ResolveEffectiveCallTargets</c>：</b>该入口在 <c>localCache</c> 为
+        /// <c>null</c> 时读写共享的 <c>_resolvedCallTargetsByDispatchShape</c>。在索引尚不完整的
+        /// 预热过程中写入会把**不完整**的解析结果缓存下来，之后被归并回调复用——
+        /// 既有的未命中路径反而被污染。故这里直接调用候选层
+        /// （<c>ResolveCallTargetCandidates</c> / <c>ResolveAccessorTargetCandidates</c>），
+        /// 它们只读索引、只写批次局部状态，不触碰任何共享缓存。
+        /// </para>
+        /// </remarks>
+        private void FreezeCallGraphMethodIndex(NLCPGBuildContext context)
+        {
+            var frozenCandidateCount = 0;
+            // 遍历顺序 = 登记序 + 文件内按 span 排序（BuildCallGraphOperationWork 保证），
+            // 故注册序确定；同名键的追加顺序因此与并发时序无关。
+            foreach (var document in context.Documents)
+            {
+                foreach (var (work, _) in BuildCallGraphOperationWork(document))
+                {
+                    if (work.Invocation is { } invocation)
+                    {
+                        if (invocation.TargetMethod is not { } targetMethod)
+                        {
+                            continue;
+                        }
+
+                        RegisterMethodSymbol(targetMethod);
+                        frozenCandidateCount += 1;
+                        foreach (var candidate in ResolveCallTargetCandidates(invocation, targetMethod))
+                        {
+                            RegisterMethodSymbol(candidate);
+                            frozenCandidateCount += 1;
+                        }
+
+                        continue;
+                    }
+
+                    var propertyReference = work.PropertyReference!;
+                    var accessorMethod = ResolvePropertyAccessorMethod(propertyReference);
+                    if (accessorMethod is null)
+                    {
+                        continue;
+                    }
+
+                    RegisterMethodSymbol(accessorMethod);
+                    frozenCandidateCount += 1;
+                    foreach (var candidate in
+                      ResolveAccessorTargetCandidates(accessorMethod, propertyReference.Instance?.Type))
+                    {
+                        RegisterMethodSymbol(candidate);
+                        frozenCandidateCount += 1;
+                    }
+                }
+            }
+
+            // 留证：本阶段确实执行过冻结，且规模非零。索引冻结与否在产物上**等价**
+            // （都产出同一批候选），故无法用行为断言区分"冻结了"与"没冻结"——
+            // 与 _dataFlowPlanAssemblyCount 同理，需要这个计数供契约测试判定。
+            _callGraphFrozenMethodIndexCount = frozenCandidateCount;
         }
 
         /// <summary>
@@ -399,13 +491,16 @@ namespace NLCPG.Builder
                 [SymbolId(targetMethod)] = targetMethod,
             };
 
+            // 接收者类型同时是候选**准入**条件（见 ResolveExactMethodFallbackCandidates），
+            // 故必须早于精确回退的补齐计算。
+            var receiverType = invocationOperation.Instance?.Type;
+
             // 再补同 full name 或同 name+signature 命中的精确回退候选。
-            foreach (var exactMethod in ResolveExactMethodFallbackCandidates(targetMethod))
+            foreach (var exactMethod in ResolveExactMethodFallbackCandidates(targetMethod, receiverType))
             {
                 candidates[SymbolId(exactMethod)] = exactMethod;
             }
 
-            var receiverType = invocationOperation.Instance?.Type;
             // 无接收者时无法继续做动态分派扩展，返回已收集的静态候选。
             if (receiverType is null)
             {
@@ -515,25 +610,173 @@ namespace NLCPG.Builder
             return resolvedTargets;
         }
 
-        private IEnumerable<IMethodSymbol> ResolveExactMethodFallbackCandidates(IMethodSymbol targetMethod)
+        /// <summary>
+        /// 从方法索引里回收与 <paramref name="targetMethod"/> 精确相关的候选。
+        /// </summary>
+        /// <param name="receiverType">
+        /// 接收者类型。索引现按**声明类型 + 名字 + 签名**分键（与 <c>ComposeMethodFullName</c> 同键），
+        /// 故桶内已是"同一类型内同名同签名"的方法；本参数仍用于把与接收者无亲缘关系的候选挡在外面。
+        /// 为 <c>null</c> 时不再额外过滤。
+        /// </param>
+        /// <remarks>
+        /// <b>声明类型已并入查找键（原"方案 2"，现已采纳）：</b>
+        /// 旧形态的键只含名字+签名，于是整个编译期所有 <c>get_Count:int()</c> 落进同一桶，
+        /// 无关内部类型的方法会被 <c>PreferCallTargets</c> 的 internal 分支选中（该分支不校验全名，
+        /// 且 internal 无条件 +1000），把错误候选经 <c>resolvedCandidates[0]</c> 写进 <c>DispatchKind</c>。
+        /// 并入声明类型后，桶内只剩同类型方法，该误选路径消失。
+        /// </remarks>
+        /// <remarks>
+        /// <b>历史代价（已消解）：</b>并入声明类型后旧键与 <c>ComposeMethodFullName</c> **同键**，
+        /// 曾使 <c>_methodSymbolsByNameAndSignature</c> 与 <c>_methodSymbolsByFullName</c>
+        /// 退化为同一张表。冗余表**已删除**，本方法现只查后者一张表。
+        /// 跨类型回收接口/基类实现候选的能力**仍有**，但不再来自本桶，
+        /// 而来自 <c>_declaredTypes</c> 扫描、接收者基类/接口链枚举、
+        /// 以及 <c>ResolveSuperTypeFallbackCandidates</c>——它们都按类型显式枚举。
+        /// </remarks>
+        private IEnumerable<IMethodSymbol> ResolveExactMethodFallbackCandidates(
+          IMethodSymbol targetMethod,
+          ITypeSymbol? receiverType = null)
         {
             var fullName = ComposeMethodFullName(targetMethod);
-            var nameAndSignatureKey = ComposeMethodLookupKey(targetMethod);
             var candidates = new List<IMethodSymbol>();
+            List<IMethodSymbol>? bucketCandidates = null;
             lock (_cacheGate)
             {
-                if (_methodSymbolsByFullName.TryGetValue(fullName, out var methodsByFullName))
+                // ⚠ 原先此处读两张表：
+                //   ① _methodSymbolsByFullName[fullName]      —— 命中**无条件**入候选
+                //   ② _methodSymbolsByNameAndSignature[旧键]  —— 命中须过 IsRelatedToTarget
+                //   声明类型并入查找键后 ② 与 ① **同键同内容**（见 RegisterMethodSymbol），
+                //   故 ② 作为冗余表已删除；这里两段准入逻辑原样保留、只是同源读 ①。
+                //   刻意不把两段合并成单一路径：那会在"删冗余表"的同时改变候选集。
+                //
+                //   在门内取快照：桶是 List，出锁后枚举会与 reducer 的 Add 竞态（枚举中途变形）。
+                if (_methodSymbolsByFullName.TryGetValue(fullName, out var sameBucket))
                 {
-                    candidates.AddRange(methodsByFullName);
+                    candidates.AddRange(sameBucket);
+                    bucketCandidates = new List<IMethodSymbol>(sameBucket);
                 }
+            }
 
-                if (_methodSymbolsByNameAndSignature.TryGetValue(nameAndSignatureKey, out var methodsByNameAndSignature))
+            if (bucketCandidates is not null)
+            {
+                foreach (var candidate in bucketCandidates)
                 {
-                    candidates.AddRange(methodsByNameAndSignature);
+                    if (IsRelatedToTarget(candidate, targetMethod, receiverType))
+                    {
+                        candidates.Add(candidate);
+                    }
                 }
             }
 
             return candidates;
+        }
+
+        /// <summary>
+        /// 判定候选是否与目标处在同一分派族——用于过滤 <c>name:signature</c> 桶里的无关同名方法。
+        /// </summary>
+        /// <remarks>
+        /// <b>为何这条过滤是必要的（正确性，非洁癖）：</b>
+        /// <c>PreferCallTargets</c> 的 internal 分支（<c>internalMethods</c>）**只**看
+        /// <c>IsInternalMethod</c>，不校验全名，且 internal 无条件压过 external
+        /// （<c>CallTargetScore</c> 给 internal +1000）。于是当目标指向元数据里的
+        /// <c>IReadOnlyCollection&lt;T&gt;.get_Count</c>（internal=false）时，任何**无关**内部类型的
+        /// <c>get_Count:int()</c> 一旦进了候选集，就会被选中为分派目标，并经
+        /// <c>resolvedCandidates[0]</c> 写进 <c>dispatchKind</c> 而改变节点 id。
+        /// 这既是此前实测「同 span 同 fullName 而 dispatchKind 在 internal/external 间翻转」的
+        /// 直接成因，也是一个真实的错误候选问题（不只是不确定性）。
+        /// </remarks>
+        private static bool IsRelatedToTarget(
+          IMethodSymbol candidate,
+          IMethodSymbol targetMethod,
+          ITypeSymbol? receiverType)
+        {
+            // 原始定义一致 ⇒ 同一 override/泛型族，即使在元数据里也认可。
+            if (SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, targetMethod.OriginalDefinition))
+            {
+                return true;
+            }
+
+            // override 链命中，或候选重写了目标（含显式接口实现）。
+            if (candidate.OverriddenMethod is not null &&
+                SymbolEqualityComparer.Default.Equals(candidate.OverriddenMethod.OriginalDefinition, targetMethod.OriginalDefinition))
+            {
+                return true;
+            }
+
+            if (SymbolEqualityComparer.Default.Equals(candidate.OriginalDefinition, targetMethod.OriginalDefinition.OverriddenMethod))
+            {
+                return true;
+            }
+
+            // 显式接口实现：候选实现的就是目标那个接口方法。
+            foreach (var implemented in candidate.ExplicitInterfaceImplementations)
+            {
+                if (SymbolEqualityComparer.Default.Equals(implemented.OriginalDefinition, targetMethod.OriginalDefinition))
+                {
+                    return true;
+                }
+            }
+
+            foreach (var implemented in targetMethod.ExplicitInterfaceImplementations)
+            {
+                if (SymbolEqualityComparer.Default.Equals(implemented.OriginalDefinition, candidate.OriginalDefinition))
+                {
+                    return true;
+                }
+            }
+
+            var targetDeclaringType = targetMethod.ContainingType;
+            var candidateDeclaringType = candidate.ContainingType;
+            if (targetDeclaringType is null || candidateDeclaringType is null)
+            {
+                // 无声明类型无法判定亲缘：保守放行，避免把既有可解析的候选误滤掉。
+                return true;
+            }
+
+            // 声明类型之间存在继承/实现关系（双向），才算同一分派族。
+            // ⚠ 双向都要放行：目标声明类型是候选的基类/接口（候选是内部实现），
+            //   或候选声明类型是目标的基类（目标是内部实现，候选是外部回退）。
+            if (AreTypesRelated(candidateDeclaringType, targetDeclaringType))
+            {
+                return true;
+            }
+
+            // 菱形接口：实际接收者**同时**实现两侧声明类型时，两者都是合法分派目标。
+            // 这是唯一保留"声明类型彼此无关"的情形，故必须显式写出，否则会误滤。
+            if (receiverType is INamedTypeSymbol receiver &&
+                AreTypesRelated(receiver, targetDeclaringType) &&
+                AreTypesRelated(receiver, candidateDeclaringType))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 两个类型是否同族：相等、或存在任一方向的继承/实现关系。
+        /// </summary>
+        /// <remarks>
+        /// <b>为什么要同时比较构造类型与原始定义：</b>
+        /// <c>SymbolEqualityComparer.Default</c> 区分类型实参，故 <c>IFoo&lt;int&gt;</c> 与
+        /// <c>IFoo&lt;T&gt;</c> **不相等**，<c>AllInterfaces</c> 给出的也是构造后的接口。
+        /// 泛型上下文里目标的声明类型常是未构造定义，只比构造类型会产生**假阴性**
+        /// ——把真实候选误滤掉。故这里两个方向各比一遍构造类型与原定义；
+        /// 判据向"纳入"倾斜是刻意的：本方法的职责是排除**明显无关**的类型
+        /// （如无关内部类型的同名静态属性），而不是做精确分派推导。
+        /// </remarks>
+        private static bool AreTypesRelated(INamedTypeSymbol left, INamedTypeSymbol right)
+        {
+            if (SymbolEqualityComparer.Default.Equals(left, right) ||
+                SymbolEqualityComparer.Default.Equals(left.OriginalDefinition, right.OriginalDefinition))
+            {
+                return true;
+            }
+
+            return InheritsFrom(left, right) ||
+              InheritsFrom(right, left) ||
+              InheritsFrom(left.OriginalDefinition, right.OriginalDefinition) ||
+              InheritsFrom(right.OriginalDefinition, left.OriginalDefinition);
         }
 
         private IEnumerable<IMethodSymbol> ResolveSuperTypeFallbackCandidates(IMethodSymbol targetMethod, ITypeSymbol receiverType)
@@ -561,10 +804,14 @@ namespace NLCPG.Builder
             }
 
             // 归并 reducer 会在 worker 运行期间向该字典写入新方法，故先持门快照再枚举。
+            //
+            // 原先扫描的是已删除的 _methodSymbolsByNameAndSignature。该表与
+            // _methodSymbolsByFullName **同键同内容**，故换成后者**不改变**扫到的集合：
+            // 两者都登记同一批 canonicalMethod（见 RegisterMethodSymbol）。
             List<IMethodSymbol> extensionCandidates;
             lock (_cacheGate)
             {
-                extensionCandidates = _methodSymbolsByNameAndSignature.Values
+                extensionCandidates = _methodSymbolsByFullName.Values
                   .SelectMany(methodGroup => methodGroup)
                   .Where(method => method.IsExtensionMethod)
                   .ToList();
@@ -593,7 +840,7 @@ namespace NLCPG.Builder
             };
 
             // 精确命中的访问器实现先全部收集起来。
-            foreach (var exactMethod in ResolveExactMethodFallbackCandidates(accessorMethod))
+            foreach (var exactMethod in ResolveExactMethodFallbackCandidates(accessorMethod, receiverType))
             {
                 candidates[SymbolId(exactMethod)] = exactMethod;
             }
@@ -662,7 +909,7 @@ namespace NLCPG.Builder
             return candidates.Values;
         }
 
-        private static IEnumerable<IMethodSymbol> PreferCallTargets(IEnumerable<IMethodSymbol> methods, IMethodSymbol fallbackTarget, ITypeSymbol? receiverType)
+        private IEnumerable<IMethodSymbol> PreferCallTargets(IEnumerable<IMethodSymbol> methods, IMethodSymbol fallbackTarget, ITypeSymbol? receiverType)
         {
             var materialized = methods.ToList();
             var exactInternalMethods = materialized
@@ -698,7 +945,7 @@ namespace NLCPG.Builder
             return new[] { fallbackTarget };
         }
 
-        private static List<IMethodSymbol> ResolvePreferredCallTargets(IEnumerable<IMethodSymbol> methods, IMethodSymbol fallbackTarget, ITypeSymbol? receiverType)
+        private List<IMethodSymbol> ResolvePreferredCallTargets(IEnumerable<IMethodSymbol> methods, IMethodSymbol fallbackTarget, ITypeSymbol? receiverType)
         {
             var materialized = methods.ToList();
             if (materialized.Count == 0)
@@ -710,7 +957,7 @@ namespace NLCPG.Builder
             return preferredTargets.Count > 0 ? preferredTargets : materialized;
         }
 
-        private static IEnumerable<IMethodSymbol> RankCallTargets(IEnumerable<IMethodSymbol> methods, IMethodSymbol fallbackTarget, ITypeSymbol? receiverType)
+        private IEnumerable<IMethodSymbol> RankCallTargets(IEnumerable<IMethodSymbol> methods, IMethodSymbol fallbackTarget, ITypeSymbol? receiverType)
         {
             return methods
               .Distinct<IMethodSymbol>(SymbolEqualityComparer.Default)
@@ -719,7 +966,7 @@ namespace NLCPG.Builder
               .ToList();
         }
 
-        private static int CallTargetScore(IMethodSymbol candidate, IMethodSymbol fallbackTarget, ITypeSymbol? receiverType)
+        private int CallTargetScore(IMethodSymbol candidate, IMethodSymbol fallbackTarget, ITypeSymbol? receiverType)
         {
             var score = 0;
             // 工程内方法优先，尽量把调用边落到可分析的内部节点。
@@ -729,15 +976,18 @@ namespace NLCPG.Builder
             }
 
             // 精确 full name 命中优先级最高，通常代表 Roslyn 原解析结果未漂移。
-            if (string.Equals(ComposeMethodFullName(candidate), ComposeMethodFullName(fallbackTarget), StringComparison.Ordinal))
+            //
+            // ⚠ 曾存在两段「full name +500」与「name:signature +250」的评分。
+            //   声明类型并入查找键后两者同键、恒同时命中，故合并为一次比较、一次 +750——
+            //   **评分数值与排序完全不变**，只是不再对同一字符串重复拼接
+            //   （ComposeTypeFullName 未缓存，每调用一次即一次 ToDisplayString，
+            //   原先每个候选要付 4 次）。
+            if (string.Equals(
+              ComposeMethodFullName(candidate),
+              ComposeMethodFullName(fallbackTarget),
+              StringComparison.Ordinal))
             {
-                score += 500;
-            }
-
-            // name+signature 匹配比 full name 弱一级，但仍比普通同名候选更可信。
-            if (string.Equals(ComposeMethodLookupKey(candidate), ComposeMethodLookupKey(fallbackTarget), StringComparison.Ordinal))
-            {
-                score += 250;
+                score += 750;
             }
 
             // 原始定义一致说明它与回退目标处在同一 override/泛型族里。
@@ -801,12 +1051,15 @@ namespace NLCPG.Builder
         private void RegisterMethodSymbol(IMethodSymbol methodSymbol)
         {
             var canonicalMethod = CanonicalMethodSymbol(methodSymbol);
-            // 归并 reducer 会写入这两个查找表，而 worker 同时读取它们；
+            // 归并 reducer 会写入该查找表，而 worker 同时读取它；
             // 写入必须与读取处于同一临界区。锁可重入，嵌套在 GetOrCreateSymbolNode 内亦安全。
+            //
+            // 历史上这里还并列写入一张 _methodSymbolsByNameAndSignature（键为「名字:签名」）。
+            // 声明类型并入查找键后，该键与 ComposeMethodFullName **同键**，
+            // 两张表内容完全重复，故已删除该冗余表，只保留本表。
             lock (_cacheGate)
             {
                 RegisterMethodLookup(_methodSymbolsByFullName, ComposeMethodFullName(canonicalMethod), canonicalMethod);
-                RegisterMethodLookup(_methodSymbolsByNameAndSignature, ComposeMethodLookupKey(canonicalMethod), canonicalMethod);
             }
         }
 
@@ -854,7 +1107,7 @@ namespace NLCPG.Builder
             return collectedTypes;
         }
 
-        private static void AddBaseType(INamedTypeSymbol baseType, List<INamedTypeSymbol> collectedTypes, HashSet<string> seen)
+        private void AddBaseType(INamedTypeSymbol baseType, List<INamedTypeSymbol> collectedTypes, HashSet<string> seen)
         {
             var key = ComposeTypeFullName(baseType);
             if (seen.Add(key))
@@ -863,7 +1116,7 @@ namespace NLCPG.Builder
             }
         }
 
-        private static bool MethodSignatureMatches(IMethodSymbol candidate, IMethodSymbol targetMethod)
+        private bool MethodSignatureMatches(IMethodSymbol candidate, IMethodSymbol targetMethod)
         {
             if (!string.Equals(ComposeMethodName(candidate), ComposeMethodName(targetMethod), StringComparison.Ordinal))
             {
@@ -921,7 +1174,7 @@ namespace NLCPG.Builder
             return candidate.IsVirtual || candidate.IsOverride || candidate.IsAbstract || candidate.IsSealed;
         }
 
-        private static bool CanDispatchToExtensionReceiver(IMethodSymbol methodSymbol, ITypeSymbol receiverType)
+        private bool CanDispatchToExtensionReceiver(IMethodSymbol methodSymbol, ITypeSymbol receiverType)
         {
             if (!methodSymbol.IsExtensionMethod || methodSymbol.Parameters.Length == 0)
             {

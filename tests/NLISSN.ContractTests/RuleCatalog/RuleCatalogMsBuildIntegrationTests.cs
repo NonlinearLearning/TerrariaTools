@@ -44,7 +44,7 @@ public sealed class RuleCatalogMsBuildIntegrationTests
           rulesAssembly.GetReferencedAssemblies(),
           reference => string.Equals(
             reference.Name,
-            typeof(NLISSN.Rule.Generator.RuleCatalogGenerator).Assembly.GetName().Name,
+            typeof(NLISSN.Rule.Checker.RuleCatalogGenerator).Assembly.GetName().Name,
             StringComparison.Ordinal));
 
         var projectPath = RepositoryPath("src", "NLISSN.Rules", "NLISSN.Rules.csproj");

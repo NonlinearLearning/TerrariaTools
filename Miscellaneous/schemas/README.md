@@ -23,16 +23,14 @@ JSON Schema 的编辑器和工具能够在运行前知道：
 ## Schema 3 与工具分流
 
 `nlissn.schema.3.json` 使用 JSON Schema Draft 2020-12，格式版本固定为
-`schemaVersion: 3`。根字段 `tool` 必须是 `nlissn`、`nlcpg` 或
-`nlcpg-project-export` 之一：
+`schemaVersion: 3`。根字段 `tool` 必须是 `nlissn` 或 `nlcpg` 之一：
 
 | `tool` | 主要字段 |
 | --- | --- |
 | `nlissn` | `runId`、`input`、`analysis`、`execution`、`artifacts`、`logging` |
 | `nlcpg` | 可选 `input`、`nlcpg.view`、`nlcpg.output` |
-| `nlcpg-project-export` | `input`、`projectExport` |
 
-三个可执行入口都从当前工作目录读取 `nlissn.yml` 并拒绝全部命令行参数。相对路径
+两个可执行入口都从当前工作目录读取 `nlissn.yml` 并拒绝全部命令行参数。相对路径
 相对于配置文件所在目录解析；入口读取到不匹配的 `tool` 时会 fail closed。
 
 NLISSN loader 仍接受没有 `tool` 字段的 Schema 2 文档，以保留现有测试 fixture 和
@@ -45,11 +43,25 @@ NLISSN loader 仍接受没有 `tool` 字段的 Schema 2 文档，以保留现有
 `hops`、`direction` 和 `edgeKinds` 数组。`nlcpg.output.json` 只适用于局部视图，
 路径相对于配置文件解析。
 
-### `nlcpg-project-export` 分支
+### CPG 项目 JSON 导出
 
-`input.path` 指向待导出的 `.csproj`，`input` 还可设置 `targetFramework`、
-`configuration`、`platform`、`restore` 和 `generatedSources`。`projectExport` 提供
-`output`、`projectWorkerCount` 和 `resume`；`projectWorkerCount` 的有效上限是 12。
+项目级 JSON 导出不是独立入口，而是 NLISSN 的后置步骤，由 `artifacts.projectJson`
+开关控制。`enabled: true` 时在分析完成后对同一 `input` 执行导出；`output` 指定
+输出根目录（省略时为 `<runRoot>/ProjectJson`）。`projectWorkerCount` 是**单文档内部**
+builder 的并行度（文档之间串行），有效上限是 12；`documentShardCount` 默认 1，
+大于 1 时把单个文档的 payload 按节点区间切成多个分片。
+`performanceDiagnostics` 默认 `false`，打开后在 stdout 报告导出各阶段（工作区加载 /
+构图 / 投影 / 写盘）计时，只影响度量、不改变任何输出。
+`documentShardParallelism` 默认 1（逐片串行）；设为 >1 让多片同时在途，
+输出逐字节不变（已实测），但峰值随并行度上升，且实测总墙钟基本持平
+（投影加速约 2x，写盘同样幅度变慢）。
+`requestedCapabilities` 默认空 `[]`，即在 `NLCPGCapability.Default` 之外额外请求的
+CPG 能力位名称（如 `["InterproceduralDataFlow"]`）。空数组与省略等价、输出不变；
+非空**会改变 payload**（新增边并重排 `NodeId`），属契约变更而非度量开关，
+非法能力名硬报错。详见 `docs/cli-reference.md` 的字段表。
+⚠ 分片只作用于「物化 payload」这一段，端到端实测的收益很小（8 片约 −4% 峰值）
+且 payload 字节膨胀约 40%，不能当作大文档 OOM 的解法；详见 `docs/cli-reference.md`。
+它需要一个项目或解决方案输入。
 
 ### NLISSN 分支
 

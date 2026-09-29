@@ -109,6 +109,16 @@ public sealed class NLCPGGraph
     // ⚠ 由多个 worker 线程并发递增，故必须用 Interlocked（L0 那个是单线程的，可以直接 ++）。
     private int _workerComputeWindowEntryCount;
 
+    // AddNode 命中锚点、但 MergeNode 未改动任何字段 ⇒ 跳过写回的累计次数。
+    //
+    // 与 _workerComputeWindowEntryCount 同一理由：短路分支本身只能证明"跳过了"，
+    // 无法证明它**曾经被走到**。而"从未走到"与"没有这个分支"在观测上不可区分——
+    // 若真实语料里重放总在改动节点，短路就是死代码，而全部断言仍然全绿。
+    // 发布段在串行区，但其他 pass 也在 worker 内 AddNode，故仍用 Interlocked。
+    private int _redundantMergeSkipCount;
+
+    internal int RedundantMergeSkipCount => Volatile.Read(ref _redundantMergeSkipCount);
+
     /// <summary>
     /// 进入 **worker 计算窗口**（G0-P 附录 R.3 的 L1 计算层）。窗口内对<b>本图</b>的写操作会抛出。
     /// <para>
@@ -165,6 +175,11 @@ public sealed class NLCPGGraph
     public IReadOnlyCollection<NLCPGNode> Nodes =>
       _queryIndex is null ? _nodesByOrdinal : _queryIndex.InputOrderedNodes;
 
+    // 冻结后的 canonical（NodeId 升序）节点序，直接返回索引自身持有的数组实例。
+    // 供分片导出这类只读消费者使用：它们需要"按 NodeId 升序"的稳定序来决定分片局部序号，
+    // 而该序正是索引的 canonical 序，故无需再复制一份节点载荷。
+    internal IReadOnlyList<NLCPGNode> CanonicalNodes => RequireQueryIndex().OrderedNodes;
+
     // 冻结后由查询索引的投影视图提供（插入序，4 B/边）；冻结前恒为空，与
     // 原先 `_edges` HashSet 在冻结前从未被写入的行为一致（AddEdge 只写 _pendingEdges）。
     public IReadOnlyCollection<NLCPGEdge> Edges =>
@@ -181,6 +196,35 @@ public sealed class NLCPGGraph
     // ⚠ 只有调用方【不会在枚举期间改图】时才可使用：_keys 是 HashSet，
     //    枚举中修改会抛 InvalidOperationException。
     internal IEnumerable<PendingEdge> EnumeratePendingEdgesLazily() => _pendingEdges.EnumerateLazily(_nodesByOrdinal);
+
+    // scratch 图（worker 局部图）的【具名只读取数通道】。
+    //
+    // 背景：ControlFlow / Dominance / ControlDependence 三个 pass 各建一张 worker 局部图，
+    // 其唯一出口是 LocalCpgFragment（节点描述符 + 边候选）。此前它们经
+    // `FreezeQueryIndex()` 后读 `Nodes`/`Edges` 取数，即为这条出口付了整份查询索引的代价
+    // （确定性 NodeId、CSR 邻接、按种类分桶、全图 SHA-256），而那份索引随即随图变成垃圾。
+    //
+    // 为什么必须是【具名】通道，而不是"忘了调用 freeze"：
+    //   `Edges` 在未冻结时【静默返回空数组】（见上方 Edges 属性），删除 freeze 而不换数据源
+    //   会无声产出空边集（整个阶段的 CFG/支配/控制依赖事实全部丢失）。具名入口把
+    //   "这是 scratch 取数"这一意图显式化，并在入口处 fail-closed。
+    //
+    // 与 EnumeratePendingEdgesLazily 的关键差别（故不可合并）：
+    //   持久图的跨过程边【携带 CallSiteContext】，而该通道取的是【原始】ContextId；
+    //   冻结路径取的是【已解析】ContextId。两条路径在带调用点上下文时语义分叉，
+    //   故本入口对此显式抛错，而 EnumeratePendingEdgesLazily 不得加该守卫
+    //   （RunInterproceduralDataFlowPass 正是带 CallSiteContext 的调用方）。
+    internal IEnumerable<PendingEdge> EnumerateScratchEdges()
+    {
+        if (_queryIndex is not null)
+        {
+            throw new InvalidOperationException(
+              "scratch 取数要求图未冻结：冻结时 pending 缓冲已被整体释放（Release），"
+              + "且 Edges 会改走查询索引路径。scratch 图应在未冻结状态下经本入口取数。");
+        }
+
+        return _pendingEdges.EnumerateScratchEdges(_nodesByOrdinal);
+    }
 
     internal DeterministicNodeIdTable RequirePreallocatedNodeIds()
     {
@@ -281,9 +325,50 @@ public sealed class NLCPGGraph
             return materializedNode;
         }
 
-        var merged = MergeNode(_nodesByOrdinal[existingOrdinal], materializedNode);
+        var existing = _nodesByOrdinal[existingOrdinal];
+        var merged = MergeNode(existing, materializedNode);
+
+        // 【热路径短路】MergeNode 只把 candidate 的【非空】字段盖到 existing 上
+        // （`candidate.X == 0 ? existing.X : candidate.X`），故重放一个字段已被 existing
+        // 覆盖的 candidate 时，merged 与 existing 逐字段相同，写回是空操作。
+        //
+        // 发布段每条跨过程边都会走到这里：端点取自已物化的冻结边快照池 ⇒ 锚点必然命中，
+        // 于是每条边都付一次 MergeNode 构造（104 B 结构 + 9 个字段的三元选择）与一次
+        // List 元素写回。短路后，在"重放无变化"时这些全部省掉。
+        //
+        // ⚠️ 这里【不能】用 `existing.Equals(merged)`：NLCPGNode.Equals 在两端都带
+        // StableAnchor 时【只比 StableAnchor】（NLCPGNode.cs:20-26），而 merged 是
+        // `existing with {...}`、锚点必然相同 ⇒ 该调用【恒为 true】，
+        // 会把所有真实差异静默丢弃、直接改变图。故必须逐字段比较。
+        //
+        // 比较的字段集【恰好等于】MergeNode 会覆写的那 9 个：Kind/NodeId/StableAnchor
+        // 在 MergeNode 中被原样继承，永远不可能不同，列进来只会误导读者。
+        if (!MergeWouldChangeAnyField(existing, merged))
+        {
+            Interlocked.Increment(ref _redundantMergeSkipCount);
+            // 返回 existing（而非 merged）：二者在本分支下逐字段相同，但返回 existing
+            // 才能让"没有改动图内节点"与"返回的是图内那个节点"这两件事一致。
+            return existing;
+        }
+
         _nodesByOrdinal[existingOrdinal] = merged;
         return merged;
+    }
+
+    // MergeNode 是否真的改动了 existing。字段集必须与 MergeNode 的覆写列表逐一对应，
+    // 且【不可】复用 NLCPGNode.Equals——后者的 StableAnchor 短路语义不适用于
+    // "同一锚点的两个候选谁更完整"这一判断（详见 AddNode 内的注释）。
+    private static bool MergeWouldChangeAnyField(NLCPGNode existing, NLCPGNode merged)
+    {
+        return existing.NameId != merged.NameId ||
+          existing.FullNameId != merged.FullNameId ||
+          existing.SignatureId != merged.SignatureId ||
+          existing.DispatchKind != merged.DispatchKind ||
+          existing.TypeFullNameId != merged.TypeFullNameId ||
+          existing.FilePathId != merged.FilePathId ||
+          existing.SpanStart != merged.SpanStart ||
+          existing.SpanEnd != merged.SpanEnd ||
+          existing.IsImplicit != merged.IsImplicit;
     }
 
     // 将只在构图阶段存在的文本草稿物化为图内字符串 ID。
@@ -1285,6 +1370,49 @@ public sealed class NLCPGGraph
             foreach (var key in _keys)
             {
                 var metadata = _metadataById[key.MetadataId];
+                yield return new PendingEdge(
+                  nodesByOrdinal[key.SourceOrdinal],
+                  nodesByOrdinal[key.TargetOrdinal],
+                  key.Kind,
+                  metadata?.StructuredLabel,
+                  metadata?.ContextId,
+                  metadata?.CallSiteContext);
+            }
+        }
+
+        // scratch 取数：与 EnumerateLazily 同一 _keys、同一顺序，但额外守卫
+        // "scratch 边不得携带调用点上下文"。
+        //
+        // 为什么这条守卫必须存在（否则是一个【静默】差异）：
+        //   · 冻结路径经 EnumerateOrdinalsLazily 取的是【已解析】ContextId
+        //     （_resolvedContextIdById[MetadataId]）；
+        //   · pending 路径经 EnumerateLazily 取的是【原始】ContextId（metadata?.ContextId）。
+        //   解析规则是 `callSiteContext?.ToContextId() ?? contextId` ⇒ **只有 CallSiteContext
+        //   非空时两路才分叉**（冻结路径给出插值出的非 null 值，pending 路径给出原始值/null）；
+        //   而仅有显式 ContextId 时两路逐字段相同（resolved == 原始值）。
+        //   生产侧 scratch 边的元数据恒为 null（四类发射点均 3 参 AddEdge 或显式 null），
+        //   故当前两路都给出 null。但若将来有人给 scratch 边挂上 CallSiteContext，
+        //   冻结路径会给出【非 null 已解析值】、pending 路径给出 null，不抛异常、不报错。
+        //   判据刻意只认 CallSiteContext，以免把"其实不发散"的显式 ContextId 也一并误拒。
+        internal IEnumerable<PendingEdge> EnumerateScratchEdges(IReadOnlyList<NLCPGNode> nodesByOrdinal)
+        {
+            ThrowIfReleased();
+            return EnumerateScratchEdgesCore(nodesByOrdinal);
+        }
+
+        private IEnumerable<PendingEdge> EnumerateScratchEdgesCore(IReadOnlyList<NLCPGNode> nodesByOrdinal)
+        {
+            foreach (var key in _keys)
+            {
+                var metadata = _metadataById[key.MetadataId];
+                if (metadata?.CallSiteContext is not null)
+                {
+                    throw new InvalidOperationException(
+                      "scratch 边不得携带 CallSiteContext：scratch 取数通道给出的是【原始】ContextId，"
+                      + "而冻结路径给出 ToContextId() 解析后的值，两者在携带 CallSiteContext 时分叉。"
+                      + "若确需带调用点上下文，请改走 FreezeQueryIndex + Edges 路径。");
+                }
+
                 yield return new PendingEdge(
                   nodesByOrdinal[key.SourceOrdinal],
                   nodesByOrdinal[key.TargetOrdinal],

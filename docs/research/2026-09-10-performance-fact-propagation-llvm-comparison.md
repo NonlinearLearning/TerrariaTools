@@ -154,7 +154,7 @@ LLVM LNT 的官方 [test_suite.py](https://github.com/llvm/llvm-lnt/blob/main/ln
 2. compile/build、execution/rule、artifact/write-back 等阶段要有独立边界；
 3. profile 和深诊断不能静默混入 normal 或 benchmark 样本。
 
-这与当前 [性能分析组件设计](../../设计docs/目前设计/性能分析组件.md:79) 中的 run identity、stage sample、terminal summary 和 normal/diagnostic/profile/benchmark 模式一致，但该设计还没有规定 NLCPG 的 facts 具体如何经过 Application 和 Directory。
+这与当前 [性能分析组件设计](../CodeDesign/目前设计/性能分析组件.md:79) 中的 run identity、stage sample、terminal summary 和 normal/diagnostic/profile/benchmark 模式一致，但该设计还没有规定 NLCPG 的 facts 具体如何经过 Application 和 Directory。
 
 ### Joern：按文件收集，输出前稳定排序
 
@@ -255,7 +255,7 @@ Joern 官方 X2Cpg 的 [Report.scala](https://github.com/joernio/joern/blob/main
 
 ### 当前项目
 
-- [性能分析组件设计](../../设计docs/目前设计/性能分析组件.md)
+- [性能分析组件设计](../CodeDesign/目前设计/性能分析组件.md)
 - [分析流程耗时性能研究报告](2026-09-09-analysis-pipeline-performance-study.md)
 - [NLCPGBuildMetrics.cs](../../src/NLCPG/Builder/NLCPGBuildMetrics.cs)
 - [NLCPGBuilder.cs](../../src/NLCPG/Builder/NLCPGBuilder.cs)

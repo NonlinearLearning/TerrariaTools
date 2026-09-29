@@ -16,6 +16,15 @@ internal sealed class WorkspaceAnalysisService
     private readonly RulePipeline _pipeline;
     private readonly MsBuildWorkspaceInputLoader _loader = new();
 
+    /// <summary>
+    /// 本次分析实际使用的工作区快照；加载成功前为 <c>null</c>。
+    /// </summary>
+    /// <remarks>
+    /// 供同进程内的后续步骤（项目级 JSON 导出）复用，以免为同一工程再跑一次 MSBuild 加载。
+    /// 只暴露给宿主内部消费；调用方必须先自行确认「复用是等价的」（见导出器的重载说明）。
+    /// </remarks>
+    internal WorkspaceSolutionSnapshot? LoadedSnapshot { get; private set; }
+
     internal WorkspaceAnalysisService(RulePipeline pipeline)
     {
         _pipeline = pipeline;
@@ -53,6 +62,7 @@ internal sealed class WorkspaceAnalysisService
             }
 
             var stopwatch = Stopwatch.StartNew();
+            LoadedSnapshot = loadResult.Snapshot;
             var projectOutcomes = new List<DirectoryAnalysisOutcome>(loadResult.Snapshot!.Projects.Count);
             var projectPerformance = new List<WorkspaceProjectPerformanceFacts>(loadResult.Snapshot.Projects.Count);
             var useCase = new DirectoryAnalysisUseCase(_pipeline);

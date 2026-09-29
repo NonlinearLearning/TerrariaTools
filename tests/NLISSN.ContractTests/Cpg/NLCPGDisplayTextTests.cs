@@ -10,6 +10,10 @@ using Xunit;
 
 namespace RoslynPrototype.Tests;
 
+// 这些用例调用 NLCPGCli，而 CLI 通过 Directory.GetCurrentDirectory() 解析 nlissn.yml，
+// 故它们必须 Directory.SetCurrentDirectory()。CWD 是进程级状态，会与并行运行的其他集合
+// 互相污染（其他用例把相对路径交给 Path.GetFullPath，会解析到本类的临时目录）。
+[Collection("ProcessCurrentDirectory")]
 public sealed class NLCPGDisplayTextTests
 {
     [Fact]

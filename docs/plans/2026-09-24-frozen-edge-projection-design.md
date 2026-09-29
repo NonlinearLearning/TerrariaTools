@@ -185,7 +185,7 @@ FreezeQueryIndex()                      NLCPGGraph.cs:435-449
 `设计docs/目前设计/cpg-architecture.md:21-25` 作为当前设计记录。
 
 > **注（2026-09-24）**：本设计落地后，边侧**已有对应物**，该架构文档也已同步更新
-> （见 [最小 CPG 架构](../../设计docs/目前设计/cpg-architecture.md)）。本节保留原状，
+> （见 [最小 CPG 架构](../CodeDesign/目前设计/cpg-architecture.md)）。本节保留原状，
 > 用于记录**改造前**的差距。
 >
 > ⚠️ **`设计docs/` 被 `.gitignore:10` 忽略**，故该同步**不进入版本控制**，
@@ -495,7 +495,7 @@ NPC.cs 当前常驻边占用占本机 **13.86 GiB** 上限的 **29.3%**（单一
   —— 事实基础与 9 项否决
 - [冻结边投影化执行计划](2026-09-24-frozen-edge-projection-execution.md)
   —— 本设计的执行分解
-- [最小 CPG 架构](../../设计docs/目前设计/cpg-architecture.md)
+- [最小 CPG 架构](../CodeDesign/目前设计/cpg-architecture.md)
   —— 节点侧序数化投影（`OrdinalNodeList`）的当前设计记录
 - `src/NLCPG/Model/NLCPGGraphIndex.cs`、`NLCPGGraph.cs`、`OrdinalEdgeList.cs`
 - `tests/NLISSN.ContractTests/Cpg/NLCPGGraphIndexStorageContractTests.cs`

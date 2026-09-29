@@ -277,6 +277,52 @@ public sealed class NLCPGNodeIdContractTests
   }
 
   [Fact]
+  public void StreamingWriters_DoNotRetainWriteOnlyPublicationLogs()
+  {
+    var assembly = typeof(NLCPGBuilder).Assembly;
+    var publisher = assembly.GetType("NLCPG.Builder.Streaming.SkeletonShardPublisher");
+    Assert.NotNull(publisher);
+    var session = assembly.GetType("NLCPG.Builder.CpgShardBuildSession");
+    Assert.NotNull(session);
+    var writer = assembly.GetType("NLCPG.Persistence.Sqlite.CpgCatalogBatchWriter");
+    Assert.NotNull(writer);
+
+    // 这些字段只被写入、从不被读取，且随构建规模无界增长。
+    Assert.DoesNotContain(DeclaredFieldNames(publisher!), name => name == "_publishedOrders");
+    Assert.DoesNotContain(DeclaredFieldNames(publisher!), name => name == "_publishedKinds");
+    Assert.DoesNotContain(DeclaredFieldNames(session!), name => name == "_stagedLocations");
+    Assert.DoesNotContain(DeclaredFieldNames(session!), name => name == "_storeLockWaitMilliseconds");
+    Assert.DoesNotContain(DeclaredFieldNames(writer!), name => name == "_maxQueueDepth");
+  }
+
+  [Fact]
+  public void CpgShardBuildCoordinator_HasNoDeadSpanHelper()
+  {
+    var coordinator = typeof(NLCPGBuilder).Assembly.GetType("NLCPG.Builder.CpgShardBuildCoordinator");
+    Assert.NotNull(coordinator);
+
+    Assert.DoesNotContain(
+      coordinator!.GetMethods(
+        System.Reflection.BindingFlags.Instance |
+        System.Reflection.BindingFlags.Static |
+        System.Reflection.BindingFlags.NonPublic |
+        System.Reflection.BindingFlags.Public |
+        System.Reflection.BindingFlags.DeclaredOnly),
+      method => method.Name == "IsInside");
+  }
+
+  private static IEnumerable<string> DeclaredFieldNames(Type type)
+  {
+    return type.GetFields(
+      System.Reflection.BindingFlags.Instance |
+      System.Reflection.BindingFlags.Static |
+      System.Reflection.BindingFlags.NonPublic |
+      System.Reflection.BindingFlags.Public |
+      System.Reflection.BindingFlags.DeclaredOnly)
+      .Select(field => field.Name);
+  }
+
+  [Fact]
   public void StableNodeIdentityFactory_ReusesStableAnchorAcrossGraphLifetimes()
   {
     var identityFactory = new StableNodeIdentityFactory();

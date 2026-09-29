@@ -9,8 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\Shared\RulePipelineTestFactory.cs"
-             Link="Shared\RulePipelineTestFactory.cs" />
     <EmbeddedResource Include="Identity\RuleIdentitySnapshot.json">
       <LogicalName>NLISSN.ContractTests.RuleIdentitySnapshot.json</LogicalName>
     </EmbeddedResource>
@@ -27,15 +25,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- 测试并行配置来自 tests/xunit.runner.json，必须复制到输出目录才会被 xUnit 读取。 -->
+    <None Include="..\xunit.runner.json" Link="xunit.runner.json"
+          CopyToOutputDirectory="PreserveNewest" Visible="false" />
     <Using Include="RoslynPrototype.Tests" />
     <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Concurrency\NL.Concurrency.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Infrastructure\Workspace\NLISSN.Workspace.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Application\NLISSN.Application.csproj" />
     <ProjectReference Include="..\..\src\NLISSN\NLISSN.csproj" />
     <ProjectReference Include="..\..\src\NLCPG\NLCPG.csproj" />
-    <ProjectReference Include="..\..\src\NLCPG.ProjectExport\NLCPG.ProjectExport.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Core\NLISSN.Core.csproj" />
-    <ProjectReference Include="..\..\src\NLISSN.Rule.Generator\NLISSN.Rule.Generator.csproj" />
+    <ProjectReference Include="..\..\src\NLISSN.Rule\Checker\NLISSN.Rule.Checker.csproj" />
     <ProjectReference Include="..\..\src\NLISSN.Rules\NLISSN.Rules.csproj" />
     <ProjectReference Include="..\NLISSN.Testing\RoslynDeletionPrototype.Testing.csproj" />
   </ItemGroup>

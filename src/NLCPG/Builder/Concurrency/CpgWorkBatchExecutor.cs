@@ -22,7 +22,8 @@ public sealed record CpgWorkBatchExecutorOptions
       long admissionReservedByteCount = 0,
       Action<CpgWorkBatchPerformanceEvent>? telemetrySink = null,
       string? performanceRunId = null,
-      bool useSynchronousExecution = false)
+      bool useSynchronousExecution = false,
+      CpgWorkerUtilizationCollector? workerUtilizationCollector = null)
     {
         if (maxDegreeOfParallelism <= 0)
         {
@@ -64,6 +65,7 @@ public sealed record CpgWorkBatchExecutorOptions
         TelemetrySink = telemetrySink;
         PerformanceRunId = performanceRunId;
         UseSynchronousExecution = useSynchronousExecution;
+        WorkerUtilizationCollector = workerUtilizationCollector;
     }
 
     public int MaxDegreeOfParallelism { get; }
@@ -85,6 +87,11 @@ public sealed record CpgWorkBatchExecutorOptions
     public string? PerformanceRunId { get; }
 
     public bool UseSynchronousExecution { get; }
+
+    /// <summary>
+    /// 可选的跨构建 per-worker 使用率汇总端；<c>null</c> 时不产生任何记账开销。
+    /// </summary>
+    public CpgWorkerUtilizationCollector? WorkerUtilizationCollector { get; }
 
     public int EffectiveQueueCapacity => QueueCapacity ?? Math.Max(2 * MaxDegreeOfParallelism, 8);
 
@@ -639,6 +646,15 @@ public sealed class CpgWorkBatchExecutor
         // 也让"窗口的开合点只有一个"成为结构事实（而非依赖各处重复写对）。
         var workerWindowEnter = CombineWindows(_workerComputeWindowEnter, _sharedStateWindowEnter);
         var workerWindowExit = CombineWindowsReversed(_workerComputeWindowExit, _sharedStateWindowExit);
+        // per-worker 记账是可选的：collector 为 null 时连数组都不分配，保持既有零开销路径。
+        var workerAccounting = _options.WorkerUtilizationCollector is null
+          ? null
+          : new CpgWorkerAccounting[workerCount];
+        if (workerAccounting is not null)
+        {
+            _options.WorkerUtilizationCollector!.RecordWorkerCount(workerCount);
+        }
+
         var workers = Enumerable.Range(0, workerCount)
           .Select(workerIndex => Task.Run(
             () => WorkerLoopAsync(
@@ -655,7 +671,11 @@ public sealed class CpgWorkBatchExecutor
               // 图侧（不写共享图）与 builder 侧（不共享可变中间态）两对钩子已在上方合并为
               // 同一对开合点，故不存在"只开了其中一个窗口"的漏配形态。
               workerWindowEnter,
-              workerWindowExit),
+              workerWindowExit,
+              // 记账对象必须**在 worker 线程内**创建：worker 的存活期就是它在循环里的
+              // 线程时间，若在主线程提前创建会把调度延迟算进存活期。
+              // 每个下标只被一个 worker 写，读取发生在 Task.WhenAll 之后，故无需同步。
+              CreateWorkerAccounting(workerAccounting, workerIndex)),
             CancellationToken.None))
           .ToArray();
 
@@ -696,6 +716,17 @@ public sealed class CpgWorkBatchExecutor
         }
         finally
         {
+            // 在 worker 全部收尾后取快照：此时每个 worker 的存活期已完整，
+            // 且不再有并发写入。失败路径也要落账，否则失败运行会缺这份报告。
+            if (workerAccounting is not null)
+            {
+                var collector = _options.WorkerUtilizationCollector!;
+                foreach (var accounting in workerAccounting)
+                {
+                    collector.Record(accounting?.Snapshot());
+                }
+            }
+
             resultChannel.Writer.TryComplete(firstFailure?.SourceException);
         }
 
@@ -748,12 +779,18 @@ public sealed class CpgWorkBatchExecutor
         // 避免每个批次各分配一对闭包（同步路径无并发，钩子仅用于统一守卫语义）。
         var workerWindowEnter = CombineWindows(_workerComputeWindowEnter, _sharedStateWindowEnter);
         var workerWindowExit = CombineWindowsReversed(_workerComputeWindowExit, _sharedStateWindowExit);
+        // 同步路径同样记账：它只有一个 worker（下标 0），但若不记账，
+        // 整份报告会退化成"从未启动"，读者无从区分"没用 worker"和"没有数据"。
+        var collector = _options.WorkerUtilizationCollector;
+        var accounting = collector is null ? null : new CpgWorkerAccounting(workerIndex: 0);
+        collector?.RecordWorkerCount(1);
         foreach (var batch in batches.OrderBy(batch => batch.ShardOrder))
         {
             cancellationToken.ThrowIfCancellationRequested();
             telemetry.BatchEnqueueStarted(batch);
             telemetry.BatchStarted(batch, workerIndex: 0);
             TResult result;
+            accounting?.BeginBatch();
             try
             {
                 result = ProcessBatchInWorkerWindow(
@@ -771,6 +808,10 @@ public sealed class CpgWorkBatchExecutor
                   $"Synchronous WorkBatch execution failed for batch {batch.BatchId}.",
                   exception);
             }
+            finally
+            {
+                accounting?.EndBatch();
+            }
 
             var trace = telemetry.BatchCompleted(
               batch,
@@ -781,8 +822,30 @@ public sealed class CpgWorkBatchExecutor
             telemetry.Publish(trace);
         }
 
+        collector?.Record(accounting?.Snapshot());
         telemetry.Complete();
         return collected ?? (IReadOnlyList<TResult>)Array.Empty<TResult>();
+    }
+
+    /// <summary>
+    /// 在 worker 线程内创建记账对象并登记到 <paramref name="sink"/> 的对应下标。
+    /// </summary>
+    /// <remarks>
+    /// 必须在 worker 线程内创建：<see cref="CpgWorkerAccounting"/> 的存活期从构造那一刻起算，
+    /// 若在主线程提前构造，线程池调度延迟会被算进存活期，从而系统性压低使用率。
+    /// 写入发生在 worker 任务内、读取发生在 <c>Task.WhenAll</c> 之后，
+    /// 任务完成语义已提供所需的可见性，故无需额外同步。
+    /// </remarks>
+    private static CpgWorkerAccounting? CreateWorkerAccounting(CpgWorkerAccounting?[]? sink, int workerIndex)
+    {
+        if (sink is null)
+        {
+            return null;
+        }
+
+        var accounting = new CpgWorkerAccounting(workerIndex);
+        sink[workerIndex] = accounting;
+        return accounting;
     }
 
     private static async Task WorkerLoopAsync<TResult>(
@@ -796,7 +859,8 @@ public sealed class CpgWorkBatchExecutor
       Func<TResult, CpgWorkBatchResultMetrics>? resultMetrics,
       CancellationToken cancellationToken,
       Action? windowEnter,
-      Action? windowExit)
+      Action? windowExit,
+      CpgWorkerAccounting? accounting)
     {
         try
         {
@@ -806,6 +870,7 @@ public sealed class CpgWorkBatchExecutor
                 cancellationToken.ThrowIfCancellationRequested();
                 TResult result;
                 telemetry.BatchStarted(batch, workerIndex);
+                accounting?.BeginBatch();
                 try
                 {
                     result = ProcessBatchInWorkerWindow(
@@ -821,6 +886,12 @@ public sealed class CpgWorkBatchExecutor
                     telemetry.BatchFailed(batch, workerIndex);
                     recordFailure(exception);
                     return;
+                }
+                finally
+                {
+                    // 成功与失败都收尾：失败的 batch 同样占用了 worker 时间，
+                    // 漏记会把失败运行报成"worker 很闲"。
+                    accounting?.EndBatch();
                 }
 
                 try

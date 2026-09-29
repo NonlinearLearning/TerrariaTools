@@ -20,8 +20,6 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     private readonly Task _catalogDispatcher;
     private readonly IDisposable _storeLock;
     private readonly string _stagingRoot;
-    private readonly long _storeLockWaitMilliseconds;
-    private readonly List<CpgShardLocation> _stagedLocations = new();
     private readonly List<CpgReusableCloneRequest> _reusableCloneRequests = new();
     private readonly List<CpgBuildRoutingShardEntry> _routingEntries = new();
     private readonly HashSet<CpgShardLookup> _publishedLookups = new();
@@ -51,13 +49,12 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
     private Task? _disposeTask;
     private readonly object _disposeGate = new();
 
-    private CpgShardBuildSession(CpgPersistenceOptions options, IDisposable storeLock, SqliteCpgShardCatalog catalog, string buildId, string stagingRoot, long storeLockWaitMilliseconds)
+    private CpgShardBuildSession(CpgPersistenceOptions options, IDisposable storeLock, SqliteCpgShardCatalog catalog, string buildId, string stagingRoot)
     {
         _storeLock = storeLock;
         _catalog = catalog;
         _catalogWriter = new CpgCatalogBatchWriter(catalog, buildId, options);
         _stagingRoot = stagingRoot;
-        _storeLockWaitMilliseconds = storeLockWaitMilliseconds;
         BuildId = buildId;
         Store = new CpgShardStore(stagingRoot, options.DurabilityMode);
         _publications = Channel.CreateBounded<CpgShardPublication>(new BoundedChannelOptions(
@@ -153,12 +150,10 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
 
     internal static async Task<CpgShardBuildSession> BeginAsync(CpgPersistenceOptions options, CancellationToken cancellationToken)
     {
-        var lockStopwatch = Stopwatch.StartNew();
         var storeLock = await CpgShardStoreLock.AcquireAsync(
           options.StoreRoot,
           TimeSpan.FromMilliseconds(options.StoreLockWaitMilliseconds),
           cancellationToken);
-        lockStopwatch.Stop();
         try
         {
             var catalog = new SqliteCpgShardCatalog(Path.Combine(options.StoreRoot, "catalog.db"));
@@ -169,8 +164,7 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
               storeLock,
               catalog,
               buildId,
-              stagingRoot,
-              lockStopwatch.ElapsedMilliseconds);
+              stagingRoot);
         }
         catch
         {
@@ -362,10 +356,6 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
           cancellationToken);
         catalogFinalizeStopwatch.Stop();
         Interlocked.Add(ref _catalogFinalizeMilliseconds, catalogFinalizeStopwatch.ElapsedMilliseconds);
-        foreach (var request in reusableCloneRequests)
-        {
-            _stagedLocations.Add(request.Source.Location);
-        }
         File.WriteAllText(
           Path.Combine(_stagingRoot, CompletionMarkerFileName),
           BuildId,
@@ -513,7 +503,6 @@ internal sealed class CpgShardBuildSession : IAsyncDisposable
                       nextPublication.Shard,
                       nextPublication.ReusableKey,
                       CancellationToken.None);
-                    _stagedLocations.Add(nextPublication.Location);
                     lock (_routingEntries)
                     {
                         _routingEntries.Add(new CpgBuildRoutingShardEntry(

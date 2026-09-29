@@ -41,7 +41,7 @@ M5 不依赖 M7；M2 不依赖 M1 的表示，但二者不能同时改同一文�
 
 ## 3. 共同前置条件
 
-1. 阅读 [当前交接](../../Context/progress.md)、[贡献指南](../contributing.md)、[领域不变量](../../CONTEXT.md)、[CPG 当前设计](../../设计docs/目前设计/cpg-architecture.md)、[测试入口](../../tests/AGENTS.md)、[测试规范](../../约束/测试代码编写教程.md)、[Harness Runtime](../harness-runtime.md)。修改 C# 前再读 [C# 规范](../../约束/Google-CSharp-Style-Guide-约束.md)。
+1. 阅读 [当前交接](../../Context/progress.md)、[贡献指南](../contributing.md)、[领域不变量](../../Context/CONTEXT.md)、[CPG 当前设计](../CodeDesign/目前设计/cpg-architecture.md)、[测试入口](../../tests/AGENTS.md)、[测试规范](../../Context/约束/测试代码编写教程.md)、[Harness Runtime](../harness-runtime.md)。修改 C# 前再读 [C# 规范](../../Context/约束/Google-CSharp-Style-Guide-约束.md)。
 2. 保存本项涉及文件的工作树 diff、源码 SHA256、构建产物 SHA256、运行时/输入/选项/预算/DOP。工作树已有大量其他修改，`HEAD` 不能替代实施前基线。备份和诊断放 `Build/MemoryOptimization/<M编号>/<唯一运行号>/`，不提交派生二进制。
 3. 用当前二进制冻结小夹具的完整节点字段、完整边元数据、节点/边枚举序和候选提交序列；先验证既有测试在实施前的真实状态。原 oracle 不能用优化后的输出覆盖。
 4. 产品代码只保留一种正常输入实现；临时 A/B 探针可以在独立诊断宿主使用，完成后清除产品开关。改变 GC 设置、DOP 或预算的运行不能作为单变量 A/B。

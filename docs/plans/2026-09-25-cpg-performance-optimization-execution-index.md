@@ -75,7 +75,7 @@ P01 → P02 串行执行，同文件且后者必须以已验收的前者为基�
 
 ## 5. 公共操作入口
 
-动手前阅读 [根导航](../../AGENTS.md)、[贡献指南](../contributing.md)、[领域不变量](../../CONTEXT.md)、[测试入口](../../tests/AGENTS.md)、[测试规范](../../约束/测试代码编写教程.md)、[C# 规范](../../约束/Google-CSharp-Style-Guide-约束.md)、[Harness Runtime](../harness-runtime.md)。
+动手前阅读 [根导航](../../AGENTS.md)、[贡献指南](../contributing.md)、[领域不变量](../../Context/CONTEXT.md)、[测试入口](../../tests/AGENTS.md)、[测试规范](../../Context/约束/测试代码编写教程.md)、[C# 规范](../../Context/约束/Google-CSharp-Style-Guide-约束.md)、[Harness Runtime](../harness-runtime.md)。
 
 ~~~powershell
 pwsh -File ./Miscellaneous/init.ps1

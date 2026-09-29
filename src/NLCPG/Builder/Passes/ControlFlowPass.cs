@@ -133,26 +133,24 @@ namespace NLCPG.Builder
                 AddMethodLevelControlFlow(document, localGraph, item.StableOrder);
             }
 
-            localGraph.FreezeQueryIndex();
+            // scratch 取数：不再 FreezeQueryIndex（那会为这条出口建一份随即变垃圾的完整查询索引：
+            // 确定性 NodeId、CSR 邻接、按种类分桶、全图 SHA-256）。改为经具名 scratch 通道直接读
+            // pending 边 —— 两端节点在 AddNode 时已带 StableAnchor，而片段的出口只要锚点。
+            //
+            // 为什么不能"只删掉 FreezeQueryIndex"：Edges 在未冻结时【静默返回空数组】
+            // ⇒ 会无声产出空边集。故必须换数据源，而不是换调用时机。
+            // ⚠ 取数必须在任何冻结之前：冻结会 Release pending 缓冲，此后读取抛异常。
             var nodeDescriptors = localGraph.Nodes
               .Select(CpgNodeDescriptor.FromNode)
               .ToArray();
-            var nodesById = localGraph.Nodes
-              .Where(node => node.NodeId.HasValue)
-              .ToDictionary(node => node.NodeId!.Value);
-            var edgeCandidates = localGraph.Edges
-              .Select(edge =>
-              {
-                  var source = nodesById[edge.SourceNodeId];
-                  var target = nodesById[edge.TargetNodeId];
-                  return new CpgEdgeCandidate(
-                    source.StableAnchor!.Value,
-                    target.StableAnchor!.Value,
-                    edge.Kind,
-                    edge.StructuredLabel,
-                    edge.ContextId,
-                    edge.CallSiteContext);
-              })
+            var edgeCandidates = localGraph.EnumerateScratchEdges()
+              .Select(edge => new CpgEdgeCandidate(
+                edge.SourceNode.StableAnchor!.Value,
+                edge.TargetNode.StableAnchor!.Value,
+                edge.Kind,
+                edge.StructuredLabel,
+                edge.ContextId,
+                edge.CallSiteContext))
               .ToArray();
             // nodeDescriptors/edgeCandidates 是本方法刚 ToArray 出来的独占数组，
             // 之后没有写入、缓存或对象池归还，故交给 CreateOwned 接管，省掉构造器的第二次复制。

@@ -219,7 +219,7 @@ git commit -m "refactor: remove core feature selection"
 ## 5. Task 4: 删除四个延期 feature 的测试和兼容入口
 
 **Files:**
-- Modify: `tests/Shared/RulePipelineTestFactory.cs`
+- Modify: `tests/NLISSN.Testing/TestInfrastructure/RulePipelineTestFactory.cs`
 - Modify: `tests/NLISSN.UnitTests/Application/DirectoryAnalysisUseCaseTests.cs`
 - Modify: `tests/NLISSN.HostTests/Application/ApplicationServiceFlowTests.cs`
 - Modify: `tests/NLISSN.HostTests/Application/PipelineComponentTests.cs`
@@ -267,7 +267,7 @@ Expected: 选中的范围测试 PASS，且四个延期 feature 不能通过任�
 ### Step 4: Commit
 
 ```powershell
-git add tests/Shared tests/NLISSN.UnitTests tests/NLISSN.HostTests tests/NLISSN.ContractTests/Identity
+git add tests/NLISSN.Testing/TestInfrastructure tests/NLISSN.UnitTests tests/NLISSN.HostTests tests/NLISSN.ContractTests/Identity
 git commit -m "test: remove deferred feature compatibility paths"
 ```
 

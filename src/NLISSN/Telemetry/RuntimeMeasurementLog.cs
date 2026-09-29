@@ -103,6 +103,7 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
         var operations = runtime.ConcurrencyTelemetry.Operations;
         EmitPoolOperations(operations);
         EmitWorkerUtilization(runtime);
+        EmitCpgWorkerUtilization(runtime);
         Emit(
           TextLogEventType.Completed,
           "Analysis completed",
@@ -121,6 +122,7 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
         var operations = runtime.ConcurrencyTelemetry.Operations;
         EmitPoolOperations(operations);
         EmitWorkerUtilization(runtime);
+        EmitCpgWorkerUtilization(runtime);
         var fields = CreatePoolFields(operations).ToList();
         fields.Add(new TextLogField("status", "failed"));
         fields.Add(new TextLogField("exception", exception.GetType().FullName));
@@ -313,11 +315,102 @@ internal sealed class RuntimeMeasurementLog : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 逐条写出**每个 CPG WorkBatch worker** 的忙碌率。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与 <see cref="EmitWorkerUtilization"/> 的区别在 <c>op=cpg-worker</c>：
+    /// kernel worker 与 CPG worker 是两个互不相干、可同时存在的池，
+    /// 必须以不同的 <c>op</c> 区分，否则消费者会把两者加总成一个假的池。
+    /// </para>
+    /// <para>
+    /// 数值是**跨全部 CPG 构建累加**的：<c>lifetimeMs</c> 因此可以大于墙钟时间，
+    /// 因为它统计的是 8 个 worker 在 967 个池里各自存活时间的总和，
+    /// 而同一时刻可能有 8 个池并发。判断"并行数用满没有"要看 <c>utilization</c>，
+    /// 不要把 <c>lifetimeMs</c> 与墙钟直接比较。
+    /// </para>
+    /// </remarks>
+    private void EmitCpgWorkerUtilization(AnalysisRuntime runtime)
+    {
+        CpgWorkerUtilizationCollector? collector;
+        try
+        {
+            collector = runtime.CpgWorkerUtilizationCollector;
+            if (collector is null)
+            {
+                return;
+            }
+        }
+        catch
+        {
+            // 与其它遥测一致：诊断失败不得改变运行语义。
+            return;
+        }
+
+        var snapshot = collector.Snapshot();
+        if (snapshot.Count == 0)
+        {
+            // 显式写一行，避免"没有行"被读成"8 个 worker 全 0%"。
+            Emit(
+              TextLogEventType.Summary,
+              "CPG worker utilization",
+              new[]
+              {
+                  new TextLogField("status", "never-started"),
+                  new TextLogField("workerCount", collector.ObservedWorkerCount),
+                  new TextLogField("poolExecutions", collector.PoolExecutionCount),
+              },
+              operation: "cpg-worker");
+            return;
+        }
+
+        // 先写一行汇总：把"累加了多少次执行"交代清楚，否则读者会把累加后的
+        // lifetimeMs 当成单次池的存活期（它必然远大于墙钟时间）。
+        var totalBusy = snapshot.Sum(worker => worker.BusyTime.TotalSeconds);
+        var totalLifetime = snapshot.Sum(worker => worker.Lifetime.TotalSeconds);
+        Emit(
+          TextLogEventType.Summary,
+          "CPG worker utilization",
+          new[]
+          {
+              new TextLogField("status", "aggregate"),
+              new TextLogField("workerCount", snapshot.Count),
+              new TextLogField("poolExecutions", collector.PoolExecutionCount),
+              new TextLogField("items", snapshot.Sum(worker => worker.ExecutedBatchCount)),
+              new TextLogField("busyMs", (totalBusy * 1000).ToString("F1", CultureInfo.InvariantCulture)),
+              new TextLogField("idleMs", (snapshot.Sum(worker => worker.IdleTime.TotalSeconds) * 1000).ToString("F1", CultureInfo.InvariantCulture)),
+              new TextLogField("lifetimeMs", (totalLifetime * 1000).ToString("F1", CultureInfo.InvariantCulture)),
+              new TextLogField(
+                "utilization",
+                (totalLifetime <= 0 ? 0 : Math.Clamp(totalBusy / totalLifetime, 0, 1)).ToString("F4", CultureInfo.InvariantCulture)),
+          },
+          operation: "cpg-worker");
+
+        foreach (var worker in snapshot)
+        {
+            Emit(
+              TextLogEventType.Summary,
+              "CPG worker utilization",
+              new[]
+              {
+                  new TextLogField("workerIndex", worker.WorkerIndex),
+                  new TextLogField("items", worker.ExecutedBatchCount),
+                  new TextLogField("busyMs", worker.BusyTime.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture)),
+                  new TextLogField("idleMs", worker.IdleTime.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture)),
+                  new TextLogField("lifetimeMs", worker.Lifetime.TotalMilliseconds.ToString("F1", CultureInfo.InvariantCulture)),
+                  new TextLogField("utilization", worker.UtilizationRatio.ToString("F4", CultureInfo.InvariantCulture)),
+              },
+              operation: "cpg-worker");
+        }
+    }
+
     private void Emit(
         TextLogEventType eventType,
         string message,
         IReadOnlyList<TextLogField> fields,
-        string operation = "analysis")    {
+        string operation = "analysis")
+    {
         try
         {
             _sink.Emit(new TextLogEvent(
